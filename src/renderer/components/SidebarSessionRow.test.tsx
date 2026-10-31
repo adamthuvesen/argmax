@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -30,7 +30,7 @@ const workspaceBase: WorkspaceSummary = {
   prCreatedAt: null,
   prMergedAt: null,
   prCheckState: null,
-  prActivityAt: null
+  prActivityAt: null,
 };
 
 function pr(overrides: Partial<WorkspaceSessionPr> = {}): WorkspaceSessionPr {
@@ -49,20 +49,39 @@ function pr(overrides: Partial<WorkspaceSessionPr> = {}): WorkspaceSessionPr {
     isPinned: false,
     isWatched: false,
     refreshError: null,
-    ...overrides
+    ...overrides,
   };
 }
 
 function workspaceWithPrSummary(
   prs: WorkspaceSessionPr[],
-  prSummaryState: WorkspaceSummary["prSummaryState"]
+  prSummaryState: WorkspaceSummary["prSummaryState"],
 ): WorkspaceSummary {
   return { ...workspaceBase, prs, prSummaryState };
 }
 
+/** The PR kinds the row's status marker shows (`data-pr`), if any. */
+function prMarkers(row: HTMLElement): (string | null)[] {
+  return within(row)
+    .queryAllByTestId("status-marker")
+    .map((marker) => marker.getAttribute("data-pr"));
+}
+
+/** The custom glyph inside a violet custom icon, or an error when there is none. */
+function violetIconGlyph(row: HTMLElement): HTMLElement {
+  const icon = within(row).getByTestId("session-custom-icon");
+  expect(icon).toHaveAttribute("data-icon-color", "violet");
+  return within(icon).getByTestId("session-custom-icon-glyph");
+}
+
 const detectedIdes = [
-  { id: "vscode" as const, label: "VS Code", appPath: "/Applications/Visual Studio Code.app", hasCli: true },
-  { id: "cursor" as const, label: "Cursor", appPath: "/Applications/Cursor.app", hasCli: true }
+  {
+    id: "vscode" as const,
+    label: "VS Code",
+    appPath: "/Applications/Visual Studio Code.app",
+    hasCli: true,
+  },
+  { id: "cursor" as const, label: "Cursor", appPath: "/Applications/Cursor.app", hasCli: true },
 ];
 
 /** The row props every test here shares: inert callbacks and a pinned default
@@ -76,7 +95,7 @@ function rowProps() {
     onArchiveWorkspace: vi.fn(),
     onOpenInIde: vi.fn(),
     detectedIdes,
-    defaultIde: "vscode" as const
+    defaultIde: "vscode" as const,
   };
 }
 
@@ -130,7 +149,7 @@ describe("SidebarSessionRow", () => {
           {...rowProps()}
           onOpenWorkspaceChat={onOpen}
         />
-      </div>
+      </div>,
     );
 
     const first = screen.getByRole("button", { name: /First/ });
@@ -150,7 +169,12 @@ describe("SidebarSessionRow", () => {
     const { fireEvent } = await import("@testing-library/react");
     const onOpenInIde = vi.fn();
     render(
-      <SidebarSessionRow workspace={workspaceBase} {...rowProps()} onOpenInIde={onOpenInIde} defaultIde="cursor" />
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        {...rowProps()}
+        onOpenInIde={onOpenInIde}
+        defaultIde="cursor"
+      />,
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
@@ -236,7 +260,7 @@ describe("SidebarSessionRow", () => {
 
     expect(screen.getByRole("button", { name: "Rocket" })).toBeInTheDocument();
     fireEvent.change(screen.getByRole("searchbox", { name: "Search icons" }), {
-      target: { value: "brain" }
+      target: { value: "brain" },
     });
 
     expect(screen.getByRole("button", { name: "Brain" })).toBeInTheDocument();
@@ -249,25 +273,30 @@ describe("SidebarSessionRow", () => {
       <SidebarSessionRow
         {...props}
         workspace={{ ...workspaceBase, state: "running", icon: "Brain", iconColor: "violet" }}
-      />
+      />,
     );
 
     // The working nest owns the cell alone, with no glyph behind it, but the
     // row keeps the custom color available to the animation.
     const running = screen.getByTitle(/Build the dashboard — running/);
-    expect(running.querySelector('[data-working="true"]')).not.toBeNull();
-    expect(running.closest(".session-row")).toHaveAttribute("data-icon-color", "violet");
-    expect(running.querySelector(".session-custom-icon")).toBeNull();
+    expect(within(running).getByTestId("working-nest")).toHaveAttribute("data-working", "true");
+    const sessionRow = screen.getByTestId("session-row");
+    expect(sessionRow).toContainElement(running);
+    expect(sessionRow).toHaveAttribute("data-icon-color", "violet");
+    expect(within(running).queryByTestId("session-custom-icon")).toBeNull();
 
     rerender(
       <SidebarSessionRow
         {...props}
         workspace={{ ...workspaceBase, state: "complete", icon: "Brain", iconColor: "violet" }}
-      />
+      />,
     );
     const done = screen.getByTitle(/Build the dashboard — complete/);
-    expect(done.querySelector('[data-working="true"]')).toBeNull();
-    expect(done.querySelector('[data-icon-color="violet"]')).not.toBeNull();
+    expect(within(done).queryByTestId("working-nest")).toBeNull();
+    expect(within(done).getByTestId("session-custom-icon")).toHaveAttribute(
+      "data-icon-color",
+      "violet",
+    );
   });
 
   it("falls back to default markers when a persisted icon name is no longer recognized", () => {
@@ -275,36 +304,36 @@ describe("SidebarSessionRow", () => {
       <SidebarSessionRow
         workspace={{ ...workspaceBase, state: "running", icon: "RetiredIcon", iconColor: "violet" }}
         {...rowProps()}
-      />
+      />,
     );
 
-    expect(document.querySelector('[data-working="true"]')).not.toBeNull();
-    expect(document.querySelector(".session-row")).not.toHaveAttribute("data-icon-color");
+    expect(screen.getByTestId("working-nest")).toHaveAttribute("data-working", "true");
+    expect(screen.getByTestId("session-row")).not.toHaveAttribute("data-icon-color");
 
     rerender(
       <SidebarSessionRow
         workspace={{ ...workspaceBase, state: "failed", icon: "RetiredIcon", iconColor: "violet" }}
         {...rowProps()}
-      />
+      />,
     );
-    expect(document.querySelector(".status-marker")).not.toBeNull();
-    expect(document.querySelector(".session-custom-icon")).toBeNull();
+    expect(screen.getByTestId("status-marker")).toBeInTheDocument();
+    expect(screen.queryByTestId("session-custom-icon")).toBeNull();
   });
 
   it.each([
     ["failed" as const, null, null, "failed"],
     ["complete" as const, "MERGED" as const, 12, "pr-merged"],
     ["complete" as const, "OPEN" as const, 12, "pr-open"],
-    ["complete" as const, null, null, null]
+    ["complete" as const, null, null, null],
   ])("overlays %s / pr %s on a custom icon as %s", (state, prState, prNumber, expectedOverlay) => {
     render(
       <SidebarSessionRow
         workspace={{ ...workspaceBase, state, prState, prNumber, icon: "Flag", iconColor: "clay" }}
         {...rowProps()}
-      />
+      />,
     );
 
-    const overlay = document.querySelector("[data-overlay]");
+    const overlay = screen.queryByTestId("session-custom-icon-overlay");
     expect(overlay?.getAttribute("data-overlay") ?? null).toBe(expectedOverlay);
   });
 
@@ -316,7 +345,7 @@ describe("SidebarSessionRow", () => {
         workspace={{ ...workspaceBase, icon: "Brain", iconColor: "violet" }}
         {...rowProps()}
         onSetIcon={onSetIcon}
-      />
+      />,
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
@@ -333,15 +362,19 @@ describe("SidebarSessionRow", () => {
       <SidebarSessionRow
         {...props}
         workspace={{ ...workspaceBase, state: "failed", icon: "Brain", iconColor: "violet" }}
-      />
+      />,
     );
-    expect(document.querySelector("[data-icon-color]")).not.toBeNull();
+    expect(screen.getByTestId("session-row")).toHaveAttribute("data-icon-color");
 
     rerender(
-      <SidebarSessionRow {...props} workspace={{ ...workspaceBase, state: "failed", icon: null, iconColor: null }} />
+      <SidebarSessionRow
+        {...props}
+        workspace={{ ...workspaceBase, state: "failed", icon: null, iconColor: null }}
+      />,
     );
-    expect(document.querySelector("[data-icon-color]")).toBeNull();
-    expect(document.querySelector(".status-marker")).not.toBeNull();
+    expect(screen.getByTestId("session-row")).not.toHaveAttribute("data-icon-color");
+    expect(screen.queryByTestId("session-custom-icon")).toBeNull();
+    expect(screen.getByTestId("status-marker")).toBeInTheDocument();
   });
 
   it("recoloring while an icon is set applies immediately without closing the picker", async () => {
@@ -352,7 +385,7 @@ describe("SidebarSessionRow", () => {
         workspace={{ ...workspaceBase, icon: "Brain", iconColor: "violet" }}
         {...rowProps()}
         onSetIcon={onSetIcon}
-      />
+      />,
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
@@ -378,7 +411,7 @@ describe("SidebarSessionRow", () => {
       onArchiveWorkspace,
       onOpenInIde,
       detectedIdes: sharedIdes,
-      defaultIde: "vscode" as const
+      defaultIde: "vscode" as const,
     };
     const next = { ...prev, workspace: { ...workspaceBase } };
 
@@ -392,16 +425,16 @@ describe("SidebarSessionRow", () => {
     expect(
       sidebarSessionRowEqual(prev, {
         ...prev,
-        workspace: { ...workspaceBase, lastActivityAt: "2026-05-01T00:02:00.000Z" }
-      })
+        workspace: { ...workspaceBase, lastActivityAt: "2026-05-01T00:02:00.000Z" },
+      }),
     ).toBe(false);
 
     // State change → re-render.
     expect(
       sidebarSessionRowEqual(prev, {
         ...prev,
-        workspace: { ...workspaceBase, state: "running" }
-      })
+        workspace: { ...workspaceBase, state: "running" },
+      }),
     ).toBe(false);
 
     // Selection toggle → re-render.
@@ -416,35 +449,48 @@ describe("SidebarSessionRow", () => {
     expect(
       sidebarSessionRowEqual(prev, {
         ...prev,
-        workspace: workspaceWithPrSummary([pr()], "OPEN")
-      })
+        workspace: workspaceWithPrSummary([pr()], "OPEN"),
+      }),
     ).toBe(false);
   });
 
   it("shows a merged-PR marker when the workspace has a merged pull request", () => {
-    render(<SidebarSessionRow workspace={{ ...workspaceBase, prState: "MERGED", prNumber: 42 }} {...rowProps()} />);
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, prState: "MERGED", prNumber: 42 }}
+        {...rowProps()}
+      />,
+    );
 
     const row = screen.getByTitle(/merged pull request #42/);
     expect(row).toBeInTheDocument();
-    expect(row.querySelector('[data-pr="merged"]')).not.toBeNull();
-    expect(row.querySelector('[data-pr="open"]')).toBeNull();
+    expect(prMarkers(row)).toContain("merged");
+    expect(prMarkers(row)).not.toContain("open");
   });
 
   it("shows an open-PR marker when the workspace has an open pull request", () => {
-    render(<SidebarSessionRow workspace={{ ...workspaceBase, prState: "OPEN", prNumber: 7 }} {...rowProps()} />);
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, prState: "OPEN", prNumber: 7 }}
+        {...rowProps()}
+      />,
+    );
 
     const row = screen.getByTitle(/open pull request #7/);
     expect(row).toBeInTheDocument();
-    expect(row.querySelector('[data-pr="open"]')).not.toBeNull();
-    expect(row.querySelector('[data-pr="merged"]')).toBeNull();
+    expect(prMarkers(row)).toContain("open");
+    expect(prMarkers(row)).not.toContain("merged");
   });
 
   it("summarizes multiple verified PRs from the dashboard projection", () => {
     render(
       <SidebarSessionRow
-        workspace={workspaceWithPrSummary([pr(), pr({ prNumber: 5, prState: "MERGED", isPrimary: false })], "OPEN")}
+        workspace={workspaceWithPrSummary(
+          [pr(), pr({ prNumber: 5, prState: "MERGED", isPrimary: false })],
+          "OPEN",
+        )}
         {...rowProps()}
-      />
+      />,
     );
 
     expect(screen.getByTitle(/pull requests: 1 open · 1 merged/)).toBeInTheDocument();
@@ -460,17 +506,17 @@ describe("SidebarSessionRow", () => {
         workspace={workspaceWithPrSummary(
           [
             pr({ prNumber: 213, prState: "MERGED", isPinned: true }),
-            pr({ prNumber: 211, prState: "CLOSED", isPrimary: false })
+            pr({ prNumber: 211, prState: "CLOSED", isPrimary: false }),
           ],
-          "CLOSED"
+          "CLOSED",
         )}
         {...rowProps()}
-      />
+      />,
     );
 
     const row = screen.getByTitle(/pull requests: 1 merged · 1 closed/);
-    expect(row.querySelector('[data-pr="merged"]')).not.toBeNull();
-    expect(row.querySelector('[data-pr="closed"]')).toBeNull();
+    expect(prMarkers(row)).toContain("merged");
+    expect(prMarkers(row)).not.toContain("closed");
   });
 
   it("gives an idle completed row the resting dot, with the state still in its title", () => {
@@ -481,34 +527,52 @@ describe("SidebarSessionRow", () => {
     // marker column keeps its width and draws the muted resting dot instead.
     // `.status-marker` rather than "svg": the working nest is HTML now, so an
     // svg check would pass whether or not a mark was rendered.
-    expect(row.querySelector(".status-marker")).toBeNull();
-    expect(row.querySelector(".session-link-lead-dot")).not.toBeNull();
+    expect(within(row).queryByTestId("status-marker")).toBeNull();
+    expect(within(row).queryByTestId("working-nest")).toBeNull();
+    expect(within(row).getByTestId("session-lead-dot")).toBeInTheDocument();
   });
 
   it("keeps a leading marker on rows that carry a live signal", () => {
     const props = rowProps();
 
-    const { rerender } = render(<SidebarSessionRow {...props} workspace={{ ...workspaceBase, state: "failed" }} />);
+    const { rerender } = render(
+      <SidebarSessionRow {...props} workspace={{ ...workspaceBase, state: "failed" }} />,
+    );
     // `.status-marker` rather than "svg": a running row's marker is the working
     // nest, which is HTML boxes so WebKit will composite it (styles/working-nest.css).
-    expect(screen.getByTitle(/Build the dashboard — failed/).querySelector(".status-marker")).not.toBeNull();
+    expect(
+      within(screen.getByTitle(/Build the dashboard — failed/)).getByTestId("status-marker"),
+    ).toBeInTheDocument();
 
     rerender(<SidebarSessionRow {...props} workspace={{ ...workspaceBase, state: "running" }} />);
-    expect(screen.getByTitle(/Build the dashboard — running/).querySelector(".status-marker")).not.toBeNull();
+    expect(
+      within(screen.getByTitle(/Build the dashboard — running/)).getByTestId("working-nest"),
+    ).toHaveClass("status-marker");
 
     rerender(
-      <SidebarSessionRow {...props} workspace={{ ...workspaceBase, state: "complete" }} priorityReason="blocked" />
+      <SidebarSessionRow
+        {...props}
+        workspace={{ ...workspaceBase, state: "complete" }}
+        priorityReason="blocked"
+      />,
     );
     expect(
-      screen.getByTitle(/Build the dashboard — complete — waiting for input/).querySelector(".status-marker")
-    ).not.toBeNull();
+      within(screen.getByTitle(/Build the dashboard — complete — waiting for input/)).getByTestId(
+        "status-marker",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("keeps the custom icon on a calm row", () => {
-    render(<SidebarSessionRow workspace={{ ...workspaceBase, icon: "Brain", iconColor: "violet" }} {...rowProps()} />);
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, icon: "Brain", iconColor: "violet" }}
+        {...rowProps()}
+      />,
+    );
 
     const row = screen.getByTitle(/Build the dashboard — complete/);
-    expect(row.querySelector('[data-icon-color="violet"] svg')).not.toBeNull();
+    expect(violetIconGlyph(row)).toBeInTheDocument();
   });
 
   it("replaces the custom icon with an unread accent dot, then restores it", () => {
@@ -518,23 +582,23 @@ describe("SidebarSessionRow", () => {
         {...props}
         workspace={{ ...workspaceBase, icon: "Brain", iconColor: "violet" }}
         hasUnreadResponse
-      />
+      />,
     );
 
     const unread = screen.getByTitle(/Build the dashboard — complete — unread response/);
-    expect(unread.querySelector(".session-unread-marker")).not.toBeNull();
-    expect(unread.querySelector(".session-custom-icon")).toBeNull();
+    expect(within(unread).getByTestId("session-unread-marker")).toBeInTheDocument();
+    expect(within(unread).queryByTestId("session-custom-icon")).toBeNull();
 
     rerender(
       <SidebarSessionRow
         {...props}
         workspace={{ ...workspaceBase, icon: "Brain", iconColor: "violet" }}
         hasUnreadResponse={false}
-      />
+      />,
     );
     const viewed = screen.getByTitle(/Build the dashboard — complete/);
-    expect(viewed.querySelector(".session-unread-marker")).toBeNull();
-    expect(viewed.querySelector('[data-icon-color="violet"] svg')).not.toBeNull();
+    expect(within(viewed).queryByTestId("session-unread-marker")).toBeNull();
+    expect(violetIconGlyph(viewed)).toBeInTheDocument();
   });
 
   it("keeps the working nest while a turn is in flight even if a response is unread", () => {
@@ -544,16 +608,21 @@ describe("SidebarSessionRow", () => {
         {...rowProps()}
         hasUnreadResponse
         isWorking
-      />
+      />,
     );
 
     const row = screen.getByTitle(/Build the dashboard — running/);
-    expect(row.querySelector('[data-working="true"]')).not.toBeNull();
-    expect(row.querySelector(".session-unread-marker")).toBeNull();
+    expect(within(row).getByTestId("working-nest")).toHaveAttribute("data-working", "true");
+    expect(within(row).queryByTestId("session-unread-marker")).toBeNull();
   });
 
   it("keeps a closed-PR summary visible", () => {
-    render(<SidebarSessionRow workspace={{ ...workspaceBase, prState: "CLOSED", prNumber: 9 }} {...rowProps()} />);
+    render(
+      <SidebarSessionRow
+        workspace={{ ...workspaceBase, prState: "CLOSED", prNumber: 9 }}
+        {...rowProps()}
+      />,
+    );
 
     expect(screen.getByTitle(/closed pull request #9/)).toBeInTheDocument();
   });
@@ -563,11 +632,11 @@ describe("SidebarSessionRow", () => {
       <SidebarSessionRow
         workspace={{ ...workspaceBase, state: "failed", prState: "MERGED", prNumber: 1 }}
         {...rowProps()}
-      />
+      />,
     );
 
     const row = screen.getByTitle(/merged pull request #1/);
-    expect(row.querySelector('[data-pr="merged"]')).not.toBeNull();
+    expect(prMarkers(row)).toContain("merged");
   });
 
   it("working marker wins over PR markers while a turn is in flight", () => {
@@ -575,39 +644,50 @@ describe("SidebarSessionRow", () => {
       <SidebarSessionRow
         workspace={{ ...workspaceBase, state: "running", prState: "OPEN", prNumber: 3 }}
         {...rowProps()}
-      />
+      />,
     );
 
     // The title still names the PR for screen readers even while the visual
     // marker shows live activity.
     const row = screen.getByTitle(/open pull request #3/);
-    expect(row.querySelector('[data-working="true"]')).not.toBeNull();
-    expect(row.querySelector('[data-pr="open"]')).toBeNull();
+    expect(within(row).getByTestId("working-nest")).toHaveAttribute("data-working", "true");
+    expect(prMarkers(row)).not.toContain("open");
   });
 
   it.each([
     ["complete", null, null],
     ["failed", null, null],
     ["cancelled", null, null],
-    ["complete", "OPEN", 5]
-  ] as const)("reverts to the normal status icon when the turn ends as %s (pr: %s)", (endState, prState, prNumber) => {
-    const props = rowProps();
-    const { rerender } = render(<SidebarSessionRow {...props} workspace={{ ...workspaceBase, state: "running" }} />);
-    expect(document.querySelector('[data-working="true"]')).not.toBeNull();
+    ["complete", "OPEN", 5],
+  ] as const)(
+    "reverts to the normal status icon when the turn ends as %s (pr: %s)",
+    (endState, prState, prNumber) => {
+      const props = rowProps();
+      const { rerender } = render(
+        <SidebarSessionRow {...props} workspace={{ ...workspaceBase, state: "running" }} />,
+      );
+      expect(screen.getByTestId("working-nest")).toHaveAttribute("data-working", "true");
 
-    rerender(<SidebarSessionRow {...props} workspace={{ ...workspaceBase, state: endState, prState, prNumber }} />);
-    expect(document.querySelector('[data-working="true"]')).toBeNull();
-    if (prState === "OPEN") {
-      expect(document.querySelector('[data-pr="open"]')).not.toBeNull();
-    }
-  });
+      rerender(
+        <SidebarSessionRow
+          {...props}
+          workspace={{ ...workspaceBase, state: endState, prState, prNumber }}
+        />,
+      );
+      expect(screen.queryByTestId("working-nest")).toBeNull();
+      if (prState === "OPEN") {
+        expect(prMarkers(screen.getByTestId("session-row"))).toContain("open");
+      }
+    },
+  );
 
   it("ships working-marker CSS that relays emphasis and respects reduced motion", () => {
     const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
     const css = readBundledCss(cssPath);
 
     // The running marker wears the configurable accent, like the mascot...
-    const colorRule = /\.status-marker\[data-working="true"\]\s*\{[^}]*color:\s*var\(--accent\)/i.exec(css);
+    const colorRule =
+      /\.status-marker\[data-working="true"\]\s*\{[^}]*color:\s*var\(--accent\)/i.exec(css);
     expect(colorRule, "expected accent color rule for the working marker").not.toBeNull();
 
     expect(css).toMatch(/\.session-unread-marker::before\s*\{[^}]*background:\s*var\(--accent\)/i);
@@ -615,17 +695,19 @@ describe("SidebarSessionRow", () => {
     // A sidebar row with a custom icon overrides every animated color stop.
     const iconColorRule =
       /\.session-row\[data-icon-color\]\s+\.session-link\[data-status\]\s+\.status-marker\[data-working="true"\]\s*\{([^}]*)\}/i.exec(
-        css
+        css,
       );
     expect(iconColorRule, "expected custom icon color rule for the working marker").not.toBeNull();
     expect(iconColorRule?.[1]).toContain("--working-nest-lead: var(--session-row-icon-color)");
-    expect(iconColorRule?.[1]).toContain("--working-nest-rest: color-mix(in oklab, var(--session-row-icon-color)");
+    expect(iconColorRule?.[1]).toContain(
+      "--working-nest-rest: color-mix(in oklab, var(--session-row-icon-color)",
+    );
     expect(iconColorRule?.[1]).toContain("color: var(--session-row-icon-color)");
 
     // ...its parts share the asymmetric relay and stable phase offset...
     const partRule =
       /\.working-nest\[data-active="true"\]\[data-mark="nest"\]\s\.working-nest-part\s*\{[^}]*animation:\s*working-nest-relay/i.exec(
-        css
+        css,
       );
     expect(partRule, "expected relay animation on the nest parts").not.toBeNull();
     expect(css).toContain("@keyframes working-nest-relay");
@@ -634,7 +716,7 @@ describe("SidebarSessionRow", () => {
     // ...and reduced-motion users get a static mark, whichever style is picked.
     const reduceBlock =
       /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^{}]*\.working-nest\[data-active="true"\]\s\.working-nest-part[^{}]*\{[^}]*animation:\s*none/i.exec(
-        css
+        css,
       );
     expect(reduceBlock, "expected reduced-motion override for the working parts").not.toBeNull();
   });
@@ -644,23 +726,22 @@ describe("SidebarSessionRow", () => {
     const onArchive = vi.fn();
     const workspace = workspaceWithPrSummary(
       [pr({ prNumber: 10, isPrimary: true }), pr({ prNumber: 11, sessionId: "session-2" })],
-      "OPEN"
+      "OPEN",
     );
 
-    const { container, rerender } = render(
+    const { rerender } = render(
       <SidebarSessionRow
         workspace={workspace}
         {...rowProps()}
         onTogglePin={onTogglePin}
         onArchiveWorkspace={onArchive}
-      />
+      />,
     );
 
-    const actions = container.querySelector(".session-row-actions");
-    expect(actions).not.toBeNull();
-    expect(actions?.querySelector(".session-pin-btn")).not.toBeNull();
-    expect(actions?.querySelector(".session-archive-btn")).not.toBeNull();
-    expect(container.querySelector(".session-pr-count")).not.toBeNull();
+    const actions = screen.getByTestId("session-row-actions");
+    expect(within(actions).getByRole("button", { name: "Pin chat" })).toBeInTheDocument();
+    expect(within(actions).getByRole("button", { name: "Archive chat" })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^2 pull requests:/)).toBeInTheDocument();
 
     // On running chats without an archive button, the container still renders with the pin
     rerender(
@@ -669,11 +750,11 @@ describe("SidebarSessionRow", () => {
         {...rowProps()}
         onTogglePin={onTogglePin}
         onArchiveWorkspace={onArchive}
-      />
+      />,
     );
-    expect(container.querySelector(".session-row-actions")).not.toBeNull();
-    expect(container.querySelector(".session-pin-btn")).not.toBeNull();
-    expect(container.querySelector(".session-archive-btn")).toBeNull();
+    const runningActions = screen.getByTestId("session-row-actions");
+    expect(within(runningActions).getByRole("button", { name: "Pin chat" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Archive chat" })).toBeNull();
   });
 
   it("ships sidebar action CSS that reveals on hover and stays keyboard-reachable", () => {
@@ -691,12 +772,15 @@ describe("SidebarSessionRow", () => {
     expect(parseFloat(archiveRule?.[1] ?? "1")).toBe(0);
 
     // ...revealed when the row is hovered or focused...
-    const hoverReveal = /\.session-row:hover \.session-row-action[^{]*\{[^}]*opacity:\s*([0-9.]+)/i.exec(css);
+    const hoverReveal =
+      /\.session-row:hover \.session-row-action[^{]*\{[^}]*opacity:\s*([0-9.]+)/i.exec(css);
     expect(hoverReveal, "expected hover reveal rule for row actions").not.toBeNull();
     expect(parseFloat(hoverReveal?.[1] ?? "0")).toBeGreaterThan(0);
 
     // ...and always reachable via keyboard focus even without a hover.
-    const focusReveal = /\.session-row-action:focus-visible\s*\{[^}]*opacity:\s*([0-9.]+)/i.exec(css);
+    const focusReveal = /\.session-row-action:focus-visible\s*\{[^}]*opacity:\s*([0-9.]+)/i.exec(
+      css,
+    );
     expect(focusReveal, "expected :focus-visible reveal rule for row actions").not.toBeNull();
     expect(parseFloat(focusReveal?.[1] ?? "0")).toBeGreaterThan(0);
   });
@@ -713,7 +797,9 @@ describe("styles.css startup contract", () => {
   it("bundles VT323 via @font-face pointing at a local asset", () => {
     const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
     const css = readBundledCss(cssPath);
-    const fontFace = /font-family:\s*["']VT323["'][\s\S]{0,300}?url\(["']?\.\/fonts\/VT323\//i.exec(css);
+    const fontFace = /font-family:\s*["']VT323["'][\s\S]{0,300}?url\(["']?\.\/fonts\/VT323\//i.exec(
+      css,
+    );
     expect(fontFace, "expected VT323 @font-face with local URL").not.toBeNull();
   });
 
@@ -725,12 +811,17 @@ describe("styles.css startup contract", () => {
     // chat-chrome.css; settings-controls.css also carries a
     // `[data-placement="above"]`-qualified variant that bundles earlier.
     const settingsPopoverIndex = css.indexOf(".project-picker-popover.settings-picker-popover {");
-    const settingsRule = /\.project-picker-popover\.settings-picker-popover\s*\{(?<body>[^}]+)\}/i.exec(css);
+    const settingsRule =
+      /\.project-picker-popover\.settings-picker-popover\s*\{(?<body>[^}]+)\}/i.exec(css);
 
-    expect(genericPopoverIndex, "expected generic project picker popover rule").toBeGreaterThanOrEqual(0);
-    expect(settingsPopoverIndex, "expected settings font picker override after generic rule").toBeGreaterThan(
-      genericPopoverIndex
-    );
+    expect(
+      genericPopoverIndex,
+      "expected generic project picker popover rule",
+    ).toBeGreaterThanOrEqual(0);
+    expect(
+      settingsPopoverIndex,
+      "expected settings font picker override after generic rule",
+    ).toBeGreaterThan(genericPopoverIndex);
     expect(settingsRule?.groups?.body).toMatch(/top:\s*calc\(100%\s*\+\s*6px\)/i);
     expect(settingsRule?.groups?.body).toMatch(/bottom:\s*auto/i);
   });
@@ -738,12 +829,16 @@ describe("styles.css startup contract", () => {
   it("keeps the first assistant turn reveal from moving vertically under metadata", () => {
     const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
     const css = readBundledCss(cssPath);
-    const revealRule = /\.turn-block-body\[data-just-revealed="true"\]\s*>\s*\*:first-child\s*\{(?<body>[^}]+)\}/i.exec(
-      css
-    );
+    const revealRule =
+      /\.turn-block-body\[data-just-revealed="true"\]\s*>\s*\*:first-child\s*\{(?<body>[^}]+)\}/i.exec(
+        css,
+      );
     const keyframeStart = css.indexOf("@keyframes turn-phase-land");
     const nextKeyframe = css.indexOf("@keyframes", keyframeStart + 1);
-    const keyframe = css.slice(keyframeStart, nextKeyframe > keyframeStart ? nextKeyframe : undefined);
+    const keyframe = css.slice(
+      keyframeStart,
+      nextKeyframe > keyframeStart ? nextKeyframe : undefined,
+    );
 
     expect(revealRule?.groups?.body).toContain("turn-phase-land");
     expect(keyframeStart).toBeGreaterThanOrEqual(0);
@@ -751,7 +846,9 @@ describe("styles.css startup contract", () => {
   });
 
   it("marks a synced session with the agent it came from", () => {
-    render(<SidebarSessionRow workspace={workspaceBase} importedProvider="Claude" {...rowProps()} />);
+    render(
+      <SidebarSessionRow workspace={workspaceBase} importedProvider="Claude" {...rowProps()} />,
+    );
     expect(screen.getByTitle("Synced from Claude")).toHaveTextContent("Claude");
   });
 
@@ -759,7 +856,12 @@ describe("styles.css startup contract", () => {
     const { fireEvent } = await import("@testing-library/react");
     const onSyncNow = vi.fn();
     render(
-      <SidebarSessionRow workspace={workspaceBase} importedProvider="Claude" {...rowProps()} onSyncNow={onSyncNow} />
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        importedProvider="Claude"
+        {...rowProps()}
+        onSyncNow={onSyncNow}
+      />,
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
@@ -789,11 +891,13 @@ describe("SidebarSessionRow copy ids", () => {
         workspace={workspaceBase}
         copyableIds={"session   session-1\nworkspace workspace-1"}
         {...rowProps()}
-      />
+      />,
     );
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Copy IDs" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("session   session-1\nworkspace workspace-1"));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith("session   session-1\nworkspace workspace-1"),
+    );
     expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
   });
 });
@@ -802,10 +906,16 @@ describe("SidebarSessionRow — launch lineage", () => {
   afterEach(() => cleanup());
 
   it("names the chat whose agent launched this one", () => {
-    render(<SidebarSessionRow workspace={workspaceBase} launchedByLabel="Ship the phase-2 branch" {...rowProps()} />);
+    render(
+      <SidebarSessionRow
+        workspace={workspaceBase}
+        launchedByLabel="Ship the phase-2 branch"
+        {...rowProps()}
+      />,
+    );
 
     expect(screen.getByTitle("Launched by Ship the phase-2 branch")).toHaveTextContent(
-      "launched by Ship the phase-2 branch"
+      "launched by Ship the phase-2 branch",
     );
   });
 
@@ -819,7 +929,7 @@ describe("SidebarSessionRow — launch lineage", () => {
       onArchiveWorkspace: vi.fn(),
       onOpenInIde: vi.fn(),
       detectedIdes,
-      defaultIde: "vscode" as const
+      defaultIde: "vscode" as const,
     };
     expect(sidebarSessionRowEqual(prev, { ...prev, launchedByLabel: "Ship it" })).toBe(false);
   });

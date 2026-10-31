@@ -28,7 +28,7 @@ const docs = [
   ...mdFiles(join(ROOT, "docs")),
   join(ROOT, "AGENTS.md"),
   join(ROOT, "README.md"),
-  join(ROOT, "GLOSSARY.md")
+  join(ROOT, "GLOSSARY.md"),
 ].filter(existsSync);
 
 // 1. Local markdown links resolve.
@@ -78,7 +78,8 @@ for (const group of ["plan", "design"]) {
       isDirectory = false;
     }
     const isEntry =
-      (entry.endsWith(".md") && entry !== "README.md") || (isDirectory && existsSync(join(full, "index.html")));
+      (entry.endsWith(".md") && entry !== "README.md") ||
+      (isDirectory && existsSync(join(full, "index.html")));
     if (isEntry && !index.includes(entry.replace(/\.md$/, ""))) {
       fail(`docs/${group}/${entry} is not listed in docs/${group}/README.md`);
     }
@@ -100,10 +101,14 @@ for (const rel of ["docs/agent-tools.md", "docs/browser.md"]) {
   for (const match of text.matchAll(/(\d+) of the (?:server's )?(\d+)|(\d+) tools and/g)) {
     const stated = match[2] ?? match[3];
     if (Number(stated) !== total) {
-      fail(`${rel}: states ${stated} MCP tools, code registers ${total}. Update the number in ${rel}.`);
+      fail(
+        `${rel}: states ${stated} MCP tools, code registers ${total}. Update the number in ${rel}.`,
+      );
     }
     if (match[1] && Number(match[1]) !== browser) {
-      fail(`${rel}: states ${match[1]} browser tools, code registers ${browser}. Update the number in ${rel}.`);
+      fail(
+        `${rel}: states ${match[1]} browser tools, code registers ${browser}. Update the number in ${rel}.`,
+      );
     }
   }
 }
@@ -118,10 +123,16 @@ const npmScripts = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).
 const rulesTable = agents.split("\n## Enforced Rules\n")[1]?.split("\n## ")[0] ?? "";
 const rows = rulesTable.split("\n").filter((line) => /^\| (?!Rule |---)/.test(line));
 if (!rows.length)
-  fail("AGENTS.md has no ## Enforced Rules table. Restore the section and its | Rule | Enforced by | Added | rows.");
+  fail(
+    "AGENTS.md has no ## Enforced Rules table. Restore the section and its | Rule | Enforced by | Added | rows.",
+  );
 const filesFor = (path) =>
-  tracked.filter((file) => file === path || file.endsWith(`/${path}`) || (path.endsWith("/") && file.startsWith(path)));
-const hasWord = (name, paths) => spawnSync("git", ["grep", "-qwF", "--", name, ...paths], { cwd: ROOT }).status === 0;
+  tracked.filter(
+    (file) =>
+      file === path || file.endsWith(`/${path}`) || (path.endsWith("/") && file.startsWith(path)),
+  );
+const hasWord = (name, paths) =>
+  spawnSync("git", ["grep", "-qwF", "--", name, ...paths], { cwd: ROOT }).status === 0;
 const CODE = [":!*.md", ":!docs/"];
 for (const row of rows) {
   const cited = [...row.split("|")[2].matchAll(/`([^`]+)`/g)].map(([, raw]) => {
@@ -139,7 +150,7 @@ for (const row of rows) {
   });
   if (!cited.length)
     fail(
-      `AGENTS.md Enforced Rules row cites no enforcer: ${row.split("|")[1].trim()}. Cite a file, path::name, or npm script in backticks.`
+      `AGENTS.md Enforced Rules row cites no enforcer: ${row.split("|")[1].trim()}. Cite a file, path::name, or npm script in backticks.`,
     );
   const enforcers = cited.flatMap(({ kind, name, file }) =>
     kind === "path"
@@ -148,7 +159,7 @@ for (const row of rows) {
         ? filesFor(file)
         : kind === "script"
           ? (npmScripts[name].match(/scripts\/[\w./-]+\.m?js/g) ?? [])
-          : []
+          : [],
   );
   for (const { raw, name, kind, file, key } of cited) {
     const problem =
@@ -165,7 +176,10 @@ for (const row of rows) {
             : hasWord(name, enforcers.length ? enforcers : CODE)
               ? null
               : `does not appear in ${enforcers.length ? `the cited enforcer (${[...new Set(enforcers)].join(", ")})` : "code outside docs"}`;
-    if (problem) fail(`AGENTS.md Enforced Rules cites \`${raw}\`, which ${problem}. Fix the citation or the enforcer.`);
+    if (problem)
+      fail(
+        `AGENTS.md Enforced Rules cites \`${raw}\`, which ${problem}. Fix the citation or the enforcer.`,
+      );
   }
 }
 
@@ -174,4 +188,6 @@ if (failures.length) {
   for (const problem of failures) console.error(`  ${problem}`);
   process.exit(1);
 }
-console.log(`check-docs: ${docs.length} files, links ok, index ok, MCP tools ${total} (browser ${browser})`);
+console.log(
+  `check-docs: ${docs.length} files, links ok, index ok, MCP tools ${total} (browser ${browser})`,
+);

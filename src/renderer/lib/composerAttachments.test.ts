@@ -12,7 +12,7 @@ import {
   isImageDragType,
   isTransientScreenshotPath,
   listDragTypes,
-  readBlobAsBase64
+  readBlobAsBase64,
 } from "./composerAttachments.js";
 import { WORKSPACE_DRAG_MIME } from "./gridState.js";
 
@@ -20,13 +20,16 @@ describe("buildAttachmentReferences", () => {
   it("emits workspace-relative @paths for files inside the workspace", () => {
     const refs = buildAttachmentReferences(
       [{ path: "/Users/me/repo/src/app.ts" }, { path: "/Users/me/repo/README.md" }],
-      "/Users/me/repo"
+      "/Users/me/repo",
     );
     expect(refs).toEqual(["@src/app.ts", "@README.md"]);
   });
 
   it("emits absolute @paths for files outside the workspace", () => {
-    const refs = buildAttachmentReferences([{ path: "/tmp/some/external/file.txt" }], "/Users/me/repo");
+    const refs = buildAttachmentReferences(
+      [{ path: "/tmp/some/external/file.txt" }],
+      "/Users/me/repo",
+    );
     expect(refs).toEqual(["@/tmp/some/external/file.txt"]);
   });
 
@@ -93,8 +96,8 @@ describe("isTransientScreenshotPath", () => {
   it("recognizes the macOS screenshot-thumbnail temp file", () => {
     expect(
       isTransientScreenshotPath(
-        "/var/folders/09/w9q/T/TemporaryItems/NSIRD_screencaptureui_2MPBtJ/Screenshot 2026-09-06.png"
-      )
+        "/var/folders/09/w9q/T/TemporaryItems/NSIRD_screencaptureui_2MPBtJ/Screenshot 2026-09-06.png",
+      ),
     ).toBe(true);
   });
 
@@ -146,8 +149,8 @@ describe("isAttachableDrag", () => {
     expect(
       isAttachableDrag({
         types: [],
-        items: [{ kind: "string", type: "text/plain", getAsFile: () => null }]
-      })
+        items: [{ kind: "string", type: "text/plain", getAsFile: () => null }],
+      }),
     ).toBe(true);
   });
 
@@ -170,7 +173,7 @@ describe("collectDroppedFiles", () => {
     const file = new File([new Uint8Array([1])], "shot.png", { type: "image/png" });
     const collected = collectDroppedFiles({
       files: [],
-      items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
     });
     expect(collected).toEqual([file]);
   });
@@ -178,7 +181,7 @@ describe("collectDroppedFiles", () => {
   it("stamps the item MIME onto a typeless file", () => {
     const file = new File([new Uint8Array([1])], "shot.png", { type: "" });
     const [collected] = collectDroppedFiles({
-      items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
     });
     expect(collected?.type).toBe("image/png");
     expect(collected?.name).toBe("shot.png");
@@ -187,7 +190,7 @@ describe("collectDroppedFiles", () => {
   it("stamps an Apple image UTI onto a typeless file", () => {
     const file = new File([new Uint8Array([1])], "shot.png", { type: "" });
     const [collected] = collectDroppedFiles({
-      items: [{ kind: "file", type: "public.png", getAsFile: () => file }]
+      items: [{ kind: "file", type: "public.png", getAsFile: () => file }],
     });
     expect(collected?.type).toBe("image/png");
   });
@@ -196,7 +199,7 @@ describe("collectDroppedFiles", () => {
     const file = new File([new Uint8Array([1])], "shot.png", { type: "" });
     const collected = collectDroppedFiles({
       files: [file],
-      items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
     });
     expect(collected).toEqual([file]);
   });
@@ -206,7 +209,7 @@ describe("collectDroppedFiles", () => {
     Object.defineProperty(file, "path", { value: "/tmp/shot.png" });
     const collected = collectDroppedFiles({
       files: [file],
-      items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
     });
     expect(collected).toHaveLength(1);
     expect(collected[0]).toBe(file);
@@ -216,8 +219,8 @@ describe("collectDroppedFiles", () => {
   it("ignores string items", () => {
     expect(
       collectDroppedFiles({
-        items: [{ kind: "string", type: "text/html", getAsFile: () => null }]
-      })
+        items: [{ kind: "string", type: "text/html", getAsFile: () => null }],
+      }),
     ).toEqual([]);
   });
 });
@@ -232,7 +235,7 @@ describe("droppedFileHasUsablePath", () => {
   it("rejects the screenshot-thumbnail temp path so bytes are persisted instead", () => {
     const file = new File([new Uint8Array([1])], "Screenshot.png", { type: "" });
     Object.defineProperty(file, "path", {
-      value: "/var/folders/xx/T/TemporaryItems/NSIRD_screencaptureui_abc/Screenshot.png"
+      value: "/var/folders/xx/T/TemporaryItems/NSIRD_screencaptureui_abc/Screenshot.png",
     });
     expect(droppedFileHasUsablePath(file)).toBe(false);
   });
@@ -252,7 +255,9 @@ describe("downscaleImageBlob", () => {
   it("returns the original when the runtime cannot decode images", async () => {
     // jsdom has no createImageBitmap: pastes must still attach.
     const png = new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" });
-    expect(typeof (globalThis as { createImageBitmap?: unknown }).createImageBitmap).toBe("undefined");
+    expect(typeof (globalThis as { createImageBitmap?: unknown }).createImageBitmap).toBe(
+      "undefined",
+    );
     await expect(downscaleImageBlob(png)).resolves.toBe(png);
   });
 });

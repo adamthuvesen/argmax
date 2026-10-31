@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getBrowserRequest, resetBrowserSurfaceForTests, subscribeBrowserRequest } from "./browserPanel.js";
+import {
+  getBrowserRequest,
+  resetBrowserSurfaceForTests,
+  subscribeBrowserRequest,
+} from "./browserPanel.js";
 import { LINK_TARGET_KEY } from "./linkTarget.js";
 import { openWebUrl } from "./openWebUrl.js";
 
 const remote = vi.hoisted(() => ({ bridge: false }));
 vi.mock("./tauriBridge.js", () => ({
-  isRemoteBridge: () => remote.bridge
+  isRemoteBridge: () => remote.bridge,
 }));
 
 afterEach(() => {
@@ -73,7 +77,11 @@ describe("openWebUrl", () => {
 
     openWebUrl("https://github.com/o/r/pull/1");
 
-    expect(open).toHaveBeenCalledWith("https://github.com/o/r/pull/1", "_blank", "noopener,noreferrer");
+    expect(open).toHaveBeenCalledWith(
+      "https://github.com/o/r/pull/1",
+      "_blank",
+      "noopener,noreferrer",
+    );
     expect(openPath).not.toHaveBeenCalled();
   });
 });

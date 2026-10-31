@@ -9,7 +9,7 @@ import { ProjectOverviewSettings } from "./ProjectOverviewSettings.js";
 
 export function ProjectFoldersSettings({
   project,
-  onProjectUpdated
+  onProjectUpdated,
 }: {
   project: ProjectSummary;
   onProjectUpdated: (project: ProjectSummary) => void;
@@ -24,7 +24,7 @@ export function ProjectFoldersSettings({
       setFolders(result);
       setError(null);
     },
-    onError: (reason) => setError(validationMessage(reason))
+    onError: (reason) => setError(validationMessage(reason)),
   });
 
   const api = projectActions();
@@ -38,8 +38,14 @@ export function ProjectFoldersSettings({
 
   return (
     <>
-      <section id="settings-project-folders" className="settings-card" aria-label="Project name and folders">
-        {!api ? <p className="settings-note">Open Argmax on your Mac to edit project folders.</p> : null}
+      <section
+        id="settings-project-folders"
+        className="settings-card"
+        aria-label="Project name and folders"
+      >
+        {!api ? (
+          <p className="settings-note">Open Argmax on your Mac to edit project folders.</p>
+        ) : null}
         {error ? (
           <p className="settings-note" role="alert">
             {error}
@@ -56,13 +62,15 @@ export function ProjectFoldersSettings({
             initialValue={{
               name: project.name,
               folders: folders.map((folder) => folder.rootPath),
-              primaryPath: folders.find((folder) => folder.isPrimary)?.rootPath ?? project.repoPath
+              primaryPath: folders.find((folder) => folder.isPrimary)?.rootPath ?? project.repoPath,
             }}
             submitLabel="Save project"
             onSubmit={save}
             renderFolderDetails={(path) => {
               const folder = folders.find((candidate) => candidate.rootPath === path);
-              return folder && !folder.isPrimary ? <ProjectFolderContext key={folder.id} folder={folder} /> : null;
+              return folder && !folder.isPrimary ? (
+                <ProjectFolderContext key={folder.id} folder={folder} />
+              ) : null;
             }}
           />
         ) : null}

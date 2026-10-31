@@ -4,7 +4,10 @@
  *  serialized into the prompt text at send time. */
 
 /** Open-tab paths with the active tab first, preserving tab order otherwise. */
-export function orderedOpenFilePaths(tabs: readonly { path: string }[], activeTabPath: string | null): string[] {
+export function orderedOpenFilePaths(
+  tabs: readonly { path: string }[],
+  activeTabPath: string | null,
+): string[] {
   const paths = tabs.map((tab) => tab.path);
   if (activeTabPath === null || !paths.includes(activeTabPath)) return paths;
   return [activeTabPath, ...paths.filter((path) => path !== activeTabPath)];

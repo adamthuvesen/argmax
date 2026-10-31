@@ -12,7 +12,7 @@ import type { JSX } from "react";
 export function PickerFilterRow({
   query,
   matchCount,
-  totalCount
+  totalCount,
 }: {
   query: string;
   matchCount: number;

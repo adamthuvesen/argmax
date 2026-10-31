@@ -7,7 +7,7 @@ import { getCachedUsageRemaining } from "../lib/ledgerPageState.js";
 import {
   lookUpUsageRemaining,
   remainingFiguresAreOld,
-  summarizeProviderWithHeld
+  summarizeProviderWithHeld,
 } from "../lib/usageRemainingLookup.js";
 import { RemainingBar } from "./usage/RemainingBar.js";
 import { formatRemainingPercent, formatResetIn } from "./usage/usageFormat.js";
@@ -18,7 +18,9 @@ const CHIP_TICK_MS = 60_000;
 /** `2:05 PM`: when figures that have gone old were true. */
 function formatAsOf(asOf: string): string {
   const at = new Date(asOf);
-  return Number.isNaN(at.getTime()) ? asOf : at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return Number.isNaN(at.getTime())
+    ? asOf
+    : at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
 /**
@@ -127,7 +129,9 @@ export function ComposerUsageChip({ provider }: { provider: ProviderId }): JSX.E
                 <li key={window.id} className="identity-plans-window">
                   <span className="identity-plans-window-label">
                     {window.label}
-                    {resetsIn ? <span className="identity-plans-window-reset"> · {resetsIn}</span> : null}
+                    {resetsIn ? (
+                      <span className="identity-plans-window-reset"> · {resetsIn}</span>
+                    ) : null}
                   </span>
                   <span className="identity-plans-window-left">
                     {formatRemainingPercent(window.remainingPercent)} left

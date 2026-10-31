@@ -13,12 +13,22 @@ export function ChatBubble({ kind, rawMarkdown, children }: ChatBubbleProps): JS
 
   return (
     <article className={`chat-bubble ${kind}`}>
-      {kind === "user" ? <UserBubbleBody rawMarkdown={rawMarkdown}>{children}</UserBubbleBody> : children}
+      {kind === "user" ? (
+        <UserBubbleBody rawMarkdown={rawMarkdown}>{children}</UserBubbleBody>
+      ) : (
+        children
+      )}
       <button
         type="button"
         className="chat-bubble-copy"
         aria-label="Copy bubble"
-        title={copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy markdown"}
+        title={
+          copyFlash === "copied"
+            ? "Copied"
+            : copyFlash === "failed"
+              ? "Couldn't copy"
+              : "Copy markdown"
+        }
         onClick={() => void copy(rawMarkdown)}
       >
         <Copy size={12} />
@@ -38,7 +48,13 @@ export function ChatBubble({ kind, rawMarkdown, children }: ChatBubbleProps): JS
  * appears when the content is actually clipped, so short messages look
  * untouched.
  */
-function UserBubbleBody({ rawMarkdown, children }: { rawMarkdown: string; children: ReactNode }): JSX.Element {
+function UserBubbleBody({
+  rawMarkdown,
+  children,
+}: {
+  rawMarkdown: string;
+  children: ReactNode;
+}): JSX.Element {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -57,7 +73,8 @@ function UserBubbleBody({ rawMarkdown, children }: { rawMarkdown: string; childr
       // never look exceeded. `max-height: none` while expanded is already
       // bailed out above.
       const cap = parseFloat(getComputedStyle(body).maxHeight);
-      const limit = Number.isFinite(cap) && cap > 0 ? Math.min(body.clientHeight, cap) : body.clientHeight;
+      const limit =
+        Number.isFinite(cap) && cap > 0 ? Math.min(body.clientHeight, cap) : body.clientHeight;
       setClipped(content.scrollHeight - limit > 1);
     };
     measure();
@@ -72,7 +89,10 @@ function UserBubbleBody({ rawMarkdown, children }: { rawMarkdown: string; childr
 
   return (
     <>
-      <div ref={bodyRef} className={`chat-bubble-body${expanded ? " expanded" : clipped ? " clipped" : ""}`}>
+      <div
+        ref={bodyRef}
+        className={`chat-bubble-body${expanded ? " expanded" : clipped ? " clipped" : ""}`}
+      >
         <div ref={contentRef}>{children}</div>
       </div>
       {clipped ? (

@@ -27,12 +27,15 @@ export function ComposerFallbackField({
   onCaretChange,
   dataPlaceholderKind,
   dataRouteCaption,
-  fieldRef
+  fieldRef,
 }: ComposerEditorProps): JSX.Element {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   useImperativeHandle(fieldRef, () => ref.current as HTMLTextAreaElement);
   return (
-    <div className="composer-editor composer-editor--fallback" data-disabled={disabled ? "true" : undefined}>
+    <div
+      className="composer-editor composer-editor--fallback"
+      data-disabled={disabled ? "true" : undefined}
+    >
       <textarea
         ref={ref}
         data-placeholder-kind={dataPlaceholderKind}

@@ -11,7 +11,7 @@ import {
   modelSelectionFromSession,
   preferredLaunchModel,
   preferredLaunchProvider,
-  PROVIDER_LAUNCH_PRIORITY
+  PROVIDER_LAUNCH_PRIORITY,
 } from "./models.js";
 
 const BASE_SESSION: SessionSummary = {
@@ -32,7 +32,7 @@ const BASE_SESSION: SessionSummary = {
   tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextTokens: 0,
   imported: false,
-  launchKind: "agent"
+  launchKind: "agent",
 };
 
 describe("Router tier selections", () => {
@@ -43,14 +43,14 @@ describe("Router tier selections", () => {
       label: "Router Speed",
       modelId: "claude-opus-5-5",
       reasoningEffort: "medium",
-      autoTier: "cost"
+      autoTier: "cost",
     });
     expect(autoTierSelection("economy")).toEqual({
       provider: "codex",
       label: "Router Cost",
       modelId: "gpt-6.1-sol",
       reasoningEffort: "medium",
-      autoTier: "economy"
+      autoTier: "economy",
     });
   });
 });
@@ -61,13 +61,13 @@ describe("modelSelectionFromSession", () => {
     expect(modelSelectionFromSession(session)).toEqual({
       label: "GPT-6.1 Sol",
       modelId: "gpt-6.1-sol",
-      reasoningEffort: "high"
+      reasoningEffort: "high",
     });
     expect(modelPickerSelectionFromSession(session)).toEqual({
       provider: "codex",
       label: "GPT-6.1 Sol",
       modelId: "gpt-6.1-sol",
-      reasoningEffort: "high"
+      reasoningEffort: "high",
     });
   });
 
@@ -77,7 +77,7 @@ describe("modelSelectionFromSession", () => {
     expect(modelSelectionFromSession(BASE_SESSION)).toEqual({
       label: "GPT-6.1 Sol",
       modelId: "gpt-6.1-sol",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     });
   });
 
@@ -86,12 +86,12 @@ describe("modelSelectionFromSession", () => {
       ...BASE_SESSION,
       provider: "claude",
       modelLabel: "Haiku 5.5",
-      modelId: "claude-haiku-5-5"
+      modelId: "claude-haiku-5-5",
     };
 
     expect(modelSelectionFromSession(fast)).toEqual({
       label: "Haiku 5.5",
-      modelId: "claude-haiku-5-5"
+      modelId: "claude-haiku-5-5",
     });
   });
 
@@ -102,13 +102,13 @@ describe("modelSelectionFromSession", () => {
       ...BASE_SESSION,
       provider: "claude",
       modelLabel: "claude-opus-5-5",
-      modelId: "claude-opus-5-5"
+      modelId: "claude-opus-5-5",
     };
 
     expect(modelSelectionFromSession(imported)).toEqual({
       label: "Opus 5.5",
       modelId: "claude-opus-5-5",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     });
   });
 
@@ -118,13 +118,13 @@ describe("modelSelectionFromSession", () => {
       provider: "claude",
       modelLabel: "Sonnet 5",
       modelId: "claude-sonnet-5",
-      reasoningEffort: "high"
+      reasoningEffort: "high",
     };
 
     expect(modelSelectionFromSession(session)).toEqual({
       label: "Sonnet 5.5",
       modelId: "claude-sonnet-5-5",
-      reasoningEffort: "high"
+      reasoningEffort: "high",
     });
   });
 
@@ -135,12 +135,12 @@ describe("modelSelectionFromSession", () => {
         provider: "opencode",
         modelLabel: "DeepSeek V4.1 Flash",
         modelId: "openrouter/deepseek/deepseek-v4.1-flash",
-        reasoningEffort: "high"
-      })
+        reasoningEffort: "high",
+      }),
     ).toEqual({
       label: "DeepSeek V4.1 Flash 1017",
       modelId: "openrouter/deepseek/deepseek-v4.1-flash-1017",
-      reasoningEffort: "high"
+      reasoningEffort: "high",
     });
   });
 
@@ -149,7 +149,7 @@ describe("modelSelectionFromSession", () => {
       ...BASE_SESSION,
       provider: "claude",
       modelLabel: "claude-opus-3-ancient",
-      modelId: "claude-opus-3-ancient"
+      modelId: "claude-opus-3-ancient",
     };
 
     const selection = modelSelectionFromSession(retired);
@@ -161,7 +161,7 @@ describe("modelSelectionFromSession", () => {
 
 function discovered(
   provider: ProviderId,
-  flags: { installed?: boolean; authenticated?: boolean | null } = {}
+  flags: { installed?: boolean; authenticated?: boolean | null } = {},
 ): DiscoveredProvider {
   const installed = flags.installed ?? true;
   return {
@@ -173,37 +173,47 @@ function discovered(
     version: installed ? "1.0" : null,
     authenticated: flags.authenticated === undefined ? true : flags.authenticated,
     setupGuidance: null,
-    approvalSupport: "unsupported"
+    approvalSupport: "unsupported",
   };
 }
 
 describe("preferredLaunchModel", () => {
   it("prefers Claude, then Codex, then Cursor, then OpenCode", () => {
-    const all = [discovered("opencode"), discovered("cursor"), discovered("codex"), discovered("claude")];
+    const all = [
+      discovered("opencode"),
+      discovered("cursor"),
+      discovered("codex"),
+      discovered("claude"),
+    ];
     expect(preferredLaunchProvider(all)).toBe("claude");
     expect(preferredLaunchModel(all)).toEqual({
       provider: "claude",
-      ...modelDefaultForProvider("claude")
+      ...modelDefaultForProvider("claude"),
     });
 
-    expect(preferredLaunchModel([discovered("codex"), discovered("cursor"), discovered("opencode")])).toEqual({
+    expect(
+      preferredLaunchModel([discovered("codex"), discovered("cursor"), discovered("opencode")]),
+    ).toEqual({
       provider: "codex",
-      ...modelDefaultForProvider("codex")
+      ...modelDefaultForProvider("codex"),
     });
     expect(preferredLaunchModel([discovered("cursor"), discovered("opencode")])).toEqual({
       provider: "cursor",
-      ...modelDefaultForProvider("cursor")
+      ...modelDefaultForProvider("cursor"),
     });
     expect(preferredLaunchModel([discovered("opencode")])).toEqual({
       provider: "opencode",
-      ...modelDefaultForProvider("opencode")
+      ...modelDefaultForProvider("opencode"),
     });
   });
 
   it("skips a provider that is installed but logged out", () => {
-    expect(preferredLaunchProvider([discovered("claude", { authenticated: false }), discovered("codex")])).toBe(
-      "codex"
-    );
+    expect(
+      preferredLaunchProvider([
+        discovered("claude", { authenticated: false }),
+        discovered("codex"),
+      ]),
+    ).toBe("codex");
   });
 
   it("falls back to OpenCode's default when no provider is usable", () => {
@@ -211,8 +221,8 @@ describe("preferredLaunchModel", () => {
     expect(
       preferredLaunchModel([
         discovered("claude", { installed: false, authenticated: null }),
-        discovered("codex", { installed: false, authenticated: null })
-      ])
+        discovered("codex", { installed: false, authenticated: null }),
+      ]),
     ).toEqual(FALLBACK_LAUNCH_MODEL);
   });
 });
@@ -226,14 +236,18 @@ describe("allModelOptions", () => {
         (option) =>
           option.supportsReasoningEffort &&
           (!option.reasoningEffort ||
-            !reasoningEffortsForModel(option.provider, option.modelId).includes(option.reasoningEffort))
+            !reasoningEffortsForModel(option.provider, option.modelId).includes(
+              option.reasoningEffort,
+            )),
       )
       .map((option) => `${option.modelId}=${String(option.reasoningEffort)}`);
     expect(offenders).toEqual([]);
   });
 
   it("seeds Qwen3.8 Flash with high, its lowest variant, not the default medium", () => {
-    const qwen = allModelOptions.find((option) => option.modelId === "openrouter/qwen/qwen3.8-flash");
+    const qwen = allModelOptions.find(
+      (option) => option.modelId === "openrouter/qwen/qwen3.8-flash",
+    );
     expect(qwen?.reasoningEffort).toBe("high");
   });
 });
@@ -251,7 +265,7 @@ describe("PROVIDER_LAUNCH_PRIORITY", () => {
       provider: "grok",
       label: "Grok 4.7",
       modelId: "grok-4.7",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     });
   });
 });

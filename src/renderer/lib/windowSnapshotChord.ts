@@ -11,7 +11,7 @@ const MODIFIER_CODES = new Set([
   "AltLeft",
   "AltRight",
   "ShiftLeft",
-  "ShiftRight"
+  "ShiftRight",
 ]);
 
 /** The host reads physical key names, so `Alt+S` is the S key, not "ß". */
@@ -24,11 +24,14 @@ function keyName(code: string): string | null {
   return code;
 }
 
-export type ChordRecording = { kind: "chord"; chord: string } | { kind: "modifier-only" } | { kind: "needs-modifier" };
+export type ChordRecording =
+  | { kind: "chord"; chord: string }
+  | { kind: "modifier-only" }
+  | { kind: "needs-modifier" };
 
 /** Reads one keydown while the user is recording a new chord. */
 export function recordChord(
-  event: Pick<KeyboardEvent, "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">
+  event: Pick<KeyboardEvent, "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">,
 ): ChordRecording {
   const key = keyName(event.code);
   if (key === null) return { kind: "modifier-only" };
@@ -39,7 +42,7 @@ export function recordChord(
     event.ctrlKey ? "Control" : null,
     event.altKey ? "Alt" : null,
     event.shiftKey ? "Shift" : null,
-    key
+    key,
   ].filter((part): part is string => part !== null);
   return { kind: "chord", chord: parts.join("+") };
 }
@@ -55,7 +58,7 @@ const GLYPHS: Readonly<Record<string, string>> = {
   ctrl: "⌃",
   alt: "⌥",
   option: "⌥",
-  shift: "⇧"
+  shift: "⇧",
 };
 
 /** `Command+Alt+Shift+S` as ⌘⌥⇧S, in the macOS order ⌃⌥⇧⌘. */

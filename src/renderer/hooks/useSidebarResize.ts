@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { COMPOSER_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 
 const SIDEBAR_WIDTH_KEY = "argmax.sidebar.width";
@@ -27,13 +33,20 @@ function toEvenPx(width: number): number {
 
 function sidebarMaxForViewport(workspaceMinWidth: number, viewportWidth: number): number {
   const workspaceMin = normalizedWorkspaceMinWidth(workspaceMinWidth);
-  return Math.max(SIDEBAR_MIN_WIDTH_PX, toEvenPx(Math.min(SIDEBAR_MAX, viewportWidth - workspaceMin)));
-}
-
-function clampSidebarWidth(width: number, workspaceMinWidth: number, viewportWidth: number): number {
   return Math.max(
     SIDEBAR_MIN_WIDTH_PX,
-    Math.min(sidebarMaxForViewport(workspaceMinWidth, viewportWidth), toEvenPx(width))
+    toEvenPx(Math.min(SIDEBAR_MAX, viewportWidth - workspaceMin)),
+  );
+}
+
+function clampSidebarWidth(
+  width: number,
+  workspaceMinWidth: number,
+  viewportWidth: number,
+): number {
+  return Math.max(
+    SIDEBAR_MIN_WIDTH_PX,
+    Math.min(sidebarMaxForViewport(workspaceMinWidth, viewportWidth), toEvenPx(width)),
   );
 }
 
@@ -61,13 +74,16 @@ interface SidebarResizeState {
  * during a drag. Automatic squeezing never overwrites the saved preference,
  * so a sidebar returns to its chosen width when the window grows again.
  */
-export function useSidebarResize(workspaceMinWidth = DEFAULT_WORKSPACE_MIN_WIDTH_PX): SidebarResizeState {
+export function useSidebarResize(
+  workspaceMinWidth = DEFAULT_WORKSPACE_MIN_WIDTH_PX,
+): SidebarResizeState {
   const workspaceMin = normalizedWorkspaceMinWidth(workspaceMinWidth);
   const [viewportWidth, setViewportWidth] = useState<number>(() =>
-    typeof window === "undefined" ? 0 : window.innerWidth
+    typeof window === "undefined" ? 0 : window.innerWidth,
   );
   const [savedSidebarWidth, setSavedSidebarWidth] = useState<number>(() => {
-    const raw = typeof window !== "undefined" ? window.localStorage.getItem(SIDEBAR_WIDTH_KEY) : null;
+    const raw =
+      typeof window !== "undefined" ? window.localStorage.getItem(SIDEBAR_WIDTH_KEY) : null;
     const n = raw ? parseInt(raw, 10) : NaN;
     return clampSavedSidebarWidth(Number.isFinite(n) ? n : SIDEBAR_DEFAULT);
   });
@@ -86,7 +102,7 @@ export function useSidebarResize(workspaceMinWidth = DEFAULT_WORKSPACE_MIN_WIDTH
       dragCleanupRef.current?.();
       dragCleanupRef.current = null;
     },
-    []
+    [],
   );
 
   useEffect(() => {
@@ -122,7 +138,9 @@ export function useSidebarResize(workspaceMinWidth = DEFAULT_WORKSPACE_MIN_WIDTH
       document.body.style.userSelect = "none";
 
       const onMouseMove = (e: MouseEvent): void => {
-        setSavedSidebarWidth(clampSidebarWidth(startWidth + (e.clientX - startX), workspaceMin, viewportWidth));
+        setSavedSidebarWidth(
+          clampSidebarWidth(startWidth + (e.clientX - startX), workspaceMin, viewportWidth),
+        );
       };
       const cleanup = (): void => {
         setIsResizing(false);
@@ -137,7 +155,7 @@ export function useSidebarResize(workspaceMinWidth = DEFAULT_WORKSPACE_MIN_WIDTH
       document.addEventListener("mouseup", onMouseUp);
       dragCleanupRef.current = cleanup;
     },
-    [sidebarWidth, viewportWidth, workspaceMin]
+    [sidebarWidth, viewportWidth, workspaceMin],
   );
 
   return { sidebarWidth, responsiveCollapsed, isResizing, onResizeMouseDown };

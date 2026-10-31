@@ -6,7 +6,7 @@ vi.mock("../lib/highlighter.js", () => ({
   highlightLine: vi.fn((content: string) => [{ content }]),
   useHighlighterReady: vi.fn(() => true),
   useHighlightThemeAppearance: vi.fn(() => "light"),
-  langFromPath: vi.fn(() => null)
+  langFromPath: vi.fn(() => null),
 }));
 
 import type { ReviewState } from "../hooks/useReviewState.js";
@@ -16,7 +16,7 @@ import {
   setReviewPaneMode,
   setReviewSplitRatio,
   splitReviewMode,
-  type ReviewLayout
+  type ReviewLayout,
 } from "../lib/reviewLayout.js";
 import { resetTerminalTabsForTests } from "../lib/terminalTabs.js";
 import { reviewStub as baseReviewStub } from "../../test/reviewFixture.js";
@@ -30,12 +30,12 @@ function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
       workspaceId: "workspace-1",
       filePath: "src/a.ts",
       content: "@@ -1,1 +1,1 @@\n-old\n+new\n",
-      revision: "test-revision"
+      revision: "test-revision",
     },
     diffState: "ready",
     isPanelOpen: true,
     terminalWorkspaceId: "workspace-1",
-    ...overrides
+    ...overrides,
   });
 }
 
@@ -44,7 +44,10 @@ interface ReviewHarnessProps {
   initialLayout: ReviewLayout;
 }
 
-function ReviewHarness({ closeFileTab = () => {}, initialLayout }: ReviewHarnessProps): JSX.Element {
+function ReviewHarness({
+  closeFileTab = () => {},
+  initialLayout,
+}: ReviewHarnessProps): JSX.Element {
   const [layout, setLayout] = useState(initialLayout);
   const review = reviewStub({
     layout,
@@ -62,8 +65,8 @@ function ReviewHarness({ closeFileTab = () => {}, initialLayout }: ReviewHarness
       tabs: [{ path: "src/index.ts", isDirty: false, saveState: "idle", externalChange: false }],
       activeTabPath: "src/index.ts",
       selectedPath: "src/index.ts",
-      closeTab: closeFileTab
-    }
+      closeTab: closeFileTab,
+    },
   });
   return <ReviewPanel review={review} />;
 }
@@ -88,7 +91,7 @@ function dragTransfer(seed: Record<string, string> = {}): DataTransfer {
     setData(format: string, data: string) {
       values.set(format, data);
     },
-    setDragImage: vi.fn()
+    setDragImage: vi.fn(),
   };
 }
 
@@ -117,7 +120,10 @@ describe("ReviewPanel split view", () => {
   it("splits from a tab context menu and marks the menu as a browser overlay", () => {
     render(<ReviewHarness initialLayout={{ modes: ["changes"], activeIndex: 0, ratio: 0.5 }} />);
 
-    fireEvent.contextMenu(screen.getByRole("tab", { name: "Changes" }), { clientX: 40, clientY: 20 });
+    fireEvent.contextMenu(screen.getByRole("tab", { name: "Changes" }), {
+      clientX: 40,
+      clientY: 20,
+    });
     const menu = screen.getByRole("menu", { name: "Changes tab actions" });
     expect(menu).toHaveAttribute("data-browser-overlay", "true");
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Split Below" }));
@@ -151,13 +157,17 @@ describe("ReviewPanel split view", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close top pane" }));
     expect(screen.queryByLabelText("Top review pane")).not.toBeInTheDocument();
-    expect(selectedMode(screen.getByLabelText("Review panel content"), "Files")).toBeInTheDocument();
+    expect(
+      selectedMode(screen.getByLabelText("Review panel content"), "Files"),
+    ).toBeInTheDocument();
 
     top.unmount();
     render(<ReviewHarness initialLayout={initialLayout} />);
     fireEvent.click(screen.getByRole("button", { name: "Close bottom pane" }));
     expect(screen.queryByLabelText("Bottom review pane")).not.toBeInTheDocument();
-    expect(selectedMode(screen.getByLabelText("Review panel content"), "Changes")).toBeInTheDocument();
+    expect(
+      selectedMode(screen.getByLabelText("Review panel content"), "Changes"),
+    ).toBeInTheDocument();
   });
 
   it("splits on an internal tab drop and ignores file or external drags", () => {
@@ -170,15 +180,21 @@ describe("ReviewPanel split view", () => {
       width: 600,
       x: 0,
       y: 0,
-      toJSON: () => ({})
+      toJSON: () => ({}),
     });
     render(<ReviewHarness initialLayout={{ modes: ["changes"], activeIndex: 0, ratio: 0.5 }} />);
     const dropTarget = screen.getByRole("group", { name: "Review panes" });
 
     fireEvent.dragOver(dropTarget, { clientY: 350, dataTransfer: dragTransfer({ Files: "" }) });
     fireEvent.drop(dropTarget, { clientY: 350, dataTransfer: dragTransfer({ Files: "" }) });
-    fireEvent.dragOver(dropTarget, { clientY: 350, dataTransfer: dragTransfer({ "text/plain": "Files" }) });
-    fireEvent.drop(dropTarget, { clientY: 350, dataTransfer: dragTransfer({ "text/plain": "Files" }) });
+    fireEvent.dragOver(dropTarget, {
+      clientY: 350,
+      dataTransfer: dragTransfer({ "text/plain": "Files" }),
+    });
+    fireEvent.drop(dropTarget, {
+      clientY: 350,
+      dataTransfer: dragTransfer({ "text/plain": "Files" }),
+    });
     expect(screen.queryByLabelText("Bottom review pane")).not.toBeInTheDocument();
 
     const transfer = dragTransfer();
@@ -201,9 +217,11 @@ describe("ReviewPanel split view", () => {
       width: 600,
       x: 0,
       y: 0,
-      toJSON: () => ({})
+      toJSON: () => ({}),
     });
-    render(<ReviewHarness initialLayout={{ modes: ["changes", "files"], activeIndex: 0, ratio: 0.5 }} />);
+    render(
+      <ReviewHarness initialLayout={{ modes: ["changes", "files"], activeIndex: 0, ratio: 0.5 }} />,
+    );
     const separator = screen.getByRole("separator", { name: "Resize review panes" });
     expect(separator).toHaveAttribute("aria-valuemin", "20");
     expect(separator).toHaveAttribute("aria-valuemax", "80");
@@ -221,10 +239,14 @@ describe("ReviewPanel split view", () => {
 
   it("keeps one terminal DOM host across both panes", async () => {
     const { container } = render(
-      <ReviewHarness initialLayout={{ modes: ["terminal", "changes"], activeIndex: 1, ratio: 0.5 }} />
+      <ReviewHarness
+        initialLayout={{ modes: ["terminal", "changes"], activeIndex: 1, ratio: 0.5 }}
+      />,
     );
 
-    await waitFor(() => expect(container.querySelectorAll(".review-terminal-mount")).toHaveLength(1));
+    await waitFor(() =>
+      expect(container.querySelectorAll(".review-terminal-mount")).toHaveLength(1),
+    );
   });
 
   it("routes file shortcuts only from the focused pane", () => {
@@ -233,21 +255,24 @@ describe("ReviewPanel split view", () => {
       <ReviewHarness
         closeFileTab={closeFileTab}
         initialLayout={{ modes: ["files", "changes"], activeIndex: 0, ratio: 0.5 }}
-      />
+      />,
     );
 
     fireEvent.pointerDown(screen.getByLabelText("Bottom review pane"));
     fireEvent.keyDown(selectedMode(screen.getByLabelText("Bottom review pane"), "Changes"), {
       key: "w",
-      metaKey: true
+      metaKey: true,
     });
     expect(closeFileTab).not.toHaveBeenCalled();
 
     fireEvent.pointerDown(screen.getByLabelText("Top review pane"));
-    fireEvent.keyDown(within(screen.getByLabelText("Top review pane")).getByRole("tab", { name: /index\.ts/ }), {
-      key: "w",
-      metaKey: true
-    });
+    fireEvent.keyDown(
+      within(screen.getByLabelText("Top review pane")).getByRole("tab", { name: /index\.ts/ }),
+      {
+        key: "w",
+        metaKey: true,
+      },
+    );
     expect(closeFileTab).toHaveBeenCalledWith("src/index.ts");
   });
 });

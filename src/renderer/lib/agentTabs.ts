@@ -41,7 +41,7 @@ export function readAgentTab(tabId: string): AgentTab {
     kind: "subagent",
     toolUseId: tabId,
     providerParentConversationId: null,
-    providerChildSessionId: null
+    providerChildSessionId: null,
   };
 }
 
@@ -60,7 +60,10 @@ export function agentTabId(tool: {
       : tool.providerChildSessionId && tool.parentToolUseId
         ? tool.parentToolUseId
         : tool.toolUseId;
-  const parent = typeof tool.providerParentConversationId === "string" ? tool.providerParentConversationId : null;
+  const parent =
+    typeof tool.providerParentConversationId === "string"
+      ? tool.providerParentConversationId
+      : null;
   return tool.providerChildSessionId && parent
     ? `${NATIVE_AGENT_TAB_PREFIX}${[rootToolUseId, parent, tool.providerChildSessionId].map(encodeURIComponent).join(":")}`
     : rootToolUseId;

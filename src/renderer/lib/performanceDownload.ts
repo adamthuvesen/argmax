@@ -3,7 +3,7 @@ import type { PerformanceCapture } from "../../shared/types.js";
 export function savePerformanceCapture(
   capture: PerformanceCapture,
   setStatus: (status: string | null) => void,
-  onError: (message: string) => void
+  onError: (message: string) => void,
 ): void {
   if (capture.samples.length === 0) {
     onError("No performance samples to save yet.");

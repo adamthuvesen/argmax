@@ -15,7 +15,7 @@ export const EARLY_STOP_WINDOW_MS = 10_000;
 export function isEarlySessionStop(
   session: Pick<SessionSummary, "startedAt"> | null | undefined,
   now = Date.now(),
-  windowMs = EARLY_STOP_WINDOW_MS
+  windowMs = EARLY_STOP_WINDOW_MS,
 ): boolean {
   if (!session?.startedAt) return false;
   const startedAtMs = Date.parse(session.startedAt);

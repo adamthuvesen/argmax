@@ -29,7 +29,7 @@ interface MascotProps {
 const MOOD_LABEL: Record<MascotMood, string> = {
   idle: "Fox mascot",
   sleepy: "Fox mascot, dozing",
-  sad: "Fox mascot, looking concerned"
+  sad: "Fox mascot, looking concerned",
 };
 
 const SHADES_LABEL = "Fox mascot, in sunglasses";
@@ -47,10 +47,12 @@ const GRID_W = GRID[0].length;
 function withExpression(overlay: string): ReadonlyArray<string> {
   const face = parseGrid(overlay);
   if (face.length !== GRID.length || face.some((row) => row.length !== GRID_W)) {
-    throw new Error(`Mascot overlay must be ${GRID_W}x${GRID.length}, the size of assets/fox-mascot.txt`);
+    throw new Error(
+      `Mascot overlay must be ${GRID_W}x${GRID.length}, the size of assets/fox-mascot.txt`,
+    );
   }
   return GRID.map((row, y) =>
-    Array.from(row, (cell, x) => (face[y].charAt(x) === "-" ? cell : face[y].charAt(x))).join("")
+    Array.from(row, (cell, x) => (face[y].charAt(x) === "-" ? cell : face[y].charAt(x))).join(""),
   );
 }
 
@@ -68,7 +70,7 @@ const LAYERS: ReadonlyArray<{ cell: string; className: string }> = [
   { cell: "t", className: "mascot-cream-shade" },
   { cell: "x", className: "mascot-nose" },
   { cell: "p", className: "mascot-blush" },
-  { cell: "w", className: "mascot-eyes" }
+  { cell: "w", className: "mascot-eyes" },
 ];
 
 interface SpriteRect {
@@ -123,7 +125,7 @@ const SPRITE_LAYERS: Record<SpriteName, SpriteLayers> = {
   base: layersFor(GRID),
   wink: layersFor(withExpression(winkSprite)),
   sleepy: layersFor(withExpression(sleepySprite)),
-  shades: layersFor(withExpression(shadesSprite))
+  shades: layersFor(withExpression(shadesSprite)),
 };
 
 const PET_DURATION_MS = 700;
@@ -144,7 +146,7 @@ export function Mascot({
   type = "button",
   disabled,
   title,
-  shades = false
+  shades = false,
 }: MascotProps): JSX.Element | null {
   const ariaLabel = label ?? (shades ? SHADES_LABEL : MOOD_LABEL[mood]);
   const classes = ["mascot", className].filter(Boolean).join(" ");
@@ -188,7 +190,14 @@ export function Mascot({
         // sets instead of repointing the ones that happen to line up.
         <g className={layerClass} key={`${spriteName}-${layerClass}`}>
           {rects.map((rect) => (
-            <rect key={`${rect.x}-${rect.y}`} x={rect.x} y={rect.y} width={rect.width} height={rect.height} />
+            <rect
+              key={`${rect.x}-${rect.y}`}
+              data-testid="mascot-mark"
+              x={rect.x}
+              y={rect.y}
+              width={rect.width}
+              height={rect.height}
+            />
           ))}
         </g>
       ))}

@@ -6,7 +6,7 @@ import {
   type ComposerAttachment,
   type ProjectSummary,
   type SessionSummary,
-  type WorkspaceSummary
+  type WorkspaceSummary,
 } from "../../shared/types.js";
 import { Mascot } from "../components/Mascot.js";
 import { ImageLightbox } from "../components/ImageLightbox.js";
@@ -20,19 +20,23 @@ import { MobileScreenHeader } from "./MobileScreenHeader.js";
 import {
   appendReferencesToPrompt,
   imageAttachmentReference,
-  SUPPORTED_IMAGE_MIME_TYPES
+  SUPPORTED_IMAGE_MIME_TYPES,
 } from "../lib/composerAttachments.js";
 import { clearDraft, launcherDraftKey } from "../lib/composerDrafts.js";
 import { persistLaunchModel, readStoredLaunchModel } from "../lib/launchModelPreference.js";
 import {
   launchProjectIdFrom,
   persistLaunchProjectId,
-  sortProjectsByLaunchRecency
+  sortProjectsByLaunchRecency,
 } from "../lib/launchProjectPreference.js";
 import { factoryLaunchModel, type ModelPickerSelection } from "../lib/models.js";
 import { LAUNCHER_TITLE, SIDE_CHAT_PLACEHOLDER, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
 import { titleFromPrompt } from "../lib/projects.js";
-import { readStoredWorkspaceMode, writeWorkspaceMode, type WorkspaceMode } from "../lib/workspaceMode.js";
+import {
+  readStoredWorkspaceMode,
+  writeWorkspaceMode,
+  type WorkspaceMode,
+} from "../lib/workspaceMode.js";
 import { REMOTE_CONNECTION_LOST_MESSAGE } from "../lib/wsTransport.js";
 
 // The ceiling the session and launcher composers already use.
@@ -44,7 +48,7 @@ function ContextRow({
   value,
   label,
   open,
-  onOpen
+  onOpen,
 }: {
   icon: ReactNode;
   value: string;
@@ -53,7 +57,7 @@ function ContextRow({
   onOpen: () => void;
 }): JSX.Element {
   return (
-    <div className="mobile-new-row">
+    <div className="mobile-new-row" data-testid="mobile-new-row">
       <span className="mobile-new-row-icon" aria-hidden="true">
         {icon}
       </span>
@@ -75,7 +79,7 @@ function PendingAttachments({
   attachments,
   onRemove,
   previewUrls,
-  onView
+  onView,
 }: {
   attachments: ComposerAttachment[];
   onRemove: (filePath: string) => void;
@@ -91,7 +95,11 @@ function PendingAttachments({
       {attachments.map((attachment, index) => {
         const previewUrl = previewUrls[attachment.filePath];
         return (
-          <div className="composer-attachment-chip" key={attachment.filePath}>
+          <div
+            className="composer-attachment-chip"
+            data-testid="composer-attachment-chip"
+            key={attachment.filePath}
+          >
             {previewUrl ? (
               <button
                 type="button"
@@ -135,7 +143,7 @@ export function NewSessionScreen({
   onLaunched,
   onError,
   openSheet,
-  onOpenSheetChange
+  onOpenSheetChange,
 }: {
   projects: ProjectSummary[];
   workspaces?: WorkspaceSummary[];
@@ -153,12 +161,15 @@ export function NewSessionScreen({
   onOpenSheetChange: (kind: PickerKind | null) => void;
 }): JSX.Element {
   const initialWorkspace = useMemo(
-    () => (initialWorkspaceId && workspaces ? (workspaces.find((w) => w.id === initialWorkspaceId) ?? null) : null),
-    [initialWorkspaceId, workspaces]
+    () =>
+      initialWorkspaceId && workspaces
+        ? (workspaces.find((w) => w.id === initialWorkspaceId) ?? null)
+        : null,
+    [initialWorkspaceId, workspaces],
   );
 
   const [projectId, setProjectId] = useState(
-    () => initialWorkspace?.projectId ?? launchProjectIdFrom(projects) ?? projects[0]?.id ?? ""
+    () => initialWorkspace?.projectId ?? launchProjectIdFrom(projects) ?? projects[0]?.id ?? "",
   );
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => {
     if (initialWorkspace && initialWorkspace.kind === "git" && !initialWorkspace.sharedWorkspace) {
@@ -189,7 +200,7 @@ export function NewSessionScreen({
 
   const project = useMemo(
     () => projects.find((candidate) => candidate.id === projectId) ?? projects[0] ?? null,
-    [projectId, projects]
+    [projectId, projects],
   );
 
   // "New chat here" from a chat in a secondary folder starts in that folder,
@@ -207,18 +218,22 @@ export function NewSessionScreen({
           (!sourceFolderId || w.projectFolderId === sourceFolderId) &&
           w.kind === "git" &&
           !w.sharedWorkspace &&
-          w.branch.length > 0
+          w.branch.length > 0,
       ),
-    [project?.id, sourceFolderId, workspaces]
+    [project?.id, sourceFolderId, workspaces],
   );
 
   // Keep the mobile launcher on the same draft keys as the desktop launcher.
   // Switching projects or choosing Side chat carries the sentence and its
   // screenshots together instead of stranding either half on the old target.
-  const draftKey = sideChat ? launcherDraftKey(SCRATCH_PROJECT_ID) : project ? launcherDraftKey(project.id) : null;
+  const draftKey = sideChat
+    ? launcherDraftKey(SCRATCH_PROJECT_ID)
+    : project
+      ? launcherDraftKey(project.id)
+      : null;
   const [prompt, setPrompt, promptCarriedOnRetarget] = useComposerDraft(draftKey, {
     carryTextOnRetarget: true,
-    persist: !launching
+    persist: !launching,
   });
 
   useAutoGrowTextArea(promptRef, prompt, PROMPT_MAX_HEIGHT_PX);
@@ -235,18 +250,19 @@ export function NewSessionScreen({
     onAttachmentInputChange,
     openFilePicker,
     clearAttachments,
-    restoreAttachments
+    restoreAttachments,
   } = useComposerAttachments({
     draftKey,
     workspacePath: sideChat ? null : (project?.repoPath ?? null),
     setInput: setPrompt,
     fieldRef: promptRef,
     carriedOnRetarget: promptCarriedOnRetarget,
-    persist: !launching
+    persist: !launching,
   });
 
   useEffect(() => {
-    if (!initialSeed || (initialSeed.prompt.trim() === "" && initialSeed.attachments.length === 0)) return;
+    if (!initialSeed || (initialSeed.prompt.trim() === "" && initialSeed.attachments.length === 0))
+      return;
     setPrompt(initialSeed.prompt);
     restoreAttachments(initialSeed.attachments);
   }, [initialSeed, restoreAttachments, setPrompt]);
@@ -254,7 +270,7 @@ export function NewSessionScreen({
   // Same default as the desktop launcher: seeded model if present, then
   // the stored global preference, then the factory pick (Claude Opus 5).
   const [chosenModel, setModel] = useState<ModelPickerSelection>(
-    () => initialSeed?.model ?? readStoredLaunchModel() ?? factoryLaunchModel()
+    () => initialSeed?.model ?? readStoredLaunchModel() ?? factoryLaunchModel(),
   );
   // Auto rows need a saved Jev key. Null until the Mac answers, so a stored
   // Auto pick isn't swapped out while it loads; once it is known to be off,
@@ -288,7 +304,9 @@ export function NewSessionScreen({
     if (!window.argmax || launching) return;
     const trimmed = prompt.trim();
     if (trimmed.length === 0 && pendingAttachments.length === 0) return;
-    const refs = pendingAttachments.map((attachment) => imageAttachmentReference(attachment.filePath));
+    const refs = pendingAttachments.map((attachment) =>
+      imageAttachmentReference(attachment.filePath),
+    );
     const finalPrompt = refs.length > 0 ? appendReferencesToPrompt(trimmed, refs) : trimmed;
     setLaunching(true);
     if (draftKey) clearDraft(draftKey);
@@ -309,12 +327,12 @@ export function NewSessionScreen({
               projectId: repoTarget.id,
               taskLabel,
               baseRef,
-              ...(sourceFolderId ? { projectFolderId: sourceFolderId } : {})
+              ...(sourceFolderId ? { projectFolderId: sourceFolderId } : {}),
             })
           : await window.argmax.workspaces.createCurrent({
               projectId: repoTarget.id,
               taskLabel,
-              ...(sourceFolderId ? { projectFolderId: sourceFolderId } : {})
+              ...(sourceFolderId ? { projectFolderId: sourceFolderId } : {}),
             })
         : await window.argmax.workspaces.createScratch({ taskLabel, kind: null });
       let session: SessionSummary;
@@ -331,7 +349,7 @@ export function NewSessionScreen({
           cols: 120,
           rows: 32,
           attachments: pendingAttachments.length > 0 ? pendingAttachments : null,
-          autoTier: model.autoTier ?? null
+          autoTier: model.autoTier ?? null,
         });
       } catch (error) {
         // No session started, so the workspace (and its worktree) would sit
@@ -339,7 +357,9 @@ export function NewSessionScreen({
         // backend may have launched fine and only the reply went missing, so
         // archiving there would kill a live session and delete its worktree.
         if (!(error instanceof Error && error.message === REMOTE_CONNECTION_LOST_MESSAGE)) {
-          void window.argmax.workspaces.archive({ workspaceId: workspace.id, force: true }).catch(() => undefined);
+          void window.argmax.workspaces
+            .archive({ workspaceId: workspace.id, force: true })
+            .catch(() => undefined);
         }
         throw error;
       }
@@ -348,7 +368,7 @@ export function NewSessionScreen({
           workspaceId: workspace.id,
           provider: model.provider,
           modelId: PROVIDER_TITLE_MODEL[model.provider],
-          prompt: trimmed
+          prompt: trimmed,
         })
         .catch(() => undefined);
       setPrompt("");
@@ -372,10 +392,12 @@ export function NewSessionScreen({
     setPrompt,
     sideChat,
     sourceFolderId,
-    workspaceMode
+    workspaceMode,
   ]);
 
-  const baseWorktree = chosenBaseRef ? projectWorktrees.find((w) => w.branch === chosenBaseRef) : null;
+  const baseWorktree = chosenBaseRef
+    ? projectWorktrees.find((w) => w.branch === chosenBaseRef)
+    : null;
 
   const workspaceValue = sideChat
     ? "Chat"
@@ -387,7 +409,11 @@ export function NewSessionScreen({
 
   return (
     <div ref={screenRef} className="mobile-new-screen">
-      <MobileScreenHeader onBack={onClose} backLabel={backLabel ?? "Back to chats"} title="New chat" />
+      <MobileScreenHeader
+        onBack={onClose}
+        backLabel={backLabel ?? "Back to chats"}
+        title="New chat"
+      />
 
       <div className="mobile-new-body">
         <div className="mobile-new-hero launcher-hero">
@@ -432,6 +458,7 @@ export function NewSessionScreen({
         >
           <input
             ref={attachmentInputRef}
+            data-testid="attachment-input"
             type="file"
             multiple
             accept={SUPPORTED_IMAGE_MIME_TYPES.join(",")}
@@ -495,7 +522,9 @@ export function NewSessionScreen({
               type="submit"
               className="session-send-button"
               aria-label="Start chat"
-              disabled={launching || (prompt.trim().length === 0 && pendingAttachments.length === 0)}
+              disabled={
+                launching || (prompt.trim().length === 0 && pendingAttachments.length === 0)
+              }
             >
               <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
             </button>
@@ -559,7 +588,9 @@ export function NewSessionScreen({
                     key={wt.id}
                     label={wt.taskLabel}
                     detail={wt.branch}
-                    selected={!sideChat && workspaceMode === "worktree" && chosenBaseRef === wt.branch}
+                    selected={
+                      !sideChat && workspaceMode === "worktree" && chosenBaseRef === wt.branch
+                    }
                     onSelect={() => {
                       chooseWorkspaceMode("worktree");
                       setChosenBaseRef(wt.branch);

@@ -17,13 +17,13 @@ function splitEntryPath(entry: FileAutocompleteEntry): { name: string; folder: s
   const slash = entry.path.lastIndexOf("/");
   return {
     name: entry.path.slice(slash + 1),
-    folder: slash < 0 ? "" : entry.path.slice(0, slash)
+    folder: slash < 0 ? "" : entry.path.slice(0, slash),
   };
 }
 
 export function FilePopover({
   state,
-  inputRef
+  inputRef,
 }: {
   state: FileAutocompleteState;
   inputRef: RefObject<ComposerField | null>;
@@ -52,12 +52,15 @@ export function FilePopover({
       aria-label="File suggestions"
       onWheel={(event) => event.stopPropagation()}
     >
-      {state.filteredEntries.length === 0 ? <li className="file-popover-empty">No files match</li> : null}
+      {state.filteredEntries.length === 0 ? (
+        <li className="file-popover-empty">No files match</li>
+      ) : null}
       {state.filteredEntries.map((entry, index) => {
         const { name, folder } = splitEntryPath(entry);
         const label = entry.kind === "dir" ? `${name}/` : name;
         const key = `${entry.kind}:${entry.path}`;
-        const startsChats = entry.kind === "chat" && state.filteredEntries[index - 1]?.kind !== "chat";
+        const startsChats =
+          entry.kind === "chat" && state.filteredEntries[index - 1]?.kind !== "chat";
         return (
           <Fragment key={key}>
             {startsChats ? (
@@ -104,7 +107,13 @@ export function FilePopover({
                 ) : entry.kind === "dir" ? (
                   <FolderIcon folderName={name} width={14} height={14} />
                 ) : (
-                  <FileIcon fileName={name} autoAssign editFileNameData={SPECIAL_FILE_ICONS} width={14} height={14} />
+                  <FileIcon
+                    fileName={name}
+                    autoAssign
+                    editFileNameData={SPECIAL_FILE_ICONS}
+                    width={14}
+                    height={14}
+                  />
                 )}
               </PickerLead>
               <span className="file-popover-name">{label}</span>

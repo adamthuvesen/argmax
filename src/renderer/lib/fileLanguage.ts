@@ -23,7 +23,7 @@ const LANGUAGE_LABELS: Record<string, string> = {
   toml: "TOML",
   sql: "SQL",
   yaml: "YAML",
-  yml: "YAML"
+  yml: "YAML",
 };
 
 /** Human name for the status bar. Unknown extensions read as their own

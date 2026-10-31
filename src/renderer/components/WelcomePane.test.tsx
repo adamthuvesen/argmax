@@ -19,13 +19,13 @@ function provider(overrides: Partial<DiscoveredProvider>): DiscoveredProvider {
     authenticated: true,
     setupGuidance: null,
     approvalSupport: "observable-only",
-    ...overrides
+    ...overrides,
   };
 }
 
 function installDiscoverStub(discover: ReturnType<typeof vi.fn>): void {
   (window as unknown as { argmax: ArgmaxApi }).argmax = {
-    providers: { discover }
+    providers: { discover },
   } as unknown as ArgmaxApi;
 }
 
@@ -49,8 +49,8 @@ describe("WelcomePane — provider discovery", () => {
       provider({
         authenticated: false,
         setupGuidance:
-          "Claude Code is installed but not authenticated. Run `claude auth login` in your terminal, then refresh."
-      })
+          "Claude Code is installed but not authenticated. Run `claude auth login` in your terminal, then refresh.",
+      }),
     ]);
     installDiscoverStub(discover);
 
@@ -73,7 +73,9 @@ describe("WelcomePane — provider discovery", () => {
   });
 
   it("keeps Add Project disabled when nothing is installed", async () => {
-    const discover = vi.fn().mockResolvedValue([provider({ installed: false, authenticated: null })]);
+    const discover = vi
+      .fn()
+      .mockResolvedValue([provider({ installed: false, authenticated: null })]);
     installDiscoverStub(discover);
 
     render(<WelcomePane onAddProject={vi.fn()} />);
@@ -85,14 +87,18 @@ describe("WelcomePane — provider discovery", () => {
   it("shows a copyable install command for a provider that is not installed", async () => {
     const discover = vi
       .fn()
-      .mockResolvedValue([provider({ installed: false, binaryPath: null, version: null, authenticated: null })]);
+      .mockResolvedValue([
+        provider({ installed: false, binaryPath: null, version: null, authenticated: null }),
+      ]);
     installDiscoverStub(discover);
 
     render(<WelcomePane onAddProject={vi.fn()} />);
 
     await screen.findByText("Claude Code");
     expect(screen.getByText("curl -fsSL https://claude.ai/install.sh | bash")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Copy Claude Code install command" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Copy Claude Code install command" }),
+    ).toBeInTheDocument();
   });
 
   it("shows a copyable login command for an installed-but-unauthenticated provider", async () => {
@@ -103,7 +109,9 @@ describe("WelcomePane — provider discovery", () => {
 
     await within(await screen.findByLabelText("Detected providers")).findByText("Claude Code");
     expect(screen.getByText("claude auth login")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Copy Claude Code login command" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Copy Claude Code login command" }),
+    ).toBeInTheDocument();
   });
 
   it("re-probes discovery when the window regains focus while setup is incomplete", async () => {

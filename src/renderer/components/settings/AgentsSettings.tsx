@@ -1,6 +1,10 @@
 import { AlertTriangle, ChartNoAxesColumn, ExternalLink, RefreshCcw } from "lucide-react";
 import { useMemo, type JSX } from "react";
-import { PROVIDER_DISPLAY_NAMES, REASONING_EFFORTS, type ReasoningEffort } from "../../../shared/providerModels.js";
+import {
+  PROVIDER_DISPLAY_NAMES,
+  REASONING_EFFORTS,
+  type ReasoningEffort,
+} from "../../../shared/providerModels.js";
 import type { DiscoveredProvider, ProviderId, RoutingSettings } from "../../../shared/types.js";
 import { effortLabel, type ModelPickerSelection } from "../../lib/models.js";
 import type { PermissionMode, ProviderPermissionModes } from "../../lib/permissionMode.js";
@@ -10,13 +14,20 @@ import {
   CHAT_VERBOSITY_LABELS,
   GOAL_MAX_TURNS_MAX,
   GOAL_MAX_TURNS_MIN,
-  type ChatVerbosity
+  type ChatVerbosity,
 } from "../../lib/uiPreferences.js";
 import { CombinedModelSelector, type ProviderAvailability } from "../ModelSelector.js";
 import { WorkingNest } from "../WorkingNest.js";
 import { AutoRoutingSettings } from "./AutoRoutingSettings.js";
 import { OpencodeGatewaySettings } from "./OpencodeGatewaySettings.js";
-import { SettingGroup, SettingNote, SettingRow, SettingsListPicker, Slider, Toggle } from "./settingsPrimitives.js";
+import {
+  SettingGroup,
+  SettingNote,
+  SettingRow,
+  SettingsListPicker,
+  Slider,
+  Toggle,
+} from "./settingsPrimitives.js";
 
 export function AgentsSettings({
   defaultModel,
@@ -48,7 +59,7 @@ export function AgentsSettings({
   providerLoadError,
   refreshingProviders,
   refreshProviders,
-  onOpenUsage
+  onOpenUsage,
 }: {
   defaultModel: ModelPickerSelection;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
@@ -121,14 +132,23 @@ export function AgentsSettings({
               inputId="settings-default-effort"
               value={defaultEffort}
               onChange={onDefaultEffortChange}
-              options={REASONING_EFFORTS.map((effort) => ({ value: effort, label: effortLabel(effort) }))}
+              options={REASONING_EFFORTS.map((effort) => ({
+                value: effort,
+                label: effortLabel(effort),
+              }))}
             />
           }
         />
         <SettingRow
           label="Fast mode"
           description="Request faster responses for supported models, with increased usage. Availability depends on your account."
-          control={<Toggle ariaLabel="Fast mode" checked={fastModeEnabled} onChange={onFastModeEnabledChange} />}
+          control={
+            <Toggle
+              ariaLabel="Fast mode"
+              checked={fastModeEnabled}
+              onChange={onFastModeEnabledChange}
+            />
+          }
         />
       </SettingGroup>
 
@@ -171,8 +191,10 @@ export function AgentsSettings({
                       value: "ask-each-time",
                       label: "Ask for approval",
                       disabled: !askEachTimeAvailable,
-                      title: askEachTimeAvailable ? undefined : "This provider does not support live approval replies"
-                    }
+                      title: askEachTimeAvailable
+                        ? undefined
+                        : "This provider does not support live approval replies",
+                    },
                   ]}
                 />
               }
@@ -180,10 +202,10 @@ export function AgentsSettings({
           );
         })}
         <SettingNote>
-          Applies to new chats you start for each provider. Existing chats keep their saved permissions, and chats
-          launched by an agent inherit that agent's permissions. Provider defaults follows its native CLI configuration,
-          including Codex automatic review. Full access requests broad permissions. Ask for approval shows native
-          requests in the chat.
+          Applies to new chats you start for each provider. Existing chats keep their saved
+          permissions, and chats launched by an agent inherit that agent's permissions. Provider
+          defaults follows its native CLI configuration, including Codex automatic review. Full
+          access requests broad permissions. Ask for approval shows native requests in the chat.
         </SettingNote>
       </SettingGroup>
 
@@ -191,7 +213,13 @@ export function AgentsSettings({
         <SettingRow
           label="Browser tools"
           description="Let agents open and drive pages in the Browser panel. Turning them off shrinks what every turn carries by roughly a third; the panel stays yours to use. Takes effect on each chat's next turn."
-          control={<Toggle ariaLabel="Browser tools" checked={browserTools} onChange={onBrowserToolsChange} />}
+          control={
+            <Toggle
+              ariaLabel="Browser tools"
+              checked={browserTools}
+              onChange={onBrowserToolsChange}
+            />
+          }
         />
       </SettingGroup>
 
@@ -224,7 +252,9 @@ export function AgentsSettings({
         <SettingRow
           label="Goals"
           description="Offer /goal in the composer. A goal keeps a chat working until a separate model judges its condition met."
-          control={<Toggle ariaLabel="Goals" checked={goalEnabled} onChange={onGoalEnabledChange} />}
+          control={
+            <Toggle ariaLabel="Goals" checked={goalEnabled} onChange={onGoalEnabledChange} />
+          }
         />
         {goalEnabled && (
           <SettingRow
@@ -245,7 +275,13 @@ export function AgentsSettings({
         <SettingRow
           label="Revert to a turn"
           description="Offer Revert on a finished turn, restoring the files to how they were before it ran."
-          control={<Toggle ariaLabel="Revert to a turn" checked={revertEnabled} onChange={onRevertEnabledChange} />}
+          control={
+            <Toggle
+              ariaLabel="Revert to a turn"
+              checked={revertEnabled}
+              onChange={onRevertEnabledChange}
+            />
+          }
         />
       </SettingGroup>
 
@@ -265,7 +301,11 @@ export function AgentsSettings({
               disabled={refreshingProviders}
               aria-label="Refresh provider discovery"
             >
-              {refreshingProviders ? <WorkingNest active size={13} /> : <RefreshCcw size={13} aria-hidden="true" />}
+              {refreshingProviders ? (
+                <WorkingNest active size={13} />
+              ) : (
+                <RefreshCcw size={13} aria-hidden="true" />
+              )}
               <span>{refreshingProviders ? "Refreshing…" : "Refresh"}</span>
             </button>
           </>
@@ -292,7 +332,11 @@ export function AgentsSettings({
                     ? "approvals observable only"
                     : "no native approvals";
               return (
-                <li key={provider.provider} className="settings-provider-row" data-installed={dataState}>
+                <li
+                  key={provider.provider}
+                  className="settings-provider-row"
+                  data-installed={dataState}
+                >
                   <span className="settings-provider-dot" aria-hidden="true" />
                   <div className="settings-provider-meta">
                     <span className="settings-provider-name">
@@ -312,7 +356,12 @@ export function AgentsSettings({
                     ) : null}
                   </div>
                   {!provider.installed && installHint ? (
-                    <a className="settings-provider-link" href={installHint.url} target="_blank" rel="noreferrer">
+                    <a
+                      className="settings-provider-link"
+                      href={installHint.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       <span>{installHint.label}</span>
                       <ExternalLink size={11} aria-hidden="true" />
                     </a>

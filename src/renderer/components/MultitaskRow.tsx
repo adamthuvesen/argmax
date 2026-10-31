@@ -5,7 +5,11 @@ import type { SessionSummary } from "../../shared/types.js";
 import { formatElapsedSeconds } from "../formatElapsed.js";
 import { useMultitaskAsk } from "../hooks/useMultitaskAsk.js";
 import { registerLiveTimer } from "../lib/liveTimer.js";
-import { multitaskDisplayStatus, type MultitaskDisplayStatus, type MultitaskNotice } from "../lib/multitask.js";
+import {
+  multitaskDisplayStatus,
+  type MultitaskDisplayStatus,
+  type MultitaskNotice,
+} from "../lib/multitask.js";
 import { useReadingWave } from "../lib/readingWave.js";
 
 const STATUS_LABEL: Record<MultitaskDisplayStatus, string> = {
@@ -13,7 +17,7 @@ const STATUS_LABEL: Record<MultitaskDisplayStatus, string> = {
   done: "Finished",
   "needs-you": "Needs you",
   failed: "Failed",
-  stopped: "Stopped"
+  stopped: "Stopped",
 };
 
 /** The state, drawn: a dot while it runs, a check when it lands, a question
@@ -69,7 +73,7 @@ export function MultitaskRow({
   onOpen,
   onStop,
   onDismiss,
-  onLoadSessionEvents
+  onLoadSessionEvents,
 }: {
   notice: MultitaskNotice;
   liveState?: string | null;
@@ -99,7 +103,7 @@ export function MultitaskRow({
   const question = useMultitaskAsk(
     childSessionId,
     status === "needs-you" && liveAttention === "question-asked",
-    onLoadSessionEvents
+    onLoadSessionEvents,
   );
   const ask =
     status !== "needs-you"
@@ -125,23 +129,34 @@ export function MultitaskRow({
     return registerLiveTimer(node, () => Date.now() - startedMs, formatElapsedSeconds);
   }, [counting, startedMs]);
   const canStop =
-    (state === "running" || state === null || state === "waiting" || state === "blocked") && childSessionId && onStop;
+    (state === "running" || state === null || state === "waiting" || state === "blocked") &&
+    childSessionId &&
+    onStop;
   const canDismiss =
-    !canStop && (status === "done" || status === "failed" || status === "stopped") && childSessionId && onDismiss;
+    !canStop &&
+    (status === "done" || status === "failed" || status === "stopped") &&
+    childSessionId &&
+    onDismiss;
 
   const contents = (
     <>
       <MultitaskMark status={status} />
       <span className="multitask-row-body">
         <span className="multitask-row-title-line">
-          <span className="multitask-row-title" ref={labelRef} data-reading-wave={reading ? "true" : undefined}>
+          <span
+            className="multitask-row-title"
+            ref={labelRef}
+            data-reading-wave={reading ? "true" : undefined}
+          >
             {reading ? <span className="reading-wave-text">{taskLabel}</span> : taskLabel}
           </span>
           {notice.worktree ? <span className="multitask-row-isolated">isolated</span> : null}
         </span>
         {ask ? (
           <span className="multitask-row-ask" data-kind={ask.kind} title={ask.text}>
-            {ask.kind === "approval" ? <span className="multitask-row-ask-lead">Wants to run</span> : null}
+            {ask.kind === "approval" ? (
+              <span className="multitask-row-ask-lead">Wants to run</span>
+            ) : null}
             <span className="multitask-row-ask-text">{ask.text}</span>
           </span>
         ) : null}

@@ -46,7 +46,7 @@ function pickedLabels(question: Question, picks: number[], otherText = ""): stri
 export function structuredAnswers(
   questions: Question[],
   selected: number[][],
-  otherText: string[] = []
+  otherText: string[] = [],
 ): QuestionAnswers {
   const answers: QuestionAnswers = {};
   questions.forEach((question, index) => {
@@ -69,12 +69,20 @@ export function structuredAnswers(
 /// listed one, so the agent reads it without knowing which it was. No markdown:
 /// this lands in the transcript as a user message, which is drawn verbatim, so
 /// bold markers would read as literal asterisks there.
-export function formatAnswer(questions: Question[], selected: number[][], otherText: string[] = []): string {
+export function formatAnswer(
+  questions: Question[],
+  selected: number[][],
+  otherText: string[] = [],
+): string {
   return questions
     .map((question, index) => {
       const labels = pickedLabels(question, selected[index] ?? [], otherText[index] ?? "");
       const header = question.header || question.question;
-      const value = question.isSecret ? "(secret provided)" : labels.length > 0 ? labels.join(", ") : "(no selection)";
+      const value = question.isSecret
+        ? "(secret provided)"
+        : labels.length > 0
+          ? labels.join(", ")
+          : "(no selection)";
       return `${header}: ${value}`;
     })
     .join("\n");
@@ -97,7 +105,7 @@ export function parseQuestionsFromToolInput(tool: ToolCall): Question[] | null {
       .filter((o): o is Record<string, unknown> => o !== null)
       .map((o) => ({
         label: typeof o.label === "string" ? o.label : "",
-        ...(typeof o.description === "string" ? { description: o.description } : {})
+        ...(typeof o.description === "string" ? { description: o.description } : {}),
       }))
       .filter((o) => o.label.length > 0);
     // Codex permits free-form-only questions with the default isOther:false.
@@ -116,7 +124,7 @@ export function parseQuestionsFromToolInput(tool: ToolCall): Question[] | null {
       options,
       multiSelect: qq.multiSelect === true,
       ...(isOther !== undefined ? { isOther } : {}),
-      ...(qq.isSecret === true ? { isSecret: true } : {})
+      ...(qq.isSecret === true ? { isSecret: true } : {}),
     });
   }
   return questions.length > 0 ? questions : null;

@@ -9,11 +9,15 @@ import { errorMessage } from "./error.js";
  */
 export function validationMessage(error: unknown): string {
   const issues =
-    error && typeof error === "object" && "issues" in error ? (error as { issues?: unknown }).issues : undefined;
+    error && typeof error === "object" && "issues" in error
+      ? (error as { issues?: unknown }).issues
+      : undefined;
   if (Array.isArray(issues)) {
     const messages = issues
       .map((issue) =>
-        issue && typeof issue === "object" && "message" in issue ? (issue as { message?: unknown }).message : undefined
+        issue && typeof issue === "object" && "message" in issue
+          ? (issue as { message?: unknown }).message
+          : undefined,
       )
       .filter((message): message is string => typeof message === "string" && message !== "");
     if (messages.length > 0) return messages.join(" ");

@@ -2,7 +2,12 @@ import { useState } from "react";
 import { resolveModelId } from "../../shared/providerModels.js";
 import type { SessionSummary } from "../../shared/types.js";
 import { isAutoTier } from "../lib/models.js";
-import { routeSwitchDirection, routeSwitchElapsed, type RoutedModel, type RouteSwitch } from "../lib/routeSwitch.js";
+import {
+  routeSwitchDirection,
+  routeSwitchElapsed,
+  type RoutedModel,
+  type RouteSwitch,
+} from "../lib/routeSwitch.js";
 
 // A routed chat opened within this long of its launch is shown the router's
 // pick once, as it arrives from the launcher's tier-only chip. Launch routing
@@ -38,12 +43,16 @@ function routedModel(session: SessionSummary | null): RoutedModel | null {
     provider: session.provider,
     modelId: resolveModelId(session.provider, session.modelId),
     modelLabel: session.modelLabel,
-    reasoningEffort: session.reasoningEffort ?? null
+    reasoningEffort: session.reasoningEffort ?? null,
   };
 }
 
 function sameRoute(a: RoutedModel | null, b: RoutedModel | null): boolean {
-  return a?.provider === b?.provider && a?.modelId === b?.modelId && a?.reasoningEffort === b?.reasoningEffort;
+  return (
+    a?.provider === b?.provider &&
+    a?.modelId === b?.modelId &&
+    a?.reasoningEffort === b?.reasoningEffort
+  );
 }
 
 /**
@@ -61,7 +70,7 @@ export function useRouteSwitch(session: SessionSummary | null): RouteSwitch | nu
   const [tracked, setTracked] = useState<Tracked>(() => ({
     sessionId,
     route,
-    routeSwitch: session && route ? launchSwitch(session, route) : null
+    routeSwitch: session && route ? launchSwitch(session, route) : null,
   }));
   if (tracked.sessionId === sessionId && sameRoute(tracked.route, route)) {
     return tracked.routeSwitch;
@@ -77,7 +86,7 @@ export function useRouteSwitch(session: SessionSummary | null): RouteSwitch | nu
       from: tracked.route,
       to: route,
       direction: routeSwitchDirection(tracked.route, route),
-      reason: session.autoRoute ?? null
+      reason: session.autoRoute ?? null,
     };
   }
   const next: Tracked = { sessionId, route, routeSwitch };
@@ -91,11 +100,14 @@ export function useRouteSwitch(session: SessionSummary | null): RouteSwitch | nu
  * that mounted mid-motion, null once a motion of `durationMs` is over (a chip
  * remounted later must not replay it).
  */
-export function useRouteSwitchElapsed(routeSwitch: RouteSwitch | null | undefined, durationMs: number): number | null {
+export function useRouteSwitchElapsed(
+  routeSwitch: RouteSwitch | null | undefined,
+  durationMs: number,
+): number | null {
   const id = routeSwitch?.id ?? null;
   const read = (): { id: number | null; elapsed: number | null } => ({
     id,
-    elapsed: routeSwitch ? routeSwitchElapsed(routeSwitch, durationMs) : null
+    elapsed: routeSwitch ? routeSwitchElapsed(routeSwitch, durationMs) : null,
   });
   const [seen, setSeen] = useState(read);
   if (seen.id === id) return seen.elapsed;

@@ -17,7 +17,7 @@ async function renderLauncher(hasRunningSession = false): Promise<void> {
       onSelectProject={() => undefined}
       project={primaryProject()}
       projects={[primaryProject()]}
-    />
+    />,
   );
   // Mounting kicks off provider discovery and a branch read; settle them so
   // their state updates land inside the test rather than after the assertions.

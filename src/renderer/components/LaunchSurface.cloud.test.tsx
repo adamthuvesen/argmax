@@ -7,7 +7,7 @@ import { LaunchSurface } from "./LaunchSurface.js";
 function launcherElement(
   model: ModelPickerSelection,
   project: ReturnType<typeof primaryProject>,
-  launchLocal: () => Promise<void>
+  launchLocal: () => Promise<void>,
 ) {
   return (
     <LaunchSurface
@@ -28,8 +28,8 @@ function renderLauncher(
     provider: "claude",
     modelId: "claude-fable-5-1",
     label: "Fable 5.1",
-    reasoningEffort: "medium"
-  }
+    reasoningEffort: "medium",
+  },
 ) {
   const project = primaryProject();
   const launchLocal = vi.fn().mockResolvedValue(undefined);
@@ -37,7 +37,8 @@ function renderLauncher(
   return {
     project,
     launchLocal,
-    rerenderWith: (next: ModelPickerSelection) => rerender(launcherElement(next, project, launchLocal))
+    rerenderWith: (next: ModelPickerSelection) =>
+      rerender(launcherElement(next, project, launchLocal)),
   };
 }
 
@@ -52,60 +53,92 @@ describe("cloud launch from the composer", () => {
       brief: "",
       environmentId: "env_default",
       environmentDescription: "Default",
-      environments: [{ id: "env_default", name: "Default" }]
+      environments: [{ id: "env_default", name: "Default" }],
     });
-    vi.spyOn(window.argmax!.cloud, "launch").mockResolvedValue({ url: "https://claude.ai/code/session_test" });
+    vi.spyOn(window.argmax!.cloud, "launch").mockResolvedValue({
+      url: "https://claude.ai/code/session_test",
+    });
   });
   afterEach(cleanup);
 
   it.each([
     [
-      { provider: "claude", modelId: "claude-fable-5-1", label: "Fable 5.1", reasoningEffort: "medium" },
-      "Claude Cloud"
+      {
+        provider: "claude",
+        modelId: "claude-fable-5-1",
+        label: "Fable 5.1",
+        reasoningEffort: "medium",
+      },
+      "Claude Cloud",
     ],
-    [{ provider: "codex", modelId: "gpt-6-astra", label: "GPT-6 Astra", reasoningEffort: "medium" }, "Codex Cloud"],
     [
-      { provider: "cursor", modelId: "composer-2.5", label: "Composer 2.5 (Cursor)", reasoningEffort: "medium" },
-      "Cursor Cloud"
-    ]
-  ] as const)("routes the selected $0.provider provider to its hosted agent", async (selectedModel, hostedName) => {
-    vi.mocked(window.argmax!.cloud.prepare).mockResolvedValue({
-      provider: selectedModel.provider,
-      repository: "adamthuvesen/commute-cli",
-      branch: "main",
-      commit: "1234567890abcdef",
-      brief: "",
-      environmentId: "env_default",
-      environmentDescription: "Default",
-      environments: [{ id: "env_default", name: "Default" }]
-    });
-    const { project, launchLocal } = renderLauncher(selectedModel);
-    fireEvent.change(await screen.findByLabelText("Task prompt"), { target: { value: "Inspect README" } });
-    fireEvent.click(screen.getByRole("button", { name: "Run location: Local" }));
+      {
+        provider: "codex",
+        modelId: "gpt-6-astra",
+        label: "GPT-6 Astra",
+        reasoningEffort: "medium",
+      },
+      "Codex Cloud",
+    ],
+    [
+      {
+        provider: "cursor",
+        modelId: "composer-2.5",
+        label: "Composer 2.5 (Cursor)",
+        reasoningEffort: "medium",
+      },
+      "Cursor Cloud",
+    ],
+  ] as const)(
+    "routes the selected $0.provider provider to its hosted agent",
+    async (selectedModel, hostedName) => {
+      vi.mocked(window.argmax!.cloud.prepare).mockResolvedValue({
+        provider: selectedModel.provider,
+        repository: "adamthuvesen/commute-cli",
+        branch: "main",
+        commit: "1234567890abcdef",
+        brief: "",
+        environmentId: "env_default",
+        environmentDescription: "Default",
+        environments: [{ id: "env_default", name: "Default" }],
+      });
+      const { project, launchLocal } = renderLauncher(selectedModel);
+      fireEvent.change(await screen.findByLabelText("Task prompt"), {
+        target: { value: "Inspect README" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Run location: Local" }));
 
-    expect(screen.getByText(hostedName)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Review cloud task" }));
-    await screen.findByText("Inspect README");
-    expect(screen.queryByRole("textbox", { name: "Task brief" })).not.toBeInTheDocument();
-    expect(window.argmax!.cloud.prepare).toHaveBeenCalledWith({
-      projectId: project.id,
-      projectFolderId: `${project.id}:primary`,
-      provider: selectedModel.provider
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Send task" }));
-    expect(await screen.findByRole("link", { name: `Open in ${hostedName}` })).toBeInTheDocument();
-    expect(window.argmax!.cloud.launch).toHaveBeenCalledWith(
-      expect.objectContaining({
+      expect(screen.getByText(hostedName)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Review cloud task" }));
+      await screen.findByText("Inspect README");
+      expect(screen.queryByRole("textbox", { name: "Task brief" })).not.toBeInTheDocument();
+      expect(window.argmax!.cloud.prepare).toHaveBeenCalledWith({
         projectId: project.id,
         projectFolderId: `${project.id}:primary`,
-        provider: selectedModel.provider
-      })
-    );
-    expect(launchLocal).not.toHaveBeenCalled();
-  });
+        provider: selectedModel.provider,
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Send task" }));
+      expect(
+        await screen.findByRole("link", { name: `Open in ${hostedName}` }),
+      ).toBeInTheDocument();
+      expect(window.argmax!.cloud.launch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: project.id,
+          projectFolderId: `${project.id}:primary`,
+          provider: selectedModel.provider,
+        }),
+      );
+      expect(launchLocal).not.toHaveBeenCalled();
+    },
+  );
 
   it("keeps unsupported providers local and explains why", () => {
-    renderLauncher({ provider: "opencode", modelId: "openai/gpt-5.5", label: "GPT-5.5", reasoningEffort: "medium" });
+    renderLauncher({
+      provider: "opencode",
+      modelId: "openai/gpt-5.5",
+      label: "GPT-5.5",
+      reasoningEffort: "medium",
+    });
     fireEvent.click(screen.getByRole("button", { name: "Run location: Local" }));
     expect(screen.getByRole("alert")).toHaveTextContent("OpenCode can’t run cloud tasks");
     expect(screen.getByRole("button", { name: "Run location: Local" })).toBeInTheDocument();
@@ -114,7 +147,9 @@ describe("cloud launch from the composer", () => {
 
   it("defaults to local and restores local controls without losing the prompt", async () => {
     renderLauncher();
-    fireEvent.change(await screen.findByLabelText("Task prompt"), { target: { value: "Inspect README" } });
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Inspect README" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Run location: Local" }));
     expect(screen.queryByRole("button", { name: "Switch model" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Worktree" })).not.toBeInTheDocument();
@@ -127,7 +162,9 @@ describe("cloud launch from the composer", () => {
 
   it("reviews and launches the project brief without starting a local agent", async () => {
     const { project, launchLocal } = renderLauncher();
-    fireEvent.change(await screen.findByLabelText("Task prompt"), { target: { value: "Inspect README" } });
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Inspect README" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Run location: Local" }));
     fireEvent.click(screen.getByRole("button", { name: "Review cloud task" }));
     expect(await screen.findByText("Inspect README")).toBeInTheDocument();
@@ -135,7 +172,7 @@ describe("cloud launch from the composer", () => {
     expect(window.argmax!.cloud.prepare).toHaveBeenCalledWith({
       projectId: project.id,
       projectFolderId: `${project.id}:primary`,
-      provider: "claude"
+      provider: "claude",
     });
     expect(window.argmax!.cloud.launch).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Send task" }));
@@ -144,8 +181,8 @@ describe("cloud launch from the composer", () => {
       expect.objectContaining({
         projectId: project.id,
         provider: "claude",
-        brief: "Inspect README"
-      })
+        brief: "Inspect README",
+      }),
     );
     expect(launchLocal).not.toHaveBeenCalled();
     expect(screen.queryByText("The link is saved in this chat.")).not.toBeInTheDocument();
@@ -154,7 +191,9 @@ describe("cloud launch from the composer", () => {
 
   it("keeps the draft when cloud review is cancelled", async () => {
     const { launchLocal } = renderLauncher();
-    fireEvent.change(await screen.findByLabelText("Task prompt"), { target: { value: "Keep my draft" } });
+    fireEvent.change(await screen.findByLabelText("Task prompt"), {
+      target: { value: "Keep my draft" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Run location: Local" }));
     fireEvent.click(screen.getByRole("button", { name: "Review cloud task" }));
     await screen.findByText("Keep my draft");
@@ -168,7 +207,9 @@ describe("cloud launch from the composer", () => {
     renderLauncher();
     const prompt = await screen.findByLabelText("Task prompt");
     fireEvent.click(screen.getByRole("button", { name: "Run location: Local" }));
-    fireEvent.paste(prompt, { clipboardData: { files: [new File(["image"], "image.png", { type: "image/png" })] } });
+    fireEvent.paste(prompt, {
+      clipboardData: { files: [new File(["image"], "image.png", { type: "image/png" })] },
+    });
     expect(await screen.findByRole("alert")).toHaveTextContent("Cloud tasks support text only");
     fireEvent.change(prompt, { target: { value: "/goal fix everything" } });
     fireEvent.click(screen.getByRole("button", { name: "Review cloud task" }));
@@ -182,7 +223,7 @@ describe("cloud launch from the composer", () => {
       provider: "claude",
       modelId: "claude-opus-5-5",
       label: "Opus 5.5",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     };
     const { rerenderWith } = renderLauncher(opus);
     fireEvent.click(screen.getByRole("button", { name: "Run location: Local" }));

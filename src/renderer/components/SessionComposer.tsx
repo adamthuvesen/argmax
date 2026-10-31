@@ -20,7 +20,7 @@ import {
   Square,
   Target,
   Trash2,
-  X
+  X,
 } from "lucide-react";
 import {
   useCallback,
@@ -31,7 +31,7 @@ import {
   type FormEvent,
   type JSX,
   type MutableRefObject,
-  type ReactNode
+  type ReactNode,
 } from "react";
 import type {
   AgentMode,
@@ -41,9 +41,13 @@ import type {
   ProviderId,
   QueuedMessageDelivery,
   SessionSummary,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../../shared/types.js";
-import { cloudProviderName, isHostedCloudProvider, type HostedCloudProvider } from "../../shared/cloudProviders.js";
+import {
+  cloudProviderName,
+  isHostedCloudProvider,
+  type HostedCloudProvider,
+} from "../../shared/cloudProviders.js";
 import { PROVIDER_DISPLAY_NAMES, resolveModelId } from "../../shared/providerModels.js";
 import { goalActions, systemActions } from "../data/bridgeActions.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
@@ -64,20 +68,25 @@ import { appendReferencesToPrompt, imageAttachmentReference } from "../lib/compo
 import {
   annotationChipLabel,
   prependAnnotationsToPrompt,
-  type ComposerAnnotation
+  type ComposerAnnotation,
 } from "../lib/composerAnnotations.js";
 import {
   dispatchedCommandNames,
   isClearCommand,
   cloudCommandPrompt,
   isMcpCommand,
-  type ComposerCommand
+  type ComposerCommand,
 } from "../lib/composerCommands.js";
 import { multitaskCommandPrompt } from "../lib/multitask.js";
 import { parseGoalCommand } from "../lib/goalCommand.js";
 import { clearDraft, writeDraftAttachments, writeDraftText } from "../lib/composerDrafts.js";
 import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileContext.js";
-import { AUTO_TIER_SHORT_LABELS, autoSessionChipLabel, isAutoTier, type ModelPickerSelection } from "../lib/models.js";
+import {
+  AUTO_TIER_SHORT_LABELS,
+  autoSessionChipLabel,
+  isAutoTier,
+  type ModelPickerSelection,
+} from "../lib/models.js";
 import { chatChipEnvironmentFor } from "../lib/chatChipEnvironment.js";
 import { chatReferencesAsTitles } from "../lib/composerContext.js";
 import { openChat, useChatDirectory } from "../state/chatDirectory.js";
@@ -162,7 +171,7 @@ export function SessionComposer({
   contextIndicatorEnabled = false,
   goalEnabled = true,
   goalMaxTurns,
-  goalStatus
+  goalStatus,
 }: {
   canSend: boolean;
   /** Settings → Appearance: keep this composer on the agent-window scale. */
@@ -182,11 +191,20 @@ export function SessionComposer({
   defaultFollowUpDelivery?: FollowUpDelivery;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
-  onSendQueuedMessageNow?: (sessionId: string, messageId: string, delivery?: QueuedMessageDelivery) => Promise<void>;
+  onSendQueuedMessageNow?: (
+    sessionId: string,
+    messageId: string,
+    delivery?: QueuedMessageDelivery,
+  ) => Promise<void>;
   /** Dispatch a prompt as a multitask: a sibling chat in this checkout that
    *  runs alongside the current turn instead of waiting behind it. It inherits
    *  this chat's provider, which is why the call carries it. */
-  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId, pendingMessageId?: string) => Promise<void>;
+  onMultitask?: (
+    sessionId: string,
+    prompt: string,
+    provider: ProviderId,
+    pendingMessageId?: string,
+  ) => Promise<void>;
   /** For a chat that lives inside a panel (a multitask in the Agents dock):
    *  promote it to the pane it is docked beside. Absent in a pane, which is
    *  already the full chat. */
@@ -198,7 +216,7 @@ export function SessionComposer({
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
     agentReferences?: AgentReference[],
-    delivery?: FollowUpDelivery
+    delivery?: FollowUpDelivery,
   ) => Promise<void>;
   /** Reports whether the composer is holding a draft. The question dock takes
    *  this slot, so it waits while there is typing here to preserve. */
@@ -250,7 +268,9 @@ export function SessionComposer({
   const [sendingQueuedMessageId, setSendingQueuedMessageId] = useState<string | null>(null);
   // Touch surfaces (the phone companion) have no Enter key sitting under the
   // hands, so the keyboard shortcuts this composer leans on need a button.
-  const [isCoarsePointer] = useState(() => window.matchMedia?.("(pointer: coarse)").matches ?? false);
+  const [isCoarsePointer] = useState(
+    () => window.matchMedia?.("(pointer: coarse)").matches ?? false,
+  );
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   // A pick that changes provider is held here until the user confirms: the new
   // agent can't resume this one's conversation, so the swap is worth a beat.
@@ -296,13 +316,13 @@ export function SessionComposer({
     clearAttachments,
     restoreAttachments,
     attachSavedAttachment,
-    attachmentLabels
+    attachmentLabels,
   } = useComposerAttachments({
     draftKey: sessionId,
     workspacePath: workspace?.path ?? null,
     setInput,
     fieldRef: inputRef,
-    persist: persistCurrentDraft
+    persist: persistCurrentDraft,
   });
 
   useEffect(() => {
@@ -319,7 +339,7 @@ export function SessionComposer({
       attachSavedAttachment(snapshot.attachment, windowSnapshotLabel(snapshot));
       inputRef.current?.focus();
     },
-    floating
+    floating,
   );
 
   // ⌘⇧M and ⌘⇧E open the model and effort pickers. Document-level like the
@@ -349,17 +369,20 @@ export function SessionComposer({
             ? (autoSessionChipLabel({ ...session, ...routeSwitch.from }) ?? "")
             : isAutoTier(session.autoTier)
               ? AUTO_TIER_SHORT_LABELS[session.autoTier]
-              : ""
+              : "",
         }
       : null;
   const captionPace = chipRouteSwitch ? routeSwitchPace(chipRouteSwitch) : null;
   const captionElapsed = useRouteSwitchElapsed(
     chipRouteSwitch,
-    captionPace ? captionPace.delayMs + captionPace.captionMs : 0
+    captionPace ? captionPace.delayMs + captionPace.captionMs : 0,
   );
   const [endedCaptionId, setEndedCaptionId] = useState<number | null>(null);
   const routeCaption =
-    chipRouteSwitch?.reason && captionElapsed !== null && endedCaptionId !== chipRouteSwitch.id && input === ""
+    chipRouteSwitch?.reason &&
+    captionElapsed !== null &&
+    endedCaptionId !== chipRouteSwitch.id &&
+    input === ""
       ? chipRouteSwitch
       : null;
   useEffect(() => {
@@ -398,7 +421,7 @@ export function SessionComposer({
         label: "Stop",
         hint: "Stop the agent mid-turn",
         icon: Square,
-        run: () => void onTerminateSession(session.id)
+        run: () => void onTerminateSession(session.id),
       });
     }
     if (session) {
@@ -410,14 +433,14 @@ export function SessionComposer({
         run: () =>
           void onClearSession(session.id).catch((error: unknown) => {
             showErrorToast(errorMessage(error) || "Could not clear the chat.");
-          })
+          }),
       });
       commands.push({
         name: "mcp",
         label: "Connections",
         hint: "Show MCP servers, plugins, and connectors",
         icon: PlugZap,
-        run: () => setConnectionsOpen(true)
+        run: () => setConnectionsOpen(true),
       });
     }
     if (session && workspace?.kind === "git" && isHostedCloudProvider(selectedModel.provider)) {
@@ -427,7 +450,7 @@ export function SessionComposer({
         hint: `Send a task to ${cloudProviderName(selectedModel.provider)}`,
         icon: Cloud,
         writesDraft: true,
-        run: () => setInput("/cloud ")
+        run: () => setInput("/cloud "),
       });
     }
     // `/compact` is sent as ordinary prompt text. Claude and Grok run it
@@ -441,7 +464,7 @@ export function SessionComposer({
         hint: "Summarize the conversation to free up context",
         icon: FoldVertical,
         writesDraft: true,
-        run: () => setInput("/compact ")
+        run: () => setInput("/compact "),
       });
     }
     if (session && onMultitask) {
@@ -451,7 +474,7 @@ export function SessionComposer({
         hint: "Run something alongside this chat's turn",
         icon: Columns2,
         writesDraft: true,
-        run: () => setInput("/multitask ")
+        run: () => setInput("/multitask "),
       });
     }
     if (session && goalEnabled) {
@@ -461,7 +484,7 @@ export function SessionComposer({
         hint: "Keep working until a condition holds",
         icon: Target,
         writesDraft: true,
-        run: () => setInput("/goal ")
+        run: () => setInput("/goal "),
       });
     }
     commands.push({
@@ -469,7 +492,7 @@ export function SessionComposer({
       label: "Attach file",
       hint: "Add an image or file to the prompt",
       icon: Paperclip,
-      run: openFilePicker
+      run: openFilePicker,
     });
     if (changeSummary) {
       commands.push({
@@ -477,7 +500,7 @@ export function SessionComposer({
         label: "Changes",
         hint: `Open ${changeSummary.fileCount} changed ${changeSummary.fileCount === 1 ? "file" : "files"} in review`,
         icon: FileDiff,
-        run: changeSummary.onOpen
+        run: changeSummary.onOpen,
       });
     }
     if (workspace && workspace.kind === "git" && !workspace.sharedWorkspace) {
@@ -490,9 +513,11 @@ export function SessionComposer({
           void systemActions()
             ?.openPath({ path: workspace.path })
             .catch((error: unknown) => {
-              showErrorToast(error instanceof Error ? error.message : "Could not open the worktree folder.");
+              showErrorToast(
+                error instanceof Error ? error.message : "Could not open the worktree folder.",
+              );
             });
-        }
+        },
       });
     }
     return commands;
@@ -506,7 +531,7 @@ export function SessionComposer({
     session,
     selectedModel.provider,
     setInput,
-    workspace
+    workspace,
   ]);
 
   const slashAutocomplete = useSlashAutocomplete({
@@ -515,7 +540,7 @@ export function SessionComposer({
     provider: session?.provider ?? null,
     workspaceId: workspace?.id ?? null,
     commands: composerCommands,
-    inputRef
+    inputRef,
   });
 
   const chatDirectory = useChatDirectory();
@@ -525,7 +550,7 @@ export function SessionComposer({
     inputRef,
     source: workspace ? { kind: "workspace", id: workspace.id } : null,
     chats: chatDirectory,
-    ownSessionId: sessionId
+    ownSessionId: sessionId,
   });
   const chatChips = useMemo(() => chatChipEnvironmentFor(chatDirectory, openChat), [chatDirectory]);
 
@@ -535,15 +560,15 @@ export function SessionComposer({
         hasSession: session !== null,
         canMultitask: onMultitask !== undefined,
         canCloud: workspace?.kind === "git",
-        goalEnabled
+        goalEnabled,
       }),
-    [goalEnabled, onMultitask, session, workspace?.kind]
+    [goalEnabled, onMultitask, session, workspace?.kind],
   );
   // Tint every `/command` token that maps to a real skill or one of those
   // commands, leading or mid-message, in the accent colour.
   const isSkillToken = useCallback(
     (name: string): boolean => slashAutocomplete.skillNames.has(name) || dispatchedNames.has(name),
-    [dispatchedNames, slashAutocomplete.skillNames]
+    [dispatchedNames, slashAutocomplete.skillNames],
   );
   const changeSummaryText = changeSummary
     ? `${changeSummary.fileCount} ${changeSummary.fileCount === 1 ? "file" : "files"} changed`
@@ -560,7 +585,9 @@ export function SessionComposer({
   const workspaceContextSummary = `Workspace context: ${[branchLabel, changeSummaryText]
     .filter((part) => part !== null)
     .join(" · ")}`;
-  useDismissOnOutsideOrEscape(compactContextRef, compactContextOpen, () => setCompactContextOpen(false));
+  useDismissOnOutsideOrEscape(compactContextRef, compactContextOpen, () =>
+    setCompactContextOpen(false),
+  );
   // Where the caret goes once text is put into the prompt for the user to
   // work on — set by the queued chip's Edit action. It has to wait for the
   // render that carries the new text: seeking on the old value would land in
@@ -602,9 +629,18 @@ export function SessionComposer({
       inputRef.current?.closest('[role="region"]')?.contains(active)
     )
       return;
-    if (!becameFocused && active !== document.body && !inputFormRef.current?.contains(active)) return;
+    if (!becameFocused && active !== document.body && !inputFormRef.current?.contains(active))
+      return;
     inputRef.current?.focus({ preventScroll: true });
-  }, [reviewPanelOpen, canSend, inputRef, isCoarsePointer, isFocused, isSending, shouldRefocusInput]);
+  }, [
+    reviewPanelOpen,
+    canSend,
+    inputRef,
+    isCoarsePointer,
+    isFocused,
+    isSending,
+    shouldRefocusInput,
+  ]);
 
   // What the field holds right now. React's copy of it can be a render behind
   // a keystroke that has just landed in the editor, and a submit that read the
@@ -616,7 +652,13 @@ export function SessionComposer({
     if (event.defaultPrevented) return;
     fileAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
-    if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing) {
+    if (
+      event.key === "Tab" &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !event.isComposing
+    ) {
       if (!event.shiftKey && followUpSuggestion && liveInput().length === 0) {
         event.preventDefault();
         setInput(followUpSuggestion);
@@ -644,14 +686,18 @@ export function SessionComposer({
       const recalled = recalledPrompt.current;
       const current = liveInput();
       const recalledIndex =
-        recalled?.sessionId === sessionId && sentPrompts[recalled.index] === current ? recalled.index : null;
+        recalled?.sessionId === sessionId && sentPrompts[recalled.index] === current
+          ? recalled.index
+          : null;
       const selectionStart = inputRef.current?.selectionStart ?? 0;
       const selectionEnd = inputRef.current?.selectionEnd ?? selectionStart;
       // ↑ leaves a recalled prompt only from its first line and ↓ only from
       // its last, so the caret still walks a multiline prompt's lines.
       const caretAtEdge =
         selectionStart === selectionEnd &&
-        (step === -1 ? !current.slice(0, selectionStart).includes("\n") : !current.slice(selectionEnd).includes("\n"));
+        (step === -1
+          ? !current.slice(0, selectionStart).includes("\n")
+          : !current.slice(selectionEnd).includes("\n"));
       let nextIndex: number | null = null;
       if (recalledIndex !== null && caretAtEdge) nextIndex = recalledIndex + step;
       else if (recalledIndex === null && current.length === 0 && step === -1) {
@@ -673,7 +719,8 @@ export function SessionComposer({
 
   // Images, conversation excerpts, and diff notes can be the whole message.
   // Their references or quoted context become the prompt at delivery time.
-  const hasSendableContent = input.trim().length > 0 || pendingAttachments.length > 0 || pendingAnnotations.length > 0;
+  const hasSendableContent =
+    input.trim().length > 0 || pendingAttachments.length > 0 || pendingAnnotations.length > 0;
 
   /**
    * Build the prompt from the draft plus attachments and hand it to `deliver`.
@@ -681,11 +728,16 @@ export function SessionComposer({
    * delivery restores both so the user can retry.
    */
   const deliverDraft = async (
-    deliver: (sessionId: string, prompt: string, attachments: ComposerAttachment[] | undefined) => Promise<void>
+    deliver: (
+      sessionId: string,
+      prompt: string,
+      attachments: ComposerAttachment[] | undefined,
+    ) => Promise<void>,
   ): Promise<void> => {
     const draftInput = liveInput();
     const trimmedInput = draftInput.trim();
-    const hasContent = trimmedInput.length > 0 || pendingAttachments.length > 0 || pendingAnnotations.length > 0;
+    const hasContent =
+      trimmedInput.length > 0 || pendingAttachments.length > 0 || pendingAnnotations.length > 0;
     if (!session || !hasContent || isSending || sendingQueuedMessageId) {
       return;
     }
@@ -699,18 +751,22 @@ export function SessionComposer({
       if (!isHostedCloudProvider(selectedModel.provider)) {
         setStatus({
           kind: "error",
-          message: `${PROVIDER_DISPLAY_NAMES[selectedModel.provider]} can’t run cloud tasks.`
+          message: `${PROVIDER_DISPLAY_NAMES[selectedModel.provider]} can’t run cloud tasks.`,
         });
         return;
       }
       if (pendingAttachments.length > 0) {
-        setStatus({ kind: "error", message: "Cloud tasks support text only. Remove attachments before launching." });
+        setStatus({
+          kind: "error",
+          message: "Cloud tasks support text only. Remove attachments before launching.",
+        });
         return;
       }
       if (pendingAnnotations.length > 0 || openFilesAttached) {
         setStatus({
           kind: "error",
-          message: "Cloud tasks can’t include local annotations or open files. Remove them before launching."
+          message:
+            "Cloud tasks can’t include local annotations or open files. Remove them before launching.",
         });
         return;
       }
@@ -719,7 +775,7 @@ export function SessionComposer({
         sessionId: session.id,
         provider: selectedModel.provider,
         ...(cloudPrompt ? { initialBrief: cloudPrompt } : {}),
-        draftInput
+        draftInput,
       });
       return;
     }
@@ -765,7 +821,7 @@ export function SessionComposer({
             workspaceId: workspace.id,
             sessionId: session.id,
             condition: goalCommand.condition,
-            maxTurns: goalMaxTurns ?? null
+            maxTurns: goalMaxTurns ?? null,
           });
         }
         setInput("");
@@ -801,7 +857,9 @@ export function SessionComposer({
     const refs = attachmentsToSend.map((a) => imageAttachmentReference(a.filePath));
     const withRefs = refs.length > 0 ? appendReferencesToPrompt(trimmedInput, refs) : trimmedInput;
     const withAnnotations = prependAnnotationsToPrompt(withRefs, pendingAnnotations);
-    const prompt = openFilesAttached ? appendOpenFilesToPrompt(withAnnotations, openFilePaths) : withAnnotations;
+    const prompt = openFilesAttached
+      ? appendOpenFilesToPrompt(withAnnotations, openFilePaths)
+      : withAnnotations;
 
     setSendingSessionId(session.id);
     setStatus(null);
@@ -809,7 +867,11 @@ export function SessionComposer({
     clearDraft(session.id);
     setInput("");
     try {
-      await deliver(session.id, prompt, attachmentsToSend.length > 0 ? attachmentsToSend : undefined);
+      await deliver(
+        session.id,
+        prompt,
+        attachmentsToSend.length > 0 ? attachmentsToSend : undefined,
+      );
       if (sessionIdRef.current === session.id) {
         clearAttachments();
         onClearAnnotations?.();
@@ -842,7 +904,15 @@ export function SessionComposer({
         ? "steer"
         : "queue";
     await deliverDraft((sessionId, prompt, attachments) =>
-      onSendSessionInput(sessionId, prompt, selectedModel, "auto", attachments, undefined, delivery)
+      onSendSessionInput(
+        sessionId,
+        prompt,
+        selectedModel,
+        "auto",
+        attachments,
+        undefined,
+        delivery,
+      ),
     );
   };
 
@@ -879,17 +949,23 @@ export function SessionComposer({
             const cancel = (): void => {
               if (!session || !onCancelQueuedMessage) return;
               void onCancelQueuedMessage(session.id, entry.id).catch((error: unknown) => {
-                showErrorToast(error instanceof Error ? error.message : "Could not cancel this follow-up.");
+                showErrorToast(
+                  error instanceof Error ? error.message : "Could not cancel this follow-up.",
+                );
               });
             };
-            const sendQueuedNow = async (delivery: QueuedMessageDelivery = "interrupt"): Promise<void> => {
+            const sendQueuedNow = async (
+              delivery: QueuedMessageDelivery = "interrupt",
+            ): Promise<void> => {
               if (!session || !onSendQueuedMessageNow || sendingQueuedMessageId) return;
               setSendingQueuedMessageId(entry.id);
               setStatus(null);
               try {
                 await onSendQueuedMessageNow(session.id, entry.id, delivery);
               } catch (error) {
-                showErrorToast(error instanceof Error ? error.message : "Could not send queued follow-up.");
+                showErrorToast(
+                  error instanceof Error ? error.message : "Could not send queued follow-up.",
+                );
               } finally {
                 setSendingQueuedMessageId(null);
               }
@@ -905,7 +981,9 @@ export function SessionComposer({
               try {
                 await onMultitask(session.id, content, session.provider, id);
               } catch (error) {
-                showErrorToast(error instanceof Error ? error.message : "Could not start the multitask.");
+                showErrorToast(
+                  error instanceof Error ? error.message : "Could not start the multitask.",
+                );
               } finally {
                 setSendingQueuedMessageId(null);
               }
@@ -921,7 +999,11 @@ export function SessionComposer({
               try {
                 await onCancelQueuedMessage(session.id, id);
               } catch (error) {
-                showErrorToast(error instanceof Error ? error.message : "Could not take the queued follow-up back.");
+                showErrorToast(
+                  error instanceof Error
+                    ? error.message
+                    : "Could not take the queued follow-up back.",
+                );
                 return;
               } finally {
                 setSendingQueuedMessageId(null);
@@ -954,11 +1036,14 @@ export function SessionComposer({
                   ? draft
                   : draft.trim() === ""
                     ? restoredContent
-                    : `${restoredContent}\n\n${draft}`
+                    : `${restoredContent}\n\n${draft}`,
               );
               restoreAttachments((current) => {
                 const paths = new Set(current.map((attachment) => attachment.filePath));
-                return [...current, ...attachments.filter((attachment) => !paths.has(attachment.filePath))];
+                return [
+                  ...current,
+                  ...attachments.filter((attachment) => !paths.has(attachment.filePath)),
+                ];
               });
             };
             return (
@@ -970,13 +1055,20 @@ export function SessionComposer({
                 title={shownContent}
                 aria-label={`Queued follow-up: ${shownContent}`}
                 onKeyDown={(event) => {
-                  if (sendingQueuedMessageId === null && (event.key === "Backspace" || event.key === "Delete")) {
+                  if (
+                    sendingQueuedMessageId === null &&
+                    (event.key === "Backspace" || event.key === "Delete")
+                  ) {
                     event.preventDefault();
                     cancel();
                   }
                 }}
               >
-                <CornerDownLeft className="composer-queued-chip-icon" size={14} aria-hidden="true" />
+                <CornerDownLeft
+                  className="composer-queued-chip-icon"
+                  size={14}
+                  aria-hidden="true"
+                />
                 <span className="composer-queued-chip-copy">
                   <span className="composer-queued-chip-label">{shownContent}</span>
                   {entry.provider && session && entry.provider !== session.provider ? (
@@ -985,7 +1077,10 @@ export function SessionComposer({
                     </span>
                   ) : null}
                   {entry.recoveryStatus ? (
-                    <span className="composer-queued-chip-recovery" data-recovery-status={entry.recoveryStatus}>
+                    <span
+                      className="composer-queued-chip-recovery"
+                      data-recovery-status={entry.recoveryStatus}
+                    >
                       {entry.recoveryStatus === "delivery-unknown"
                         ? "Delivery uncertain • check the chat before sending again"
                         : "Paused • not sent"}
@@ -1009,7 +1104,11 @@ export function SessionComposer({
                   type="button"
                   className="composer-queued-chip-action"
                   aria-label={`Send queued follow-up: ${shownContent}`}
-                  title={sessionIsRunning ? "Stop the current turn and send this follow-up" : "Send this follow-up"}
+                  title={
+                    sessionIsRunning
+                      ? "Stop the current turn and send this follow-up"
+                      : "Send this follow-up"
+                  }
                   disabled={sendingQueuedMessageId !== null}
                   onClick={() => void sendQueuedNow("interrupt")}
                 >
@@ -1070,7 +1169,9 @@ export function SessionComposer({
                 aria-label={`Attached context: ${openFilesChipLabel(openFilePaths)}`}
               >
                 <FolderOpen size={14} className="composer-annotation-icon" aria-hidden="true" />
-                <span className="composer-annotation-chip-label">{openFilesChipLabel(openFilePaths)}</span>
+                <span className="composer-annotation-chip-label">
+                  {openFilesChipLabel(openFilePaths)}
+                </span>
                 <button
                   type="button"
                   className="composer-annotation-remove"
@@ -1095,7 +1196,9 @@ export function SessionComposer({
                 ) : (
                   <FileDiff size={14} className="composer-annotation-icon" aria-hidden="true" />
                 )}
-                <span className="composer-annotation-chip-label">{annotationChipLabel(annotation)}</span>
+                <span className="composer-annotation-chip-label">
+                  {annotationChipLabel(annotation)}
+                </span>
                 <button
                   type="button"
                   className="composer-annotation-remove"
@@ -1147,7 +1250,7 @@ export function SessionComposer({
               role="status"
               style={{
                 animationDelay: `${(captionPace?.delayMs ?? 0) - (captionElapsed ?? 0)}ms`,
-                animationDuration: `${captionPace?.captionMs ?? 0}ms`
+                animationDuration: `${captionPace?.captionMs ?? 0}ms`,
               }}
               onAnimationEnd={() => setEndedCaptionId(routeCaption.id)}
             >
@@ -1161,10 +1264,16 @@ export function SessionComposer({
             ariaLabel="Chat prompt"
             documentKey={sessionId}
             dataRouteCaption={routeCaption !== null}
-            dataPlaceholderKind={followUpSuggestion !== null && !isQueueing ? "suggested-follow-up" : undefined}
+            dataPlaceholderKind={
+              followUpSuggestion !== null && !isQueueing ? "suggested-follow-up" : undefined
+            }
             expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
             controls={
-              slashAutocomplete.popoverOpen ? "slash-menu" : fileAutocomplete.popoverOpen ? "file-popover" : undefined
+              slashAutocomplete.popoverOpen
+                ? "slash-menu"
+                : fileAutocomplete.popoverOpen
+                  ? "file-popover"
+                  : undefined
             }
             disabled={!canSend || isSending}
             onChange={setInput}
@@ -1241,10 +1350,14 @@ export function SessionComposer({
                 onEffortOpenChange={setEffortPickerOpen}
                 ariaLabel="Chat model"
               />
-              {floating || selectedModel.autoTier ? null : <ComposerUsageSlot provider={selectedModel.provider} />}
+              {floating || selectedModel.autoTier ? null : (
+                <ComposerUsageSlot provider={selectedModel.provider} />
+              )}
             </div>
           ) : null}
-          {session && !floating && contextIndicatorEnabled ? <ContextRing session={session} /> : null}
+          {session && !floating && contextIndicatorEnabled ? (
+            <ContextRing session={session} />
+          ) : null}
           {hasWorkspaceContext ? (
             // Wide, the wrapper is `display: contents` and both chips sit on the
             // chip floor directly; compact, it becomes the anchor for the "…".
@@ -1273,7 +1386,10 @@ export function SessionComposer({
                 aria-label="Workspace context"
               >
                 {branchLabel !== null ? (
-                  <span className="composer-context-chip branch-chip" title={`Branch: ${branchLabel}`}>
+                  <span
+                    className="composer-context-chip branch-chip"
+                    title={`Branch: ${branchLabel}`}
+                  >
                     <GitBranch size={14} aria-hidden="true" />
                     <span className="composer-context-chip-label">{branchLabel}</span>
                   </span>
@@ -1290,7 +1406,10 @@ export function SessionComposer({
                       changeSummary.onOpen();
                     }}
                   >
-                    <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
+                    <ChangeCount
+                      additions={changeSummary.additions}
+                      deletions={changeSummary.deletions}
+                    />
                   </button>
                 ) : null}
               </div>
@@ -1360,7 +1479,9 @@ export function SessionComposer({
           ) : (
             (() => {
               const sendDisabled = !canSend || isSending || !hasSendableContent;
-              const sendTitle = isQueueing ? "Queue follow-up — sent when the current turn finishes" : "Send follow-up";
+              const sendTitle = isQueueing
+                ? "Queue follow-up — sent when the current turn finishes"
+                : "Send follow-up";
               return (
                 <button
                   className="session-send-button"
@@ -1385,7 +1506,9 @@ export function SessionComposer({
           data-status={status.kind}
           role={status.kind === "error" ? "alert" : "status"}
         >
-          {status.kind === "error" ? <span className="composer-status-dot" aria-hidden="true" /> : null}
+          {status.kind === "error" ? (
+            <span className="composer-status-dot" aria-hidden="true" />
+          ) : null}
           {status.message}
         </p>
       ) : null}
@@ -1438,7 +1561,7 @@ export function SessionComposer({
                   onStartNewSession({
                     model: pendingProviderSwitch.model,
                     prompt: input,
-                    attachments: pendingAttachments
+                    attachments: pendingAttachments,
                   });
                   clearDraft(session.id);
                   setInput("");

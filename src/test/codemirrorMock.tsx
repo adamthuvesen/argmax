@@ -7,7 +7,7 @@ vi.mock("@uiw/react-codemirror", () => ({
     value,
     onChange,
     readOnly,
-    "aria-label": ariaLabel
+    "aria-label": ariaLabel,
   }: {
     value: string;
     onChange: (next: string) => void;
@@ -21,5 +21,5 @@ vi.mock("@uiw/react-codemirror", () => ({
       value={value}
       onChange={(event) => onChange(event.target.value)}
     />
-  )
+  ),
 }));

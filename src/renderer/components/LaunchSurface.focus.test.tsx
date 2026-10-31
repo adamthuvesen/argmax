@@ -28,7 +28,7 @@ function launcher(overrides: Partial<LaunchSurfaceProps> = {}): JSX.Element {
 function focusedNeighbor(): HTMLTextAreaElement {
   const view = render(<textarea aria-label="Neighbor draft" />);
   const neighbor = within(view.container).getByRole<HTMLTextAreaElement>("textbox", {
-    name: "Neighbor draft"
+    name: "Neighbor draft",
   });
   neighbor.focus();
   return neighbor;

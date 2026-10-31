@@ -18,17 +18,22 @@ function project(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
     settings: { mergeCleanup: "off", worktreeLocation: "/w", setupCommand: "", checkCommands: [] },
     counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
     latestActivityAt: null,
-    ...overrides
+    ...overrides,
   };
 }
 
-function install(overrides: { setProject?: ReturnType<typeof vi.fn>; setApp?: ReturnType<typeof vi.fn> }): void {
+function install(overrides: {
+  setProject?: ReturnType<typeof vi.fn>;
+  setApp?: ReturnType<typeof vi.fn>;
+}): void {
   (window as unknown as { argmax: ArgmaxApi }).argmax = {
     settings: {
-      branchTemplate: vi.fn().mockResolvedValue({ template: null, defaultTemplate: "argmax/{word}-{id}" }),
-      setBranchTemplate: overrides.setApp ?? vi.fn()
+      branchTemplate: vi
+        .fn()
+        .mockResolvedValue({ template: null, defaultTemplate: "argmax/{word}-{id}" }),
+      setBranchTemplate: overrides.setApp ?? vi.fn(),
     },
-    projects: { setBranchTemplate: overrides.setProject ?? vi.fn() }
+    projects: { setBranchTemplate: overrides.setProject ?? vi.fn() },
   } as unknown as ArgmaxApi;
 }
 
@@ -39,7 +44,10 @@ describe("BranchTemplatePanel", () => {
 
     expect(screen.getByText(/\{type\}, \{slug\}, \{word\}, \{id\}, \{date\}/)).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByLabelText("Default for all projects")).toHaveAttribute("placeholder", "argmax/{word}-{id}")
+      expect(screen.getByLabelText("Default for all projects")).toHaveAttribute(
+        "placeholder",
+        "argmax/{word}-{id}",
+      ),
     );
   });
 
@@ -50,11 +58,16 @@ describe("BranchTemplatePanel", () => {
     install({ setProject });
     render(<BranchTemplatePanel project={project()} onProjectUpdated={onProjectUpdated} />);
 
-    fireEvent.change(screen.getByLabelText("Argmax override"), { target: { value: " adam/{type}-{slug} " } });
+    fireEvent.change(screen.getByLabelText("Argmax override"), {
+      target: { value: " adam/{type}-{slug} " },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save project template" }));
 
     await waitFor(() =>
-      expect(setProject).toHaveBeenCalledWith({ projectId: "project-1", template: "adam/{type}-{slug}" })
+      expect(setProject).toHaveBeenCalledWith({
+        projectId: "project-1",
+        template: "adam/{type}-{slug}",
+      }),
     );
     expect(onProjectUpdated).toHaveBeenCalledWith(saved);
     expect(await screen.findByRole("status")).toHaveTextContent("Project branch template saved.");
@@ -63,23 +76,38 @@ describe("BranchTemplatePanel", () => {
   it("clears an override by saving it blank", async () => {
     const setProject = vi.fn().mockResolvedValue(project());
     install({ setProject });
-    render(<BranchTemplatePanel project={project({ branchTemplate: "adam/{slug}" })} onProjectUpdated={vi.fn()} />);
+    render(
+      <BranchTemplatePanel
+        project={project({ branchTemplate: "adam/{slug}" })}
+        onProjectUpdated={vi.fn()}
+      />,
+    );
 
     fireEvent.change(screen.getByLabelText("Argmax override"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Save project template" }));
 
-    await waitFor(() => expect(setProject).toHaveBeenCalledWith({ projectId: "project-1", template: null }));
+    await waitFor(() =>
+      expect(setProject).toHaveBeenCalledWith({ projectId: "project-1", template: null }),
+    );
   });
 
   it("shows why a template was rejected beside its field", async () => {
     const setApp = vi.fn().mockRejectedValue({
       code: "INVALID_INPUT",
-      issues: [{ path: ["branchTemplate"], code: "BRANCH_TEMPLATE_INVALID", message: "Unknown placeholder {nope}." }]
+      issues: [
+        {
+          path: ["branchTemplate"],
+          code: "BRANCH_TEMPLATE_INVALID",
+          message: "Unknown placeholder {nope}.",
+        },
+      ],
     });
     install({ setApp });
     render(<BranchTemplatePanel project={project()} onProjectUpdated={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText("Default for all projects"), { target: { value: "adam/{nope}" } });
+    fireEvent.change(screen.getByLabelText("Default for all projects"), {
+      target: { value: "adam/{nope}" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save default" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Unknown placeholder {nope}.");

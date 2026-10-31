@@ -167,7 +167,11 @@ type OptionalNullable<T, K extends keyof T> = Omit<T, K> & {
  * fields the wire carries loosely (a `String` column, a serde-untagged enum)
  * that the renderer knows more precisely.
  */
-type Retype<T, R extends { [K in keyof R]: K extends keyof T ? unknown : never }> = Omit<T, keyof R> & R;
+type Retype<T, R extends { [K in keyof R]: K extends keyof T ? unknown : never }> = Omit<
+  T,
+  keyof R
+> &
+  R;
 
 /**
  * A hand-written union that must stay a subtype of what the wire carries.
@@ -179,14 +183,22 @@ type WireSubtype<Wire, Narrowed extends Wire> = Narrowed;
 
 export type LaunchProviderSessionInput = OptionalNullable<
   Bindings.ProvidersLaunchInput,
-  "reasoningEffort" | "agentMode" | "permissionMode" | "attachments" | "goalCondition" | "goalMaxTurns"
+  | "reasoningEffort"
+  | "agentMode"
+  | "permissionMode"
+  | "attachments"
+  | "goalCondition"
+  | "goalMaxTurns"
 >;
 export type ProviderSessionInput = OptionalNullable<
   Bindings.ProvidersSendInput,
   "modelLabel" | "modelId" | "reasoningEffort" | "agentMode" | "attachments" | "agentReferences"
 >;
 export type AgentReference = Bindings.AgentReference;
-export type NativeAgentIdentity = Pick<AgentReference, "providerParentConversationId" | "providerChildSessionId">;
+export type NativeAgentIdentity = Pick<
+  AgentReference,
+  "providerParentConversationId" | "providerChildSessionId"
+>;
 export type ProvidersCancelQueuedMessageInput = Bindings.ProvidersCancelQueuedMessageInput;
 export type ProvidersSendQueuedMessageNowInput = Bindings.ProvidersSendQueuedMessageNowInput;
 /** How a pending message reaches an active provider turn. */
@@ -206,7 +218,10 @@ export type SessionAgentEventsInput = OptionalNullable<
   Bindings.SessionAgentEventsInput,
   "providerParentConversationId" | "providerChildSessionId"
 >;
-export type SessionForkInput = OptionalNullable<Bindings.SessionForkInput, "boundaryEventId" | "workspace">;
+export type SessionForkInput = OptionalNullable<
+  Bindings.SessionForkInput,
+  "boundaryEventId" | "workspace"
+>;
 export type SessionForkLineageInput = Bindings.SessionForkLineageInput;
 export type SessionForkMergePreviewInput = Bindings.SessionForkMergePreviewInput;
 export type SessionForkMergeInput = Bindings.SessionForkMergeInput;
@@ -291,7 +306,10 @@ export type WorkspaceFileWriteResult = Bindings.WorkspaceFileWriteResult;
 
 export type RunCheckInput = Bindings.ChecksRunInput;
 
-export type WorkspaceArchiveResult = Retype<Bindings.WorkspaceArchiveResult, { workspace: WorkspaceSummary }>;
+export type WorkspaceArchiveResult = Retype<
+  Bindings.WorkspaceArchiveResult,
+  { workspace: WorkspaceSummary }
+>;
 export type SkillsListInput = OptionalNullable<Bindings.SkillsListInput, "workspaceId">;
 export type ConnectionsListInput = OptionalNullable<Bindings.ConnectionsListInput, "workspaceId">;
 export type OpenInIdeInput = Bindings.WorkspacesOpenInIdeInput;
@@ -520,9 +538,19 @@ export interface ArgmaxApi {
     create: (input: CreateProjectInput) => Promise<ProjectSummary>;
     configure: (input: ConfigureProjectInput) => Promise<ProjectSummary>;
     generateOverview: (input: { projectId: string }) => Promise<ProjectSummary>;
-    updateOverview: (input: { projectId: string; text: string; expectedRevision: number }) => Promise<ProjectSummary>;
-    applyOverviewDraft: (input: { projectId: string; expectedRevision: number }) => Promise<ProjectSummary>;
-    discardOverviewDraft: (input: { projectId: string; expectedRevision: number }) => Promise<ProjectSummary>;
+    updateOverview: (input: {
+      projectId: string;
+      text: string;
+      expectedRevision: number;
+    }) => Promise<ProjectSummary>;
+    applyOverviewDraft: (input: {
+      projectId: string;
+      expectedRevision: number;
+    }) => Promise<ProjectSummary>;
+    discardOverviewDraft: (input: {
+      projectId: string;
+      expectedRevision: number;
+    }) => Promise<ProjectSummary>;
     getFolders: (input: { projectId: string }) => Promise<ProjectFolder[]>;
     getFolderContext: (input: {
       projectId: string;
@@ -537,7 +565,11 @@ export interface ArgmaxApi {
     /** The project's usable checkouts and the branch checked out in each. */
     listCheckouts: (projectId: string, projectFolderId?: string) => Promise<ProjectCheckout[]>;
     refreshBranch: (projectId: string, projectFolderId?: string) => Promise<ProjectSummary>;
-    switchBranch: (projectId: string, branch: string, projectFolderId?: string) => Promise<ProjectSummary>;
+    switchBranch: (
+      projectId: string,
+      branch: string,
+      projectFolderId?: string,
+    ) => Promise<ProjectSummary>;
     /** Project check: whether the prompt reads like work for another project. */
     checkPrompt: (input: ProjectsCheckPromptInput) => Promise<ProjectCheck>;
     /** Sets or clears (`null`) this project's branch template. */
@@ -557,7 +589,10 @@ export interface ArgmaxApi {
     openInIde: (input: OpenInIdeInput) => Promise<Bindings.SystemOk>;
     autoTitle: (input: AutotitleWorkspaceInput) => Promise<Bindings.SystemOk>;
     setPinned: (input: { workspaceId: string; pinned: boolean }) => Promise<WorkspaceSummary>;
-    setPriorityDismissed: (input: { workspaceId: string; dismissed: boolean }) => Promise<WorkspaceSummary>;
+    setPriorityDismissed: (input: {
+      workspaceId: string;
+      dismissed: boolean;
+    }) => Promise<WorkspaceSummary>;
     setPriorityAdded: (input: { workspaceId: string; added: boolean }) => Promise<WorkspaceSummary>;
     /** Hides the row in the snooze shelf until `until` (RFC 3339), or unsnoozes with `null`. */
     setSnoozedUntil: (input: Bindings.WorkspacesSetSnoozedUntilInput) => Promise<WorkspaceSummary>;
@@ -576,7 +611,9 @@ export interface ArgmaxApi {
     resize: (input: ProviderSessionResizeInput) => Promise<Bindings.SystemOk>;
     terminate: (sessionId: string) => Promise<Bindings.SystemOk>;
     cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) => Promise<Bindings.SystemOk>;
-    sendQueuedMessageNow: (input: ProvidersSendQueuedMessageNowInput) => Promise<Bindings.SendInputResult>;
+    sendQueuedMessageNow: (
+      input: ProvidersSendQueuedMessageNowInput,
+    ) => Promise<Bindings.SendInputResult>;
   };
   cloud: {
     prepare: (input: CloudPrepareInput) => Promise<CloudHandoffPreview>;
@@ -590,9 +627,11 @@ export interface ArgmaxApi {
     read: (input: Bindings.VisualizationReadInput) => Promise<VisualizationRead>;
     setState: (input: Bindings.VisualizationSetStateInput) => Promise<VisualizationWidgetState>;
     setControls: (
-      input: Bindings.VisualizationSetControlsInput
+      input: Bindings.VisualizationSetControlsInput,
     ) => Promise<Partial<Record<string, Bindings.JsonValue>>>;
-    preview: (input: Bindings.VisualizationPreviewInput) => Promise<Bindings.VisualizationPreviewResult>;
+    preview: (
+      input: Bindings.VisualizationPreviewInput,
+    ) => Promise<Bindings.VisualizationPreviewResult>;
     publish: (input: Bindings.VisualizationPublishInput) => Promise<VisualizationArtifact>;
     export: (input: Bindings.VisualizationReadInput) => Promise<string>;
   };
@@ -662,14 +701,17 @@ export interface ArgmaxApi {
     revertHunk: (input: ReviewIndexHunkInput) => Promise<void>;
     stageHunk: (input: ReviewIndexHunkInput) => Promise<void>;
     unstageHunk: (input: ReviewIndexHunkInput) => Promise<void>;
-    listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
+    listChangedFiles: (
+      target: WorkspaceTarget,
+      comparison?: ReviewComparison,
+    ) => Promise<ChangedFileSummary[]>;
     /** `contextLines` is only honored for a single-file request; omit it for
      *  git's default context. See ReviewLoadDiffInput. */
     loadDiff: (
       target: WorkspaceTarget,
       filePath?: string,
       comparison?: ReviewComparison,
-      contextLines?: number
+      contextLines?: number,
     ) => Promise<WorkspaceDiff>;
   };
   workspace: {
@@ -679,7 +721,7 @@ export interface ArgmaxApi {
       target: WorkspaceTarget,
       filePath: string,
       content: string,
-      expectedMtimeMs: number | null
+      expectedMtimeMs: number | null,
     ) => Promise<WorkspaceFileWriteResult>;
     statFile: (target: WorkspaceTarget, filePath: string) => Promise<WorkspaceFileStat>;
     /** Read-only preview of a file outside every workspace: an absolute path or `~/…`. */
@@ -716,12 +758,20 @@ export interface ArgmaxApi {
     setProjectCheck: (input: { mode: ProjectCheckMode }) => Promise<RoutingSettings>;
     /** Which gateway OpenCode runs on, and the keys saved for each. */
     opencodeGateway: () => Promise<OpencodeGatewaySettings>;
-    setOpencodeGateway: (input: Bindings.SetOpencodeGatewayInput) => Promise<OpencodeGatewaySettings>;
-    setOpencodeGatewayKey: (input: Bindings.SetOpencodeGatewayKeyInput) => Promise<OpencodeGatewaySettings>;
-    clearOpencodeGatewayKey: (input: Bindings.ClearOpencodeGatewayKeyInput) => Promise<OpencodeGatewaySettings>;
+    setOpencodeGateway: (
+      input: Bindings.SetOpencodeGatewayInput,
+    ) => Promise<OpencodeGatewaySettings>;
+    setOpencodeGatewayKey: (
+      input: Bindings.SetOpencodeGatewayKeyInput,
+    ) => Promise<OpencodeGatewaySettings>;
+    clearOpencodeGatewayKey: (
+      input: Bindings.ClearOpencodeGatewayKeyInput,
+    ) => Promise<OpencodeGatewaySettings>;
     /** The app-wide branch template for new isolated workspaces. */
     branchTemplate: () => Promise<Bindings.BranchTemplateSettings>;
-    setBranchTemplate: (input: Bindings.SetBranchTemplateInput) => Promise<Bindings.BranchTemplateSettings>;
+    setBranchTemplate: (
+      input: Bindings.SetBranchTemplateInput,
+    ) => Promise<Bindings.BranchTemplateSettings>;
     setBrowserTools: (input: { enabled: boolean }) => Promise<AgentToolsSettings>;
     previewChatCleanup: () => Promise<ChatCleanupPreview>;
     deleteOldChats: (input: DeleteOldChatsInput) => Promise<DeleteOldChatsResult>;
@@ -729,7 +779,11 @@ export interface ArgmaxApi {
   system: {
     confirm: (message: string) => Promise<boolean>;
     openPath: (input: { path: string; cwd?: string }) => Promise<Bindings.SystemOk>;
-    openFileIn: (input: { path: string; cwd: string; app: OpenFileApp }) => Promise<Bindings.SystemOk>;
+    openFileIn: (input: {
+      path: string;
+      cwd: string;
+      app: OpenFileApp;
+    }) => Promise<Bindings.SystemOk>;
     listDetectedIdes: () => Promise<DetectedIde[]>;
     diagnostics: () => Promise<DiagnosticsReport>;
     debugSnapshot: (input?: { afterLogSeq?: number }) => Promise<DebugSnapshot>;
@@ -759,7 +813,11 @@ export interface ArgmaxApi {
   };
   remote: {
     getStatus: () => Promise<RemoteStatus>;
-    setConfig: (input: { enabled: boolean; port: number; ntfyTopic: string }) => Promise<RemoteStatus>;
+    setConfig: (input: {
+      enabled: boolean;
+      port: number;
+      ntfyTopic: string;
+    }) => Promise<RemoteStatus>;
     testNotification: () => Promise<Bindings.SystemOk>;
     setApnsConfig: (input: {
       keyPath: string;
@@ -876,7 +934,11 @@ export interface ArgmaxApi {
     reload: (tabId: string) => Promise<Bindings.SystemOk>;
     stop: (tabId: string) => Promise<Bindings.SystemOk>;
     setTheme: (mode: Bindings.ThemeMode) => Promise<Bindings.SystemOk>;
-    setBounds: (input: { bounds: BrowserBounds; visible: boolean; tabId: string }) => Promise<Bindings.SystemOk>;
+    setBounds: (input: {
+      bounds: BrowserBounds;
+      visible: boolean;
+      tabId: string;
+    }) => Promise<Bindings.SystemOk>;
     /** Gives the page the window's keyboard focus, the way clicking into it would. */
     focus: (tabId: string) => Promise<Bindings.SystemOk>;
     /** Destroys the tab's webview (history and session included). */
@@ -890,12 +952,18 @@ export interface ArgmaxApi {
       /** Crop to one snapshot ref; wins over `rect`. */
       ref?: string;
     }) => Promise<BrowserScreenshot>;
-    evaluate: (input: { tabId: string; script: string; timeoutMs?: number }) => Promise<BrowserEvaluateResult>;
+    evaluate: (input: {
+      tabId: string;
+      script: string;
+      timeoutMs?: number;
+    }) => Promise<BrowserEvaluateResult>;
     /** Live tabs, optionally only one session's. */
     listTabs: (input: { sessionId?: string }) => Promise<{ tabs: BrowserTabInfo[] }>;
     /** Opens a page in a tab owned by a session; the webview starts hidden. */
     openForSession: (input: { url: string; sessionId: string }) => Promise<{ tabId: string }>;
-    snapshot: (input: BrowserTabTarget & { interactiveOnly?: boolean }) => Promise<BrowserPageSnapshot>;
+    snapshot: (
+      input: BrowserTabTarget & { interactiveOnly?: boolean },
+    ) => Promise<BrowserPageSnapshot>;
     find: (input: BrowserTabTarget & { query: string }) => Promise<BrowserFindResult>;
     getText: (input: BrowserTabTarget & { maxChars?: number }) => Promise<BrowserPageText>;
     extract: (input: BrowserTabTarget & { maxChars?: number }) => Promise<BrowserPageExtraction>;
@@ -1066,7 +1134,14 @@ export type GhPrState = "OPEN" | "CLOSED" | "MERGED";
 export type SessionPrSummary = Bindings.SessionPrSummary;
 export type PrCleanupReport = Bindings.PrCleanupReport;
 
-export type GhCheckState = "unknown" | "pending" | "success" | "failure" | "neutral" | "cancelled" | "skipped";
+export type GhCheckState =
+  | "unknown"
+  | "pending"
+  | "success"
+  | "failure"
+  | "neutral"
+  | "cancelled"
+  | "skipped";
 
 export type LearningKind = "pitfall" | "convention" | "command";
 export type ProjectSource = Bindings.ProjectSource;

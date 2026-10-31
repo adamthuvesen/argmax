@@ -16,7 +16,7 @@ const TRACKED_CHANNELS = [
   "session:events-since",
   "workspace:status",
   "approvals:pending",
-  "review:load-diff"
+  "review:load-diff",
 ] as const;
 
 function readEnabled(): boolean {
@@ -137,7 +137,7 @@ export function PerfOverlay(): JSX.Element | null {
         borderRadius: "var(--radius-lg)",
         boxShadow: "var(--shadow-2)",
         pointerEvents: "none",
-        minWidth: 220
+        minWidth: 220,
       }}
     >
       <div
@@ -146,15 +146,24 @@ export function PerfOverlay(): JSX.Element | null {
           marginBottom: 4,
           fontSize: "var(--text-2xs)",
           letterSpacing: 0.4,
-          textTransform: "uppercase"
+          textTransform: "uppercase",
         }}
       >
         Argmax performance
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "2px 10px", marginBottom: 6 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, 1fr)",
+          gap: "2px 10px",
+          marginBottom: 6,
+        }}
+      >
         <span>CPU</span>
         <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-          {performance?.latest ? `${performance.latest.processes.total.cpuPercent.toFixed(1)}%` : "—"}
+          {performance?.latest
+            ? `${performance.latest.processes.total.cpuPercent.toFixed(1)}%`
+            : "—"}
         </span>
         <span>Memory</span>
         <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
@@ -175,7 +184,7 @@ export function PerfOverlay(): JSX.Element | null {
           marginBottom: 4,
           fontSize: "var(--text-2xs)",
           letterSpacing: 0.4,
-          textTransform: "uppercase"
+          textTransform: "uppercase",
         }}
       >
         IPC p50 / p99
@@ -187,10 +196,22 @@ export function PerfOverlay(): JSX.Element | null {
             return (
               <tr key={channel} data-channel={channel}>
                 <td style={{ paddingRight: 8, opacity: entry ? 1 : 0.5 }}>{channel}</td>
-                <td style={{ textAlign: "right", paddingRight: 6, fontVariantNumeric: "tabular-nums" }}>
+                <td
+                  style={{
+                    textAlign: "right",
+                    paddingRight: 6,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
                   {entry ? fmt(entry.p50) : "—"}
                 </td>
-                <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", opacity: entry ? 1 : 0.5 }}>
+                <td
+                  style={{
+                    textAlign: "right",
+                    fontVariantNumeric: "tabular-nums",
+                    opacity: entry ? 1 : 0.5,
+                  }}
+                >
                   {entry ? fmt(entry.p99) : "—"}
                 </td>
               </tr>

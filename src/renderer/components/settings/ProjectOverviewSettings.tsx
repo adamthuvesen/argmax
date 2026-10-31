@@ -1,6 +1,10 @@
 import { useEffect, useId, useState, type JSX } from "react";
 import { projectActions } from "../../data/bridgeActions.js";
-import type { ProjectFolder, ProjectOverviewDocument, ProjectSummary } from "../../../shared/types.js";
+import type {
+  ProjectFolder,
+  ProjectOverviewDocument,
+  ProjectSummary,
+} from "../../../shared/types.js";
 import { validationMessage } from "../../../shared/validationMessage.js";
 import { showErrorToast } from "../../state/toast.js";
 import { SettingGroup } from "./settingsPrimitives.js";
@@ -8,7 +12,7 @@ import { SettingGroup } from "./settingsPrimitives.js";
 export function ProjectOverviewSettings({
   project,
   folders,
-  onProjectUpdated
+  onProjectUpdated,
 }: {
   project: ProjectSummary;
   folders: ProjectFolder[];
@@ -28,7 +32,8 @@ export function ProjectOverviewSettings({
 
   useEffect(() => {
     setEditor((current) => {
-      if (current.text === current.baseText) return { text: savedText, baseText: savedText, revision };
+      if (current.text === current.baseText)
+        return { text: savedText, baseText: savedText, revision };
       if (current.baseText === savedText) return { ...current, revision };
       return current;
     });
@@ -47,17 +52,20 @@ export function ProjectOverviewSettings({
             ? await api.updateOverview({
                 projectId: project.id,
                 text: submittedText,
-                expectedRevision: editor.revision
+                expectedRevision: editor.revision,
               })
             : action === "apply"
               ? await api.applyOverviewDraft({ projectId: project.id, expectedRevision: revision })
-              : await api.discardOverviewDraft({ projectId: project.id, expectedRevision: revision });
+              : await api.discardOverviewDraft({
+                  projectId: project.id,
+                  expectedRevision: revision,
+                });
       if (action === "save") {
         const nextText = updated.overview?.saved?.text ?? "";
         setEditor((current) => ({
           text: current.text === submittedText ? nextText : current.text,
           baseText: nextText,
-          revision: updated.overview?.revision ?? 0
+          revision: updated.overview?.revision ?? 0,
         }));
         setSaved(true);
       }
@@ -76,7 +84,8 @@ export function ProjectOverviewSettings({
           Overview
         </label>
         <p className="settings-note">
-          Purpose, folder roles, and how the code fits together. Agents use this to find relevant files.
+          Purpose, folder roles, and how the code fits together. Agents use this to find relevant
+          files.
         </p>
         <textarea
           id={inputId}
@@ -182,7 +191,9 @@ export function ProjectOverviewSettings({
             {overview.draft.text}
           </div>
           <OverviewSources document={overview.draft} folders={folders} />
-          {dirty ? <p className="settings-note">Save or discard your edits before applying the draft.</p> : null}
+          {dirty ? (
+            <p className="settings-note">Save or discard your edits before applying the draft.</p>
+          ) : null}
           <div className="settings-form-footer">
             <button
               type="button"
@@ -209,7 +220,7 @@ export function ProjectOverviewSettings({
 
 function OverviewSources({
   document,
-  folders
+  folders,
 }: {
   document: ProjectOverviewDocument;
   folders: ProjectFolder[];
@@ -218,7 +229,10 @@ function OverviewSources({
     <div className="project-overview-sources">
       {document.generatedAt ? (
         <p className="settings-note">
-          Generated <time dateTime={document.generatedAt}>{new Date(document.generatedAt).toLocaleString()}</time>
+          Generated{" "}
+          <time dateTime={document.generatedAt}>
+            {new Date(document.generatedAt).toLocaleString()}
+          </time>
         </p>
       ) : null}
       {document.sources.length > 0 ? (

@@ -37,7 +37,10 @@ describe("useBridgeQuery", () => {
   });
 
   it("reports a rejected read and clears the error when a refetch succeeds", async () => {
-    const read = vi.fn().mockRejectedValueOnce(new Error("flaky")).mockResolvedValueOnce({ ok: true });
+    const read = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("flaky"))
+      .mockResolvedValueOnce({ ok: true });
     const { result } = renderHook(() => useBridgeQuery({ key: ["k"], read }));
     await waitFor(() => expect(result.current.error).toBe("flaky"));
     await act(async () => {
@@ -60,8 +63,9 @@ describe("useBridgeQuery", () => {
     const replies = { a: deferred<string>(), b: deferred<string>() };
     const onData = vi.fn();
     const { result, rerender } = renderHook(
-      ({ id }: { id: "a" | "b" }) => useBridgeQuery({ key: ["k", id], read: () => replies[id].promise, onData }),
-      { initialProps: { id: "a" as "a" | "b" } }
+      ({ id }: { id: "a" | "b" }) =>
+        useBridgeQuery({ key: ["k", id], read: () => replies[id].promise, onData }),
+      { initialProps: { id: "a" as "a" | "b" } },
     );
     rerender({ id: "b" });
     expect(result.current.isLoading).toBe(true);
@@ -86,8 +90,12 @@ describe("useBridgeQuery", () => {
     const onError = vi.fn();
     const { result, rerender } = renderHook(
       ({ id }: { id: string }) =>
-        useBridgeQuery({ key: [id], read: () => (id === "a" ? stale.promise : Promise.resolve("b")), onError }),
-      { initialProps: { id: "a" } }
+        useBridgeQuery({
+          key: [id],
+          read: () => (id === "a" ? stale.promise : Promise.resolve("b")),
+          onError,
+        }),
+      { initialProps: { id: "a" } },
     );
     rerender({ id: "b" });
     await waitFor(() => expect(result.current.data).toBe("b"));
@@ -121,7 +129,9 @@ describe("useBridgeQuery", () => {
   it("drops a reply that arrives after unmount", async () => {
     const reply = deferred<string>();
     const onData = vi.fn();
-    const { unmount } = renderHook(() => useBridgeQuery({ key: ["k"], read: () => reply.promise, onData }));
+    const { unmount } = renderHook(() =>
+      useBridgeQuery({ key: ["k"], read: () => reply.promise, onData }),
+    );
     unmount();
     reply.resolve("too late");
     await reply.promise;
@@ -132,7 +142,7 @@ describe("useBridgeQuery", () => {
   it("isCurrent turns false for a handler from an earlier key", async () => {
     const { result, rerender } = renderHook(
       ({ id }: { id: string }) => useBridgeQuery({ key: [id], read: () => Promise.resolve(id) }),
-      { initialProps: { id: "a" } }
+      { initialProps: { id: "a" } },
     );
     await waitFor(() => expect(result.current.data).toBe("a"));
     const handlerFromA = result.current;
@@ -149,8 +159,13 @@ describe("useBridgeQuery", () => {
     const onData = vi.fn();
     const { result, rerender } = renderHook(
       ({ revision }: { revision: number }) =>
-        useBridgeQuery({ key: ["earlier", revision], enabled: false, read: () => page.promise, onData }),
-      { initialProps: { revision: 0 } }
+        useBridgeQuery({
+          key: ["earlier", revision],
+          enabled: false,
+          read: () => page.promise,
+          onData,
+        }),
+      { initialProps: { revision: 0 } },
     );
     expect(result.current.isLoading).toBe(false);
     act(() => void result.current.refetch());
@@ -174,10 +189,10 @@ describe("useBridgeQuery", () => {
     const useStat = (path: string) =>
       useBridgeQuery<WorkspaceFileStat>({
         key: ["workspace.statFile", path],
-        read: (api) => api.workspace.statFile({ kind: "workspace", id: "w" }, path)
+        read: (api) => api.workspace.statFile({ kind: "workspace", id: "w" }, path),
       });
     const { result, rerender } = renderHook(({ path }: { path: string }) => useStat(path), {
-      initialProps: { path: "a.ts" }
+      initialProps: { path: "a.ts" },
     });
     const saved = { mtimeMs: 200 } as unknown as WorkspaceFileStat;
     act(() => result.current.setData(() => saved));
@@ -204,7 +219,9 @@ describe("useBridgeQuery", () => {
   // project B after a switch.
   it("c05f38d1: project A's learnings do not land after switching to project B", async () => {
     const replies = { a: deferred<Learning[]>(), b: deferred<Learning[]>() };
-    const list = vi.fn(({ projectId }: { projectId: string }) => replies[projectId as "a" | "b"].promise);
+    const list = vi.fn(
+      ({ projectId }: { projectId: string }) => replies[projectId as "a" | "b"].promise,
+    );
     installBridge({ learnings: { list } });
     const projectA = { id: "a", name: "A" } as ProjectSummary;
     const projectB = { id: "b", name: "B" } as ProjectSummary;
@@ -216,7 +233,7 @@ describe("useBridgeQuery", () => {
         projectId: id,
         kind: "fact",
         createdAt: "",
-        updatedAt: ""
+        updatedAt: "",
       }) as unknown as Learning;
 
     const { rerender } = render(<ProjectKnowledgePanel projects={[projectA]} />);

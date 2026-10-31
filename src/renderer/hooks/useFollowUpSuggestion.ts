@@ -47,7 +47,10 @@ function remember(key: string, suggestion: string | null): void {
  * `null` whenever the suggestion is in flight, unavailable, or the call failed
  * — every one of those means "keep the static placeholder".
  */
-export function useFollowUpSuggestion(session: SessionSummary | null, enabled: boolean): string | null {
+export function useFollowUpSuggestion(
+  session: SessionSummary | null,
+  enabled: boolean,
+): string | null {
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const sessionId = session?.id ?? null;
   const provider = session?.provider ?? null;

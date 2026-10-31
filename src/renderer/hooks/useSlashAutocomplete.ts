@@ -27,7 +27,9 @@ const NO_SKILLS: SkillSummary[] = [];
 const NO_COMMANDS: ComposerCommand[] = [];
 
 /** One row of the `/` menu: a composer action, or a skill to insert. */
-export type SlashItem = { kind: "command"; command: ComposerCommand } | { kind: "skill"; skill: SkillSummary };
+export type SlashItem =
+  | { kind: "command"; command: ComposerCommand }
+  | { kind: "skill"; skill: SkillSummary };
 
 interface UseSlashAutocompleteArgs {
   input: string;
@@ -65,7 +67,7 @@ export function useSlashAutocomplete({
   provider,
   workspaceId,
   commands = NO_COMMANDS,
-  inputRef
+  inputRef,
 }: UseSlashAutocompleteArgs): SlashAutocompleteState {
   // Loaded skills carry the provider/workspace key they were fetched for. The
   // pane retargets provider in place (no remount), so a list that is not for
@@ -124,7 +126,10 @@ export function useSlashAutocomplete({
       });
   }, [input, slashQuery, provider, workspaceId, cacheKey]);
 
-  const skillNames = useMemo(() => new Set(skills.map((skill) => skill.name.toLowerCase())), [skills]);
+  const skillNames = useMemo(
+    () => new Set(skills.map((skill) => skill.name.toLowerCase())),
+    [skills],
+  );
 
   const filteredCommands = useMemo(() => {
     if (!slashQuery) {
@@ -133,7 +138,8 @@ export function useSlashAutocomplete({
     // A draft-writing command replaces the draft with its own opener, so it is
     // offered only while the token opens the draft. Mid-sentence it would eat
     // the message already typed.
-    const offered = slashQuery.start === 0 ? commands : commands.filter((command) => !command.writesDraft);
+    const offered =
+      slashQuery.start === 0 ? commands : commands.filter((command) => !command.writesDraft);
     const needle = slashQuery.query.toLowerCase();
     if (!needle) {
       return offered;
@@ -142,7 +148,8 @@ export function useSlashAutocomplete({
     // name, and a substring rule would leave "Auto" and "Stop" sitting on top
     // of a `/o…` skill query long after the user stopped meaning them.
     return offered.filter(
-      (command) => command.name.startsWith(needle) || command.label.toLowerCase().startsWith(needle)
+      (command) =>
+        command.name.startsWith(needle) || command.label.toLowerCase().startsWith(needle),
     );
   }, [commands, slashQuery]);
 
@@ -164,15 +171,17 @@ export function useSlashAutocomplete({
     };
     return skills
       .filter((skill) => skill.name.toLowerCase().includes(needle))
-      .sort((left, right) => relevance(left.name.toLowerCase()) - relevance(right.name.toLowerCase()));
+      .sort(
+        (left, right) => relevance(left.name.toLowerCase()) - relevance(right.name.toLowerCase()),
+      );
   }, [skills, slashQuery]);
 
   const items = useMemo<SlashItem[]>(
     () => [
       ...filteredCommands.map((command) => ({ kind: "command" as const, command })),
-      ...filteredSkills.map((skill) => ({ kind: "skill" as const, skill }))
+      ...filteredSkills.map((skill) => ({ kind: "skill" as const, skill })),
     ],
-    [filteredCommands, filteredSkills]
+    [filteredCommands, filteredSkills],
   );
   const skillSectionStart = filteredSkills.length > 0 ? filteredCommands.length : -1;
 
@@ -245,6 +254,6 @@ export function useSlashAutocomplete({
     setSelectionIndex,
     selectItem,
     dismiss: () => setDismissedInput(input),
-    onKeyDown
+    onKeyDown,
   };
 }

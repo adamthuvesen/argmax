@@ -19,7 +19,7 @@ export const NO_PROJECT_CHECK: ProjectCheck = {
   runnerUpProjectId: null,
   suggestedProbability: 0,
   currentProbability: 0,
-  reasons: []
+  reasons: [],
 };
 
 function checkable(prompt: string): boolean {
@@ -31,7 +31,7 @@ export function useProjectCheck({
   enabled,
   projectId,
   prompt,
-  pickedByHand
+  pickedByHand,
 }: {
   /** Off in chat and cloud mode, without a Jev key, or with one project. */
   enabled: boolean;
@@ -50,7 +50,9 @@ export function useProjectCheck({
       const key = `${projectId}\u0000${pickedByHand ? 1 : 0}\u0000${text.trim()}`;
       const cached = cache.current.get(key);
       if (cached) return cached;
-      const pending = api.checkPrompt({ projectId, prompt: text.trim(), pickedByHand }).catch(() => NO_PROJECT_CHECK);
+      const pending = api
+        .checkPrompt({ projectId, prompt: text.trim(), pickedByHand })
+        .catch(() => NO_PROJECT_CHECK);
       cache.current.set(key, pending);
       if (cache.current.size > CACHE_SIZE) {
         const oldest = cache.current.keys().next().value;
@@ -58,7 +60,7 @@ export function useProjectCheck({
       }
       return pending;
     },
-    [enabled, pickedByHand, projectId]
+    [enabled, pickedByHand, projectId],
   );
 
   useEffect(() => {
@@ -75,6 +77,6 @@ export function useProjectCheck({
       });
       return Promise.race([start(openingPrompt), grace]).finally(() => clearTimeout(timer));
     },
-    [start]
+    [start],
   );
 }

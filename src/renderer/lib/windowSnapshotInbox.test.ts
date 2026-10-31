@@ -5,13 +5,18 @@ import {
   UNCLAIMED_TTL_MS,
   createWindowSnapshotInbox,
   startWindowSnapshotInbox,
-  windowSnapshotLabel
+  windowSnapshotLabel,
 } from "./windowSnapshotInbox.js";
 
 function snapshot(app = "Safari", title: string | null = "Docs"): WindowSnapshotAttach {
   return {
     attachment: { filePath: `/tmp/${app}.png`, mimeType: "image/png", sizeBytes: 12 },
-    source: { appName: app, bundleId: null, windowTitle: title, capturedAt: "2026-10-04T00:00:00.000Z" }
+    source: {
+      appName: app,
+      bundleId: null,
+      windowTitle: title,
+      capturedAt: "2026-10-04T00:00:00.000Z",
+    },
   };
 }
 
@@ -120,7 +125,8 @@ describe("window snapshot inbox", () => {
 describe("startWindowSnapshotInbox", () => {
   it("routes attach events to the inbox and failures to an error toast", () => {
     let attach: (value: WindowSnapshotAttach) => void = () => undefined;
-    let fail: (value: { code: string; message: string; action: string | null }) => void = () => undefined;
+    let fail: (value: { code: string; message: string; action: string | null }) => void = () =>
+      undefined;
     const unsubscribe = vi.fn();
     const deliver = vi.fn();
     const stop = startWindowSnapshotInbox(
@@ -132,16 +138,23 @@ describe("startWindowSnapshotInbox", () => {
         onFailed: (listener) => {
           fail = listener;
           return unsubscribe;
-        }
+        },
       },
-      { deliver }
+      { deliver },
     );
 
     attach(snapshot());
     expect(deliver).toHaveBeenCalledWith(snapshot());
 
-    fail({ code: "screen-recording-denied", message: "Screen Recording is off for Argmax.", action: null });
-    expect(toastSnapshot()).toEqual({ kind: "error", message: "Screen Recording is off for Argmax." });
+    fail({
+      code: "screen-recording-denied",
+      message: "Screen Recording is off for Argmax.",
+      action: null,
+    });
+    expect(toastSnapshot()).toEqual({
+      kind: "error",
+      message: "Screen Recording is off for Argmax.",
+    });
 
     stop();
     expect(unsubscribe).toHaveBeenCalledTimes(2);

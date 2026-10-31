@@ -26,7 +26,7 @@ export function MobileReviewScreen({
   initialFilePath = null,
   filePreviewOpen,
   onFilePreviewOpenChange,
-  onClose
+  onClose,
 }: {
   workspace: WorkspaceSummary;
   /** Open straight into this file — set when a chat file reference was tapped. */
@@ -58,8 +58,12 @@ export function MobileReviewScreen({
 
   const isChanges = review.mode === "changes";
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
-  const expandedFilePath = selectedFile && collapsedDiffPath !== selectedFile.path ? selectedFile.path : null;
-  const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
+  const expandedFilePath =
+    selectedFile && collapsedDiffPath !== selectedFile.path ? selectedFile.path : null;
+  const diffBlocks = useMemo(
+    () => parseUnifiedDiff(review.diff?.content ?? ""),
+    [review.diff?.content],
+  );
   const totals = summarizeChangedFiles(review.files);
 
   const toggleChangedFile = (filePath: string): void => {
@@ -78,7 +82,7 @@ export function MobileReviewScreen({
     openFile: (path: string): void => {
       review.workspaceFiles.openFile(path);
       onFilePreviewOpenChange(true);
-    }
+    },
   };
   // Leaving Files mode takes the drill-down with it, so the screen depth the
   // back gesture reads never claims a preview that isn't on screen.
@@ -94,10 +98,20 @@ export function MobileReviewScreen({
         backLabel={previewingFile ? "Back to files" : "Back to chat"}
         title={
           <div className="mobile-review-tabs" role="tablist" aria-label="Review mode">
-            <button role="tab" type="button" aria-selected={isChanges} onClick={() => showMode("changes")}>
+            <button
+              role="tab"
+              type="button"
+              aria-selected={isChanges}
+              onClick={() => showMode("changes")}
+            >
               Changes
             </button>
-            <button role="tab" type="button" aria-selected={!isChanges} onClick={() => showMode("files")}>
+            <button
+              role="tab"
+              type="button"
+              aria-selected={!isChanges}
+              onClick={() => showMode("files")}
+            >
               Files
             </button>
           </div>
@@ -108,7 +122,8 @@ export function MobileReviewScreen({
         <div className="mobile-review-meta">
           {review.files.length > 0 ? (
             <span className="mobile-review-totals">
-              {review.files.length} file{review.files.length === 1 ? "" : "s"} · +{totals.additions} −{totals.deletions}
+              {review.files.length} file{review.files.length === 1 ? "" : "s"} · +{totals.additions}{" "}
+              −{totals.deletions}
             </span>
           ) : null}
         </div>
@@ -163,7 +178,11 @@ export function MobileReviewScreen({
                       {isExpanded ? (
                         <div className="review-inline-diff">
                           {review.diffState === "loading" ? (
-                            <LinesSkeleton rows={10} label="Loading diff" className="review-diff-skeleton" />
+                            <LinesSkeleton
+                              rows={10}
+                              label="Loading diff"
+                              className="review-diff-skeleton"
+                            />
                           ) : null}
                           {review.diffState === "error" ? (
                             <p className="review-empty review-error" role="alert">

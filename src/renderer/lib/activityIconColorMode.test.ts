@@ -6,7 +6,7 @@ import {
   activityIconColorModeSnapshot,
   initActivityIconColorMode,
   resetActivityIconColorModeForTests,
-  setActivityIconColorMode
+  setActivityIconColorMode,
 } from "./activityIconColorMode.js";
 
 afterEach(() => {

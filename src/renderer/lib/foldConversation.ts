@@ -33,11 +33,11 @@ export type RenderItem =
  */
 export function foldConversationItems(
   conversationEvents: readonly TimelineEvent[],
-  toolCalls: readonly ToolCall[]
+  toolCalls: readonly ToolCall[],
 ): ConversationItem[] {
   const items: ConversationItem[] = [
     ...conversationEvents.map((event) => ({ kind: "message" as const, event })),
-    ...toolCalls.map((tool) => ({ kind: "tool" as const, tool }))
+    ...toolCalls.map((tool) => ({ kind: "tool" as const, tool })),
   ];
   const itemTime = (item: ConversationItem): string =>
     item.kind === "message" ? item.event.createdAt : item.tool.createdAt;
@@ -58,7 +58,7 @@ export function foldConversationItems(
  */
 export function foldRenderItems(
   conversationItems: readonly ConversationItem[],
-  session: SessionSummary | null | undefined
+  session: SessionSummary | null | undefined,
 ): RenderItem[] {
   const out: RenderItem[] = [];
   // Preserve the historical fallback keys from the old transport-level tool
@@ -138,7 +138,7 @@ export function foldRenderItems(
     if (key) {
       const lists = [
         ...(pending ? [pending.multitasks] : []),
-        ...out.flatMap((candidate) => (candidate.kind === "turn" ? [candidate.multitasks] : []))
+        ...out.flatMap((candidate) => (candidate.kind === "turn" ? [candidate.multitasks] : [])),
       ];
       for (const list of lists) {
         const at = list.findIndex((candidate) => candidate.childSessionId === key);
@@ -155,7 +155,7 @@ export function foldRenderItems(
         steerEvents: [],
         toolItems: [],
         multitasks: [],
-        firstId: activeTurnId
+        firstId: activeTurnId,
       };
     }
     pending.multitasks.push(notice);
@@ -167,12 +167,13 @@ export function foldRenderItems(
   let deferredNotes: RenderItem[] = [];
   const pushSessionNote = (event: TimelineEvent): void => {
     const canonical = decodeTimelineEvent(event);
-    const activity = canonical.kind === "lifecycle" && canonical.name === "note" ? canonical.sourceActivity : null;
+    const activity =
+      canonical.kind === "lifecycle" && canonical.name === "note" ? canonical.sourceActivity : null;
     const item: RenderItem = {
       kind: "session-note",
       id: `session-note-${event.id}`,
       message: event.message,
-      ...(activity ? { sourceActivity: activity } : {})
+      ...(activity ? { sourceActivity: activity } : {}),
     };
     if (pending) deferredNotes.push(item);
     else out.push(item);
@@ -196,7 +197,7 @@ export function foldRenderItems(
         toolItems: foldTurnToolItems(pending.toolItems),
         assistantTimestamps: pending.assistantEvents.map((e) => Date.parse(e.createdAt)),
         ...(todo ? { todo } : {}),
-        multitasks: pending.multitasks
+        multitasks: pending.multitasks,
       });
     }
     pending = null;
@@ -245,7 +246,11 @@ export function foldRenderItems(
     // turn it lands in, and the follow-up that triggered it opens a fresh one
     // under the new agent. Unlike compaction it is a single row, so there is no
     // start/end pair to collapse.
-    if (item.kind === "message" && canonical?.kind === "lifecycle" && canonical.name === "provider-changed") {
+    if (
+      item.kind === "message" &&
+      canonical?.kind === "lifecycle" &&
+      canonical.name === "provider-changed"
+    ) {
       flush();
       const id = `provider-switch-${item.event.id}`;
       out.push({ kind: "provider-switch", id, notice: providerSwitchNoticeFor(item.event) });
@@ -277,7 +282,7 @@ export function foldRenderItems(
             steerEvents: [],
             toolItems: [],
             multitasks: [],
-            firstId: activeTurnId
+            firstId: activeTurnId,
           };
         }
         pending.steerEvents.push(item.event);
@@ -296,7 +301,7 @@ export function foldRenderItems(
         steerEvents: [],
         toolItems: [],
         multitasks: [],
-        firstId: activeTurnId
+        firstId: activeTurnId,
       };
     }
     if (item.kind === "message") {
@@ -330,8 +335,8 @@ export function foldRenderItems(
         type: "user.message",
         message: session.prompt,
         payload: { source: "composer" },
-        createdAt: session.startedAt
-      }
+        createdAt: session.startedAt,
+      },
     });
   }
   return out;

@@ -18,24 +18,29 @@ function checkpoint(): Checkpoint {
     turnBoundary: "event-1",
     providerConversationId: null,
     recoveryOf: null,
-    createdAt: "2026-09-08T08:00:00.000Z"
+    createdAt: "2026-09-08T08:00:00.000Z",
   };
 }
 
 function preview(overrides: Partial<RewindPreview> = {}): RewindPreview {
   return {
     checkpoint: checkpoint(),
-    currentFingerprint: { headSha: "abc", branch: "main", worktreeTree: "tree-2", indexTree: "index-2" },
+    currentFingerprint: {
+      headSha: "abc",
+      branch: "main",
+      worktreeTree: "tree-2",
+      indexTree: "index-2",
+    },
     changedPaths: ["src/auth/token.ts"],
     deletedPaths: ["src/auth/old.ts"],
-    ...overrides
+    ...overrides,
   };
 }
 
 const checkpoints = {
   list: vi.fn<ArgmaxApi["checkpoints"]["list"]>(),
   previewRewind: vi.fn<ArgmaxApi["checkpoints"]["previewRewind"]>(),
-  rewindFiles: vi.fn<ArgmaxApi["checkpoints"]["rewindFiles"]>()
+  rewindFiles: vi.fn<ArgmaxApi["checkpoints"]["rewindFiles"]>(),
 };
 
 beforeEach(() => {
@@ -44,7 +49,7 @@ beforeEach(() => {
   checkpoints.rewindFiles.mockResolvedValue({
     checkpoint: checkpoint(),
     recoveryCheckpoint: { ...checkpoint(), id: "recovery", label: "Recovery" },
-    restoredPaths: ["src/auth/token.ts"]
+    restoredPaths: ["src/auth/token.ts"],
   });
   window.argmax = { checkpoints } as unknown as ArgmaxApi;
 });
@@ -77,11 +82,13 @@ describe("TurnRevert", () => {
         workspaceId="w1"
         unavailableReason="No checkpoint was saved before this turn. Disk was full."
         onReverted={vi.fn()}
-      />
+      />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Revert to here" }));
 
-    await waitFor(() => expect(toastSnapshot()?.message).toContain("No checkpoint was saved before this turn"));
+    await waitFor(() =>
+      expect(toastSnapshot()?.message).toContain("No checkpoint was saved before this turn"),
+    );
     expect(checkpoints.previewRewind).not.toHaveBeenCalled();
   });
 
@@ -94,11 +101,13 @@ describe("TurnRevert", () => {
       expect(checkpoints.rewindFiles).toHaveBeenCalledWith({
         workspaceId: "w1",
         checkpointId: "checkpoint-1",
-        expectedFingerprint: preview().currentFingerprint
-      })
+        expectedFingerprint: preview().currentFingerprint,
+      }),
     );
     expect(onReverted).toHaveBeenCalledOnce();
-    await waitFor(() => expect(screen.queryByRole("region", { name: "Revert to here" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Revert to here" })).not.toBeInTheDocument(),
+    );
   });
 
   it("commits nothing when the confirm is dismissed", async () => {
@@ -106,7 +115,9 @@ describe("TurnRevert", () => {
     fireEvent.click(screen.getByRole("button", { name: "Revert to here" }));
     fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
 
-    await waitFor(() => expect(screen.queryByRole("region", { name: "Revert to here" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Revert to here" })).not.toBeInTheDocument(),
+    );
     expect(checkpoints.rewindFiles).not.toHaveBeenCalled();
   });
 
@@ -124,12 +135,16 @@ describe("TurnRevert", () => {
     renderRevert();
     fireEvent.click(screen.getByRole("button", { name: "Revert to here" }));
     fireEvent.click(await screen.findByRole("button", { name: "Revert files" }));
-    await waitFor(() => expect(toastSnapshot()?.message).toBe("The checkout moved to another revision"));
+    await waitFor(() =>
+      expect(toastSnapshot()?.message).toBe("The checkout moved to another revision"),
+    );
     expect(screen.getByRole("button", { name: "Revert files" })).toBeEnabled();
   });
 
   it("cannot revert while the turn's checkout is still moving", () => {
-    render(<TurnRevert workspaceId="w1" checkpointId="checkpoint-1" disabled onReverted={vi.fn()} />);
+    render(
+      <TurnRevert workspaceId="w1" checkpointId="checkpoint-1" disabled onReverted={vi.fn()} />,
+    );
     expect(screen.getByRole("button", { name: "Revert to here" })).toBeDisabled();
   });
 });

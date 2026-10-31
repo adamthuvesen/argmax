@@ -10,10 +10,23 @@ import { serverIconFor } from "../lib/serverIcons.js";
  * the server and the action, so the mark is a recognition aid rather than the
  * only label.
  */
-export function ServerIcon({ server, web = false }: { server: string | null; web?: boolean }): JSX.Element | null {
+export function ServerIcon({
+  server,
+  web = false,
+}: {
+  server: string | null;
+  web?: boolean;
+}): JSX.Element | null {
   const colorMode = useActivityIconColorMode();
   if (server === "cua repl") {
-    return <Monitor size={14} className="tool-call-row-server-icon" role="img" aria-label="Computer use" />;
+    return (
+      <Monitor
+        size={14}
+        className="tool-call-row-server-icon"
+        role="img"
+        aria-label="Computer use"
+      />
+    );
   }
   const icon = server ? serverIconFor(server) : null;
   if (!icon) {
@@ -23,7 +36,8 @@ export function ServerIcon({ server, web = false }: { server: string | null; web
     // row that is plainly a web request.
     // Labelled, not hidden, like the brand marks: it is the only thing on a
     // browser-MCP row that says "the web" when the server name does not.
-    if (web) return <Globe size={14} className="tool-call-row-server-icon" role="img" aria-label="Web" />;
+    if (web)
+      return <Globe size={14} className="tool-call-row-server-icon" role="img" aria-label="Web" />;
     if (!server) return null;
     return <Plug size={14} className="tool-call-row-server-icon" aria-hidden="true" />;
   }
@@ -41,7 +55,13 @@ export function ServerIcon({ server, web = false }: { server: string | null; web
       {/* A style fill, not the attribute: the mascot's layers are theme tokens,
           and a presentation attribute cannot hold a var(). */}
       {artwork.layers.map((layer, index) => (
-        <path key={index} d={layer.path} data-tone={layer.tone} style={{ fill: layer.fill ?? "currentColor" }} />
+        <path
+          key={index}
+          data-testid="server-icon-layer"
+          d={layer.path}
+          data-tone={layer.tone}
+          style={{ fill: layer.fill ?? "currentColor" }}
+        />
       ))}
     </svg>
   );

@@ -19,9 +19,9 @@ const ALL_HITS: ReadonlyArray<SettingsHit> = SETTINGS_GROUPS.flatMap((group) =>
       group: group.id,
       sectionId: section.id,
       label: setting,
-      location: `${group.label} · ${section.label}`
-    }))
-  ])
+      location: `${group.label} · ${section.label}`,
+    })),
+  ]),
 );
 
 /**
@@ -34,7 +34,7 @@ export function SettingsRail({
   active,
   onChange,
   onOpenSection,
-  onBack
+  onBack,
 }: {
   active: SettingsGroupId;
   onChange: (group: SettingsGroupId) => void;
@@ -50,7 +50,7 @@ export function SettingsRail({
       label: hit.label,
       subtitle: hit.location,
       group: "Settings" as const,
-      run: () => undefined
+      run: () => undefined,
     }));
     return searchPaletteItems(commands, trimmed).map(({ item }) => ALL_HITS[Number(item.id)]);
   }, [trimmed]);

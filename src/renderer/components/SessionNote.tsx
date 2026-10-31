@@ -12,7 +12,7 @@ import { WebLink } from "./WebLink.js";
  */
 export function SessionNote({
   message,
-  sourceActivity
+  sourceActivity,
 }: {
   message: string;
   sourceActivity?: ProjectSourceActivity;
@@ -24,7 +24,8 @@ export function SessionNote({
       <span className="conversation-note-text">
         {cloudHandoff ? (
           <>
-            Sent task to {cloudHandoff[1]} Cloud · <WebLink href={cloudHandoff[2]}>Open task</WebLink>
+            Sent task to {cloudHandoff[1]} Cloud ·{" "}
+            <WebLink href={cloudHandoff[2]}>Open task</WebLink>
           </>
         ) : (
           message

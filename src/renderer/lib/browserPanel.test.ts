@@ -29,7 +29,7 @@ import {
   subscribeAgentBrowserOpen,
   subscribeBrowserOwner,
   subscribeBrowserRequest,
-  subscribeBrowserTabs
+  subscribeBrowserTabs,
 } from "./browserPanel.js";
 
 describe("resolveBrowserInput", () => {
@@ -39,10 +39,10 @@ describe("resolveBrowserInput", () => {
 
   it("falls back to a Google search for everything else", () => {
     expect(resolveBrowserInput("tauri multiwebview docs")).toBe(
-      "https://www.google.com/search?q=tauri%20multiwebview%20docs"
+      "https://www.google.com/search?q=tauri%20multiwebview%20docs",
     );
     expect(resolveBrowserInput("file:///etc/passwd")).toBe(
-      "https://www.google.com/search?q=file%3A%2F%2F%2Fetc%2Fpasswd"
+      "https://www.google.com/search?q=file%3A%2F%2F%2Fetc%2Fpasswd",
     );
   });
 
@@ -59,7 +59,9 @@ describe("normalizeBrowserUrl", () => {
 
   it("upgrades bare hosts to https", () => {
     expect(normalizeBrowserUrl("github.com")).toBe("https://github.com");
-    expect(normalizeBrowserUrl("github.com/argmax?tab=repos")).toBe("https://github.com/argmax?tab=repos");
+    expect(normalizeBrowserUrl("github.com/argmax?tab=repos")).toBe(
+      "https://github.com/argmax?tab=repos",
+    );
     expect(normalizeBrowserUrl("localhost:5173")).toBe("https://localhost:5173");
   });
 
@@ -172,20 +174,25 @@ describe("tab persistence", () => {
         nextTabSeq: 3,
         tabs: [
           { id: "tab-1", url: "https://github.com", title: "GitHub" },
-          { id: "tab-2", url: "https://example.com", title: null }
-        ]
-      })
+          { id: "tab-2", url: "https://example.com", title: null },
+        ],
+      }),
     );
     vi.resetModules();
     const fresh = await import("./browserPanel.js");
 
-    expect(fresh.getBrowserTabs(fresh.BROWSER_PAGE_OWNER_ID).map((tab) => tab.id)).toEqual(["tab-1", "tab-2"]);
+    expect(fresh.getBrowserTabs(fresh.BROWSER_PAGE_OWNER_ID).map((tab) => tab.id)).toEqual([
+      "tab-1",
+      "tab-2",
+    ]);
     expect(fresh.getActiveBrowserTabId(fresh.BROWSER_PAGE_OWNER_ID)).toBe("tab-2");
     expect(fresh.getBrowserTabs("session-a")).toEqual([]);
     // Restored tabs have no native webview until this run recreates one.
     expect(fresh.isBrowserTabMaterialized("tab-1")).toBe(false);
     // The id counter continues past restored ids, so labels never collide.
-    expect(fresh.createBrowserTab(fresh.BROWSER_PAGE_OWNER_ID, "https://argmax.dev").id).toBe("tab-3");
+    expect(fresh.createBrowserTab(fresh.BROWSER_PAGE_OWNER_ID, "https://argmax.dev").id).toBe(
+      "tab-3",
+    );
 
     fresh.resetBrowserTabsForTests();
     window.localStorage.removeItem("argmax.browser.tabs");
@@ -195,8 +202,10 @@ describe("tab persistence", () => {
     window.localStorage.setItem(
       "argmax.browser.tabs",
       JSON.stringify({
-        scopes: { [BROWSER_PAGE_OWNER_ID]: { activeTabId: null, lastUrl: "https://claude.ai", tabs: [] } }
-      })
+        scopes: {
+          [BROWSER_PAGE_OWNER_ID]: { activeTabId: null, lastUrl: "https://claude.ai", tabs: [] },
+        },
+      }),
     );
     vi.resetModules();
     const fresh = await import("./browserPanel.js");
@@ -214,23 +223,25 @@ describe("tab persistence", () => {
           [BROWSER_PAGE_OWNER_ID]: {
             activeTabId: "tab-1",
             lastUrl: "https://github.com",
-            tabs: [{ id: "tab-1", url: "https://github.com", title: "GitHub" }]
+            tabs: [{ id: "tab-1", url: "https://github.com", title: "GitHub" }],
           },
           "session-a": {
             activeTabId: "tab-3",
             lastUrl: "https://example.com",
             tabs: [
               { id: "tab-2", url: "https://one.example", title: null },
-              { id: "tab-3", url: "https://example.com", title: "Example" }
-            ]
-          }
-        }
-      })
+              { id: "tab-3", url: "https://example.com", title: "Example" },
+            ],
+          },
+        },
+      }),
     );
     vi.resetModules();
     const fresh = await import("./browserPanel.js");
 
-    expect(fresh.getBrowserTabs(fresh.BROWSER_PAGE_OWNER_ID).map((tab) => tab.url)).toEqual(["https://github.com"]);
+    expect(fresh.getBrowserTabs(fresh.BROWSER_PAGE_OWNER_ID).map((tab) => tab.url)).toEqual([
+      "https://github.com",
+    ]);
     expect(fresh.getBrowserTabs("session-a").map((tab) => tab.id)).toEqual(["tab-2", "tab-3"]);
     expect(fresh.getActiveBrowserTabId("session-a")).toBe("tab-3");
     expect(fresh.createBrowserTab("session-a", "https://new.example").id).toBe("tab-4");
@@ -264,10 +275,10 @@ describe("tab persistence", () => {
           lastUrl: "https://latest.example",
           tabs: [
             { id: first.id, url: "https://one.example", title: null },
-            { id: "tab-2", url: "https://two.example", title: null }
-          ]
-        }
-      }
+            { id: "tab-2", url: "https://two.example", title: null },
+          ],
+        },
+      },
     });
   });
 
@@ -313,9 +324,9 @@ describe("tab persistence", () => {
       scopes: {
         "session-a": {
           activeTabId: latest.id,
-          lastUrl: "https://latest.example"
-        }
-      }
+          lastUrl: "https://latest.example",
+        },
+      },
     });
     vi.runOnlyPendingTimers();
     expect(setItem).toHaveBeenCalledTimes(1);
@@ -347,7 +358,7 @@ describe("mirroring the app's tab registry", () => {
     url: `https://${tabId}.example`,
     title: null,
     loading: false,
-    ...overrides
+    ...overrides,
   });
 
   it("adds tabs the app opened, marking them live in this run", () => {
@@ -365,7 +376,7 @@ describe("mirroring the app's tab registry", () => {
   it("drops a tab that the registry has stopped reporting", () => {
     applyBrowserTabs([
       registryTab("agent-1", { ownerSessionId: "s1" }),
-      registryTab("agent-2", { ownerSessionId: "s1" })
+      registryTab("agent-2", { ownerSessionId: "s1" }),
     ]);
     applyBrowserTabs([registryTab("agent-2", { ownerSessionId: "s1" })]);
 
@@ -388,7 +399,9 @@ describe("mirroring the app's tab registry", () => {
 
   it("keeps a title the strip already showed when the push carries none", () => {
     applyBrowserTabs([registryTab("agent-1", { ownerSessionId: "s1", title: "Example Domain" })]);
-    applyBrowserTabs([registryTab("agent-1", { ownerSessionId: "s1", title: null, loading: true })]);
+    applyBrowserTabs([
+      registryTab("agent-1", { ownerSessionId: "s1", title: null, loading: true }),
+    ]);
 
     const [tab] = getBrowserTabs("s1");
     expect(tab?.title).toBe("Example Domain");
@@ -398,7 +411,7 @@ describe("mirroring the app's tab registry", () => {
   it("re-points the active tab when the registry closes the one showing", () => {
     applyBrowserTabs([
       registryTab("agent-1", { ownerSessionId: "s1" }),
-      registryTab("agent-2", { ownerSessionId: "s1" })
+      registryTab("agent-2", { ownerSessionId: "s1" }),
     ]);
     activateBrowserTab("agent-2");
     applyBrowserTabs([registryTab("agent-1", { ownerSessionId: "s1" })]);
@@ -429,7 +442,7 @@ describe("mirroring the app's tab registry", () => {
   it("reopens at the active tab, not a page a background tab reported", () => {
     applyBrowserTabs([
       registryTab("tab-1", { url: "https://github.com" }),
-      registryTab("agent-1", { ownerSessionId: "s1", url: "https://example.com" })
+      registryTab("agent-1", { ownerSessionId: "s1", url: "https://example.com" }),
     ]);
     activateBrowserTab("tab-1");
     // A hidden tab loading its own page still reports state.
@@ -445,7 +458,7 @@ describe("mirroring the app's tab registry", () => {
 
     expect(getBrowserTabs("session-a").map((tab) => tab.url)).toEqual([
       "https://a.example/one",
-      "https://a.example/two"
+      "https://a.example/two",
     ]);
     expect(getBrowserTabs("session-b").map((tab) => tab.url)).toEqual(["https://b.example"]);
     expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toEqual([]);

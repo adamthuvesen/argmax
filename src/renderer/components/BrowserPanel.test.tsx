@@ -5,10 +5,14 @@ import type { ArgmaxApi, BrowserStateEvent } from "../../shared/types.js";
 import {
   BROWSER_HISTORY_KEY,
   setBrowserHistoryStorageForTests,
-  type BrowserHistoryEntry
+  type BrowserHistoryEntry,
 } from "../lib/browserHistory.js";
 import { SIDEBAR_COLLAPSED_KEY } from "../lib/uiPreferences.js";
-import { resetSidebarChromeForTests, setSidebarPeek, toggleSidebarCollapsed } from "../state/sidebarChrome.js";
+import {
+  resetSidebarChromeForTests,
+  setSidebarPeek,
+  toggleSidebarCollapsed,
+} from "../state/sidebarChrome.js";
 import {
   applyBrowserTabs,
   BROWSER_PAGE_OWNER_ID,
@@ -18,7 +22,7 @@ import {
   openInBrowserPanel,
   requestCloseActiveBrowserTab,
   resetBrowserTabsForTests,
-  unmarkBrowserTabMaterialized
+  unmarkBrowserTabMaterialized,
 } from "../lib/browserPanel.js";
 import { BrowserPanel } from "./BrowserPanel.js";
 
@@ -65,17 +69,20 @@ const browserStub = {
     return () => {
       pageCommandListener = null;
     };
-  })
+  }),
 };
 
-function stubRect(element: HTMLElement, rect: { x: number; y: number; width: number; height: number }): void {
+function stubRect(
+  element: HTMLElement,
+  rect: { x: number; y: number; width: number; height: number },
+): void {
   element.getBoundingClientRect = () => ({
     ...rect,
     left: rect.x,
     top: rect.y,
     right: rect.x + rect.width,
     bottom: rect.y + rect.height,
-    toJSON: () => rect
+    toJSON: () => rect,
   });
 }
 
@@ -97,7 +104,7 @@ function threeTabs(userTabId: string): Parameters<typeof applyBrowserTabs>[0] {
     url: `https://${title.toLowerCase()}.example.com`,
     title,
     loading: false,
-    group: null
+    group: null,
   }));
 }
 
@@ -116,7 +123,7 @@ function layOutStrip(): HTMLElement[] {
 function appendDialog(
   rect: { x: number; y: number; width: number; height: number },
   attribute = "role",
-  value = "dialog"
+  value = "dialog",
 ): HTMLElement {
   const dialog = document.createElement("div");
   dialog.setAttribute(attribute, value);
@@ -132,7 +139,9 @@ function activeTabId(scopeId = BROWSER_PAGE_OWNER_ID): string {
 }
 
 beforeEach(() => {
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 800, 600));
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    new DOMRect(0, 0, 800, 600),
+  );
   stateListener = null;
   newTabListener = null;
   pageCommandListener = null;
@@ -143,7 +152,7 @@ beforeEach(() => {
     save: (nextEntries) => {
       historyEntries = structuredClone(nextEntries);
       return Promise.resolve();
-    }
+    },
   });
   window.localStorage.removeItem(SIDEBAR_COLLAPSED_KEY);
   resetSidebarChromeForTests();
@@ -162,7 +171,13 @@ afterEach(() => {
 describe("BrowserPanel", () => {
   it("hides a native surface when its tiled pane has no layout bounds", async () => {
     const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     await act(async () => {
       await Promise.resolve();
     });
@@ -172,8 +187,8 @@ describe("BrowserPanel", () => {
       expect(browserStub.setBounds).toHaveBeenLastCalledWith({
         tabId: activeTabId(),
         bounds: { x: 0, y: 0, width: 1, height: 1 },
-        visible: false
-      })
+        visible: false,
+      }),
     );
     bounds.mockReturnValue(new DOMRect(0, 0, 800, 600));
     fireEvent.resize(window);
@@ -181,14 +196,16 @@ describe("BrowserPanel", () => {
       expect(browserStub.setBounds).toHaveBeenLastCalledWith({
         tabId: activeTabId(),
         bounds: { x: 0, y: 0, width: 800, height: 600 },
-        visible: true
-      })
+        visible: true,
+      }),
     );
   });
 
   it("closes only the owning panel for Escape from a native page", () => {
     const onClose = vi.fn();
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />);
+    render(
+      <BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />,
+    );
     const listeners = browserStub.onPageCommand.mock.calls.map(([listener]) => listener);
     act(() => {
       for (const listener of listeners) listener({ tabId: "other-tab", command: "close-panel" });
@@ -201,56 +218,77 @@ describe("BrowserPanel", () => {
   });
 
   it("toggles blocking for the current site and reloads that tab", async () => {
-    browserStub.setSiteBlocking.mockResolvedValueOnce({ supported: true, disabledHosts: ["github.com"] });
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    browserStub.setSiteBlocking.mockResolvedValueOnce({
+      supported: true,
+      disabledHosts: ["github.com"],
+    });
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
 
     const shield = await screen.findByRole("button", {
-      name: "Disable ad and tracker blocking on github.com"
+      name: "Disable ad and tracker blocking on github.com",
     });
     expect(shield).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(shield);
 
     expect(browserStub.setSiteBlocking).toHaveBeenCalledWith({
       url: "https://github.com",
-      enabled: false
+      enabled: false,
     });
     await waitFor(() => expect(browserStub.reload).toHaveBeenCalledWith(activeTabId()));
     expect(
       screen.getByRole("button", {
-        name: "Enable ad and tracker blocking on github.com"
-      })
+        name: "Enable ad and tracker blocking on github.com",
+      }),
     ).toHaveAttribute("aria-pressed", "false");
   });
 
   it("re-enables blocking for an exact bypassed hostname", async () => {
     browserStub.contentBlocking.mockResolvedValueOnce({
       supported: true,
-      disabledHosts: ["github.com", "notgithub.com"]
+      disabledHosts: ["github.com", "notgithub.com"],
     });
     browserStub.setSiteBlocking.mockResolvedValueOnce({
       supported: true,
-      disabledHosts: ["notgithub.com"]
+      disabledHosts: ["notgithub.com"],
     });
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://GitHub.com./" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://GitHub.com./"
+        onClose={() => undefined}
+      />,
+    );
 
     const shield = await screen.findByRole("button", {
-      name: "Enable ad and tracker blocking on github.com"
+      name: "Enable ad and tracker blocking on github.com",
     });
     fireEvent.click(shield);
 
     expect(browserStub.setSiteBlocking).toHaveBeenCalledWith({
       url: "https://GitHub.com./",
-      enabled: true
+      enabled: true,
     });
     await waitFor(() => expect(browserStub.reload).toHaveBeenCalledWith(activeTabId()));
   });
 
   it("keeps the current blocking state and reports a toggle failure", async () => {
     browserStub.setSiteBlocking.mockRejectedValueOnce(new Error("Could not update blocking"));
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
 
     const shield = await screen.findByRole("button", {
-      name: "Disable ad and tracker blocking on github.com"
+      name: "Disable ad and tracker blocking on github.com",
     });
     fireEvent.click(shield);
 
@@ -265,12 +303,18 @@ describe("BrowserPanel", () => {
       () =>
         new Promise((resolve) => {
           resolveUpdate = resolve;
-        })
+        }),
     );
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
 
     const shield = await screen.findByRole("button", {
-      name: "Disable ad and tracker blocking on github.com"
+      name: "Disable ad and tracker blocking on github.com",
     });
     fireEvent.click(shield);
     fireEvent.click(shield);
@@ -281,8 +325,8 @@ describe("BrowserPanel", () => {
         tabId: activeTabId(),
         url: "https://example.com",
         title: "Example",
-        loading: false
-      })
+        loading: false,
+      }),
     );
     await act(async () => {
       resolveUpdate({ supported: true, disabledHosts: ["github.com"] });
@@ -303,7 +347,7 @@ describe("BrowserPanel", () => {
           url: "https://github.com",
           title: null,
           loading: false,
-          group: null
+          group: null,
         },
         {
           tabId: "agent-1",
@@ -311,9 +355,9 @@ describe("BrowserPanel", () => {
           url: "https://example.com",
           title: "Example Domain",
           loading: false,
-          group: null
-        }
-      ])
+          group: null,
+        },
+      ]),
     );
     fireEvent.click(screen.getByRole("button", { name: "Example Domain" }));
 
@@ -326,14 +370,28 @@ describe("BrowserPanel", () => {
 
   it("hides blocking controls when native blocking is unsupported", async () => {
     browserStub.contentBlocking.mockResolvedValueOnce({ supported: false, disabledHosts: [] });
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
 
     await waitFor(() => expect(browserStub.contentBlocking).toHaveBeenCalledTimes(1));
-    expect(screen.queryByRole("button", { name: /ad and tracker blocking/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /ad and tracker blocking/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps blocking off for local test sites", async () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="http://app.localhost:3000" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="http://app.localhost:3000"
+        onClose={() => undefined}
+      />,
+    );
 
     const shield = await screen.findByRole("button", { name: "Blocking off for local testing" });
     expect(shield).toBeDisabled();
@@ -341,9 +399,15 @@ describe("BrowserPanel", () => {
   });
 
   it("creates the first tab's webview for the requested URL", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     expect(browserStub.open).toHaveBeenCalledWith(
-      expect.objectContaining({ url: "https://github.com", tabId: activeTabId() })
+      expect.objectContaining({ url: "https://github.com", tabId: activeTabId() }),
     );
     expect(screen.getByRole("textbox", { name: "Address" })).toHaveValue("https://github.com");
     expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("github.com");
@@ -351,7 +415,12 @@ describe("BrowserPanel", () => {
 
   it("opens a link request in a fresh webview and preserves the current tab", () => {
     const { rerender } = render(
-      <BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" requestSeq={1} onClose={() => undefined} />
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        requestSeq={1}
+        onClose={() => undefined}
+      />,
     );
     const previousTabId = activeTabId();
     browserStub.open.mockClear();
@@ -365,19 +434,21 @@ describe("BrowserPanel", () => {
         requestSeq={2}
         requestNewTab
         onClose={() => undefined}
-      />
+      />,
     );
 
     const tabs = getBrowserTabs(BROWSER_PAGE_OWNER_ID);
     expect(tabs).toHaveLength(2);
-    expect(tabs[0]).toEqual(expect.objectContaining({ id: previousTabId, url: "https://github.com" }));
+    expect(tabs[0]).toEqual(
+      expect.objectContaining({ id: previousTabId, url: "https://github.com" }),
+    );
     expect(tabs[1]).toEqual(expect.objectContaining({ url: "https://example.com" }));
     expect(getActiveBrowserTabId(BROWSER_PAGE_OWNER_ID)).toBe(tabs[1]?.id);
     expect(browserStub.open).toHaveBeenCalledWith(
-      expect.objectContaining({ url: "https://example.com", tabId: tabs[1]?.id })
+      expect.objectContaining({ url: "https://example.com", tabId: tabs[1]?.id }),
     );
     expect(browserStub.setBounds).toHaveBeenCalledWith(
-      expect.objectContaining({ tabId: previousTabId, visible: false })
+      expect.objectContaining({ tabId: previousTabId, visible: false }),
     );
     expect(browserStub.navigate).not.toHaveBeenCalled();
   });
@@ -397,7 +468,7 @@ describe("BrowserPanel", () => {
           url: "https://github.com",
           title: null,
           loading: false,
-          group: null
+          group: null,
         },
         {
           tabId: "agent-1",
@@ -405,9 +476,9 @@ describe("BrowserPanel", () => {
           url: "https://example.com",
           title: "Example Domain",
           loading: false,
-          group: null
-        }
-      ])
+          group: null,
+        },
+      ]),
     );
 
     expect(screen.getByRole("tab", { name: /Example Domain/ })).toBeInTheDocument();
@@ -423,7 +494,7 @@ describe("BrowserPanel", () => {
           requestSeq={2}
           requestTabId="agent-1"
           onClose={() => undefined}
-        />
+        />,
       );
     });
     expect(getActiveBrowserTabId("session-a")).toBe("agent-1");
@@ -443,7 +514,7 @@ describe("BrowserPanel", () => {
           url: "https://github.com",
           title: null,
           loading: false,
-          group: null
+          group: null,
         },
         {
           tabId: "agent-1",
@@ -451,20 +522,26 @@ describe("BrowserPanel", () => {
           url: "https://example.com",
           title: "Example Domain",
           loading: false,
-          group: "Pricing research"
-        }
-      ])
+          group: "Pricing research",
+        },
+      ]),
     );
 
-    expect(screen.getByRole("img", { name: "Opened by the agent, in Pricing research" })).toHaveTextContent(
-      "Pricing research"
-    );
+    expect(
+      screen.getByRole("img", { name: "Opened by the agent, in Pricing research" }),
+    ).toHaveTextContent("Pricing research");
     // The user's own tab is never grouped, so it carries no chip at all.
     expect(screen.queryByRole("img", { name: "Opened by the agent" })).not.toBeInTheDocument();
   });
 
   it("navigates when Enter is pressed in the address bar", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     const address = screen.getByRole("textbox", { name: "Address" });
     fireEvent.change(address, { target: { value: "example.com" } });
     fireEvent.keyDown(address, { key: "Enter" });
@@ -472,7 +549,13 @@ describe("BrowserPanel", () => {
   });
 
   it("reloads when the address bar submits the tab's current URL", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     const address = screen.getByRole("textbox", { name: "Address" });
     fireEvent.keyDown(address, { key: "Enter" });
     expect(browserStub.reload).toHaveBeenCalledWith(activeTabId());
@@ -480,8 +563,21 @@ describe("BrowserPanel", () => {
   });
 
   it("goes on Enter while history suggestions are open", async () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
-    act(() => stateListener?.({ tabId: activeTabId(), url: "https://github.com", title: "GitHub", loading: false }));
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
+    act(() =>
+      stateListener?.({
+        tabId: activeTabId(),
+        url: "https://github.com",
+        title: "GitHub",
+        loading: false,
+      }),
+    );
     // A background tab's visit still feeds the omnibox; the active tab stays on GitHub.
     const backgroundTab = createBrowserTab(BROWSER_PAGE_OWNER_ID, "https://example.com", false);
     act(() =>
@@ -489,8 +585,8 @@ describe("BrowserPanel", () => {
         tabId: backgroundTab.id,
         url: "https://example.com",
         title: "Example",
-        loading: false
-      })
+        loading: false,
+      }),
     );
 
     const address = screen.getByRole("textbox", { name: "Address" });
@@ -504,21 +600,40 @@ describe("BrowserPanel", () => {
   });
 
   it("turns non-URL address input into a Google search", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     const address = screen.getByRole("textbox", { name: "Address" });
     fireEvent.change(address, { target: { value: "tauri multiwebview docs" } });
     fireEvent.submit(address);
     expect(browserStub.navigate).toHaveBeenCalledWith(
       "https://www.google.com/search?q=tauri%20multiwebview%20docs",
-      activeTabId()
+      activeTabId(),
     );
   });
 
   it("clears the loading spinner on stop and via the watchdog", () => {
     vi.useFakeTimers();
     try {
-      render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
-      act(() => stateListener?.({ tabId: activeTabId(), url: "https://github.com", title: null, loading: true }));
+      render(
+        <BrowserPanel
+          scopeId={BROWSER_PAGE_OWNER_ID}
+          url="https://github.com"
+          onClose={() => undefined}
+        />,
+      );
+      act(() =>
+        stateListener?.({
+          tabId: activeTabId(),
+          url: "https://github.com",
+          title: null,
+          loading: true,
+        }),
+      );
 
       // Stop: the webview never reports "finished" for an aborted load.
       fireEvent.click(screen.getByRole("button", { name: "Stop loading" }));
@@ -526,7 +641,14 @@ describe("BrowserPanel", () => {
       expect(screen.queryByRole("button", { name: "Stop loading" })).not.toBeInTheDocument();
 
       // Watchdog: a load that silently dies stops spinning after the timeout.
-      act(() => stateListener?.({ tabId: activeTabId(), url: "https://github.com", title: null, loading: true }));
+      act(() =>
+        stateListener?.({
+          tabId: activeTabId(),
+          url: "https://github.com",
+          title: null,
+          loading: true,
+        }),
+      );
       expect(screen.getByRole("button", { name: "Stop loading" })).toBeInTheDocument();
       act(() => {
         vi.advanceTimersByTime(20_000);
@@ -538,24 +660,54 @@ describe("BrowserPanel", () => {
   });
 
   it("syncs the address bar from webview navigation events", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
-    act(() =>
-      stateListener?.({ tabId: activeTabId(), url: "https://github.com/argmax", title: "Argmax", loading: false })
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
     );
-    expect(screen.getByRole("textbox", { name: "Address" })).toHaveValue("https://github.com/argmax");
+    act(() =>
+      stateListener?.({
+        tabId: activeTabId(),
+        url: "https://github.com/argmax",
+        title: "Argmax",
+        loading: false,
+      }),
+    );
+    expect(screen.getByRole("textbox", { name: "Address" })).toHaveValue(
+      "https://github.com/argmax",
+    );
     expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Argmax");
   });
 
   it("leaves the address bar alone for a background tab's navigation", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     act(() =>
-      stateListener?.({ tabId: "not-the-active-tab", url: "https://example.com", title: null, loading: false })
+      stateListener?.({
+        tabId: "not-the-active-tab",
+        url: "https://example.com",
+        title: null,
+        loading: false,
+      }),
     );
     expect(screen.getByRole("textbox", { name: "Address" })).toHaveValue("https://github.com");
   });
 
   it("hands the page keyboard focus when its own tab is clicked again", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     const tabId = activeTabId();
     browserStub.focus.mockClear();
     browserStub.setBounds.mockClear();
@@ -569,7 +721,9 @@ describe("BrowserPanel", () => {
 
   it("adds a tab, switches back, and closes down to the panel", () => {
     const onClose = vi.fn();
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />);
+    render(
+      <BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />,
+    );
     const firstTab = activeTabId();
 
     fireEvent.click(screen.getByRole("button", { name: "New tab" }));
@@ -581,7 +735,9 @@ describe("BrowserPanel", () => {
     // Switching shows the target tab and hides the previous one.
     fireEvent.click(screen.getByRole("button", { name: "github.com" }));
     expect(activeTabId()).toBe(firstTab);
-    expect(browserStub.setBounds).toHaveBeenCalledWith(expect.objectContaining({ tabId: secondTab, visible: false }));
+    expect(browserStub.setBounds).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: secondTab, visible: false }),
+    );
     // …and the page it switched to takes the keyboard, so ⌘F and the arrow
     // keys are the page's rather than the app's.
     expect(browserStub.focus).toHaveBeenCalledWith(firstTab);
@@ -596,7 +752,13 @@ describe("BrowserPanel", () => {
   });
 
   it("carries a tab past its neighbour and lands it in that slot", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     act(() => applyBrowserTabs(threeTabs(activeTabId())));
     const [alpha] = layOutStrip();
     if (!alpha) throw new Error("no tabs");
@@ -610,16 +772,30 @@ describe("BrowserPanel", () => {
     expect(carried[0]).toHaveStyle({ transform: "translateX(110px)" });
     expect(carried[1]).toHaveStyle({ transform: "translateX(-100px)" });
     expect(carried[2]).not.toHaveAttribute("style");
-    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual(["Alpha", "Beta", "Gamma"]);
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual([
+      "Alpha",
+      "Beta",
+      "Gamma",
+    ]);
 
     pointer(window, "pointerup", 160);
-    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual(["Beta", "Alpha", "Gamma"]);
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual([
+      "Beta",
+      "Alpha",
+      "Gamma",
+    ]);
     expect(screen.getAllByRole("tab")[0]).toHaveTextContent("Beta");
     expect(screen.getAllByRole("tab")[1]).not.toHaveAttribute("data-drag");
   });
 
   it("treats a press that barely moves as a plain tab switch", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     act(() => applyBrowserTabs(threeTabs(activeTabId())));
     const gamma = layOutStrip()[2];
     if (!gamma) throw new Error("no third tab");
@@ -628,27 +804,69 @@ describe("BrowserPanel", () => {
     pointer(window, "pointermove", 252);
     pointer(window, "pointerup", 252);
 
-    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual(["Alpha", "Beta", "Gamma"]);
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual([
+      "Alpha",
+      "Beta",
+      "Gamma",
+    ]);
     expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Gamma");
   });
 
   it("moves the focused tab with the keyboard", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     act(() => applyBrowserTabs(threeTabs(activeTabId())));
 
-    fireEvent.keyDown(screen.getByRole("button", { name: "Alpha" }), { key: "ArrowRight", altKey: true });
-    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual(["Beta", "Alpha", "Gamma"]);
+    fireEvent.keyDown(screen.getByRole("button", { name: "Alpha" }), {
+      key: "ArrowRight",
+      altKey: true,
+    });
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual([
+      "Beta",
+      "Alpha",
+      "Gamma",
+    ]);
 
     // The first tab has nowhere further left to go.
-    fireEvent.keyDown(screen.getByRole("button", { name: "Beta" }), { key: "ArrowLeft", altKey: true });
-    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual(["Beta", "Alpha", "Gamma"]);
+    fireEvent.keyDown(screen.getByRole("button", { name: "Beta" }), {
+      key: "ArrowLeft",
+      altKey: true,
+    });
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual([
+      "Beta",
+      "Alpha",
+      "Gamma",
+    ]);
   });
 
   it("suggests visited pages while typing and navigates on pick", async () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
-    act(() => stateListener?.({ tabId: activeTabId(), url: "https://github.com", title: "GitHub", loading: false }));
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     act(() =>
-      stateListener?.({ tabId: activeTabId(), url: "https://example.com/docs", title: "Example Docs", loading: false })
+      stateListener?.({
+        tabId: activeTabId(),
+        url: "https://github.com",
+        title: "GitHub",
+        loading: false,
+      }),
+    );
+    act(() =>
+      stateListener?.({
+        tabId: activeTabId(),
+        url: "https://example.com/docs",
+        title: "Example Docs",
+        loading: false,
+      }),
     );
 
     const address = screen.getByRole("textbox", { name: "Address" });
@@ -664,14 +882,20 @@ describe("BrowserPanel", () => {
   });
 
   it("completes a typed address inline and navigates to the URL it came from", async () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     act(() =>
       stateListener?.({
         tabId: activeTabId(),
         url: "https://www.youtube.com/",
         title: "YouTube",
-        loading: false
-      })
+        loading: false,
+      }),
     );
     // Back to another page, so Enter is a navigation rather than a reload.
     act(() =>
@@ -679,8 +903,8 @@ describe("BrowserPanel", () => {
         tabId: activeTabId(),
         url: "https://github.com",
         title: "GitHub",
-        loading: false
-      })
+        loading: false,
+      }),
     );
 
     const address = screen.getByRole<HTMLInputElement>("textbox", { name: "Address" });
@@ -698,14 +922,20 @@ describe("BrowserPanel", () => {
   });
 
   it("keeps the completion out of the way of deleting and Escape", async () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     act(() =>
       stateListener?.({
         tabId: activeTabId(),
         url: "https://www.youtube.com/",
         title: "YouTube",
-        loading: false
-      })
+        loading: false,
+      }),
     );
 
     const address = screen.getByRole<HTMLInputElement>("textbox", { name: "Address" });
@@ -726,7 +956,13 @@ describe("BrowserPanel", () => {
   });
 
   it("records completed visits only for the strip this panel owns", async () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     const foreignTab = createBrowserTab("another-browser-scope", "https://foreign.example.com");
 
     act(() =>
@@ -734,16 +970,16 @@ describe("BrowserPanel", () => {
         tabId: foreignTab.id,
         url: "https://foreign.example.com",
         title: "Foreign page",
-        loading: false
-      })
+        loading: false,
+      }),
     );
     act(() =>
       stateListener?.({
         tabId: activeTabId(),
         url: "https://owned.example.com",
         title: "Owned page",
-        loading: false
-      })
+        loading: false,
+      }),
     );
 
     const address = screen.getByRole("textbox", { name: "Address" });
@@ -752,17 +988,25 @@ describe("BrowserPanel", () => {
     expect(screen.queryByRole("dialog", { name: "History suggestions" })).toBeNull();
 
     fireEvent.change(address, { target: { value: "owned" } });
-    expect(await screen.findByRole("dialog", { name: "History suggestions" })).toHaveTextContent("Owned page");
+    expect(await screen.findByRole("dialog", { name: "History suggestions" })).toHaveTextContent(
+      "Owned page",
+    );
   });
 
   it.each([
     ["role", "dialog"],
-    ["data-browser-overlay", "true"]
+    ["data-browser-overlay", "true"],
   ])("hides the webview only for overlapping %s=%s overlays", async (attribute, value) => {
     // The surface sits in the right-hand column; a session-pane dialog (provider
     // switch, composer popover) opens to its left and must leave the page alive.
     stubRect(document.body, { x: 0, y: 0, width: 1200, height: 800 });
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     const surface = document.querySelector(".browser-panel-surface");
     if (!(surface instanceof HTMLElement)) throw new Error("no browser surface");
     stubRect(surface, { x: 800, y: 60, width: 400, height: 740 });
@@ -772,7 +1016,7 @@ describe("BrowserPanel", () => {
       await Promise.resolve();
     });
     expect(browserStub.setBounds).not.toHaveBeenCalledWith(
-      expect.objectContaining({ visible: false, tabId: activeTabId() })
+      expect.objectContaining({ visible: false, tabId: activeTabId() }),
     );
 
     paneDialog.remove();
@@ -781,17 +1025,19 @@ describe("BrowserPanel", () => {
       await Promise.resolve();
     });
     expect(browserStub.setBounds).toHaveBeenCalledWith(
-      expect.objectContaining({ visible: false, tabId: activeTabId() })
+      expect.objectContaining({ visible: false, tabId: activeTabId() }),
     );
     // The hidden page leaves a still of itself behind, not an empty hole.
     expect(browserStub.screenshot).toHaveBeenCalledWith({ tabId: activeTabId() });
-    await waitFor(() => expect(surface.querySelector("img")).toHaveAttribute("src", "data:image/png;base64,c3RpbGw="));
+    await waitFor(() =>
+      expect(surface.querySelector("img")).toHaveAttribute("src", "data:image/png;base64,c3RpbGw="),
+    );
     overlapping.remove();
     await act(async () => {
       await Promise.resolve();
     });
     expect(browserStub.setBounds).toHaveBeenLastCalledWith(
-      expect.objectContaining({ visible: true, tabId: activeTabId() })
+      expect.objectContaining({ visible: true, tabId: activeTabId() }),
     );
     expect(surface.querySelector("img")).toBeNull();
   });
@@ -807,7 +1053,7 @@ describe("BrowserPanel", () => {
           url="https://github.com"
           onClose={() => undefined}
           panePosition="top"
-        />
+        />,
       );
       await act(async () => {
         await Promise.resolve();
@@ -820,14 +1066,14 @@ describe("BrowserPanel", () => {
           url="https://github.com"
           onClose={() => undefined}
           panePosition="bottom"
-        />
+        />,
       );
       expect(browserStub.setBounds).toHaveBeenCalledWith(
         expect.objectContaining({
           tabId: activeTabId(),
           visible: true,
-          bounds: { x: 800, y: 420, width: 400, height: 350 }
-        })
+          bounds: { x: 800, y: 420, width: 400, height: 350 },
+        }),
       );
     } finally {
       bounds.mockRestore();
@@ -848,11 +1094,15 @@ describe("BrowserPanel", () => {
         }
         observe(): void {}
         disconnect(): void {}
-      }
+      },
     );
     try {
       const { unmount } = render(
-        <BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />
+        <BrowserPanel
+          scopeId={BROWSER_PAGE_OWNER_ID}
+          url="https://github.com"
+          onClose={() => undefined}
+        />,
       );
       await act(async () => {
         await Promise.resolve();
@@ -874,7 +1124,7 @@ describe("BrowserPanel", () => {
       expect(browserStub.setBounds).toHaveBeenCalledExactlyOnceWith({
         tabId: activeTabId(),
         visible: true,
-        bounds: { x: 800, y: 60, width: 599, height: 350 }
+        bounds: { x: 800, y: 60, width: 599, height: 350 },
       });
       expect(bounds).toHaveBeenCalledTimes(1);
 
@@ -909,7 +1159,13 @@ describe("BrowserPanel", () => {
       .spyOn(HTMLElement.prototype, "getBoundingClientRect")
       .mockReturnValue(new DOMRect(800, 60, 400, 350));
     try {
-      render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+      render(
+        <BrowserPanel
+          scopeId={BROWSER_PAGE_OWNER_ID}
+          url="https://github.com"
+          onClose={() => undefined}
+        />,
+      );
       await act(async () => {
         await Promise.resolve();
       });
@@ -930,7 +1186,7 @@ describe("BrowserPanel", () => {
       expect(browserStub.setBounds).toHaveBeenLastCalledWith({
         tabId: activeTabId(),
         visible: true,
-        bounds: { x: 800, y: 60, width: 500, height: 350 }
+        bounds: { x: 800, y: 60, width: 500, height: 350 },
       });
     } finally {
       cleanup();
@@ -940,38 +1196,62 @@ describe("BrowserPanel", () => {
   });
 
   it("yields the native webview while the collapsed sidebar peeks", async () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     await act(async () => {
       await Promise.resolve();
     });
     const tabId = activeTabId();
-    expect(browserStub.setBounds).toHaveBeenLastCalledWith(expect.objectContaining({ visible: true, tabId }));
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: true, tabId }),
+    );
 
     act(() => {
       toggleSidebarCollapsed();
       setSidebarPeek(true);
     });
-    expect(browserStub.setBounds).toHaveBeenLastCalledWith(expect.objectContaining({ visible: false, tabId }));
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: false, tabId }),
+    );
 
     fireEvent.resize(window);
-    expect(browserStub.setBounds).toHaveBeenLastCalledWith(expect.objectContaining({ visible: false, tabId }));
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: false, tabId }),
+    );
 
     act(() => setSidebarPeek(false));
-    expect(browserStub.setBounds).toHaveBeenLastCalledWith(expect.objectContaining({ visible: true, tabId }));
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: true, tabId }),
+    );
 
     act(() => {
       // A responsive fold leaves the persisted collapse preference off.
       toggleSidebarCollapsed();
       setSidebarPeek(true);
     });
-    expect(browserStub.setBounds).toHaveBeenLastCalledWith(expect.objectContaining({ visible: false, tabId }));
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: false, tabId }),
+    );
     act(() => setSidebarPeek(false));
-    expect(browserStub.setBounds).toHaveBeenLastCalledWith(expect.objectContaining({ visible: true, tabId }));
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: true, tabId }),
+    );
     expect(browserStub.open).toHaveBeenCalledTimes(1);
   });
 
   it("opens a page-requested popup as a new tab", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     const firstTab = activeTabId();
 
     act(() => newTabListener?.({ tabId: firstTab, url: "https://docs.github.com" }));
@@ -979,15 +1259,25 @@ describe("BrowserPanel", () => {
     const secondTab = activeTabId();
     expect(secondTab).not.toBe(firstTab);
     expect(browserStub.open).toHaveBeenCalledWith(
-      expect.objectContaining({ url: "https://docs.github.com", tabId: secondTab })
+      expect.objectContaining({ url: "https://docs.github.com", tabId: secondTab }),
     );
     expect(screen.getAllByRole("tab")).toHaveLength(2);
   });
 
   it("adds a background tab's popup without stealing focus", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     const firstTab = activeTabId();
-    const backgroundTab = createBrowserTab(BROWSER_PAGE_OWNER_ID, "https://background.example.com", false);
+    const backgroundTab = createBrowserTab(
+      BROWSER_PAGE_OWNER_ID,
+      "https://background.example.com",
+      false,
+    );
     browserStub.open.mockClear();
 
     act(() => newTabListener?.({ tabId: backgroundTab.id, url: "https://ads.example.com" }));
@@ -1008,8 +1298,13 @@ describe("BrowserPanel", () => {
           isFocused={false}
           onClose={() => undefined}
         />
-        <BrowserPanel scopeId={secondScope} url="https://second.example.com" isFocused onClose={() => undefined} />
-      </>
+        <BrowserPanel
+          scopeId={secondScope}
+          url="https://second.example.com"
+          isFocused
+          onClose={() => undefined}
+        />
+      </>,
     );
     const firstTab = activeTabId(firstScope);
     const secondTab = activeTabId(secondScope);
@@ -1021,7 +1316,8 @@ describe("BrowserPanel", () => {
     browserStub.open.mockClear();
     const pageCommandListeners = browserStub.onPageCommand.mock.calls.map(([listener]) => listener);
     act(() => {
-      for (const listener of pageCommandListeners) listener({ tabId: secondTab, command: "new-tab" });
+      for (const listener of pageCommandListeners)
+        listener({ tabId: secondTab, command: "new-tab" });
     });
     expect(getBrowserTabs(firstScope)).toHaveLength(1);
     expect(getBrowserTabs(secondScope)).toHaveLength(2);
@@ -1029,12 +1325,14 @@ describe("BrowserPanel", () => {
 
     browserStub.reload.mockClear();
     act(() => {
-      for (const listener of pageCommandListeners) listener({ tabId: secondTab, command: "reload" });
+      for (const listener of pageCommandListeners)
+        listener({ tabId: secondTab, command: "reload" });
     });
     expect(browserStub.reload).toHaveBeenCalledExactlyOnceWith(secondTab);
 
     act(() => {
-      for (const listener of pageCommandListeners) listener({ tabId: secondTab, command: "focus-address" });
+      for (const listener of pageCommandListeners)
+        listener({ tabId: secondTab, command: "focus-address" });
     });
     expect(within(secondPanel).getByRole("textbox", { name: "Address" })).toHaveFocus();
     expect(within(firstPanel).getByRole("textbox", { name: "Address" })).not.toHaveFocus();
@@ -1120,7 +1418,13 @@ describe("BrowserPanel", () => {
   });
 
   it("recreates a restored neighbor's webview when closing the active tab", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     const firstTab = activeTabId();
     fireEvent.click(screen.getByRole("button", { name: "New tab" }));
 
@@ -1135,7 +1439,13 @@ describe("BrowserPanel", () => {
   });
 
   it("reopens the last closed tab on ⌘⇧T", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "New tab" }));
     const secondTab = activeTabId();
     fireEvent.click(screen.getByRole("button", { name: /Close tab.*google/i }));
@@ -1143,7 +1453,7 @@ describe("BrowserPanel", () => {
 
     fireEvent.keyDown(document.body, { key: "T", metaKey: true, shiftKey: true });
     expect(browserStub.open).toHaveBeenCalledWith(
-      expect.objectContaining({ url: "https://www.google.com", tabId: activeTabId() })
+      expect.objectContaining({ url: "https://www.google.com", tabId: activeTabId() }),
     );
     expect(screen.getAllByRole("tab")).toHaveLength(2);
   });
@@ -1151,21 +1461,37 @@ describe("BrowserPanel", () => {
   it("retries webview creation after a failed open instead of leaving a zombie tab", async () => {
     browserStub.open.mockRejectedValueOnce({ message: "boom" });
     const { rerender } = render(
-      <BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" requestSeq={1} onClose={() => undefined} />
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        requestSeq={1}
+        onClose={() => undefined}
+      />,
     );
     expect(await screen.findByRole("status")).toHaveTextContent("boom");
 
     // The failed tab was un-marked, so the next open request recreates the
     // webview instead of navigating a label that never existed.
     rerender(
-      <BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" requestSeq={2} onClose={() => undefined} />
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        requestSeq={2}
+        onClose={() => undefined}
+      />,
     );
     expect(browserStub.open).toHaveBeenCalledTimes(2);
     expect(browserStub.navigate).not.toHaveBeenCalled();
   });
 
   it("opens a new tab on ⌘T regardless of focus", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     const firstTab = activeTabId();
     // macOS WebKit leaves focus on <body> after clicks — ⌘T must still work.
     fireEvent.keyDown(document.body, { key: "t", metaKey: true });
@@ -1175,7 +1501,9 @@ describe("BrowserPanel", () => {
 
   it("closes the active tab on the menu's close request", () => {
     const onClose = vi.fn();
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />);
+    render(
+      <BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />,
+    );
     const firstTab = activeTabId();
     act(() => {
       requestCloseActiveBrowserTab();
@@ -1186,7 +1514,9 @@ describe("BrowserPanel", () => {
 
   it("routes shortcuts pressed inside the page to tab actions", () => {
     const onClose = vi.fn();
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />);
+    render(
+      <BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />,
+    );
     const firstTab = activeTabId();
 
     act(() => pageCommandListener?.({ tabId: firstTab, command: "new-tab" }));
@@ -1209,7 +1539,13 @@ describe("BrowserPanel", () => {
   it("opens find from the page's ⌘F and searches via evaluate", async () => {
     vi.useFakeTimers();
     try {
-      render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+      render(
+        <BrowserPanel
+          scopeId={BROWSER_PAGE_OWNER_ID}
+          url="https://github.com"
+          onClose={() => undefined}
+        />,
+      );
       const tabId = activeTabId();
       act(() => pageCommandListener?.({ tabId, command: "find" }));
       const input = screen.getByRole("textbox", { name: "Find in page" });
@@ -1224,7 +1560,9 @@ describe("BrowserPanel", () => {
         await Promise.resolve();
       });
       const calls = browserStub.evaluate.mock.calls.filter(([call]) => call.tabId === tabId);
-      expect(calls.some(([call]) => call.script.includes('__argmaxFind.search("install")'))).toBe(true);
+      expect(calls.some(([call]) => call.script.includes('__argmaxFind.search("install")'))).toBe(
+        true,
+      );
       expect(screen.getByText("1/2")).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
@@ -1234,7 +1572,13 @@ describe("BrowserPanel", () => {
   it("keeps the latest find result when an older query finishes afterward", async () => {
     vi.useFakeTimers();
     try {
-      render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+      render(
+        <BrowserPanel
+          scopeId={BROWSER_PAGE_OWNER_ID}
+          url="https://github.com"
+          onClose={() => undefined}
+        />,
+      );
       act(() => pageCommandListener?.({ tabId: activeTabId(), command: "find" }));
       const input = screen.getByRole("textbox", { name: "Find in page" });
       let resolveOld!: (result: { resultJson: string }) => void;
@@ -1242,7 +1586,7 @@ describe("BrowserPanel", () => {
         () =>
           new Promise((resolve) => {
             resolveOld = resolve;
-          })
+          }),
       );
       fireEvent.change(input, { target: { value: "old" } });
       act(() => {
@@ -1265,7 +1609,13 @@ describe("BrowserPanel", () => {
   });
 
   it("claims ⌘F from outside the panel, and yields it to an open dialog", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     // The app's own ⌘F palette listens in the bubble phase; the panel's
     // capture-phase claim has to take the key off it.
     const appSearch = vi.fn();
@@ -1282,7 +1632,10 @@ describe("BrowserPanel", () => {
 
       // Still claimed from the chrome itself.
       fireEvent.keyDown(screen.getByRole("textbox", { name: "Find in page" }), { key: "Escape" });
-      fireEvent.keyDown(screen.getByRole("textbox", { name: "Address" }), { key: "f", metaKey: true });
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Address" }), {
+        key: "f",
+        metaKey: true,
+      });
       expect(screen.getByRole("search", { name: "Find in page" })).toBeInTheDocument();
       expect(appSearch).not.toHaveBeenCalled();
 
@@ -1305,7 +1658,13 @@ describe("BrowserPanel", () => {
   it("steps through matches with Enter and Escape closes the bar", async () => {
     vi.useFakeTimers();
     try {
-      render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+      render(
+        <BrowserPanel
+          scopeId={BROWSER_PAGE_OWNER_ID}
+          url="https://github.com"
+          onClose={() => undefined}
+        />,
+      );
       const tabId = activeTabId();
       act(() => pageCommandListener?.({ tabId, command: "find" }));
       const input = screen.getByRole("textbox", { name: "Find in page" });
@@ -1319,8 +1678,9 @@ describe("BrowserPanel", () => {
       });
       expect(
         browserStub.evaluate.mock.calls.some(
-          ([call]) => call.tabId === tabId && call.script.includes('__argmaxFind.step(1, "install")')
-        )
+          ([call]) =>
+            call.tabId === tabId && call.script.includes('__argmaxFind.step(1, "install")'),
+        ),
       ).toBe(true);
 
       fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
@@ -1329,20 +1689,32 @@ describe("BrowserPanel", () => {
         await Promise.resolve();
       });
       expect(
-        browserStub.evaluate.mock.calls.some(([call]) => call.script.includes('__argmaxFind.step(-1, "install")'))
+        browserStub.evaluate.mock.calls.some(([call]) =>
+          call.script.includes('__argmaxFind.step(-1, "install")'),
+        ),
       ).toBe(true);
 
       browserStub.evaluate.mockClear();
       fireEvent.keyDown(input, { key: "Escape" });
       expect(screen.queryByRole("search", { name: "Find in page" })).not.toBeInTheDocument();
-      expect(browserStub.evaluate.mock.calls.some(([call]) => call.script.includes("__argmaxFind.clear()"))).toBe(true);
+      expect(
+        browserStub.evaluate.mock.calls.some(([call]) =>
+          call.script.includes("__argmaxFind.clear()"),
+        ),
+      ).toBe(true);
     } finally {
       vi.useRealTimers();
     }
   });
 
   it("navigates history from the page's mouse thumb buttons", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     const firstTab = activeTabId();
 
     act(() => pageCommandListener?.({ tabId: firstTab, command: "back" }));
@@ -1353,7 +1725,13 @@ describe("BrowserPanel", () => {
   });
 
   it("navigates history from thumb buttons clicked on the pane chrome", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     const tabId = activeTabId();
     const toolbarTarget = screen.getByRole("textbox", { name: "Address" });
 
@@ -1367,7 +1745,13 @@ describe("BrowserPanel", () => {
   });
 
   it("surfaces the 1Password fill result", async () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId={BROWSER_PAGE_OWNER_ID}
+        url="https://github.com"
+        onClose={() => undefined}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Fill login from 1Password" }));
     expect(browserStub.fillCredentials).toHaveBeenCalledWith(activeTabId());
     expect(await screen.findByText("Filled from 1Password: GitHub")).toBeInTheDocument();

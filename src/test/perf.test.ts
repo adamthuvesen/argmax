@@ -42,7 +42,7 @@ function makeSession(i: number): SessionSummary {
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextTokens: 0,
     imported: false,
-    launchKind: "agent"
+    launchKind: "agent",
   };
 }
 
@@ -51,7 +51,10 @@ function makeSession(i: number): SessionSummary {
 const REFERENCE_LOOP_MS = 1;
 
 function referenceLoop(): number {
-  const rows = Array.from({ length: 4_000 }, (_, i) => ({ id: `row-${i}`, rank: (i * 7_919) % 4_000 }));
+  const rows = Array.from({ length: 4_000 }, (_, i) => ({
+    id: `row-${i}`,
+    rank: (i * 7_919) % 4_000,
+  }));
   rows.sort((a, b) => a.rank - b.rank);
   const byId = new Map(rows.map((row) => [row.id, row]));
   let total = 0;
@@ -87,7 +90,7 @@ describe("perf budgets", () => {
     const subscriptions = notifications.map((_, index) =>
       timelines.subscribe(`session-${index}`, () => {
         notifications[index] += 1;
-      })
+      }),
     );
     const events: TimelineEvent[] = Array.from({ length: 4000 }, (_, index) => ({
       id: `retained-${index}`,
@@ -96,14 +99,14 @@ describe("perf budgets", () => {
       message: "token",
       payload: {},
       createdAt: "2026-09-05T00:00:00.000Z",
-      rowCursor: index + 1
+      rowCursor: index + 1,
     }));
     timelines.merge(events, []);
     notifications.fill(0);
     const updates = Array.from({ length: 100 }, (_, index): TimelineEvent => ({
       ...events[0],
       id: `new-${index}`,
-      rowCursor: 4001 + index
+      rowCursor: 4001 + index,
     }));
     expect(medianMs(100, (index) => timelines.merge([updates[index]], []))).toBeLessThan(1);
     expect(notifications).toEqual([100, 0, 0, 0, 0, 0, 0, 0]);
@@ -113,7 +116,7 @@ describe("perf budgets", () => {
   it("mergeDashboardDelta over a 200-session payload completes median < 0.2 ms", () => {
     const base: DashboardSnapshot = {
       ...emptySnapshot,
-      sessions: Array.from({ length: 200 }, (_, i) => makeSession(i))
+      sessions: Array.from({ length: 200 }, (_, i) => makeSession(i)),
     };
     const delta = { sessions: Array.from({ length: 200 }, (_, i) => makeSession(i + 200)) };
 
@@ -133,7 +136,7 @@ describe("perf budgets", () => {
           message: "",
           payload: {},
           createdAt: new Date(2026, 0, 1).toISOString(),
-          rowCursor: 1
+          rowCursor: 1,
         },
         {
           id: "c1",
@@ -142,9 +145,9 @@ describe("perf budgets", () => {
           message: "",
           payload: {},
           createdAt: new Date(2026, 0, 1, 0, 0, 1).toISOString(),
-          rowCursor: 2
-        }
-      ]
+          rowCursor: 2,
+        },
+      ],
     };
     const delta = {
       events: Array.from({ length: 500 }, (_, i): TimelineEvent => ({
@@ -154,8 +157,8 @@ describe("perf budgets", () => {
         message: "tok",
         payload: {},
         createdAt: new Date(2026, 0, 1, 0, 1, 0).toISOString(),
-        rowCursor: 100 + i
-      }))
+        rowCursor: 100 + i,
+      })),
     };
 
     expect(medianMs(50, () => mergeDashboardDelta(base, delta))).toBeLessThan(1);
@@ -176,8 +179,8 @@ describe("perf budgets", () => {
         message: "",
         payload: {},
         createdAt: new Date(2026, 0, 1, 0, 0, 4_999 - i).toISOString(),
-        rowCursor: 5_000 - i
-      }))
+        rowCursor: 5_000 - i,
+      })),
     };
 
     const deltas = Array.from({ length: 50 }, (_, i) => ({
@@ -189,9 +192,9 @@ describe("perf budgets", () => {
           message: "tok",
           payload: {},
           createdAt: new Date(2026, 0, 1, 1, 0, i).toISOString(),
-          rowCursor: 10_000 + i
-        }
-      ]
+          rowCursor: 10_000 + i,
+        },
+      ],
     }));
     expect(medianMs(50, (i) => mergeDashboardDelta(base, deltas[i]))).toBeLessThan(2.5);
   });
@@ -206,10 +209,12 @@ describe("perf budgets", () => {
         message: "",
         payload: {},
         createdAt: new Date(2026, 0, 1, 0, 0, 4_999 - i).toISOString(),
-        rowCursor: 5_000 - i
-      }))
+        rowCursor: 5_000 - i,
+      })),
     };
-    expect(medianMs(100, () => mergeDashboardDelta(base, { events: [], rawOutputs: [] }))).toBeLessThan(0.01);
+    expect(
+      medianMs(100, () => mergeDashboardDelta(base, { events: [], rawOutputs: [] })),
+    ).toBeLessThan(0.01);
   });
 
   it("buildSessionToolCalls across capped tool and progress rows stays median < 20 ms", () => {
@@ -223,7 +228,7 @@ describe("perf budgets", () => {
         message: `Checked ${i}`,
         payload: {},
         createdAt,
-        rowCursor: i + 1
+        rowCursor: i + 1,
       });
     }
     for (let i = 0; i < 2_000; i++) {
@@ -234,7 +239,7 @@ describe("perf budgets", () => {
         message: "",
         payload: { name: "Read", tool_use_id: `tool-${i}`, input: { path: `src/${i}.ts` } },
         createdAt,
-        rowCursor: 4_001 + i
+        rowCursor: 4_001 + i,
       });
     }
     events.reverse();
@@ -259,7 +264,9 @@ describe("perf budgets", () => {
 
   it("searchFilePaths over 10 000 entries completes median < 1 ms", () => {
     const paths = Array.from({ length: 10_000 }, (_, i) =>
-      i === 9_500 ? "src/renderer/components/NeedlePanel.tsx" : `packages/pkg-${i}/src/file-${i}.ts`
+      i === 9_500
+        ? "src/renderer/components/NeedlePanel.tsx"
+        : `packages/pkg-${i}/src/file-${i}.ts`,
     );
 
     expect(searchFilePaths(paths, "Needle", 8)[0]).toBe("src/renderer/components/NeedlePanel.tsx");
@@ -283,7 +290,8 @@ describe("perf budgets", () => {
           // Mix of context, additions, deletions so the parser visits every
           // branch on the hot path, not just the cheap "context" arm.
           if (line % 5 === 0) sections.push(`+added line ${line} in hunk ${hunk} file ${file}`);
-          else if (line % 7 === 0) sections.push(`-removed line ${line} in hunk ${hunk} file ${file}`);
+          else if (line % 7 === 0)
+            sections.push(`-removed line ${line} in hunk ${hunk} file ${file}`);
           else sections.push(` context line ${line} in hunk ${hunk} file ${file}`);
         }
       }

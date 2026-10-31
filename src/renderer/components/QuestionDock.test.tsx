@@ -6,13 +6,18 @@ import { QuestionDock } from "./QuestionDock.js";
 afterEach(resetToastForTests);
 
 it("toasts a failed answer and leaves the question ready to retry", async () => {
-  const onAnswer = vi.fn().mockRejectedValueOnce(new Error("Provider disconnected")).mockResolvedValueOnce(true);
+  const onAnswer = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("Provider disconnected"))
+    .mockResolvedValueOnce(true);
   render(
     <QuestionDock
-      questions={[{ question: "Where?", header: "Place", options: [{ label: "Here" }], multiSelect: false }]}
+      questions={[
+        { question: "Where?", header: "Place", options: [{ label: "Here" }], multiSelect: false },
+      ]}
       onAnswer={onAnswer}
       onDismiss={vi.fn()}
-    />
+    />,
   );
 
   fireEvent.click(screen.getByRole("option", { name: /Here/ }));

@@ -15,7 +15,7 @@ export function restoreDraftText(current: string, restored: string): string {
 /** The restored attachments first, then any the person has added since, once each. */
 export function restoreDraftAttachments(
   current: readonly ComposerAttachment[],
-  restored: readonly ComposerAttachment[]
+  restored: readonly ComposerAttachment[],
 ): ComposerAttachment[] {
   const seen = new Set<string>();
   const merged: ComposerAttachment[] = [];

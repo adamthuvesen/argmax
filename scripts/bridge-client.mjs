@@ -23,7 +23,9 @@ export function readBridgeConfig(dataDir) {
   }
   const config = JSON.parse(raw);
   if (!config.enabled) {
-    throw new Error(`remote bridge is disabled in ${configPath} (set "enabled": true and restart the app)`);
+    throw new Error(
+      `remote bridge is disabled in ${configPath} (set "enabled": true and restart the app)`,
+    );
   }
   if (typeof config.port !== "number" || typeof config.token !== "string") {
     throw new Error(`remote.json at ${configPath} is missing port/token`);
@@ -56,7 +58,8 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
       if (!entry) return;
       pending.delete(id);
       if ("error" in frame) {
-        const detail = typeof frame.error === "object" ? JSON.stringify(frame.error) : String(frame.error);
+        const detail =
+          typeof frame.error === "object" ? JSON.stringify(frame.error) : String(frame.error);
         entry.reject(new Error(detail));
       } else if ("ok" in frame) {
         entry.resolve(frame.ok);
@@ -116,7 +119,9 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
                     : setTimeout(() => {
                         pending.delete(id);
                         abort.abort();
-                        rejectCall(new Error(`bridge call ${channel} timed out after ${callTimeoutMs}ms`));
+                        rejectCall(
+                          new Error(`bridge call ${channel} timed out after ${callTimeoutMs}ms`),
+                        );
                       }, callTimeoutMs);
                 pending.set(id, {
                   channel,
@@ -132,7 +137,7 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
                     clearTimeout(timer);
                     abort.abort();
                     rejectCall(error);
-                  }
+                  },
                 });
                 socket.send(
                   JSON.stringify({
@@ -140,8 +145,8 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
                     id,
                     channel,
                     input,
-                    operation: { clientId, operationId: randomUUID() }
-                  })
+                    operation: { clientId, operationId: randomUUID() },
+                  }),
                 );
               });
             },
@@ -151,7 +156,7 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
             },
             close() {
               socket.close();
-            }
+            },
           });
           return;
         }
@@ -160,7 +165,11 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
           settled = true;
           clearTimeout(timer);
           socket.close();
-          reject(new Error("bridge rejected the token — the app may have rotated it; re-read remote.json"));
+          reject(
+            new Error(
+              "bridge rejected the token — the app may have rotated it; re-read remote.json",
+            ),
+          );
           return;
         }
         case "response": {
@@ -169,19 +178,23 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
           if (entry.fetchingTranscript) return;
           if (
             frame.error?.sub_code === "REMOTE_RESPONSE_TOO_LARGE" &&
-            ["session:events-since", "session:agent-events", "visualization:read", "visualization:export"].includes(
-              entry.channel
-            )
+            [
+              "session:events-since",
+              "session:agent-events",
+              "visualization:read",
+              "visualization:export",
+            ].includes(entry.channel)
           ) {
             entry.fetchingTranscript = true;
             fetch(`http://127.0.0.1:${port}/api/transcript`, {
               method: "POST",
               headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
               body: entry.input,
-              signal: entry.abort.signal
+              signal: entry.abort.signal,
             })
               .then(async (response) => {
-                if (!response.ok) throw new Error(`Transcript read failed (HTTP ${response.status})`);
+                if (!response.ok)
+                  throw new Error(`Transcript read failed (HTTP ${response.status})`);
                 const reply = await response.json();
                 if (!reply || typeof reply !== "object" || Array.isArray(reply)) {
                   throw new Error("Malformed transcript response");
@@ -197,7 +210,8 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
           return;
         }
         case "event": {
-          for (const listener of eventListeners) listener({ channel: frame.channel, payload: frame.payload });
+          for (const listener of eventListeners)
+            listener({ channel: frame.channel, payload: frame.payload });
           return;
         }
         case "ping": {

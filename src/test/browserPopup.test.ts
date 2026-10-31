@@ -8,11 +8,13 @@ const script = rust.match(/const BROWSER_INIT_SCRIPT: &str = r#"([\s\S]*?)"#;/)?
 it.each([
   ["", "about:blank"],
   [undefined, "about:blank"],
-  ["https://example.com/login", "https://example.com/login"]
+  ["https://example.com/login", "https://example.com/login"],
 ])("preserves a real popup reference for URL %s", (url, expectedUrl) => {
   expect(script).toBeDefined();
   const popup = { closed: false, location: { href: "about:blank" } };
-  const nativeOpen = vi.fn<(url: string | undefined, name: string, features: string) => typeof popup>(() => popup);
+  const nativeOpen = vi.fn<
+    (url: string | undefined, name: string, features: string) => typeof popup
+  >(() => popup);
   const window = { open: nativeOpen, addEventListener: vi.fn() };
   runInNewContext(script!, { window, document: { addEventListener: vi.fn() } });
 
@@ -41,10 +43,13 @@ it("leaves popup links and keyboard shortcuts native even after the opener is se
 
 it.each([
   [3, "back"],
-  [4, "forward"]
+  [4, "forward"],
 ] as const)("navigates history once when mouse button %i is released", (button, direction) => {
   expect(script).toBeDefined();
-  const listeners = new Map<string, (event: { button: number; preventDefault: () => void }) => void>();
+  const listeners = new Map<
+    string,
+    (event: { button: number; preventDefault: () => void }) => void
+  >();
   const history = { back: vi.fn(), forward: vi.fn() };
   const window = {
     open: vi.fn(),
@@ -53,10 +58,15 @@ it.each([
     addEventListener: vi.fn(
       (type: string, listener: (event: { button: number; preventDefault: () => void }) => void) => {
         listeners.set(type, listener);
-      }
-    )
+      },
+    ),
   };
-  runInNewContext(script!, { URL, encodeURIComponent, window, document: { addEventListener: vi.fn() } });
+  runInNewContext(script!, {
+    URL,
+    encodeURIComponent,
+    window,
+    document: { addEventListener: vi.fn() },
+  });
   const preventDefault = vi.fn();
 
   listeners.get("mousedown")?.({ button, preventDefault });
@@ -70,7 +80,10 @@ it.each([
 
 it("ignores ordinary mouse buttons for history navigation", () => {
   expect(script).toBeDefined();
-  const listeners = new Map<string, (event: { button: number; preventDefault: () => void }) => void>();
+  const listeners = new Map<
+    string,
+    (event: { button: number; preventDefault: () => void }) => void
+  >();
   const history = { back: vi.fn(), forward: vi.fn() };
   const window = {
     open: vi.fn(),
@@ -79,10 +92,15 @@ it("ignores ordinary mouse buttons for history navigation", () => {
     addEventListener: vi.fn(
       (type: string, listener: (event: { button: number; preventDefault: () => void }) => void) => {
         listeners.set(type, listener);
-      }
-    )
+      },
+    ),
   };
-  runInNewContext(script!, { URL, encodeURIComponent, window, document: { addEventListener: vi.fn() } });
+  runInNewContext(script!, {
+    URL,
+    encodeURIComponent,
+    window,
+    document: { addEventListener: vi.fn() },
+  });
   const preventDefault = vi.fn();
 
   for (const button of [0, 1, 2]) {

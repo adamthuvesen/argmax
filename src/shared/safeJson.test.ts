@@ -1,7 +1,12 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { logger } from "./logger.js";
-import { resetSafeJsonWarningsForTesting, safeJsonParse, safeJsonParseArray, safeJsonParseRecord } from "./safeJson.js";
+import {
+  resetSafeJsonWarningsForTesting,
+  safeJsonParse,
+  safeJsonParseArray,
+  safeJsonParseRecord,
+} from "./safeJson.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -40,7 +45,11 @@ describe("safeJsonParse — always returns unknown", () => {
   it("logs malformed contextless JSON under the unknown bucket", () => {
     const warn = vi.spyOn(logger, "warn");
     safeJsonParse("{bad");
-    expect(warn).toHaveBeenCalledWith("safeJson", "parse error", expect.objectContaining({ context: "<unknown>" }));
+    expect(warn).toHaveBeenCalledWith(
+      "safeJson",
+      "parse error",
+      expect.objectContaining({ context: "<unknown>" }),
+    );
   });
 });
 

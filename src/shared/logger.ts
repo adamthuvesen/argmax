@@ -20,7 +20,11 @@ type LogLevel = "info" | "warn" | "error";
 function isDebugEnabled(): boolean {
   // Read each call so tests that toggle `process.env.DEBUG` between calls
   // see the new value. The cost is negligible.
-  return typeof process !== "undefined" && typeof process.env !== "undefined" && process.env.DEBUG === "1";
+  return (
+    typeof process !== "undefined" &&
+    typeof process.env !== "undefined" &&
+    process.env.DEBUG === "1"
+  );
 }
 
 function consoleFor(level: LogLevel): (...args: unknown[]) => void {
@@ -34,7 +38,12 @@ function consoleFor(level: LogLevel): (...args: unknown[]) => void {
   }
 }
 
-function record(level: LogLevel, scope: string, message: string, fields?: Record<string, unknown>): void {
+function record(
+  level: LogLevel,
+  scope: string,
+  message: string,
+  fields?: Record<string, unknown>,
+): void {
   // Error always mirrors so it's noticeable without DEBUG=1. Other levels
   // need the explicit opt-in.
   if (level === "error" || isDebugEnabled()) {
@@ -56,5 +65,5 @@ export const logger = {
   },
   error(scope: string, message: string, fields?: Record<string, unknown>): void {
     record("error", scope, message, fields);
-  }
+  },
 };

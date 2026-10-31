@@ -9,7 +9,7 @@ import {
   hideStandalonePage,
   showCommandPalette,
   showKeyboardCheatSheet,
-  showSettings
+  showSettings,
 } from "../state/overlays.js";
 import { hideFullLauncher } from "../state/launcherSurface.js";
 import { toggleSidebarCollapsed } from "../state/sidebarChrome.js";
@@ -18,7 +18,10 @@ interface MenuCommands {
   isSettingsOpen: boolean;
   closeWorkspacePages: () => void;
   openNewSessionPane: () => void;
-  openWorkspaceChat: (workspaceId: string, modifiers: { ctrlOrMeta: boolean; alt: boolean }) => void;
+  openWorkspaceChat: (
+    workspaceId: string,
+    modifiers: { ctrlOrMeta: boolean; alt: boolean },
+  ) => void;
   closeFocusedSurface: () => boolean;
   toggleRightPanel: () => void;
   toggleDebugLog: () => void;
@@ -32,7 +35,7 @@ export function useAppMenuCommands({
   openWorkspaceChat,
   closeFocusedSurface,
   toggleRightPanel,
-  toggleDebugLog
+  toggleDebugLog,
 }: MenuCommands): (command: MenuCommand) => void {
   return useCallback(
     (command: MenuCommand): void => {
@@ -52,7 +55,7 @@ export function useAppMenuCommands({
           const workspaceId = jumpToAdjacentChat(
             command === "next-chat" ? 1 : -1,
             listVisibleSidebarWorkspaceIds(),
-            selectedSidebarWorkspaceId()
+            selectedSidebarWorkspaceId(),
           );
           if (!workspaceId) return;
           hideStandalonePage();
@@ -93,7 +96,7 @@ export function useAppMenuCommands({
       openNewSessionPane,
       openWorkspaceChat,
       toggleDebugLog,
-      toggleRightPanel
-    ]
+      toggleRightPanel,
+    ],
   );
 }

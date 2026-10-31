@@ -32,8 +32,8 @@ function cloneDestination(destination: AppNavigationDestination): AppNavigationD
     kind: "grid",
     grid: {
       rows: destination.grid.rows.map((row) => row.map((cell) => ({ ...cell }))),
-      focused: destination.grid.focused ? { ...destination.grid.focused } : null
-    }
+      focused: destination.grid.focused ? { ...destination.grid.focused } : null,
+    },
   };
 }
 
@@ -63,7 +63,7 @@ export function useAppNavigationHistory({
   destination,
   enabled = true,
   canRestore,
-  restore
+  restore,
 }: UseAppNavigationHistoryOptions): void {
   const historyRef = useRef<NavigationHistory | null>(null);
   const replayTargetRef = useRef<string | null>(null);
@@ -109,7 +109,8 @@ export function useAppNavigationHistory({
     }
 
     const entries = [...history.entries.slice(0, history.index + 1), next];
-    if (entries.length > MAX_HISTORY_ENTRIES) entries.splice(0, entries.length - MAX_HISTORY_ENTRIES);
+    if (entries.length > MAX_HISTORY_ENTRIES)
+      entries.splice(0, entries.length - MAX_HISTORY_ENTRIES);
     historyRef.current = { entries, index: entries.length - 1 };
   }, [destination, enabled]);
 

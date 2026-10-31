@@ -16,7 +16,7 @@ import { showErrorToast, showInfoToast } from "../state/toast.js";
  */
 export function ForkMergeDialog({
   childSessionId,
-  onClose
+  onClose,
 }: {
   childSessionId: string;
   onClose: () => void;
@@ -31,7 +31,8 @@ export function ForkMergeDialog({
     key: ["session.forkMergePreview", childSessionId],
     read: (api) => api.session.forkMergePreview({ sessionId: childSessionId }),
     onData: setPreview,
-    onError: (error) => setLoadError(error instanceof Error ? error.message : "Couldn't read the fork.")
+    onError: (error) =>
+      setLoadError(error instanceof Error ? error.message : "Couldn't read the fork."),
   });
 
   useEffect(() => {
@@ -54,14 +55,14 @@ export function ForkMergeDialog({
     try {
       const result = await session.forkMerge({
         sessionId: childSessionId,
-        throughEventId
+        throughEventId,
       });
       showInfoToast(
         !result.merged
           ? "Those findings were already brought back."
           : result.queued
             ? `Queued for ${preview?.sourceLabel ?? "the source chat"}; it sends when that turn ends.`
-            : `Sent to ${preview?.sourceLabel ?? "the source chat"}.`
+            : `Sent to ${preview?.sourceLabel ?? "the source chat"}.`,
       );
       onClose();
     } catch (error) {
@@ -110,18 +111,20 @@ export function ForkMergeDialog({
             ) : null}
             {preview.sourceBusy ? (
               <p className="fork-merge-note" role="status">
-                {preview.sourceLabel} is working. The message waits in its queue until that turn ends.
+                {preview.sourceLabel} is working. The message waits in its queue until that turn
+                ends.
               </p>
             ) : null}
             {preview.unconfirmedMergeId ? (
               <p className="fork-merge-note" role="status">
-                An earlier merge is still waiting in {preview.sourceLabel}&apos;s queue and counts as sent. Discard it
-                there to bring those findings back again.
+                An earlier merge is still waiting in {preview.sourceLabel}&apos;s queue and counts
+                as sent. Discard it there to bring those findings back again.
               </p>
             ) : null}
             {preview.truncated ? (
               <p className="fork-merge-note" role="status">
-                Only the most recent messages are included. The message points at this fork for the rest.
+                Only the most recent messages are included. The message points at this fork for the
+                rest.
               </p>
             ) : null}
             {preview.nothingNew ? null : (
@@ -136,13 +139,18 @@ export function ForkMergeDialog({
             {preview?.nothingNew ? "Close" : "Cancel"}
           </button>
           {preview?.nothingNew ? null : (
-            <button type="button" className="fork-merge-dialog-submit" disabled={!canSend} onClick={() => void send()}>
+            <button
+              type="button"
+              className="fork-merge-dialog-submit"
+              disabled={!canSend}
+              onClick={() => void send()}
+            >
               {sending ? "Sending…" : preview?.sourceBusy ? "Queue for source" : "Send to source"}
             </button>
           )}
         </footer>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

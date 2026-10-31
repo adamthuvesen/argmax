@@ -28,10 +28,8 @@ describe("recencyList", () => {
     touchIdRecency(KEY, "a");
     touchIdRecency(KEY, "c");
     const items = [{ id: "a" }, { id: "b" }, { id: "c" }];
-    expect(sortByIdRecency(items, readIdRecency(KEY), (item) => item.id).map((item) => item.id)).toEqual([
-      "c",
-      "a",
-      "b"
-    ]);
+    expect(
+      sortByIdRecency(items, readIdRecency(KEY), (item) => item.id).map((item) => item.id),
+    ).toEqual(["c", "a", "b"]);
   });
 });

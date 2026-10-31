@@ -69,7 +69,9 @@ function processDescendants(processes, parentPid) {
 
 export function matchingProcessIdentities(processes, expected) {
   const actualByPid = new Map(processes.map((processInfo) => [processInfo.pid, processInfo]));
-  return expected.filter((processInfo) => actualByPid.get(processInfo.pid)?.startedAt === processInfo.startedAt);
+  return expected.filter(
+    (processInfo) => actualByPid.get(processInfo.pid)?.startedAt === processInfo.startedAt,
+  );
 }
 
 async function waitForProcessExit(expected, timeoutMs) {
@@ -101,17 +103,20 @@ async function closeDesktopProcessTree(browser) {
   let descendants = [];
   let identityStatus = "unknown";
   try {
-    if (!processInfo) throw new Error("Could not identify the verification app process before closing it");
+    if (!processInfo)
+      throw new Error("Could not identify the verification app process before closing it");
     const before = await processSnapshot();
     appIdentity = matchingProcessIdentities(before, [processInfo])[0] ?? null;
     if (!appIdentity) {
-      identityStatus = before.some((candidate) => candidate.pid === processInfo.pid) ? "reused" : "exited";
+      identityStatus = before.some((candidate) => candidate.pid === processInfo.pid)
+        ? "reused"
+        : "exited";
       return {
         appPid: processInfo.pid,
         appStartedAt: processInfo.startedAt,
         identityStatus,
         descendantPids: [],
-        terminatedDescendantPids: []
+        terminatedDescendantPids: [],
       };
     }
     identityStatus = "matched";
@@ -132,7 +137,9 @@ async function closeDesktopProcessTree(browser) {
     try {
       const runningApp = await waitForProcessExit([appIdentity], DESKTOP_EXIT_TIMEOUT_MS);
       if (runningApp.length > 0) {
-        throw new Error(`Verification app process ${appIdentity.pid} remained alive after WebDriver cleanup`);
+        throw new Error(
+          `Verification app process ${appIdentity.pid} remained alive after WebDriver cleanup`,
+        );
       }
     } catch (error) {
       errors.push(error);
@@ -143,14 +150,17 @@ async function closeDesktopProcessTree(browser) {
   if (descendants.length > 0) {
     try {
       terminatedDescendants = await signalMatchingProcesses(descendants, "SIGTERM");
-      let remaining = await waitForProcessExit(terminatedDescendants, DESKTOP_DESCENDANT_EXIT_TIMEOUT_MS);
+      let remaining = await waitForProcessExit(
+        terminatedDescendants,
+        DESKTOP_DESCENDANT_EXIT_TIMEOUT_MS,
+      );
       if (remaining.length > 0) {
         await signalMatchingProcesses(remaining, "SIGKILL");
         remaining = await waitForProcessExit(remaining, DESKTOP_DESCENDANT_EXIT_TIMEOUT_MS);
       }
       if (remaining.length > 0) {
         throw new Error(
-          `Owned verification descendants remained alive: ${remaining.map((entry) => entry.pid).join(", ")}`
+          `Owned verification descendants remained alive: ${remaining.map((entry) => entry.pid).join(", ")}`,
         );
       }
     } catch (error) {
@@ -166,7 +176,7 @@ async function closeDesktopProcessTree(browser) {
     appStartedAt: processInfo.startedAt,
     identityStatus,
     descendantPids: descendants.map((entry) => entry.pid),
-    terminatedDescendantPids: terminatedDescendants.map((entry) => entry.pid)
+    terminatedDescendantPids: terminatedDescendants.map((entry) => entry.pid),
   };
 }
 
@@ -179,9 +189,10 @@ export async function captureDesktopState(browser) {
       visibilityState: document.visibilityState,
       hasFocus: document.hasFocus(),
       documentHiddenAttribute: document.documentElement.getAttribute("data-document-hidden"),
-      activeElement: document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName,
+      activeElement:
+        document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName,
       bodyText: document.body.innerText.slice(0, 10_000),
-      diagnostics: diagnostic ?? { entries: [], breadcrumbs: [] }
+      diagnostics: diagnostic ?? { entries: [], breadcrumbs: [] },
     };
   });
 }
@@ -211,7 +222,7 @@ async function macosDesktopState(pid, activate) {
     "let before = state()",
     `let activated: Any = ${activate ? "app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])" : "NSNull()"}`,
     'let data = try! JSONSerialization.data(withJSONObject: ["before": before, "activated": activated, "after": state()])',
-    "print(String(data: data, encoding: .utf8)!)"
+    "print(String(data: data, encoding: .utf8)!)",
   ].join("\n");
   const result = await runChecked("/usr/bin/swift", ["-e", source], { timeoutMs: 10_000 });
   return JSON.parse(result.stdout);
@@ -222,7 +233,7 @@ export function parseMacosConsoleLockState(output) {
   const screenIsLocked = output.match(/"CGSSessionScreenIsLocked"\s*=\s*(Yes|No)/)?.[1];
   return {
     ioConsoleLocked: ioConsoleLocked ? ioConsoleLocked === "Yes" : null,
-    screenIsLocked: screenIsLocked ? screenIsLocked === "Yes" : null
+    screenIsLocked: screenIsLocked ? screenIsLocked === "Yes" : null,
   };
 }
 
@@ -236,7 +247,7 @@ export function foregroundActivationTimeoutDetails({
   visibilityError,
   activationRequest,
   failureState,
-  consoleLock
+  consoleLock,
 }) {
   return {
     classification: "foreground-activation-timeout",
@@ -248,9 +259,9 @@ export function foregroundActivationTimeoutDetails({
     activationRequest: {
       result: activationRequest?.activated ?? null,
       before: activationRequest?.before ?? null,
-      after: activationRequest?.after ?? null
+      after: activationRequest?.after ?? null,
     },
-    ...(failureState?.diagnosticError ? { diagnosticError: failureState.diagnosticError } : {})
+    ...(failureState?.diagnosticError ? { diagnosticError: failureState.diagnosticError } : {}),
   };
 }
 
@@ -260,10 +271,13 @@ export async function ensureDesktopForeground(browser) {
   });
 
   const processInfo = desktopProcesses.get(browser);
-  if (!processInfo) throw new Error("Could not identify the verification app process to foreground it");
+  if (!processInfo)
+    throw new Error("Could not identify the verification app process to foreground it");
   const activation = await macosDesktopState(processInfo.pid, true);
   if (activation.activated !== true) {
-    throw new Error(`Could not activate verification app process ${processInfo.pid}: ${JSON.stringify(activation)}`);
+    throw new Error(
+      `Could not activate verification app process ${processInfo.pid}: ${JSON.stringify(activation)}`,
+    );
   }
 
   try {
@@ -272,12 +286,16 @@ export async function ensureDesktopForeground(browser) {
         await browser.execute(function documentIsVisible() {
           return document.visibilityState === "visible";
         }),
-      { timeout: 5_000, interval: 50, timeoutMsg: `Verification app process ${processInfo.pid} did not become visible` }
+      {
+        timeout: 5_000,
+        interval: 50,
+        timeoutMsg: `Verification app process ${processInfo.pid} did not become visible`,
+      },
     );
   } catch (visibilityError) {
     const [failureStateResult, consoleLockResult] = await Promise.allSettled([
       macosDesktopState(processInfo.pid, false),
-      macosConsoleLockState()
+      macosConsoleLockState(),
     ]);
     const failureState =
       failureStateResult.status === "fulfilled"
@@ -292,7 +310,7 @@ export async function ensureDesktopForeground(browser) {
       visibilityError,
       activationRequest: activation,
       failureState,
-      consoleLock
+      consoleLock,
     });
     throw new Error(`foreground-activation-timeout: ${JSON.stringify(details)}`);
   }
@@ -327,44 +345,58 @@ export async function pressNativeEscape(browser) {
     "guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid, !app.isTerminated",
     'else { refuse("Native Escape target is not foreground") }',
     "down.postToPid(pid); up.postToPid(pid)",
-    'print("{\\"pid\\":\\(pid),\\"method\\":\\"CGEventPostToPid\\"}")'
+    'print("{\\"pid\\":\\(pid),\\"method\\":\\"CGEventPostToPid\\"}")',
   ].join("\n");
   const result = await runChecked("/usr/bin/swift", ["-e", source], { timeoutMs: 10_000 });
   return JSON.parse(result.stdout);
 }
 
 async function desktopProcessForPort(port, expectedBinary) {
-  const listener = await runChecked("/usr/sbin/lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], {
-    timeoutMs: 5_000
-  });
+  const listener = await runChecked(
+    "/usr/sbin/lsof",
+    ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
+    {
+      timeoutMs: 5_000,
+    },
+  );
   const pids = [...new Set(listener.stdout.split(/\s+/).filter(Boolean))];
   if (pids.length !== 1 || !/^\d+$/.test(pids[0])) {
-    throw new Error(`Expected one verification app on WebDriver port ${port}, found: ${pids.join(", ") || "none"}`);
+    throw new Error(
+      `Expected one verification app on WebDriver port ${port}, found: ${pids.join(", ") || "none"}`,
+    );
   }
   const pid = Number(pids[0]);
   const beforeExecutableCheck = await processSnapshot();
   const identity = beforeExecutableCheck.find((candidate) => candidate.pid === pid);
   if (!identity) {
-    throw new Error(`Verification app process ${pid} exited before its executable could be checked`);
+    throw new Error(
+      `Verification app process ${pid} exited before its executable could be checked`,
+    );
   }
-  const processFiles = await runChecked("/usr/sbin/lsof", ["-a", "-p", String(pid), "-d", "txt", "-Fn"], {
-    timeoutMs: 5_000
-  });
+  const processFiles = await runChecked(
+    "/usr/sbin/lsof",
+    ["-a", "-p", String(pid), "-d", "txt", "-Fn"],
+    {
+      timeoutMs: 5_000,
+    },
+  );
   const executable = processFiles.stdout
     .split("\n")
     .find((line) => line.startsWith("n"))
     ?.slice(1);
   const [actualPath, expectedPath] = await Promise.all([
     executable ? realpath(executable) : Promise.resolve(null),
-    realpath(expectedBinary)
+    realpath(expectedBinary),
   ]);
   if (!actualPath || actualPath !== expectedPath) {
     throw new Error(
-      `Process ${pid} on WebDriver port ${port} is ${executable ?? "unknown"}, expected ${expectedBinary}`
+      `Process ${pid} on WebDriver port ${port} is ${executable ?? "unknown"}, expected ${expectedBinary}`,
     );
   }
   if (matchingProcessIdentities(await processSnapshot(), [identity]).length !== 1) {
-    throw new Error(`Verification app process ${pid} changed identity while its executable was checked`);
+    throw new Error(
+      `Verification app process ${pid} changed identity while its executable was checked`,
+    );
   }
   return { ...identity, executable };
 }
@@ -372,7 +404,7 @@ async function desktopProcessForPort(port, expectedBinary) {
 async function renderedTextEvidence(browser, expectedText) {
   return await browser.execute(function findRenderedText(text) {
     const candidates = Array.from(document.querySelectorAll("body *")).filter(
-      (element) => element.children.length === 0 && element.textContent?.includes(text)
+      (element) => element.children.length === 0 && element.textContent?.includes(text),
     );
     return candidates.map((element) => {
       const style = window.getComputedStyle(element);
@@ -384,8 +416,13 @@ async function renderedTextEvidence(browser, expectedText) {
       for (let current = element; current instanceof HTMLElement; current = current.parentElement) {
         const currentStyle = window.getComputedStyle(current);
         effectiveOpacity *= Number(currentStyle.opacity);
-        if (currentStyle.display === "none" || currentStyle.visibility === "hidden") treeVisible = false;
-        if (currentStyle.opacity !== "1" || currentStyle.display === "none" || currentStyle.visibility === "hidden") {
+        if (currentStyle.display === "none" || currentStyle.visibility === "hidden")
+          treeVisible = false;
+        if (
+          currentStyle.opacity !== "1" ||
+          currentStyle.display === "none" ||
+          currentStyle.visibility === "hidden"
+        ) {
           ancestors.push({
             tagName: current.tagName,
             className: current.className,
@@ -393,7 +430,7 @@ async function renderedTextEvidence(browser, expectedText) {
             visibility: currentStyle.visibility,
             opacity: currentStyle.opacity,
             animationName: currentStyle.animationName,
-            animationPlayState: currentStyle.animationPlayState
+            animationPlayState: currentStyle.animationPlayState,
           });
         }
         for (const animation of current.getAnimations()) {
@@ -402,11 +439,14 @@ async function renderedTextEvidence(browser, expectedText) {
           const iterations = timing?.iterations;
           const endTime = computedTiming?.endTime;
           animations.push({
-            targetClassName: animation.effect?.target instanceof HTMLElement ? animation.effect.target.className : "",
+            targetClassName:
+              animation.effect?.target instanceof HTMLElement
+                ? animation.effect.target.className
+                : "",
             playState: animation.playState,
             iterations: typeof iterations === "number" ? iterations : null,
             endTime: typeof endTime === "number" ? endTime : null,
-            finite: typeof iterations !== "number" || Number.isFinite(iterations)
+            finite: typeof iterations !== "number" || Number.isFinite(iterations),
           });
         }
       }
@@ -428,8 +468,11 @@ async function renderedTextEvidence(browser, expectedText) {
           treeVisible &&
           effectiveOpacity >= 0.98 &&
           animations.every(
-            (animation) => !animation.finite || animation.playState === "finished" || animation.playState === "idle"
-          )
+            (animation) =>
+              !animation.finite ||
+              animation.playState === "finished" ||
+              animation.playState === "idle",
+          ),
       };
     });
   }, expectedText);
@@ -449,7 +492,7 @@ async function waitForAnimationFrames(browser) {
 
 function rendererErrors(uiState) {
   return (uiState?.diagnostics?.entries ?? []).filter(
-    (entry) => entry.level === "error" || entry.level === "unhandled-rejection"
+    (entry) => entry.level === "error" || entry.level === "unhandled-rejection",
   );
 }
 
@@ -490,7 +533,7 @@ export async function inspectDesktopPrerequisites({ appBinaryPath, env = {} } = 
   return {
     available: issues.length === 0,
     platform: process.platform,
-    issues
+    issues,
   };
 }
 
@@ -504,7 +547,7 @@ export async function connectDesktop({
   outputDir,
   env = {},
   port,
-  startTimeoutMs = DEFAULT_START_TIMEOUT_MS
+  startTimeoutMs = DEFAULT_START_TIMEOUT_MS,
 }) {
   if (!appBinaryPath) throw new Error("connectDesktop requires appBinaryPath");
   if (!outputDir) throw new Error("connectDesktop requires outputDir");
@@ -513,7 +556,9 @@ export async function connectDesktop({
   const evidenceDir = path.resolve(outputDir);
   const prerequisites = await inspectDesktopPrerequisites({ appBinaryPath: binary, env });
   if (!prerequisites.available) {
-    throw new Error(`Desktop verification prerequisites failed:\n${prerequisites.issues.join("\n")}`);
+    throw new Error(
+      `Desktop verification prerequisites failed:\n${prerequisites.issues.join("\n")}`,
+    );
   }
   await mkdir(evidenceDir, { recursive: true });
 
@@ -521,7 +566,7 @@ export async function connectDesktop({
   const capabilities = createTauriCapabilities(binary, {
     driverProvider: "embedded",
     logLevel: "warn",
-    startTimeout: startTimeoutMs
+    startTimeout: startTimeoutMs,
   });
   capabilities["wdio:tauriServiceOptions"] = {
     ...capabilities["wdio:tauriServiceOptions"],
@@ -535,8 +580,8 @@ export async function connectDesktop({
     logDir: evidenceDir,
     env: {
       ...env,
-      ARGMAX_VERIFICATION: "1"
-    }
+      ARGMAX_VERIFICATION: "1",
+    },
   };
 
   const browser = await startWdioSession(capabilities);
@@ -553,7 +598,9 @@ export async function connectDesktop({
     } finally {
       desktopProcesses.delete(browser);
     }
-    throw new Error(`${errorMessage(error)}${cleanupError ? `; ${errorMessage(cleanupError)}` : ""}`);
+    throw new Error(
+      `${errorMessage(error)}${cleanupError ? `; ${errorMessage(cleanupError)}` : ""}`,
+    );
   }
   let closed = false;
   return {
@@ -567,7 +614,7 @@ export async function connectDesktop({
       } finally {
         desktopProcesses.delete(browser);
       }
-    }
+    },
   };
 }
 
@@ -585,7 +632,7 @@ async function desktopSmoke(browser, outputDir) {
       await browser.execute(function argmaxReady() {
         return Boolean(window.argmax?.health?.ping && window.__ARGMAX_VERIFICATION__?.snapshot);
       }),
-    { timeout: 30_000, interval: 100, timeoutMsg: "Argmax renderer did not become ready" }
+    { timeout: 30_000, interval: 100, timeoutMsg: "Argmax renderer did not become ready" },
   );
 
   const backend = await browser.execute(async function verifyBackend() {
@@ -596,8 +643,8 @@ async function desktopSmoke(browser, outputDir) {
       dashboardShape: {
         projects: Array.isArray(dashboard.projects),
         workspaces: Array.isArray(dashboard.workspaces),
-        sessions: Array.isArray(dashboard.sessions)
-      }
+        sessions: Array.isArray(dashboard.sessions),
+      },
     };
   });
   assert("real backend health responds", backend?.ping?.ok === true);
@@ -605,7 +652,7 @@ async function desktopSmoke(browser, outputDir) {
     "real backend dashboard responds",
     backend?.dashboardShape?.projects === true &&
       backend?.dashboardShape?.workspaces === true &&
-      backend?.dashboardShape?.sessions === true
+      backend?.dashboardShape?.sessions === true,
   );
 
   const customize = await browser.$('[aria-label="Customize"]');
@@ -623,24 +670,34 @@ async function desktopSmoke(browser, outputDir) {
 
   const uiState = await captureDesktopState(browser);
   const errors = rendererErrors(uiState);
-  assert("renderer has no captured errors", errors.length === 0, errors.map((entry) => entry.message).join("\n"));
+  assert(
+    "renderer has no captured errors",
+    errors.length === 0,
+    errors.map((entry) => entry.message).join("\n"),
+  );
 
   return {
     assertions,
     screenshots: [screenshotPath],
     uiState,
-    errors
+    errors,
   };
 }
 
-export async function runDesktopVerification({ appBinaryPath, outputDir, env = {}, port, scenario = "smoke" }) {
+export async function runDesktopVerification({
+  appBinaryPath,
+  outputDir,
+  env = {},
+  port,
+  scenario = "smoke",
+}) {
   const evidenceDir = path.resolve(outputDir);
   const result = {
     ok: false,
     assertions: [],
     screenshots: [],
     uiState: null,
-    errors: []
+    errors: [],
   };
   let desktop;
   try {
@@ -674,7 +731,10 @@ export async function runDesktopVerification({ appBinaryPath, outputDir, env = {
       }
     }
     await mkdir(evidenceDir, { recursive: true });
-    await writeFile(path.join(evidenceDir, "desktop-result.json"), `${JSON.stringify(result, null, 2)}\n`);
+    await writeFile(
+      path.join(evidenceDir, "desktop-result.json"),
+      `${JSON.stringify(result, null, 2)}\n`,
+    );
   }
   return result;
 }
@@ -688,7 +748,7 @@ export async function verifyDesktopSession({
   expectedTexts = [],
   expectIdle = false,
   timeoutMs = 20_000,
-  paintTimeoutMs = 5_000
+  paintTimeoutMs = 5_000,
 }) {
   if (!browser) throw new Error("verifyDesktopSession requires browser");
   if (!outputDir) throw new Error("verifyDesktopSession requires outputDir");
@@ -708,7 +768,7 @@ export async function verifyDesktopSession({
     assertions.push({
       name: "native WebDriver targets a visible app window",
       ok: true,
-      ...(foreground.pid ? { detail: `pid ${foreground.pid}` } : {})
+      ...(foreground.pid ? { detail: `pid ${foreground.pid}` } : {}),
     });
     let sessionRow = null;
     await browser.waitUntil(
@@ -725,18 +785,25 @@ export async function verifyDesktopSession({
         for (const expander of expanders) await expander.click();
         return false;
       },
-      { timeout: timeoutMs, interval: 250, timeoutMsg: `Session row containing ${titleIncludes} was not visible` }
+      {
+        timeout: timeoutMs,
+        interval: 250,
+        timeoutMsg: `Session row containing ${titleIncludes} was not visible`,
+      },
     );
     await sessionRow.click();
     if ((await ensureDesktopForeground(browser)).changed) visibilityRecoveries += 1;
     assertions.push({ name: "native WebDriver opens the backend-created session", ok: true });
 
     for (const expectedText of expectedTexts) {
-      await browser.waitUntil(async () => (await browser.$("body").getText()).includes(expectedText), {
-        timeout: timeoutMs,
-        interval: 200,
-        timeoutMsg: `Visible session text did not include: ${expectedText}`
-      });
+      await browser.waitUntil(
+        async () => (await browser.$("body").getText()).includes(expectedText),
+        {
+          timeout: timeoutMs,
+          interval: 200,
+          timeoutMsg: `Visible session text did not include: ${expectedText}`,
+        },
+      );
       assertions.push({ name: `visible session includes ${expectedText}`, ok: true });
       if ((await ensureDesktopForeground(browser)).changed) visibilityRecoveries += 1;
       let rendered = [];
@@ -747,14 +814,21 @@ export async function verifyDesktopSession({
           visibleMatch = rendered.find((entry) => entry.paintReady) ?? null;
           return visibleMatch !== null;
         },
-        { timeout: paintTimeoutMs, interval: 50, timeoutMsg: `Session text did not finish painting: ${expectedText}` }
+        {
+          timeout: paintTimeoutMs,
+          interval: 50,
+          timeoutMsg: `Session text did not finish painting: ${expectedText}`,
+        },
       );
       assertions.push({
         name: `session paints ${expectedText}`,
         ok: Boolean(visibleMatch),
-        ...(visibleMatch ? { detail: JSON.stringify(visibleMatch.rect) } : { detail: JSON.stringify(rendered) })
+        ...(visibleMatch
+          ? { detail: JSON.stringify(visibleMatch.rect) }
+          : { detail: JSON.stringify(rendered) }),
       });
-      if (!visibleMatch) throw new Error(`Session text is present but not rendered: ${expectedText}`);
+      if (!visibleMatch)
+        throw new Error(`Session text is present but not rendered: ${expectedText}`);
     }
 
     if (expectIdle) {
@@ -765,12 +839,16 @@ export async function verifyDesktopSession({
             const stop = document.querySelector('[aria-label="Stop chat"]');
             const thinking = document.querySelector('[aria-label="Thinking"]');
             return {
-              ready: send instanceof HTMLButtonElement && stop === null && thinking === null
+              ready: send instanceof HTMLButtonElement && stop === null && thinking === null,
             };
           });
           return idle.ready;
         },
-        { timeout: timeoutMs, interval: 50, timeoutMsg: "Session did not reach an idle rendered state" }
+        {
+          timeout: timeoutMs,
+          interval: 50,
+          timeoutMsg: "Session did not reach an idle rendered state",
+        },
       );
       assertions.push({ name: "terminal session renders idle controls and no busy cue", ok: true });
     }
@@ -779,22 +857,30 @@ export async function verifyDesktopSession({
     assertions.push({
       name: "native app remains visible through paint checkpoints",
       ok: true,
-      detail: `visibility recoveries: ${visibilityRecoveries}`
+      detail: `visibility recoveries: ${visibilityRecoveries}`,
     });
     const animationFramesAdvanced = await waitForAnimationFrames(browser);
-    assertions.push({ name: "webview advances paint frames before screenshot", ok: animationFramesAdvanced });
-    if (!animationFramesAdvanced) throw new Error("Webview did not advance paint frames before screenshot");
+    assertions.push({
+      name: "webview advances paint frames before screenshot",
+      ok: animationFramesAdvanced,
+    });
+    if (!animationFramesAdvanced)
+      throw new Error("Webview did not advance paint frames before screenshot");
     await browser.pause(50);
     const screenshotPath = path.join(evidenceDir, `${safeName}.png`);
     await browser.saveScreenshot(screenshotPath);
     screenshots.push(screenshotPath);
-    assertions.push({ name: "native WebDriver captures the verified session", ok: true, detail: screenshotPath });
+    assertions.push({
+      name: "native WebDriver captures the verified session",
+      ok: true,
+      detail: screenshotPath,
+    });
     uiState = await captureDesktopState(browser);
     errors.push(...rendererErrorMessages(uiState));
     assertions.push({
       name: "renderer has no captured errors",
       ok: errors.length === 0,
-      ...(errors.length ? { detail: errors.join("\n") } : {})
+      ...(errors.length ? { detail: errors.join("\n") } : {}),
     });
   } catch (error) {
     errors.push(errorMessage(error));
@@ -814,13 +900,17 @@ export async function verifyDesktopSession({
   }
 
   const result = {
-    ok: assertions.length > 0 && assertions.every((assertion) => assertion.ok) && errors.length === 0,
+    ok:
+      assertions.length > 0 && assertions.every((assertion) => assertion.ok) && errors.length === 0,
     assertions,
     screenshots,
     uiState,
-    errors
+    errors,
   };
-  await writeFile(path.join(evidenceDir, `${safeName}.json`), `${JSON.stringify(result, null, 2)}\n`);
+  await writeFile(
+    path.join(evidenceDir, `${safeName}.json`),
+    `${JSON.stringify(result, null, 2)}\n`,
+  );
   return result;
 }
 
@@ -845,15 +935,19 @@ export function composerEditorCommand(element, action) {
   const content = element.matches(".cm-content") ? element : element.querySelector(".cm-content");
   const view = content?.cmTile?.root?.view ?? null;
   if (!view) {
-    const keys = Object.getOwnPropertyNames(content ?? {}).filter((key) => /cm|tile|view/i.test(key));
+    const keys = Object.getOwnPropertyNames(content ?? {}).filter((key) =>
+      /cm|tile|view/i.test(key),
+    );
     throw new Error(
-      `CodeMirror view is not reachable from the composer field (cmTile: ${typeof content?.cmTile}; related properties: ${keys.join(", ") || "none"})`
+      `CodeMirror view is not reachable from the composer field (cmTile: ${typeof content?.cmTile}; related properties: ${keys.join(", ") || "none"})`,
     );
   }
   if (action === "text") return view.state.doc.toString();
   view.focus();
   const length = view.state.doc.length;
-  view.dispatch({ selection: action === "select-all" ? { anchor: 0, head: length } : { anchor: length } });
+  view.dispatch({
+    selection: action === "select-all" ? { anchor: 0, head: length } : { anchor: length },
+  });
   return null;
 }
 
@@ -864,7 +958,11 @@ export async function readComposerText(browser, field) {
 
 /** Select all of a composer field's text, or put the caret at its end. */
 export async function selectComposerText(browser, field, where) {
-  await browser.execute(composerEditorCommand, field, where === "all" ? "select-all" : "select-end");
+  await browser.execute(
+    composerEditorCommand,
+    field,
+    where === "all" ? "select-all" : "select-end",
+  );
 }
 
 /**
@@ -884,7 +982,11 @@ export async function waitForCodeMirror(browser, label, timeoutMs = 20_000) {
           document.querySelector(`textarea[aria-label="${ariaLabel}"]`) === null
         );
       }, label),
-    { timeout: timeoutMs, interval: 150, timeoutMsg: `The "${label}" field never became a CodeMirror editor` }
+    {
+      timeout: timeoutMs,
+      interval: 150,
+      timeoutMsg: `The "${label}" field never became a CodeMirror editor`,
+    },
   );
   return await browser.$(`[aria-label="${label}"]`);
 }
@@ -927,12 +1029,12 @@ export async function setInputValue(browser, field, text) {
   const settled = await read();
   if (!immediately.connected || !settled.connected) {
     throw new Error(
-      `Input was detached after typing ${JSON.stringify(text)} (attached: ${immediately.connected} then ${settled.connected})`
+      `Input was detached after typing ${JSON.stringify(text)} (attached: ${immediately.connected} then ${settled.connected})`,
     );
   }
   if (immediately.value !== text || settled.value !== text) {
     throw new Error(
-      `Input holds ${JSON.stringify(immediately.value)} then ${JSON.stringify(settled.value)} after typing ${JSON.stringify(text)}`
+      `Input holds ${JSON.stringify(immediately.value)} then ${JSON.stringify(settled.value)} after typing ${JSON.stringify(text)}`,
     );
   }
 }
@@ -953,8 +1055,8 @@ export async function pressMouseDown(browser, element) {
         cancelable: true,
         button: 0,
         clientX: box.left + box.width / 2,
-        clientY: box.top + box.height / 2
-      })
+        clientY: box.top + box.height / 2,
+      }),
     );
   }, element);
 }
@@ -980,7 +1082,7 @@ export async function openContextMenu(browser, selector) {
       button: 2,
       buttons: 2,
       clientX: box.left + box.width / 2,
-      clientY: box.top + box.height / 2
+      clientY: box.top + box.height / 2,
     });
     target.dispatchEvent(event);
     return {
@@ -990,12 +1092,19 @@ export async function openContextMenu(browser, selector) {
       tag: target.tagName,
       title: target.getAttribute("title"),
       workspaceId: target.closest("[data-workspace-id]")?.getAttribute("data-workspace-id") ?? null,
-      rect: [Math.round(box.left), Math.round(box.top), Math.round(box.width), Math.round(box.height)]
+      rect: [
+        Math.round(box.left),
+        Math.round(box.top),
+        Math.round(box.width),
+        Math.round(box.height),
+      ],
     };
   }, selector);
   if (!hit.found) throw new Error(`openContextMenu: nothing matches ${selector}`);
   if (!hit.defaultPrevented)
-    throw new Error(`openContextMenu: the page did not handle contextmenu on ${JSON.stringify(hit)}`);
+    throw new Error(
+      `openContextMenu: the page did not handle contextmenu on ${JSON.stringify(hit)}`,
+    );
   return hit;
 }
 
@@ -1006,7 +1115,10 @@ export async function openContextMenu(browser, selector) {
  * chord like Alt+Enter would arrive as plain Enter. Returns whether a handler
  * called `preventDefault`, which the composers do for a chord they act on.
  */
-export async function pressChord(browser, { key, altKey = false, ctrlKey = false, metaKey = false, shiftKey = false }) {
+export async function pressChord(
+  browser,
+  { key, altKey = false, ctrlKey = false, metaKey = false, shiftKey = false },
+) {
   return browser.execute(
     function dispatchChord(init) {
       const target = document.activeElement ?? document.body;
@@ -1022,13 +1134,18 @@ export async function pressChord(browser, { key, altKey = false, ctrlKey = false
       altKey,
       ctrlKey,
       metaKey,
-      shiftKey
-    }
+      shiftKey,
+    },
   );
 }
 
 /** Send a follow-up through the native composer in the attached app. */
-export async function sendDesktopMessage({ browser, input, sessionId = null, expectQueued = false }) {
+export async function sendDesktopMessage({
+  browser,
+  input,
+  sessionId = null,
+  expectQueued = false,
+}) {
   if (!browser) throw new Error("sendDesktopMessage requires browser");
   if (typeof input !== "string" || input.trim() === "") {
     throw new Error("sendDesktopMessage requires non-empty input");
@@ -1044,7 +1161,9 @@ export async function sendDesktopMessage({ browser, input, sessionId = null, exp
   // text would also see it "cleared".
   const typed = await readComposerText(browser, composer);
   if (typed !== input)
-    throw new Error(`Native composer holds ${JSON.stringify(typed)} after typing, not the follow-up`);
+    throw new Error(
+      `Native composer holds ${JSON.stringify(typed)} after typing, not the follow-up`,
+    );
   if (expectQueued) {
     await browser.keys("Enter");
   } else {
@@ -1055,7 +1174,7 @@ export async function sendDesktopMessage({ browser, input, sessionId = null, exp
   await browser.waitUntil(async () => (await readComposerText(browser, composer)) === "", {
     timeout: 10_000,
     interval: 100,
-    timeoutMsg: "Native composer did not clear after sending the follow-up"
+    timeoutMsg: "Native composer did not clear after sending the follow-up",
   });
 
   let queuedMessage = null;
@@ -1069,12 +1188,16 @@ export async function sendDesktopMessage({ browser, input, sessionId = null, exp
             return entries.length === 1 && entries[0].content === content ? entries[0] : null;
           },
           sessionId,
-          input
+          input,
         );
         queuedMessage = dashboard;
         return queuedMessage !== null;
       },
-      { timeout: 10_000, interval: 100, timeoutMsg: "Native follow-up was not persisted in the pending queue" }
+      {
+        timeout: 10_000,
+        interval: 100,
+        timeoutMsg: "Native follow-up was not persisted in the pending queue",
+      },
     );
   }
 
@@ -1087,22 +1210,29 @@ export async function sendDesktopMessage({ browser, input, sessionId = null, exp
         name: expectQueued
           ? "native composer queues follow-up with Enter"
           : "native composer sends follow-up through the UI",
-        ok: true
+        ok: true,
       },
       ...(queuedMessage
-        ? [{ name: "native follow-up appears once in the pending queue", ok: true, detail: queuedMessage.id }]
-        : [])
+        ? [
+            {
+              name: "native follow-up appears once in the pending queue",
+              ok: true,
+              detail: queuedMessage.id,
+            },
+          ]
+        : []),
     ],
     queuedMessage,
     uiState,
-    errors: rendererErrorMessages(uiState)
+    errors: rendererErrorMessages(uiState),
   };
 }
 
 /** Explicitly send one recovered follow-up through its native queue action. */
 export async function sendDesktopQueuedMessage({ browser, sessionId, messageId, input }) {
   if (!browser) throw new Error("sendDesktopQueuedMessage requires browser");
-  if (!sessionId || !messageId) throw new Error("sendDesktopQueuedMessage requires sessionId and messageId");
+  if (!sessionId || !messageId)
+    throw new Error("sendDesktopQueuedMessage requires sessionId and messageId");
   if (typeof input !== "string" || input.trim() === "") {
     throw new Error("sendDesktopQueuedMessage requires non-empty input");
   }
@@ -1112,8 +1242,14 @@ export async function sendDesktopQueuedMessage({ browser, sessionId, messageId, 
     const snapshot = await window.argmax.dashboard.list();
     return snapshot.pendingMessages[id] ?? [];
   }, sessionId);
-  if (queuedMessages.length !== 1 || queuedMessages[0].id !== messageId || queuedMessages[0].content !== input) {
-    throw new Error(`Expected exactly one recovered queued follow-up ${messageId} before explicit Send`);
+  if (
+    queuedMessages.length !== 1 ||
+    queuedMessages[0].id !== messageId ||
+    queuedMessages[0].content !== input
+  ) {
+    throw new Error(
+      `Expected exactly one recovered queued follow-up ${messageId} before explicit Send`,
+    );
   }
   let send = null;
   await browser.waitUntil(
@@ -1131,8 +1267,8 @@ export async function sendDesktopQueuedMessage({ browser, sessionId, messageId, 
     {
       timeout: 10_000,
       interval: 100,
-      timeoutMsg: "Recovered follow-up did not expose exactly one matching Send action"
-    }
+      timeoutMsg: "Recovered follow-up did not expose exactly one matching Send action",
+    },
   );
   await send.waitForEnabled({ timeout: 10_000 });
   await send.click();
@@ -1142,7 +1278,11 @@ export async function sendDesktopQueuedMessage({ browser, sessionId, messageId, 
         const snapshot = await window.argmax.dashboard.list();
         return (snapshot.pendingMessages[id] ?? []).length === 0;
       }, sessionId),
-    { timeout: 10_000, interval: 100, timeoutMsg: `Session queue was not empty after sending follow-up ${messageId}` }
+    {
+      timeout: 10_000,
+      interval: 100,
+      timeoutMsg: `Session queue was not empty after sending follow-up ${messageId}`,
+    },
   );
 
   const uiState = await captureDesktopState(browser);
@@ -1150,10 +1290,10 @@ export async function sendDesktopQueuedMessage({ browser, sessionId, messageId, 
     ok: rendererErrors(uiState).length === 0,
     assertions: [
       { name: "native recovered follow-up exposes an explicit Send action", ok: true },
-      { name: "native explicit Send removes the recovered pending row", ok: true }
+      { name: "native explicit Send removes the recovered pending row", ok: true },
     ],
     uiState,
-    errors: rendererErrorMessages(uiState)
+    errors: rendererErrorMessages(uiState),
   };
 }
 
@@ -1181,12 +1321,14 @@ export async function stopDesktopSession({ browser, sessionId }) {
     await browser.waitUntil(() => Date.now() - startedAtMs >= NATIVE_STOP_MINIMUM_SESSION_AGE_MS, {
       timeout: remainingEarlyStopMs + 1_000,
       interval: 25,
-      timeoutMsg: `Native stop did not reach the ${NATIVE_STOP_MINIMUM_SESSION_AGE_MS}ms minimum session age`
+      timeoutMsg: `Native stop did not reach the ${NATIVE_STOP_MINIMUM_SESSION_AGE_MS}ms minimum session age`,
     });
   }
   const sessionAgeMs = Date.now() - startedAtMs;
   if (sessionAgeMs < NATIVE_STOP_MINIMUM_SESSION_AGE_MS) {
-    throw new Error(`Native stop did not reach the ${NATIVE_STOP_MINIMUM_SESSION_AGE_MS}ms minimum session age`);
+    throw new Error(
+      `Native stop did not reach the ${NATIVE_STOP_MINIMUM_SESSION_AGE_MS}ms minimum session age`,
+    );
   }
 
   const beforeClick = await browser.execute(async function sessionBeforeStop(id) {
@@ -1195,7 +1337,9 @@ export async function stopDesktopSession({ browser, sessionId }) {
     return session?.state ?? null;
   }, sessionId);
   if (beforeClick !== "running") {
-    throw new Error(`Session ${sessionId} stopped before the native Stop click: ${beforeClick ?? "missing"}`);
+    throw new Error(
+      `Session ${sessionId} stopped before the native Stop click: ${beforeClick ?? "missing"}`,
+    );
   }
 
   const stop = await browser.$('[aria-label="Stop chat"]');
@@ -1210,13 +1354,13 @@ export async function stopDesktopSession({ browser, sessionId }) {
       {
         name: "native Stop waits past the early-stop restore window",
         ok: true,
-        detail: `session age ${sessionAgeMs}ms`
+        detail: `session age ${sessionAgeMs}ms`,
       },
       { name: "native session remains running until the Stop click", ok: true },
-      { name: "native session control stops the running chat", ok: true }
+      { name: "native session control stops the running chat", ok: true },
     ],
     uiState,
-    errors: rendererErrorMessages(uiState)
+    errors: rendererErrorMessages(uiState),
   };
 }
 
@@ -1234,10 +1378,13 @@ function parseCli(argv) {
   return options;
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(process.argv[1])}`).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === new URL(`file://${path.resolve(process.argv[1])}`).href
+) {
   const result = await runDesktopVerification({
     ...parseCli(process.argv.slice(2)),
-    env: process.env
+    env: process.env,
   });
   console.log(JSON.stringify(result));
   process.exitCode = result.ok ? 0 : 1;

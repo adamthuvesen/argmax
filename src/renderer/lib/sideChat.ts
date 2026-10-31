@@ -32,7 +32,10 @@ function quotedExcerptWithContext(excerpt: string, events: readonly TimelineEven
     .split("\n")
     .map((line) => `> ${line}`)
     .join("\n");
-  const context = exchanges.length > 0 ? `Recent context from that session:\n\n${exchanges.join("\n\n")}\n\n` : "";
+  const context =
+    exchanges.length > 0
+      ? `Recent context from that session:\n\n${exchanges.join("\n\n")}\n\n`
+      : "";
   return context + `The excerpt I selected:\n\n${quote}\n\n`;
 }
 

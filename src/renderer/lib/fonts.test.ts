@@ -13,7 +13,7 @@ import {
   resolveTerminalFontSize,
   readStoredChatFontSize,
   readStoredFontSize,
-  readStoredFont
+  readStoredFont,
 } from "./fonts.js";
 
 afterEach(() => {
@@ -42,7 +42,7 @@ describe("fonts", () => {
       window.localStorage.setItem(FONT_STORAGE_KEY, id);
       expect(readStoredFont()).toBe(DEFAULT_FONT_ID);
       expect(FONT_OPTIONS.some((option) => option.id === id)).toBe(false);
-    }
+    },
   );
 
   it("defaults font size to level 6 when nothing is stored", () => {

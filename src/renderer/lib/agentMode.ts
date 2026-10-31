@@ -3,7 +3,7 @@ export type LauncherMode = "auto" | "chat";
 
 export const LAUNCHER_MODE_LABELS: Record<LauncherMode, string> = {
   auto: "Auto",
-  chat: "Chat"
+  chat: "Chat",
 };
 
 export function cycleLauncherMode(mode: LauncherMode, chatAvailable: boolean): LauncherMode {

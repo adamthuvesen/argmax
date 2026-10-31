@@ -23,7 +23,9 @@ describe("NewProjectDialog", () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     render(<NewProjectDialog onCreate={onCreate} onClose={vi.fn()} />);
     expect(screen.getByLabelText("Project name")).toHaveFocus();
-    fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "  AI Analytics  " } });
+    fireEvent.change(screen.getByLabelText("Project name"), {
+      target: { value: "  AI Analytics  " },
+    });
     const submit = screen.getByRole("button", { name: "Create project" });
     expect(submit).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
@@ -33,15 +35,17 @@ describe("NewProjectDialog", () => {
     expect(await screen.findByText("dbt")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Add folder" })).toBeEnabled());
-    expect(within(screen.getByRole("list", { name: "Project folders" })).getAllByRole("listitem")).toHaveLength(2);
+    expect(
+      within(screen.getByRole("list", { name: "Project folders" })).getAllByRole("listitem"),
+    ).toHaveLength(2);
     fireEvent.click(screen.getByRole("radio", { name: "Make dbt primary" }));
     fireEvent.click(submit);
     await waitFor(() =>
       expect(onCreate).toHaveBeenCalledWith({
         name: "AI Analytics",
         folders: ["/repos/app", "/repos/dbt"],
-        primaryPath: "/repos/dbt"
-      })
+        primaryPath: "/repos/dbt",
+      }),
     );
   });
 
@@ -108,7 +112,7 @@ describe("NewProjectDialog", () => {
     const onCreate = vi.fn().mockReturnValue(
       new Promise<void>((_, fail) => {
         reject = fail;
-      })
+      }),
     );
     const onClose = vi.fn();
     render(<NewProjectDialog onCreate={onCreate} onClose={onClose} />);

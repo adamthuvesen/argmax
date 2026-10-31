@@ -12,7 +12,9 @@ export type WorkspaceSessionPr = SessionPrSummary;
  * The dashboard projection is the one source for card, menu, and sidebar PR
  * state. An absent array means an older host; an empty array is authoritative.
  */
-export function workspaceSessionPrs(workspace: WorkspaceSummary | null): readonly WorkspaceSessionPr[] {
+export function workspaceSessionPrs(
+  workspace: WorkspaceSummary | null,
+): readonly WorkspaceSessionPr[] {
   if (!workspace) return [];
   return workspace.prs ?? [];
 }

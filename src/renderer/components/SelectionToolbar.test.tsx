@@ -21,7 +21,9 @@ it("consumes Escape only while a selection toolbar is open", () => {
   render(<Probe />);
   const range = document.createRange();
   range.selectNodeContents(screen.getByText("Selected response"));
-  Object.defineProperty(range, "getBoundingClientRect", { value: () => new DOMRect(20, 50, 100, 20) });
+  Object.defineProperty(range, "getBoundingClientRect", {
+    value: () => new DOMRect(20, 50, 100, 20),
+  });
   act(() => {
     document.getSelection()?.addRange(range);
     document.dispatchEvent(new Event("selectionchange"));

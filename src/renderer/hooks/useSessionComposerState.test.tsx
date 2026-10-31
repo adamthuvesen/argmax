@@ -13,8 +13,8 @@ describe("useSessionComposerState", () => {
       isPanelOpen: true,
       workspaceFiles: {
         tabs: [{ path: "README.md" }, { path: "src/main.ts" }],
-        activeTabPath: "src/main.ts"
-      }
+        activeTabPath: "src/main.ts",
+      },
     };
     let annotationSink:
       | ((input: {
@@ -34,9 +34,9 @@ describe("useSessionComposerState", () => {
           review,
           registerAnnotationSink: (sink) => {
             annotationSink = sink;
-          }
+          },
         }),
-      { initialProps: { session: firstSession } }
+      { initialProps: { session: firstSession } },
     );
 
     act(() => {
@@ -47,10 +47,13 @@ describe("useSessionComposerState", () => {
         side: "addition",
         lineText: "new line",
         comment: "Check this",
-        base: "branch"
+        base: "branch",
       });
     });
-    expect(result.current.pendingAnnotations.map((annotation) => annotation.kind)).toEqual(["excerpt", "diff-note"]);
+    expect(result.current.pendingAnnotations.map((annotation) => annotation.kind)).toEqual([
+      "excerpt",
+      "diff-note",
+    ]);
     expect(result.current.openFilePaths).toEqual(["src/main.ts", "README.md"]);
 
     rerender({ session: secondSession });

@@ -28,7 +28,7 @@ export function MultitaskGroup({
   onOpen,
   onStop,
   onDismiss,
-  onLoadSessionEvents
+  onLoadSessionEvents,
 }: {
   notices: readonly MultitaskNotice[];
   live?: ReadonlyMap<string, MultitaskLive>;
@@ -52,7 +52,7 @@ export function MultitaskGroup({
     counts["needs-you"] ? `${counts["needs-you"]} needs you` : null,
     counts.failed ? `${counts.failed} failed` : null,
     counts.stopped ? `${counts.stopped} stopped` : null,
-    counts.done ? `${counts.done} finished` : null
+    counts.done ? `${counts.done} finished` : null,
   ]
     .filter(Boolean)
     .join(" · ");

@@ -9,7 +9,9 @@ describe("reasonToSkip", () => {
   it("stays out of the way on the plain-HTTP bridge", () => {
     // Today's tailnet origin. A worker cannot register here at all, so the
     // guard is what keeps the failure quiet rather than thrown.
-    expect(reasonToSkip({ supported: true, secureContext: false, dev: false })).toBe("insecure-context");
+    expect(reasonToSkip({ supported: true, secureContext: false, dev: false })).toBe(
+      "insecure-context",
+    );
   });
 
   it("never fronts the dev server, which would serve yesterday's bundle", () => {

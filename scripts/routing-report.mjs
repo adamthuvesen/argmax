@@ -46,7 +46,9 @@ function parseArgs(argv) {
       if (value === undefined) fail(`${arg} requires a value`);
       flags[arg.slice(2)] = value;
     } else {
-      fail(`unknown argument ${arg} (usage: routing-report.mjs [--days N] [--json] [--data-dir <dir>])`);
+      fail(
+        `unknown argument ${arg} (usage: routing-report.mjs [--days N] [--json] [--data-dir <dir>])`,
+      );
     }
   }
   if (!/^[1-9]\d*$/.test(flags.days)) fail(`--days must be a positive integer, got ${flags.days}`);
@@ -56,13 +58,18 @@ function parseArgs(argv) {
 /** Run one read-only query through the sqlite3 CLI; `:since` is bound. */
 function query(databasePath, since, sql) {
   const uri = `file:${databasePath}?mode=ro`;
-  const result = spawnSync("sqlite3", ["-json", "-cmd", `.parameter set :since '${since}'`, uri, sql], {
-    encoding: "utf8",
-    maxBuffer: 256 * 1024 * 1024
-  });
+  const result = spawnSync(
+    "sqlite3",
+    ["-json", "-cmd", `.parameter set :since '${since}'`, uri, sql],
+    {
+      encoding: "utf8",
+      maxBuffer: 256 * 1024 * 1024,
+    },
+  );
   if (result.error?.code === "ENOENT") fail("sqlite3 is not installed or not on PATH");
   if (result.error) fail(`sqlite3 failed: ${result.error.message}`);
-  if (result.status !== 0) fail(`query failed on ${databasePath}: ${result.stderr.trim() || `exit ${result.status}`}`);
+  if (result.status !== 0)
+    fail(`query failed on ${databasePath}: ${result.stderr.trim() || `exit ${result.status}`}`);
   const text = result.stdout.trim();
   return text ? JSON.parse(text) : [];
 }
@@ -140,7 +147,8 @@ function buildReport({ days, since, launches, routes: allRoutes, usage, goals, l
   const routes = allRoutes.filter((route) => route.decision !== "pinned");
   const pins = allRoutes.length - routes.length;
   const turnsBySession = new Map();
-  for (const route of routes) turnsBySession.set(route.session_id, (turnsBySession.get(route.session_id) ?? 0) + 1);
+  for (const route of routes)
+    turnsBySession.set(route.session_id, (turnsBySession.get(route.session_id) ?? 0) + 1);
 
   const usageBySession = new Map();
   for (const row of usage) {
@@ -161,7 +169,7 @@ function buildReport({ days, since, launches, routes: allRoutes, usage, goals, l
         pricedSessions: 0,
         costUsd: 0,
         unpricedTokens: 0,
-        billedBy: {}
+        billedBy: {},
       });
     }
     const cell = cells.get(key);
@@ -171,7 +179,8 @@ function buildReport({ days, since, launches, routes: allRoutes, usage, goals, l
     let priced = false;
     for (const row of usageBySession.get(launch.session_id) ?? []) {
       const billed = (cell.billedBy[row.model_id] ??= { costUsd: 0, tokens: 0, unpriced: false });
-      const tokens = row.input_tokens + row.output_tokens + row.cache_read_tokens + row.cache_write_tokens;
+      const tokens =
+        row.input_tokens + row.output_tokens + row.cache_read_tokens + row.cache_write_tokens;
       billed.tokens += tokens;
       const cost =
         row.provider === "cursor"
@@ -181,9 +190,9 @@ function buildReport({ days, since, launches, routes: allRoutes, usage, goals, l
                 input: row.input_tokens,
                 output: row.output_tokens,
                 cacheRead: row.cache_read_tokens,
-                cacheWrite: row.cache_write_tokens
+                cacheWrite: row.cache_write_tokens,
               },
-              row.model_id
+              row.model_id,
             );
       if (cost === null) {
         billed.unpriced = true;
@@ -203,12 +212,18 @@ function buildReport({ days, since, launches, routes: allRoutes, usage, goals, l
   // Rows arrive in id order, so a session's first row is its launch route.
   const launchedSessions = new Set();
   const followUps = routes.filter(
-    (route) => launchedSessions.has(route.session_id) || !launchedSessions.add(route.session_id)
+    (route) => launchedSessions.has(route.session_id) || !launchedSessions.add(route.session_id),
   );
-  const decisionCount = (decision) => followUps.filter((route) => route.decision === decision).length;
+  const decisionCount = (decision) =>
+    followUps.filter((route) => route.decision === decision).length;
   const fallbacks = routes.filter((route) => route.decision === "fallback").length;
 
-  const goalCounts = { met: 0, notMet: 0, active: 0, sessions: new Set(goals.map((goal) => goal.session_id)).size };
+  const goalCounts = {
+    met: 0,
+    notMet: 0,
+    active: 0,
+    sessions: new Set(goals.map((goal) => goal.session_id)).size,
+  };
   for (const goal of goals) {
     if (goal.state === "achieved") goalCounts.met += 1;
     else if (goal.state === "active") goalCounts.active += 1;
@@ -220,7 +235,9 @@ function buildReport({ days, since, launches, routes: allRoutes, usage, goals, l
     autoSessions: launches.length,
     routedTurns: routes.length,
     fallbacks: { count: fallbacks, share: routes.length ? fallbacks / routes.length : 0 },
-    cells: [...cells.values()].sort((a, b) => b.sessions - a.sessions || a.cell.localeCompare(b.cell)),
+    cells: [...cells.values()].sort(
+      (a, b) => b.sessions - a.sessions || a.cell.localeCompare(b.cell),
+    ),
     followUps: {
       reroute: decisionCount("reroute"),
       escalate: decisionCount("escalate"),
@@ -229,20 +246,20 @@ function buildReport({ days, since, launches, routes: allRoutes, usage, goals, l
       pinned: pins,
       keptReasons: countBy(
         followUps.filter((route) => route.decision === "kept"),
-        (route) => keptWhy(route.reason)
+        (route) => keptWhy(route.reason),
       ),
       escalationsByProvider: countBy(
         followUps.filter((route) => route.decision === "escalate"),
-        (route) => route.provider
-      )
+        (route) => route.provider,
+      ),
     },
     overrides: {
       total: launches.filter((launch) => launch.current_auto_tier === null).length,
       byCell: [...cells.values()]
         .filter((cell) => cell.overrides > 0)
-        .map((cell) => ({ cell: cell.cell, overrides: cell.overrides, sessions: cell.sessions }))
+        .map((cell) => ({ cell: cell.cell, overrides: cell.overrides, sessions: cell.sessions })),
     },
-    goals: goalCounts
+    goals: goalCounts,
   };
 }
 
@@ -258,12 +275,14 @@ function formatCost(cell, value) {
 
 function table(headers, rows, rightAligned = new Set()) {
   const widths = headers.map((header, column) =>
-    Math.max(header.length, ...rows.map((row) => String(row[column]).length))
+    Math.max(header.length, ...rows.map((row) => String(row[column]).length)),
   );
   const line = (cells) =>
     cells
       .map((cell, column) =>
-        rightAligned.has(column) ? String(cell).padStart(widths[column]) : String(cell).padEnd(widths[column])
+        rightAligned.has(column)
+          ? String(cell).padStart(widths[column])
+          : String(cell).padEnd(widths[column]),
       )
       .join("  ")
       .trimEnd();
@@ -283,7 +302,7 @@ function renderText(report, databasePath) {
   out.push(`  Auto sessions   ${report.autoSessions}`);
   out.push(`  routed turns    ${report.routedTurns}`);
   out.push(
-    `  fallbacks       ${report.fallbacks.count} (${percent(report.fallbacks.share)} of turns; Jev unavailable)`
+    `  fallbacks       ${report.fallbacks.count} (${percent(report.fallbacks.share)} of turns; Jev unavailable)`,
   );
   if (report.autoSessions === 0) {
     out.push("", "No Auto sessions in this window.");
@@ -300,18 +319,18 @@ function renderText(report, databasePath) {
         cell.sessions,
         cell.turns,
         formatCost(cell, cell.pricedSessions ? cell.costUsd : null),
-        formatCost(cell, cell.costPerSessionUsd)
+        formatCost(cell, cell.costPerSessionUsd),
       ]),
-      new Set([2, 3, 4, 5])
-    )
+      new Set([2, 3, 4, 5]),
+    ),
   );
   const billedRows = report.cells.flatMap((cell) =>
     Object.entries(cell.billedBy).map(([modelId, billed]) => [
       cell.cell,
       modelId,
       billed.tokens.toLocaleString("en-US"),
-      billed.unpriced ? "unpriced" : formatUsd(billed.costUsd)
-    ])
+      billed.unpriced ? "unpriced" : formatUsd(billed.costUsd),
+    ]),
   );
   if (billedRows.length) {
     out.push("", "Billed by model (usage attributed to the model that billed it)");
@@ -323,7 +342,7 @@ function renderText(report, databasePath) {
   const { followUps } = report;
   out.push("", "Follow-ups");
   out.push(
-    `  reroute ${followUps.reroute} · escalate ${followUps.escalate} · kept ${followUps.kept} · fallback ${followUps.fallback} · pinned ${followUps.pinned}`
+    `  reroute ${followUps.reroute} · escalate ${followUps.escalate} · kept ${followUps.kept} · fallback ${followUps.fallback} · pinned ${followUps.pinned}`,
   );
   if (followUps.keptReasons.length) {
     out.push("", "  Top kept reasons");
@@ -331,8 +350,8 @@ function renderText(report, databasePath) {
       table(
         ["count", "reason"],
         followUps.keptReasons.slice(0, 8).map((entry) => [entry.count, entry.key]),
-        new Set([0])
-      ).replace(/^/gm, "  ")
+        new Set([0]),
+      ).replace(/^/gm, "  "),
     );
   }
   if (followUps.escalationsByProvider.length) {
@@ -341,22 +360,22 @@ function renderText(report, databasePath) {
       table(
         ["provider", "count"],
         followUps.escalationsByProvider.map((entry) => [entry.key, entry.count]),
-        new Set([1])
-      ).replace(/^/gm, "  ")
+        new Set([1]),
+      ).replace(/^/gm, "  "),
     );
   }
 
   out.push(
     "",
-    `Manual overrides (Auto chats later pinned to a model): ${report.overrides.total} of ${report.autoSessions}`
+    `Manual overrides (Auto chats later pinned to a model): ${report.overrides.total} of ${report.autoSessions}`,
   );
   if (report.overrides.byCell.length) {
     out.push(
       table(
         ["cell", "pinned", "of"],
         report.overrides.byCell.map((entry) => [entry.cell, entry.overrides, entry.sessions]),
-        new Set([1, 2])
-      )
+        new Set([1, 2]),
+      ),
     );
   }
 
@@ -365,7 +384,9 @@ function renderText(report, databasePath) {
   if (goals.sessions === 0) {
     out.push("  (no Auto chat set a Goal)");
   } else {
-    out.push(`  ${goals.met} met · ${goals.notMet} not met · ${goals.active} active (across ${goals.sessions} chats)`);
+    out.push(
+      `  ${goals.met} met · ${goals.notMet} not met · ${goals.active} active (across ${goals.sessions} chats)`,
+    );
   }
   return out.join("\n");
 }
@@ -376,7 +397,7 @@ const pricingServer = await createServer({
   configFile: false,
   root: repoRoot,
   server: { middlewareMode: true },
-  logLevel: "error"
+  logLevel: "error",
 });
 let listedCost;
 try {
@@ -386,9 +407,12 @@ try {
 }
 
 const flags = parseArgs(process.argv.slice(2));
-const dataDir = path.resolve(flags["data-dir"] ?? process.env.ARGMAX_DATA_DIR ?? realProfileDataDir());
+const dataDir = path.resolve(
+  flags["data-dir"] ?? process.env.ARGMAX_DATA_DIR ?? realProfileDataDir(),
+);
 const databasePath = path.join(dataDir, "local-state", "argmax.sqlite");
-if (!existsSync(databasePath)) fail(`no database at ${databasePath} (is ${dataDir} an Argmax data dir?)`);
+if (!existsSync(databasePath))
+  fail(`no database at ${databasePath} (is ${dataDir} an Argmax data dir?)`);
 
 const days = Number(flags.days);
 const since = new Date(Date.now() - days * 86_400_000).toISOString();
@@ -399,7 +423,7 @@ const report = buildReport({
   routes: query(databasePath, since, ROUTES_SQL),
   usage: query(databasePath, since, USAGE_SQL),
   listedCost,
-  goals: query(databasePath, since, GOALS_SQL)
+  goals: query(databasePath, since, GOALS_SQL),
 });
 
 console.log(flags.json ? JSON.stringify(report, null, 2) : renderText(report, databasePath));

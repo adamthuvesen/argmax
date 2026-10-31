@@ -1,10 +1,20 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+} from "react";
 import { FolderGit2, Laptop, Menu, MoreHorizontal, PenLine, Search } from "lucide-react";
 import {
   FORK_CAPABLE_PROVIDERS,
   PROVIDER_MODELS,
   normalizeModelId,
-  reasoningEffortsForModel
+  reasoningEffortsForModel,
 } from "../../shared/providerModels.js";
 import {
   SCRATCH_PROJECT_ID,
@@ -12,7 +22,7 @@ import {
   type ForkSessionOptions,
   type SessionState,
   type SessionSummary,
-  type WorkspaceSummary
+  type WorkspaceSummary,
 } from "../../shared/types.js";
 import { LinesSkeleton } from "../components/LinesSkeleton.js";
 import { SessionPane } from "../components/SessionPane.js";
@@ -31,7 +41,11 @@ import { useDashboardSession } from "../hooks/useDashboardSession.js";
 import { SessionTimelineProvider } from "../hooks/useSessionTimeline.js";
 import { useSessionCommands } from "../hooks/useSessionCommands.js";
 import { isEarlySessionStop } from "../lib/earlyStop.js";
-import { hiddenMultitaskWorkspaceIds, isMultitaskSession, multitasksByParentSession } from "../lib/multitask.js";
+import {
+  hiddenMultitaskWorkspaceIds,
+  isMultitaskSession,
+  multitasksByParentSession,
+} from "../lib/multitask.js";
 import { importChunk } from "../lib/importChunk.js";
 import { loadDashboardSnapshot } from "../lib/loadDashboardSnapshot.js";
 import { mergeDashboardDelta } from "../lib/snapshot.js";
@@ -42,35 +56,35 @@ import {
   computePriorityEntries,
   computeWorkspaceAttention,
   workingWorkspaceIds,
-  type PriorityAttention
+  type PriorityAttention,
 } from "../lib/priority.js";
 import {
   ACCENT_OPTIONS,
   applyAccentToDocument,
   readStoredAccent,
   writeStoredAccent,
-  type AccentId
+  type AccentId,
 } from "../lib/accent.js";
 import {
   applyThemeToDocument,
   readStoredTheme,
   resolveTheme,
   writeStoredTheme,
-  type ResolvedTheme
+  type ResolvedTheme,
 } from "../lib/theme.js";
 import {
   applyUserBubbleTintToDocument,
   isUserBubbleTint,
   readStoredUserBubbleTint,
   writeStoredUserBubbleTint,
-  type UserBubbleTint
+  type UserBubbleTint,
 } from "../lib/userBubbleTint.js";
 import type { ToastMessage } from "../lib/withToast.js";
 import { dismissToast, showToast as publishToast, useToast } from "../state/toast.js";
 import {
   REMOTE_CONNECTION_LOST_MESSAGE,
   subscribeRemoteConnection,
-  type RemoteConnectionState
+  type RemoteConnectionState,
 } from "../lib/wsTransport.js";
 
 // The review screen drags in the file tree, the diff renderer and the
@@ -82,15 +96,15 @@ import {
 // rebuilds, and the chunk hash it holds stops existing the moment one lands.
 const MobileReviewScreen = lazy(() =>
   importChunk(async () => ({
-    default: (await import("./MobileReviewScreen.js")).MobileReviewScreen
-  }))
+    default: (await import("./MobileReviewScreen.js")).MobileReviewScreen,
+  })),
 );
 
 // Opening the launcher should pay for its controls, not every chat load.
 const NewSessionScreen = lazy(() =>
   importChunk(async () => ({
-    default: (await import("./NewSessionScreen.js")).NewSessionScreen
-  }))
+    default: (await import("./NewSessionScreen.js")).NewSessionScreen,
+  })),
 );
 
 // Spoken names for the row's leading marker, matching the desktop row's
@@ -98,7 +112,7 @@ const NewSessionScreen = lazy(() =>
 // attention a row has is the Priority section's job to say, not the row's.
 const AWAITING_LABEL: Record<"approval-needed" | "blocked", string> = {
   "approval-needed": "needs approval",
-  blocked: "waiting for input"
+  blocked: "waiting for input",
 };
 
 // How long a link to a chat this page has never heard of stays latched: long
@@ -147,7 +161,7 @@ function MobileSessionRow({
   unread,
   nowMs,
   onOpen,
-  onOpenActions
+  onOpenActions,
 }: {
   row: SessionListRow;
   projectName: string | null;
@@ -176,7 +190,11 @@ function MobileSessionRow({
         <span className="mobile-session-text">
           <span className="mobile-session-title-line">
             {awaiting ? (
-              <span className="mobile-session-marker" data-attention={awaiting} aria-label={AWAITING_LABEL[awaiting]} />
+              <span
+                className="mobile-session-marker"
+                data-attention={awaiting}
+                aria-label={AWAITING_LABEL[awaiting]}
+              />
             ) : working ? (
               // The nest moves and the unread dot does not, which is the whole
               // distinction: two accent dots, one pulsing, read as the same
@@ -218,7 +236,7 @@ function SessionSection({
   unreadIds,
   nowMs,
   onOpen,
-  onOpenActions
+  onOpenActions,
 }: {
   label: string;
   rows: SessionListRow[];
@@ -253,7 +271,7 @@ function MobileSegmentedControl({
   ariaLabel,
   value,
   onChange,
-  options
+  options,
 }: {
   ariaLabel: string;
   value: string;
@@ -282,7 +300,7 @@ function MobileSegmentedControl({
 
 function MobileAccentPicker({
   value,
-  onChange
+  onChange,
 }: {
   value: AccentId;
   onChange: (accentId: AccentId) => void;
@@ -318,7 +336,7 @@ export function MobileApp(): JSX.Element {
   const [chatVerbosity] = useChatVerbosityPreference();
   const { toolCallsDisplay, toolCallGroupsExpanded, thinkingDisplay } = useMemo(
     () => resolveChatVerbosity(chatVerbosity),
-    [chatVerbosity]
+    [chatVerbosity],
   );
   // Whether native has taken over the composer (`setComposer`). Native calls
   // this once the shell is drawing its own card under the web view; a state
@@ -336,10 +354,14 @@ export function MobileApp(): JSX.Element {
     publishToast(next);
   }, []);
   const toast =
-    sharedToast?.kind === "error" && sharedToast.message === REMOTE_CONNECTION_LOST_MESSAGE ? null : sharedToast;
+    sharedToast?.kind === "error" && sharedToast.message === REMOTE_CONNECTION_LOST_MESSAGE
+      ? null
+      : sharedToast;
   const [theme, setTheme] = useState<ResolvedTheme>(() => resolveTheme(readStoredTheme()));
   const [accentId, setAccentId] = useState<AccentId>(() => readStoredAccent());
-  const [userBubbleTint, setUserBubbleTint] = useState<UserBubbleTint>(() => readStoredUserBubbleTint());
+  const [userBubbleTint, setUserBubbleTint] = useState<UserBubbleTint>(() =>
+    readStoredUserBubbleTint(),
+  );
   useEffect(() => {
     applyThemeToDocument(theme);
   }, [theme]);
@@ -374,8 +396,10 @@ export function MobileApp(): JSX.Element {
     loadSessionEvents,
     openWorkspaceChat,
     resolveApproval,
-    pendingSelectionRef
-  } = useDashboardSession(loadDashboardSnapshot, { onErrorToast: (message) => showToast({ kind: "error", message }) });
+    pendingSelectionRef,
+  } = useDashboardSession(loadDashboardSnapshot, {
+    onErrorToast: (message) => showToast({ kind: "error", message }),
+  });
 
   const handleEarlyStop = useCallback(
     (sessionId: string): string | undefined => {
@@ -390,7 +414,7 @@ export function MobileApp(): JSX.Element {
       }
       return session.workspaceId;
     },
-    [selectedSessionId, setSelectedSessionId, setSelectedWorkspaceId, snapshot.sessions]
+    [selectedSessionId, setSelectedSessionId, setSelectedWorkspaceId, snapshot.sessions],
   );
 
   const commands = useSessionCommands({
@@ -398,7 +422,7 @@ export function MobileApp(): JSX.Element {
     loadSessionEvents,
     setToast: showToast,
     fastMode: false,
-    onEarlyStop: handleEarlyStop
+    onEarlyStop: handleEarlyStop,
   });
 
   // A push notification links to one session: `mobile.html?session=<id>`. The
@@ -440,7 +464,7 @@ export function MobileApp(): JSX.Element {
 
   const [connection, setConnection] = useState<RemoteConnectionState>({
     status: "connected",
-    resync: false
+    resync: false,
   });
   useEffect(() => subscribeRemoteConnection(setConnection), []);
 
@@ -461,7 +485,7 @@ export function MobileApp(): JSX.Element {
 
   const projectNamesById = useMemo(
     () => new Map(snapshot.projects.map((project) => [project.id, project.name])),
-    [snapshot.projects]
+    [snapshot.projects],
   );
   const [listMenuOpen, setListMenuOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
@@ -470,10 +494,17 @@ export function MobileApp(): JSX.Element {
   // Same set the desktop sidebar uses: a turn in flight here, or a
   // multitask this chat dispatched. The child's own workspace has no list
   // row, so this is the only place that work can still read as live.
-  const hiddenMultitasks = useMemo(() => hiddenMultitaskWorkspaceIds(snapshot.sessions), [snapshot.sessions]);
-  const workingWorkspaces = useMemo(() => workingWorkspaceIds(snapshot.sessions), [snapshot.sessions]);
+  const hiddenMultitasks = useMemo(
+    () => hiddenMultitaskWorkspaceIds(snapshot.sessions),
+    [snapshot.sessions],
+  );
+  const workingWorkspaces = useMemo(
+    () => workingWorkspaceIds(snapshot.sessions),
+    [snapshot.sessions],
+  );
 
-  const sessionOpen = selectedWorkspaceId !== null && (selectedSession !== null || selectedSessionId !== null);
+  const sessionOpen =
+    selectedWorkspaceId !== null && (selectedSession !== null || selectedSessionId !== null);
   // Unread is this phone's own reading state: the stamp lives in its
   // localStorage, so reading a chat on the Mac does not clear the dot here,
   // and reading it here does not clear it there. Passing the open chat only
@@ -483,14 +514,14 @@ export function MobileApp(): JSX.Element {
     () =>
       snapshot.workspaces.map((workspace) => ({
         id: workspace.id,
-        lastActivityAt: workspace.lastActivityAt ?? ""
+        lastActivityAt: workspace.lastActivityAt ?? "",
       })),
-    [snapshot.workspaces]
+    [snapshot.workspaces],
   );
   const unreadIds = useUnreadWorkspaceIds(
     workspaceActivity,
     sessionOpen ? selectedWorkspaceId : null,
-    workingWorkspaces
+    workingWorkspaces,
   );
 
   // Three sections, same shape and precedence as the desktop sidebar: Pinned
@@ -499,7 +530,11 @@ export function MobileApp(): JSX.Element {
   // them. Priority stays until its reason is resolved or dismissed.
   const { pinnedRows, priorityRows, activityRows } = useMemo(() => {
     const sessionsByWorkspace = chatSessionByWorkspace(snapshot.sessions);
-    const attentionByWorkspace = computeWorkspaceAttention(snapshot.workspaces, snapshot.sessions, unreadIds);
+    const attentionByWorkspace = computeWorkspaceAttention(
+      snapshot.workspaces,
+      snapshot.sessions,
+      unreadIds,
+    );
     // A workspace with no session is a dead row: tapping it resolves no
     // session, so nothing opens. The desktop sidebar requires a session for
     // every section too, and the launcher's connection-lost path can strand
@@ -510,7 +545,7 @@ export function MobileApp(): JSX.Element {
         workspace.state !== "archived" &&
         workspace.kind !== "popup" &&
         !hiddenMultitasks.has(workspace.id) &&
-        sessionsByWorkspace.has(workspace.id)
+        sessionsByWorkspace.has(workspace.id),
     );
     const rowsById = new Map<string, SessionListRow>(
       visible.map((workspace) => [
@@ -519,16 +554,16 @@ export function MobileApp(): JSX.Element {
           workspace,
           session: sessionsByWorkspace.get(workspace.id) ?? null,
           attention: attentionByWorkspace.get(workspace.id)?.attention ?? null,
-          working: workingWorkspaces.has(workspace.id)
-        }
-      ])
+          working: workingWorkspaces.has(workspace.id),
+        },
+      ]),
     );
     // Side chats are conversational by nature and never escalate into triage,
     // the same rule the desktop sidebar applies.
     const priorityRows = computePriorityEntries(
       visible.filter((workspace) => workspace.kind === "git"),
       snapshot.sessions,
-      unreadIds
+      unreadIds,
     ).flatMap((entry) => rowsById.get(entry.workspace.id) ?? []);
     const promoted = new Set(priorityRows.map((row) => row.workspace.id));
     const activityOf = (row: SessionListRow): string =>
@@ -539,7 +574,7 @@ export function MobileApp(): JSX.Element {
     return {
       pinnedRows: rest.filter((row) => row.workspace.pinned),
       priorityRows,
-      activityRows: rest.filter((row) => !row.workspace.pinned)
+      activityRows: rest.filter((row) => !row.workspace.pinned),
     };
   }, [hiddenMultitasks, snapshot.sessions, snapshot.workspaces, unreadIds, workingWorkspaces]);
 
@@ -553,7 +588,7 @@ export function MobileApp(): JSX.Element {
     return {
       pinnedRows: pinnedRows.filter(matches),
       priorityRows: priorityRows.filter(matches),
-      activityRows: activityRows.filter(matches)
+      activityRows: activityRows.filter(matches),
     };
   }, [activityRows, pinnedRows, priorityRows, projectNamesById, searchQuery]);
 
@@ -591,7 +626,7 @@ export function MobileApp(): JSX.Element {
       setReviewFilePath(filePath);
       setReviewOpen(true);
     },
-    [embedded, selectedSessionId]
+    [embedded, selectedSessionId],
   );
   const openReviewScreen = useCallback(() => requestReview(null), [requestReview]);
 
@@ -608,9 +643,10 @@ export function MobileApp(): JSX.Element {
     async (workspace: WorkspaceSummary): Promise<void> => {
       if (!window.argmax) return;
       const confirmArchive = (taskLabel: string, changedFiles: number): boolean => {
-        const fileLabel = changedFiles === 1 ? "1 uncommitted change" : `${changedFiles} uncommitted changes`;
+        const fileLabel =
+          changedFiles === 1 ? "1 uncommitted change" : `${changedFiles} uncommitted changes`;
         return window.confirm(
-          `${taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
+          `${taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`,
         );
       };
       let force = false;
@@ -622,12 +658,16 @@ export function MobileApp(): JSX.Element {
         let result = await window.argmax.workspaces.archive({ workspaceId: workspace.id, force });
         if (result.workspace.state === "kept" && !force && !result.workspace.sharedWorkspace) {
           if (!confirmArchive(result.workspace.taskLabel, result.workspace.changedFiles)) return;
-          result = await window.argmax.workspaces.archive({ workspaceId: workspace.id, force: true });
+          result = await window.argmax.workspaces.archive({
+            workspaceId: workspace.id,
+            force: true,
+          });
         }
         if (result.workspace.state !== "archived") {
           showToast({
             kind: "info",
-            message: "Workspace has uncommitted changes — kept. Commit or discard, then retry archive."
+            message:
+              "Workspace has uncommitted changes — kept. Commit or discard, then retry archive.",
           });
         } else {
           closeSession();
@@ -635,12 +675,12 @@ export function MobileApp(): JSX.Element {
       } catch (error) {
         showToast({
           kind: "error",
-          message: error instanceof Error ? error.message : "Could not archive the workspace."
+          message: error instanceof Error ? error.message : "Could not archive the workspace.",
         });
       }
       await refresh();
     },
-    [closeSession, refresh, showToast]
+    [closeSession, refresh, showToast],
   );
 
   // Same fork flow as the desktop grid: a new chat with the copied history up
@@ -656,11 +696,11 @@ export function MobileApp(): JSX.Element {
       } catch (error) {
         showToast({
           kind: "error",
-          message: error instanceof Error ? error.message : "Couldn't fork the chat."
+          message: error instanceof Error ? error.message : "Couldn't fork the chat.",
         });
       }
     },
-    [openWorkspaceChat, refresh, showToast]
+    [openWorkspaceChat, refresh, showToast],
   );
 
   const [actionsRow, setActionsRow] = useState<SessionListRow | null>(null);
@@ -671,17 +711,17 @@ export function MobileApp(): JSX.Element {
       try {
         await window.argmax.workspaces.setPinned({
           workspaceId: workspace.id,
-          pinned: !workspace.pinned
+          pinned: !workspace.pinned,
         });
       } catch (error) {
         showToast({
           kind: "error",
-          message: error instanceof Error ? error.message : "Couldn't change the pin."
+          message: error instanceof Error ? error.message : "Couldn't change the pin.",
         });
       }
       await refresh();
     },
-    [refresh, showToast]
+    [refresh, showToast],
   );
 
   const renameWorkspace = useCallback(
@@ -690,16 +730,19 @@ export function MobileApp(): JSX.Element {
       const nextLabel = window.prompt("Chat name", workspace.taskLabel)?.trim();
       if (!nextLabel || nextLabel === workspace.taskLabel) return;
       try {
-        await window.argmax.workspaces.setLabel({ workspaceId: workspace.id, taskLabel: nextLabel });
+        await window.argmax.workspaces.setLabel({
+          workspaceId: workspace.id,
+          taskLabel: nextLabel,
+        });
       } catch (error) {
         showToast({
           kind: "error",
-          message: error instanceof Error ? error.message : "Couldn't rename the chat."
+          message: error instanceof Error ? error.message : "Couldn't rename the chat.",
         });
       }
       await refresh();
     },
-    [refresh, showToast]
+    [refresh, showToast],
   );
 
   const [newSessionOpen, setNewSessionOpen] = useState(false);
@@ -709,11 +752,14 @@ export function MobileApp(): JSX.Element {
   // gesture can dismiss a picker without discarding the typed prompt.
   const [newSessionSheet, setNewSessionSheet] = useState<PickerKind | null>(null);
 
-  const startNewChatFromWorkspace = useCallback((workspace: WorkspaceSummary, seed?: NewSessionSeed) => {
-    setNewSessionWorkspaceId(workspace.id);
-    setNewSessionSeed(seed ?? null);
-    setNewSessionOpen(true);
-  }, []);
+  const startNewChatFromWorkspace = useCallback(
+    (workspace: WorkspaceSummary, seed?: NewSessionSeed) => {
+      setNewSessionWorkspaceId(workspace.id);
+      setNewSessionSeed(seed ?? null);
+      setNewSessionOpen(true);
+    },
+    [],
+  );
 
   const startNewChat = useCallback(() => {
     setNewSessionWorkspaceId(null);
@@ -736,7 +782,9 @@ export function MobileApp(): JSX.Element {
   const handleLaunched = useCallback(
     (workspace: WorkspaceSummary, session: SessionSummary): void => {
       pendingSelectionRef.current = { sessionId: session.id, workspaceId: workspace.id };
-      setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [workspace], sessions: [session] }));
+      setSnapshot((current) =>
+        mergeDashboardDelta(current, { workspaces: [workspace], sessions: [session] }),
+      );
       closeNewSession();
       setSelectedProjectId(workspace.projectId);
       setSelectedWorkspaceId(workspace.id);
@@ -752,8 +800,8 @@ export function MobileApp(): JSX.Element {
       setSelectedProjectId,
       setSelectedSessionId,
       setSelectedWorkspaceId,
-      setSnapshot
-    ]
+      setSnapshot,
+    ],
   );
 
   // The phone has no dock: with no `multitasks` handed to the pane, a multitask
@@ -765,14 +813,14 @@ export function MobileApp(): JSX.Element {
       if (!target) return;
       openWorkspaceChat(target.workspaceId);
     },
-    [openWorkspaceChat, snapshot.sessions]
+    [openWorkspaceChat, snapshot.sessions],
   );
 
   // Chats this one dispatched. The phone has no dock to host them, so they
   // open in the overlay beside the subagents rather than replacing the chat.
   const multitasksByParent = useMemo(
     () => multitasksByParentSession(snapshot.sessions, snapshot.workspaces, snapshot.approvals),
-    [snapshot.sessions, snapshot.workspaces, snapshot.approvals]
+    [snapshot.sessions, snapshot.workspaces, snapshot.approvals],
   );
   // Park the list under a session or the new-chat screen instead of unmounting
   // it: tearing the scroller down was sending every back-to-list gesture to
@@ -871,7 +919,7 @@ export function MobileApp(): JSX.Element {
     listMenuOpen,
     newSessionOpen,
     newSessionSheet,
-    reviewShown
+    reviewShown,
   ]);
   // Native owns the navigation stack in embed mode, so the page must not
   // mirror its depth into history: a depth of 0 pushes nothing and leaves the
@@ -923,7 +971,7 @@ export function MobileApp(): JSX.Element {
     if (!embedded || connection.status === "connected") return;
     const timer = window.setTimeout(
       () => postToNative({ type: "error", message: REMOTE_CONNECTION_LOST_MESSAGE }),
-      5000
+      5000,
     );
     return () => window.clearTimeout(timer);
   }, [connection.status, embedded]);
@@ -938,13 +986,14 @@ export function MobileApp(): JSX.Element {
   const openSessionTitle = selectedWorkspace?.taskLabel ?? "";
   useEffect(() => {
     if (!embedded) return;
-    if (openSessionId === null || openSessionState === null || openSessionAttention === null) return;
+    if (openSessionId === null || openSessionState === null || openSessionAttention === null)
+      return;
     postToNative({
       type: "session",
       sessionId: openSessionId,
       title: openSessionTitle,
       state: openSessionState,
-      attention: openSessionAttention
+      attention: openSessionAttention,
     });
   }, [embedded, openSessionAttention, openSessionId, openSessionState, openSessionTitle]);
 
@@ -965,7 +1014,8 @@ export function MobileApp(): JSX.Element {
   const openSessionAgentMode = openSession?.agentMode ?? null;
   const openSessionPendingKey = openSessionPending
     .map(
-      (entry) => `${entry.id}:${entry.content}:${entry.modelId ?? ""}:${entry.reasoningEffort ?? ""}:${entry.agentMode}`
+      (entry) =>
+        `${entry.id}:${entry.content}:${entry.modelId ?? ""}:${entry.reasoningEffort ?? ""}:${entry.agentMode}`,
     )
     .join("|");
   useEffect(() => {
@@ -980,7 +1030,7 @@ export function MobileApp(): JSX.Element {
       return;
     }
     const modelEntry = PROVIDER_MODELS[openSessionProvider]?.find(
-      (candidate) => normalizeModelId(candidate.modelId) === normalizeModelId(openSessionModelId)
+      (candidate) => normalizeModelId(candidate.modelId) === normalizeModelId(openSessionModelId),
     );
     postToNative({
       type: "composer",
@@ -997,9 +1047,9 @@ export function MobileApp(): JSX.Element {
         // A chat reference reads as its title in the native row; the queued
         // message itself keeps the link.
         text: chatReferencesAsTitles(entry.content),
-        canSteer: openSession !== null && canSteerQueuedMessage(openSession, entry)
+        canSteer: openSession !== null && canSteerQueuedMessage(openSession, entry),
       })),
-      running: openSessionState === "running"
+      running: openSessionState === "running",
     });
     // oxlint-disable-next-line react/exhaustive-deps -- openSessionPendingKey stands in for openSessionPending's contents.
   }, [
@@ -1011,7 +1061,7 @@ export function MobileApp(): JSX.Element {
     openSessionEffort,
     openSessionState,
     openSessionAgentMode,
-    openSessionPendingKey
+    openSessionPendingKey,
   ]);
 
   const agentsPostedRef = useRef(false);
@@ -1038,7 +1088,7 @@ export function MobileApp(): JSX.Element {
     hapticSeenRef.current = {
       sessionId: openSessionId,
       state: openSessionState,
-      attention: openSessionAttention
+      attention: openSessionAttention,
     };
     if (seen.sessionId !== openSessionId) return;
     if (openSessionAttention === "approval-needed" && seen.attention !== "approval-needed") {
@@ -1055,7 +1105,7 @@ export function MobileApp(): JSX.Element {
       postToNative({ type: "haptic", kind: "light" });
       return sendSessionInput(...args);
     },
-    [sendSessionInput]
+    [sendSessionInput],
   );
 
   // Native calls in once `ready` has gone out. `openSession` routes through
@@ -1072,7 +1122,7 @@ export function MobileApp(): JSX.Element {
       setTheme,
       setAccent: applyAccentToDocument,
       setUserBubble: applyUserBubbleTintToDocument,
-      setComposer: setComposerHidden
+      setComposer: setComposerHidden,
     });
   }, [closeSession, embedded]);
 
@@ -1094,6 +1144,7 @@ export function MobileApp(): JSX.Element {
       <div
         ref={shellRef}
         className="mobile-shell"
+        data-testid="mobile-shell"
         data-font-size={
           // Reading a transcript wants a larger type than scanning a list of
           // chats does, so the two screens run at their own scale. Inside the
@@ -1202,7 +1253,9 @@ export function MobileApp(): JSX.Element {
                   />
                   <SessionSection
                     label={
-                      filteredRows.pinnedRows.length > 0 || filteredRows.priorityRows.length > 0 ? "Chats" : "All chats"
+                      filteredRows.pinnedRows.length > 0 || filteredRows.priorityRows.length > 0
+                        ? "Chats"
+                        : "All chats"
                     }
                     rows={filteredRows.activityRows}
                     projectNamesById={projectNamesById}
@@ -1225,7 +1278,12 @@ export function MobileApp(): JSX.Element {
                   onChange={(event) => setSearchQuery(event.target.value)}
                 />
               </label>
-              <button type="button" className="mobile-list-compose" aria-label="New chat" onClick={startNewChat}>
+              <button
+                type="button"
+                className="mobile-list-compose"
+                aria-label="New chat"
+                onClick={startNewChat}
+              >
                 <PenLine size={23} aria-hidden="true" />
               </button>
             </div>
@@ -1290,7 +1348,9 @@ export function MobileApp(): JSX.Element {
                 project={selectedProject}
                 onLoadSessionEvents={loadSessionEvents}
                 onResolveApproval={resolveApproval}
-                onSendSessionInput={embedded ? sendSessionInputWithHaptic : commands.sendSessionInput}
+                onSendSessionInput={
+                  embedded ? sendSessionInputWithHaptic : commands.sendSessionInput
+                }
                 onCancelQueuedMessage={commands.cancelQueuedMessage}
                 onSendQueuedMessageNow={commands.sendQueuedMessageNow}
                 onTerminateSession={commands.terminateSession}
@@ -1306,7 +1366,9 @@ export function MobileApp(): JSX.Element {
                 }
                 onOpenFile={requestReview}
                 onOpenChanges={openReviewScreen}
-                multitasks={selectedSession ? (multitasksByParent.get(selectedSession.id) ?? []) : []}
+                multitasks={
+                  selectedSession ? (multitasksByParent.get(selectedSession.id) ?? []) : []
+                }
                 agentsViewAvailable={false}
                 agentsPresentation="overlay"
                 onAgentsOverlayChange={(dismiss) => setDismissAgentsOverlay(() => dismiss)}
@@ -1338,7 +1400,7 @@ export function MobileApp(): JSX.Element {
                     }}
                     options={[
                       { value: "light", label: "Light" },
-                      { value: "dark", label: "Dark" }
+                      { value: "dark", label: "Dark" },
                     ]}
                   />
                 </div>
@@ -1356,7 +1418,7 @@ export function MobileApp(): JSX.Element {
                     }}
                     options={[
                       { value: "accent", label: "Accent" },
-                      { value: "neutral", label: "Neutral" }
+                      { value: "neutral", label: "Neutral" },
                     ]}
                   />
                 </div>
@@ -1382,7 +1444,11 @@ export function MobileApp(): JSX.Element {
           </div>
         ) : reviewShown && selectedWorkspace ? (
           <div className="mobile-screen-overlay">
-            <Suspense fallback={<LinesSkeleton rows={10} label="Loading changes" className="review-diff-skeleton" />}>
+            <Suspense
+              fallback={
+                <LinesSkeleton rows={10} label="Loading changes" className="review-diff-skeleton" />
+              }
+            >
               <MobileReviewScreen
                 workspace={selectedWorkspace}
                 initialFilePath={reviewFilePath}

@@ -10,7 +10,7 @@ const folder: ProjectFolder = {
   rootPath: "/repos/docs",
   isPrimary: false,
   enabled: true,
-  summary: null
+  summary: null,
 };
 function install(linkedRepos: Partial<ArgmaxApi["linkedRepos"]>): void {
   window.argmax = { linkedRepos } as unknown as ArgmaxApi;
@@ -63,9 +63,15 @@ describe("ProjectFolderContext", () => {
     render(<ProjectFolderContext folder={folder} />);
     fireEvent.click(screen.getByRole("checkbox", { name: "Include docs in agent context" }));
     await waitFor(() =>
-      expect(screen.getByRole("checkbox", { name: "Include docs in agent context" })).not.toBeChecked()
+      expect(
+        screen.getByRole("checkbox", { name: "Include docs in agent context" }),
+      ).not.toBeChecked(),
     );
-    expect(setEnabled).toHaveBeenCalledWith({ projectId: "project-1", id: "linked-1", enabled: false });
+    expect(setEnabled).toHaveBeenCalledWith({
+      projectId: "project-1",
+      id: "linked-1",
+      enabled: false,
+    });
     expect(screen.getByRole("button", { name: "Generate summary for docs" })).toBeDisabled();
     expect(summarize).not.toHaveBeenCalled();
   });

@@ -4,7 +4,15 @@
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { accessSync, constants, createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -21,14 +29,18 @@ export function parseScratchArgs(argv) {
     const arg = argv[i];
     if (arg === "--data-dir") {
       const value = argv[++i];
-      if (value === undefined || value.startsWith("--")) throw new Error("--data-dir requires a value");
+      if (value === undefined || value.startsWith("--"))
+        throw new Error("--data-dir requires a value");
       options.dataDir = value;
     } else if (arg === "--port") options.port = Number(argv[++i]);
     else if (arg === "--build") options.build = true;
     else if (arg === "--release") options.release = true;
     else throw new Error(`unknown argument: ${arg}`);
   }
-  if (options.port !== null && (!Number.isInteger(options.port) || options.port < 1 || options.port > 65535)) {
+  if (
+    options.port !== null &&
+    (!Number.isInteger(options.port) || options.port < 1 || options.port > 65535)
+  ) {
     throw new Error("--port must be an integer between 1 and 65535");
   }
   return options;
@@ -51,7 +63,11 @@ export function freePort() {
 }
 
 export function scratchBinaryPath({ release = false, targetDir = null } = {}) {
-  return path.join(targetDir ?? path.join(repoRoot, "src-tauri", "target"), release ? "release" : "debug", "argmax");
+  return path.join(
+    targetDir ?? path.join(repoRoot, "src-tauri", "target"),
+    release ? "release" : "debug",
+    "argmax",
+  );
 }
 
 export async function buildScratchApp({
@@ -60,7 +76,7 @@ export async function buildScratchApp({
   env = process.env,
   targetDir = null,
   rendererOutDir = null,
-  logDir = null
+  logDir = null,
 } = {}) {
   if (logDir) mkdirSync(logDir, { recursive: true });
   const rendererArgs = ["run", "build:renderer"];
@@ -70,7 +86,7 @@ export async function buildScratchApp({
     env,
     timeoutMs: 180_000,
     stdoutPath: logDir ? path.join(logDir, "renderer.stdout.log") : null,
-    stderrPath: logDir ? path.join(logDir, "renderer.stderr.log") : null
+    stderrPath: logDir ? path.join(logDir, "renderer.stderr.log") : null,
   });
   const cargoArgs = ["build", "--manifest-path", "src-tauri/Cargo.toml"];
   if (targetDir) cargoArgs.push("--target-dir", targetDir);
@@ -81,7 +97,7 @@ export async function buildScratchApp({
     env,
     timeoutMs: 600_000,
     stdoutPath: logDir ? path.join(logDir, "cargo.stdout.log") : null,
-    stderrPath: logDir ? path.join(logDir, "cargo.stderr.log") : null
+    stderrPath: logDir ? path.join(logDir, "cargo.stderr.log") : null,
   });
   return scratchBinaryPath({ release, targetDir });
 }
@@ -105,10 +121,12 @@ export async function startScratchApp(options = {}) {
     features = ["custom-protocol"],
     env = process.env,
     readyTimeoutMs = 60_000,
-    stopTimeoutMs = 8_000
+    stopTimeoutMs = 8_000,
   } = options;
-  if (build) await buildScratchApp({ release, features, env, targetDir: options.targetDir ?? null });
-  const binary = options.binary ?? scratchBinaryPath({ release, targetDir: options.targetDir ?? null });
+  if (build)
+    await buildScratchApp({ release, features, env, targetDir: options.targetDir ?? null });
+  const binary =
+    options.binary ?? scratchBinaryPath({ release, targetDir: options.targetDir ?? null });
   if (!existsSync(binary)) throw new Error(`no binary at ${binary}; run the scratch build first`);
   try {
     accessSync(binary, process.platform === "win32" ? constants.F_OK : constants.X_OK);
@@ -122,7 +140,9 @@ export async function startScratchApp(options = {}) {
   const remoteConfig = readRemoteConfig(remoteConfigPath);
   const port = requestedPort ?? remoteConfig?.port ?? (await freePort());
   const token = remoteConfig?.token ?? randomUUID().replaceAll("-", "");
-  writeFileSync(remoteConfigPath, `${JSON.stringify({ enabled: true, port, token }, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(remoteConfigPath, `${JSON.stringify({ enabled: true, port, token }, null, 2)}\n`, {
+    mode: 0o600,
+  });
 
   const logPath = path.join(absoluteDataDir, "app.log");
   const logStream = createWriteStream(logPath, { flags: "a" });
@@ -130,7 +150,7 @@ export async function startScratchApp(options = {}) {
     cwd: repoRoot,
     env: { ...env, ARGMAX_DATA_DIR: absoluteDataDir },
     detached: process.platform !== "win32",
-    stdio: ["ignore", "pipe", "pipe"]
+    stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout.pipe(logStream);
   child.stderr.pipe(logStream);
@@ -172,7 +192,7 @@ export async function startScratchApp(options = {}) {
     throw new Error(
       timedOut
         ? `bridge did not become ready within ${readyTimeoutMs}ms: ${lastError?.message ?? "unknown error"}; log: ${logPath}`
-        : `Argmax exited before readiness (code ${exitResult.code ?? "-"}, signal ${exitResult.signal ?? "-"}${exitResult.error ? `, error ${exitResult.error}` : ""}); log: ${logPath}`
+        : `Argmax exited before readiness (code ${exitResult.code ?? "-"}, signal ${exitResult.signal ?? "-"}${exitResult.error ? `, error ${exitResult.error}` : ""}); log: ${logPath}`,
     );
   }
 
@@ -205,7 +225,7 @@ export async function startScratchApp(options = {}) {
     binary,
     child,
     exited,
-    stop
+    stop,
   };
 }
 
@@ -228,11 +248,13 @@ async function main() {
         token: app.token,
         dataDir: app.dataDir,
         pid: app.pid,
-        log: app.log
-      })
+        log: app.log,
+      }),
     );
     const result = await app.exited;
-    console.error(`argmax exited (code ${result.code ?? "-"}, signal ${result.signal ?? "-"}); log: ${app.log}`);
+    console.error(
+      `argmax exited (code ${result.code ?? "-"}, signal ${result.signal ?? "-"}); log: ${app.log}`,
+    );
     process.exitCode = stopping ? 0 : (result.code ?? 1);
   } catch (error) {
     console.error(error.message);

@@ -13,7 +13,7 @@ import {
   loadDiff,
   mockDashboardSnapshot,
   setupAppTestMocks,
-  snapshot
+  snapshot,
 } from "../../test/appTestHarness.js";
 import { startedAgentName } from "../../test/agentRowName.js";
 import { MobileApp } from "./MobileApp.js";
@@ -41,13 +41,13 @@ const remote = vi.hoisted(() => {
       listeners.add(listener);
       listener(state);
       return () => listeners.delete(listener);
-    }
+    },
   };
 });
 
 vi.mock("../lib/wsTransport.js", () => ({
   createWsTransport: vi.fn(),
-  subscribeRemoteConnection: remote.subscribe
+  subscribeRemoteConnection: remote.subscribe,
 }));
 
 const postMessage = vi.fn<(message: NativeMessage) => void>();
@@ -98,7 +98,7 @@ describe("MobileApp embed mode", () => {
 
   it("does not preload a desktop diff when native owns review navigation", async () => {
     listChangedFiles.mockResolvedValue([
-      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false }
+      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false },
     ]);
     await renderEmbedded();
     act(() => window.argmaxNative?.openSession("session-1"));
@@ -134,8 +134,8 @@ describe("MobileApp embed mode", () => {
         sessionId: "session-1",
         title: "Build dashboard",
         state: "running",
-        attention: "normal"
-      })
+        attention: "normal",
+      }),
     );
   });
 
@@ -156,8 +156,8 @@ describe("MobileApp embed mode", () => {
         effort: "medium",
         efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
         queued: [],
-        running: true
-      })
+        running: true,
+      }),
     );
   });
 
@@ -173,10 +173,10 @@ describe("MobileApp embed mode", () => {
             sessionId: "session-1",
             content: "compare with [Billing](argmax://chat/session-9?v=1) please",
             agentMode: "auto",
-            queuedAt: "2026-10-04T08:00:00.000Z"
-          }
-        ]
-      }
+            queuedAt: "2026-10-04T08:00:00.000Z",
+          },
+        ],
+      },
     });
     await renderEmbedded();
 
@@ -186,8 +186,8 @@ describe("MobileApp embed mode", () => {
       expect(
         posted("composer")
           .at(-1)
-          ?.queued?.map(({ id, text }) => ({ id, text }))
-      ).toEqual([{ id: "pending-1", text: "compare with Billing please" }])
+          ?.queued?.map(({ id, text }) => ({ id, text })),
+      ).toEqual([{ id: "pending-1", text: "compare with Billing please" }]),
     );
   });
 
@@ -196,24 +196,26 @@ describe("MobileApp embed mode", () => {
     act(() => window.argmaxNative?.openSession("session-1"));
     await screen.findByRole("region", { name: "Conversation" });
 
-    const shell = () => document.querySelector(".mobile-shell");
-    expect(shell()?.getAttribute("data-composer-hidden")).toBeNull();
+    const shell = () => screen.getByTestId("mobile-shell");
+    expect(shell()).not.toHaveAttribute("data-composer-hidden");
 
     act(() => window.argmaxNative?.setComposer(true));
-    expect(shell()?.getAttribute("data-composer-hidden")).toBe("true");
+    expect(shell()).toHaveAttribute("data-composer-hidden", "true");
 
     act(() => window.argmaxNative?.setComposer(false));
-    expect(shell()?.getAttribute("data-composer-hidden")).toBeNull();
+    expect(shell()).not.toHaveAttribute("data-composer-hidden");
   });
 
   it("reads the transcript one type step up, without touching the stored preference", async () => {
     await renderEmbedded();
     act(() => window.argmaxNative?.openSession("session-1"));
 
-    const shell = (await screen.findByRole("region", { name: "Conversation" })).closest("[data-font-size]");
+    const conversation = await screen.findByRole("region", { name: "Conversation" });
+    const shell = screen.getByTestId("mobile-shell");
+    expect(shell).toContainElement(conversation);
     // One above the 7 the web phone runs a transcript at: inside the shell
     // the transcript is the whole screen. See MobileApp.
-    expect(shell?.getAttribute("data-font-size")).toBe("9");
+    expect(shell).toHaveAttribute("data-font-size", "9");
     // The step is the shell's, for this page only. The phone's own browser
     // tab keeps whatever it was set to.
     expect(window.localStorage.getItem(FONT_SIZE_STORAGE_KEY)).toBeNull();
@@ -226,7 +228,7 @@ describe("MobileApp embed mode", () => {
   it("re-reads for a chat the loaded snapshot has not caught up with", async () => {
     mockDashboardSnapshot({
       ...snapshot,
-      sessions: snapshot.sessions.filter((session) => session.id !== "session-1")
+      sessions: snapshot.sessions.filter((session) => session.id !== "session-1"),
     });
     await renderEmbedded();
 
@@ -241,8 +243,8 @@ describe("MobileApp embed mode", () => {
         sessionId: "session-1",
         title: "Build dashboard",
         state: "running",
-        attention: "normal"
-      })
+        attention: "normal",
+      }),
     );
   });
 
@@ -253,7 +255,9 @@ describe("MobileApp embed mode", () => {
 
     act(() => window.argmaxNative?.closeSession());
 
-    await waitFor(() => expect(screen.queryByRole("region", { name: "Conversation" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Conversation" })).not.toBeInTheDocument(),
+    );
   });
 
   it("asks native for the review surface when a file reference is tapped", async () => {
@@ -274,11 +278,11 @@ describe("MobileApp embed mode", () => {
           payload: {
             id: "tu_write",
             name: "Write",
-            input: { file_path: "/tmp/worktrees/dashboard/src/panel.ts", content: "a\nb" }
+            input: { file_path: "/tmp/worktrees/dashboard/src/panel.ts", content: "a\nb" },
           },
-          createdAt: "2026-05-08T15:54:03.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:03.000Z",
+        },
+      ],
     });
     // This interaction intentionally inspects the individual Write row. The
     // mobile shell now honors the shared verbosity setting, so use Compact for
@@ -292,10 +296,14 @@ describe("MobileApp embed mode", () => {
     // opens the file change card, whose "Open" action is the file itself.
     fireEvent.click(await screen.findByRole("button", { name: /^Edited a file(: |$)/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Edited panel.ts" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open /tmp/worktrees/dashboard/src/panel.ts" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open /tmp/worktrees/dashboard/src/panel.ts" }),
+    );
 
     await waitFor(() =>
-      expect(posted("openReview")).toEqual([{ type: "openReview", sessionId: "session-1", filePath: "src/panel.ts" }])
+      expect(posted("openReview")).toEqual([
+        { type: "openReview", sessionId: "session-1", filePath: "src/panel.ts" },
+      ]),
     );
     // And nothing of the page's own review screen came up behind it.
     expect(screen.queryByRole("tab", { name: "Changes" })).not.toBeInTheDocument();
@@ -326,9 +334,9 @@ describe("MobileApp embed mode", () => {
           payload: {
             id: "tu_agent",
             name: "Task",
-            input: { description: "Audit the dashboard query", prompt: "Read it and report back." }
+            input: { description: "Audit the dashboard query", prompt: "Read it and report back." },
           },
-          createdAt: "2026-05-08T15:54:01.000Z"
+          createdAt: "2026-05-08T15:54:01.000Z",
         },
         {
           id: "event-agent-done",
@@ -336,15 +344,17 @@ describe("MobileApp embed mode", () => {
           type: "command.completed",
           message: "tool_result",
           payload: { tool_use_id: "tu_agent", content: "No issues found." },
-          createdAt: "2026-05-08T15:54:02.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:02.000Z",
+        },
+      ],
     });
     await renderEmbedded();
     act(() => window.argmaxNative?.openSession("session-1"));
     await screen.findByRole("region", { name: "Conversation" });
 
-    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Audit the dashboard query") }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: startedAgentName("Audit the dashboard query") }),
+    );
     await screen.findByRole("dialog", { name: "Delegated work" });
     await waitFor(() => expect(posted("agents")).toEqual([{ type: "agents", open: true }]));
 
@@ -356,7 +366,9 @@ describe("MobileApp embed mode", () => {
     expect(screen.getByRole("dialog", { name: "Delegated work" })).toBeInTheDocument();
     expect(posted("agents")).toEqual([{ type: "agents", open: true }]);
 
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument(),
+    );
     // Waited for, not asserted outright: the sheet leaving the DOM and the
     // page reporting it are two renders — the overlay unmounts, then it hands
     // its dismiss back and the effect posts. The "not before it has gone"
@@ -364,8 +376,8 @@ describe("MobileApp embed mode", () => {
     await waitFor(() =>
       expect(posted("agents")).toEqual([
         { type: "agents", open: true },
-        { type: "agents", open: false }
-      ])
+        { type: "agents", open: false },
+      ]),
     );
   });
 
@@ -392,14 +404,14 @@ describe("MobileApp embed mode", () => {
                   question: "Pick a direction",
                   header: "Direction",
                   multiSelect: false,
-                  options: [{ label: "Fix audit findings" }, { label: "General maintenance" }]
-                }
-              ]
-            }
+                  options: [{ label: "Fix audit findings" }, { label: "General maintenance" }],
+                },
+              ],
+            },
           },
-          createdAt: "2026-05-08T15:54:01.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:01.000Z",
+        },
+      ],
     });
     await renderEmbedded();
     act(() => window.argmaxNative?.setComposer(true));
@@ -408,7 +420,9 @@ describe("MobileApp embed mode", () => {
 
     const dock = await screen.findByLabelText("Question from agent");
     // Exempt from the hidden composer stack: the panel is the page's to draw.
-    expect(dock.closest(".session-composer-stack")).toHaveAttribute("data-question");
+    const questionStack = screen.getByTestId("question-composer-stack");
+    expect(questionStack).toContainElement(dock);
+    expect(questionStack).toHaveAttribute("data-question");
     await waitFor(() => expect(posted("question")).toEqual([{ type: "question", open: true }]));
 
     fireEvent.click(screen.getByRole("button", { name: "Answer in your own words" }));
@@ -416,8 +430,8 @@ describe("MobileApp embed mode", () => {
     await waitFor(() =>
       expect(posted("question")).toEqual([
         { type: "question", open: true },
-        { type: "question", open: false }
-      ])
+        { type: "question", open: false },
+      ]),
     );
   });
 
@@ -446,14 +460,18 @@ describe("MobileApp embed mode", () => {
     // The phone's own browser tab keeps the preferences it had.
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBeNull();
     expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe(DEFAULT_ACCENT_ID);
-    expect(window.localStorage.getItem(USER_BUBBLE_TINT_STORAGE_KEY)).toBe(DEFAULT_USER_BUBBLE_TINT);
+    expect(window.localStorage.getItem(USER_BUBBLE_TINT_STORAGE_KEY)).toBe(
+      DEFAULT_USER_BUBBLE_TINT,
+    );
   });
 
   it("ignores a bubble tint the page does not know", async () => {
     await renderEmbedded();
     act(() => window.argmaxNative?.setUserBubble("neutral"));
 
-    act(() => (window.argmaxNative as { setUserBubble: (value: string) => void }).setUserBubble("puce"));
+    act(() =>
+      (window.argmaxNative as { setUserBubble: (value: string) => void }).setUserBubble("puce"),
+    );
 
     expect(document.documentElement.dataset.userBubble).toBe("neutral");
   });

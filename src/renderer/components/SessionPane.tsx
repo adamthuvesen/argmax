@@ -8,7 +8,7 @@ import {
   useState,
   type CSSProperties,
   type JSX,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { FileDiff, FolderTree, Globe } from "lucide-react";
 import {
@@ -16,7 +16,7 @@ import {
   browserActions,
   resolveFileForOpening,
   systemActions,
-  workspaceActions
+  workspaceActions,
 } from "../data/bridgeActions.js";
 import type { ReviewSideChatContext } from "./ReviewSideChat.js";
 import type { ModelPickerSelection } from "../lib/models.js";
@@ -25,7 +25,11 @@ import type { SendInputResult } from "../../shared/bindings.js";
 import type { NewSessionSeed } from "./SessionComposer.js";
 import type { DiffNoteInput } from "../lib/composerAnnotations.js";
 import type { MultitaskChild } from "../lib/multitask.js";
-import type { PaletteItem, PaletteSurfaceContext, PaletteSurfaceLive } from "../lib/paletteSearch.js";
+import type {
+  PaletteItem,
+  PaletteSurfaceContext,
+  PaletteSurfaceLive,
+} from "../lib/paletteSearch.js";
 import type {
   AgentMode,
   AgentReference,
@@ -40,7 +44,7 @@ import type {
   ProjectSummary,
   ProviderId,
   SessionSummary,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../../shared/types.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import type { FontSize } from "../lib/fonts.js";
@@ -57,7 +61,7 @@ import {
   readBoundedNumberPreference,
   type FollowUpDelivery,
   type ThinkingDisplay,
-  type ToolCallsDisplay
+  type ToolCallsDisplay,
 } from "../lib/uiPreferences.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { agentTabId, multitaskTabId } from "../lib/agentTabs.js";
@@ -75,18 +79,18 @@ const importAgentOverlay = () => import("../mobile/AgentOverlay.js");
 const importAgentsView = () => import("./AgentsView.js");
 const AgentOverlay = lazy(() =>
   importChunk(async () => ({
-    default: (await importAgentOverlay()).AgentOverlay
-  }))
+    default: (await importAgentOverlay()).AgentOverlay,
+  })),
 );
 const AgentsView = lazy(() =>
   importChunk(async () => ({
-    default: (await importAgentsView()).AgentsView
-  }))
+    default: (await importAgentsView()).AgentsView,
+  })),
 );
 const ReviewPanel = lazy(() =>
   importChunk(async () => ({
-    default: (await import("./ReviewPanel.js")).ReviewPanel
-  }))
+    default: (await import("./ReviewPanel.js")).ReviewPanel,
+  })),
 );
 import { SessionConversation } from "./SessionConversation.js";
 // TerminalTabsPanel pulls in @xterm/xterm + addons + xterm CSS — heavy and
@@ -122,7 +126,7 @@ function isSideChatComposerTarget(target: EventTarget | null): boolean {
 
 function hasActiveDialog(): boolean {
   return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).some(
-    (dialog) => dialog.getAttribute("aria-hidden") !== "true"
+    (dialog) => dialog.getAttribute("aria-hidden") !== "true",
   );
 }
 
@@ -134,7 +138,7 @@ function readPinnedPanelWidth(): number | null {
   return readBoundedNumberPreference(SESSION_RIGHT_PANEL_WIDTH_KEY, {
     min: SESSION_RIGHT_PANEL_MIN,
     max: SESSION_RIGHT_PANEL_MAX,
-    fallback: SESSION_RIGHT_PANEL_MIN
+    fallback: SESSION_RIGHT_PANEL_MIN,
   });
 }
 
@@ -199,7 +203,7 @@ export function SessionPane({
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
   contextIndicatorEnabled = false,
-  workspace
+  workspace,
 }: {
   approvals: ApprovalRequest[];
   checks?: CheckRun[];
@@ -231,7 +235,7 @@ export function SessionPane({
   onLoadAgentEvents?: (
     sessionId: string,
     parentToolUseId: string,
-    identity?: NativeAgentIdentity
+    identity?: NativeAgentIdentity,
   ) => Promise<void | { hasMore: boolean }>;
   /** Opens a launcher pane beside this one. Absent outside the grid. */
   onNewSession?: (seed?: NewSessionSeed) => void;
@@ -252,11 +256,20 @@ export function SessionPane({
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
     agentReferences?: AgentReference[],
-    delivery?: FollowUpDelivery
+    delivery?: FollowUpDelivery,
   ) => Promise<SendInputResult>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
-  onSendQueuedMessageNow: (sessionId: string, messageId: string, delivery?: QueuedMessageDelivery) => Promise<void>;
-  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId, pendingMessageId?: string) => Promise<void>;
+  onSendQueuedMessageNow: (
+    sessionId: string,
+    messageId: string,
+    delivery?: QueuedMessageDelivery,
+  ) => Promise<void>;
+  onMultitask?: (
+    sessionId: string,
+    prompt: string,
+    provider: ProviderId,
+    pendingMessageId?: string,
+  ) => Promise<void>;
   /** Multitasks dispatched from this pane's session. They have no sidebar row
    *  of their own — this pane's dock is where they are read and answered. */
   multitasks?: MultitaskChild[];
@@ -303,16 +316,20 @@ export function SessionPane({
   // otherwise a fresh object every render would invalidate downstream deps.
   const reviewSource = useMemo<ReviewSource | null>(
     () => (workspace ? { kind: "workspace", workspace } : null),
-    [workspace]
+    [workspace],
   );
-  const visibleApprovals = useStableFilter(approvals, sessionId, (approval) => approval.sessionId === sessionId);
+  const visibleApprovals = useStableFilter(
+    approvals,
+    sessionId,
+    (approval) => approval.sessionId === sessionId,
+  );
   const { events: visibleEvents, rawOutputs: visibleRawOutputs } = useSessionTimeline(sessionId);
   const cursorBackgroundAgentIds = useMemo(() => {
     if (session?.provider !== "cursor") return [];
     return buildSessionToolCalls(
       visibleEvents,
       session.state === "running",
-      session.state === "failed" || session.state === "cancelled"
+      session.state === "failed" || session.state === "cancelled",
     )
       .filter((tool) => tool.backgroundLaunch && tool.status === "running")
       .map((tool) => tool.toolUseId);
@@ -349,7 +366,7 @@ export function SessionPane({
   const reviewState = useReviewState(reviewSource, {
     claimsBrowserRequests: isFocused,
     preloadChanges: onOpenChanges ? undefined : isFocused,
-    sessionId
+    sessionId,
   });
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isReviewExpanded, setIsReviewExpanded] = useState(false);
@@ -366,28 +383,29 @@ export function SessionPane({
   // app-level preference, so hiding it here keeps it hidden everywhere.
   const handleHideWorkspaceCard = useCallback(
     () => onWorkspaceCardVisibleChange?.(false),
-    [onWorkspaceCardVisibleChange]
+    [onWorkspaceCardVisibleChange],
   );
   const handleToggleWorkspaceCard = useCallback(
     () => onWorkspaceCardVisibleChange?.(!workspaceCardVisible),
-    [onWorkspaceCardVisibleChange, workspaceCardVisible]
+    [onWorkspaceCardVisibleChange, workspaceCardVisible],
   );
   const gridClass = [
     "session-grid",
     reviewState.isPanelOpen && "review-open",
     reviewState.isPanelOpen && isReviewExpanded && "review-expanded",
-    isLogOpen && "log-open"
+    isLogOpen && "log-open",
   ]
     .filter(Boolean)
     .join(" ");
-  const reviewColumnWidth = pinnedPanelWidth === null ? SESSION_RIGHT_PANEL_AUTO_WIDTH : `${pinnedPanelWidth}px`;
+  const reviewColumnWidth =
+    pinnedPanelWidth === null ? SESSION_RIGHT_PANEL_AUTO_WIDTH : `${pinnedPanelWidth}px`;
   const logColumnWidth = reviewState.isPanelOpen ? "clamp(300px, 32vw, 480px)" : reviewColumnWidth;
   // The terminal is a review-panel view, so "open" is that panel showing it.
   const terminalOpen = reviewState.isPanelOpen && reviewState.layout.modes.includes("terminal");
   const gridStyle = {
     "--session-main-column-min-width": `${CHAT_PANE_MIN_WIDTH_PX}px`,
     "--session-review-panel-width": reviewColumnWidth,
-    "--session-log-panel-width": logColumnWidth
+    "--session-log-panel-width": logColumnWidth,
   } as CSSProperties;
 
   // Destructure so the effect's dep is the stable useCallback from inside
@@ -420,7 +438,7 @@ export function SessionPane({
     () => () => {
       onRightPanelWidthChangeRef.current?.(null);
     },
-    []
+    [],
   );
 
   // A launch row in the transcript opens the subagent in this pane's review
@@ -433,7 +451,7 @@ export function SessionPane({
     (tool: ToolCall): void => {
       openAgentInPanel(agentTabId(tool));
     },
-    [openAgentInPanel]
+    [openAgentInPanel],
   );
   const agentsInOverlay = agentsPresentation === "overlay";
   // The overlay keeps its own tab list. `reviewState.openAgent` opens the
@@ -498,10 +516,17 @@ export function SessionPane({
       setPeekPresent(true);
       setPeekOpen(true);
     },
-    [overlayOpenTab]
+    [overlayOpenTab],
   );
-  const openAgentOverlay = useCallback((tool: ToolCall): void => openPeekTab(agentTabId(tool)), [openPeekTab]);
-  const handleOpenAgent = agentsInOverlay ? openAgentOverlay : agentsViewAvailable ? openAgent : undefined;
+  const openAgentOverlay = useCallback(
+    (tool: ToolCall): void => openPeekTab(agentTabId(tool)),
+    [openPeekTab],
+  );
+  const handleOpenAgent = agentsInOverlay
+    ? openAgentOverlay
+    : agentsViewAvailable
+      ? openAgent
+      : undefined;
 
   // A multitask row opens its chat in the same dock, one tab over from the
   // subagents: both are work running alongside this one.
@@ -511,20 +536,24 @@ export function SessionPane({
   const hostsMultitasks = (multitasks?.length ?? 0) > 0;
   const openMultitaskOverlay = useCallback(
     (sessionId: string): void => openPeekTab(multitaskTabId(sessionId)),
-    [openPeekTab]
+    [openPeekTab],
   );
   const handleOpenMultitask = useMemo(
-    () => (agentsInOverlay ? openMultitaskOverlay : hostsMultitasks ? openMultitaskInPanel : undefined),
-    [agentsInOverlay, hostsMultitasks, openMultitaskInPanel, openMultitaskOverlay]
+    () =>
+      agentsInOverlay ? openMultitaskOverlay : hostsMultitasks ? openMultitaskInPanel : undefined,
+    [agentsInOverlay, hostsMultitasks, openMultitaskInPanel, openMultitaskOverlay],
   );
 
   // Review-panel line comments land on the conversation's composer as diff
   // notes. The conversation owns that state; it registers a sink here so its
   // sibling ReviewPanel can feed it without lifting the state up.
   const annotationSinkRef = useRef<((input: DiffNoteInput) => void) | null>(null);
-  const registerAnnotationSink = useCallback((sink: ((input: DiffNoteInput) => void) | null): void => {
-    annotationSinkRef.current = sink;
-  }, []);
+  const registerAnnotationSink = useCallback(
+    (sink: ((input: DiffNoteInput) => void) | null): void => {
+      annotationSinkRef.current = sink;
+    },
+    [],
+  );
   const handleAddDiffNote = useCallback((input: DiffNoteInput): void => {
     annotationSinkRef.current?.(input);
   }, []);
@@ -533,7 +562,7 @@ export function SessionPane({
     (ide: IdeId): void => {
       if (workspaceId) onOpenWorkspaceInIde?.(workspaceId, ide);
     },
-    [onOpenWorkspaceInIde, workspaceId]
+    [onOpenWorkspaceInIde, workspaceId],
   );
   // Warm the heavy xterm chunk on idle once a workspace is present, so the first
   // ⌘J paints the terminal immediately instead of showing blank panel space
@@ -561,7 +590,7 @@ export function SessionPane({
         void workspaces
           .openInIde({ workspaceId, ide: "default" })
           .catch((error: unknown) =>
-            showErrorToast(error instanceof Error ? error.message : "Could not open the editor.")
+            showErrorToast(error instanceof Error ? error.message : "Could not open the editor."),
           );
         return;
       }
@@ -588,7 +617,7 @@ export function SessionPane({
         showErrorToast(`Could not find a single ${path} in this workspace.`);
       });
     },
-    [onOpenFile, reviewOpenInFilesView, workspaceId]
+    [onOpenFile, reviewOpenInFilesView, workspaceId],
   );
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
   const lastDebugLogToggleSignal = useRef(debugLogToggleSignal);
@@ -614,7 +643,7 @@ export function SessionPane({
   const paletteLiveRef = useRef<() => PaletteSurfaceLive>(() => ({
     filesVisible: false,
     changedPaths: [],
-    actions: []
+    actions: [],
   }));
   paletteLiveRef.current = (): PaletteSurfaceLive => {
     const actions: PaletteItem[] = [
@@ -626,7 +655,7 @@ export function SessionPane({
         icon: FolderTree,
         shortcut: "⌘G",
         keywords: ["file tree", "explorer"],
-        run: toggleFilesPane
+        run: toggleFilesPane,
       },
       ...(onOpenChanges
         ? []
@@ -638,8 +667,8 @@ export function SessionPane({
               group: "Actions" as const,
               icon: FileDiff,
               keywords: ["diff", "review", "git status"],
-              run: reviewState.toggleChangesPanel
-            }
+              run: reviewState.toggleChangesPanel,
+            },
           ]),
       ...(browserActions()
         ? [
@@ -651,15 +680,16 @@ export function SessionPane({
               icon: Globe,
               shortcut: "⌘⇧I",
               keywords: ["web", "preview", "localhost"],
-              run: toggleBrowserPane
-            }
+              run: toggleBrowserPane,
+            },
           ]
-        : [])
+        : []),
     ];
     return {
-      filesVisible: reviewIsPanelOpen && (reviewModes.includes("files") || reviewModes.includes("changes")),
+      filesVisible:
+        reviewIsPanelOpen && (reviewModes.includes("files") || reviewModes.includes("changes")),
       changedPaths: reviewState.files.map((file) => file.path),
-      actions
+      actions,
     };
   };
   const readPaletteLive = useCallback((): PaletteSurfaceLive => paletteLiveRef.current(), []);
@@ -675,7 +705,7 @@ export function SessionPane({
     registerPaletteFileContext({
       source: { kind: "workspace", id: workspace.id },
       onPick: reviewOpenInFilesView,
-      readLive: readPaletteLive
+      readLive: readPaletteLive,
     });
     return () => registerPaletteFileContext(null);
   }, [isFocused, workspace, registerPaletteFileContext, reviewOpenInFilesView, readPaletteLive]);
@@ -711,7 +741,9 @@ export function SessionPane({
           event.ctrlKey ||
           event.altKey ||
           event.shiftKey ||
-          (isReviewExpanded ? isSideChatComposerTarget(event.target) : isEditorEscapeTarget(event.target)) ||
+          (isReviewExpanded
+            ? isSideChatComposerTarget(event.target)
+            : isEditorEscapeTarget(event.target)) ||
           hasActiveDialog()
         )
           return;
@@ -774,7 +806,7 @@ export function SessionPane({
     reviewTogglePanel,
     session,
     toggleBrowserPane,
-    toggleFilesPane
+    toggleFilesPane,
   ]);
 
   // Until the backfill below lands, the transcript is whatever was left over
@@ -817,7 +849,7 @@ export function SessionPane({
             } else {
               setHistoryLoadFailed(true);
             }
-          }
+          },
         );
     };
     load(1);
@@ -836,7 +868,7 @@ export function SessionPane({
       dragCleanupRef.current?.();
       dragCleanupRef.current = null;
     },
-    []
+    [],
   );
 
   const startPanelResize = useCallback((event: ReactMouseEvent, dock: "left" | "right"): void => {
@@ -847,7 +879,9 @@ export function SessionPane({
     // width: on an automatic width there is no stored number, and the drag
     // has to start from what the user can see.
     const panel = event.currentTarget.parentElement;
-    const startWidth = panel ? Math.round(panel.getBoundingClientRect().width) : SESSION_RIGHT_PANEL_MIN;
+    const startWidth = panel
+      ? Math.round(panel.getBoundingClientRect().width)
+      : SESSION_RIGHT_PANEL_MIN;
     let pinned = startWidth;
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
@@ -863,8 +897,11 @@ export function SessionPane({
       const next = Math.round(
         Math.max(
           SESSION_RIGHT_PANEL_MIN,
-          Math.min(SESSION_RIGHT_PANEL_MAX, dock === "left" ? startWidth + delta : startWidth - delta)
-        )
+          Math.min(
+            SESSION_RIGHT_PANEL_MAX,
+            dock === "left" ? startWidth + delta : startWidth - delta,
+          ),
+        ),
       );
       pinned = next;
       setPinnedPanelWidth(next);
@@ -892,19 +929,27 @@ export function SessionPane({
   // effect on the next drag without threading the value through props.
   const onReviewPanelResizeMouseDown = useCallback(
     (event: ReactMouseEvent): void => startPanelResize(event, readStoredReviewPanelSide()),
-    [startPanelResize]
+    [startPanelResize],
   );
 
   // The debug log panel is always right-docked, whatever the review panel does.
   const onLogPanelResizeMouseDown = useCallback(
     (event: ReactMouseEvent): void => startPanelResize(event, "right"),
-    [startPanelResize]
+    [startPanelResize],
   );
 
   return (
-    <div className={gridClass} style={gridStyle} data-panel-resizing={isPanelResizing ? "true" : undefined}>
+    <div
+      className={gridClass}
+      style={gridStyle}
+      data-panel-resizing={isPanelResizing ? "true" : undefined}
+    >
       {isPanelResizing ? (
-        <div className="session-panel-resize-shield" data-browser-overlay="true" aria-hidden="true" />
+        <div
+          className="session-panel-resize-shield"
+          data-browser-overlay="true"
+          aria-hidden="true"
+        />
       ) : null}
       <div className="session-main-column">
         <SessionConversation
@@ -966,7 +1011,11 @@ export function SessionPane({
           revertEnabled={revertEnabled}
         />
 
-        <ApprovalSurface approvals={visibleApprovals} events={visibleEvents} onResolveApproval={onResolveApproval} />
+        <ApprovalSurface
+          approvals={visibleApprovals}
+          events={visibleEvents}
+          onResolveApproval={onResolveApproval}
+        />
         {agentsInOverlay && peekPresent ? (
           <Suspense fallback={null}>
             <AgentOverlay
@@ -1040,7 +1089,7 @@ export function SessionPane({
               onOpenFullChat: onOpenSession,
               onSendQueuedMessageNow,
               onSendSessionInput,
-              onTerminateSession
+              onTerminateSession,
             }}
             review={reviewState}
             isFocused={isFocused}

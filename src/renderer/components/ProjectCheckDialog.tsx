@@ -20,7 +20,7 @@ export function ProjectCheckDialog({
   currentProject,
   projects,
   onStart,
-  onCancel
+  onCancel,
 }: {
   check: ProjectCheck;
   currentProject: ProjectSummary;
@@ -35,7 +35,7 @@ export function ProjectCheckDialog({
   const runnerUp = check.runnerUpProjectId ? byId.get(check.runnerUpProjectId) : undefined;
   const options = [suggested, runnerUp, currentProject].filter(
     (project, index, all): project is ProjectSummary =>
-      project !== undefined && all.findIndex((other) => other?.id === project.id) === index
+      project !== undefined && all.findIndex((other) => other?.id === project.id) === index,
   );
   const [selectedId, setSelectedId] = useState(suggested?.id ?? currentProject.id);
   const selected = byId.get(selectedId) ?? currentProject;
@@ -111,7 +111,11 @@ export function ProjectCheckDialog({
                 <span className="project-check-option-name">{project.name}</span>
                 <span className="project-check-option-path">{collapseHome(project.repoPath)}</span>
                 <span className="project-check-option-tag">
-                  {project.id === suggested.id ? "Suggested" : project.id === currentProject.id ? "Current" : null}
+                  {project.id === suggested.id
+                    ? "Suggested"
+                    : project.id === currentProject.id
+                      ? "Current"
+                      : null}
                 </span>
               </label>
             ))}
@@ -127,6 +131,6 @@ export function ProjectCheckDialog({
         </footer>
       </form>
     </div>,
-    document.body
+    document.body,
   );
 }

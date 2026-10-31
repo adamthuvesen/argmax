@@ -68,5 +68,5 @@ export const THINKING_WORDS = [
   "Yak-shaving",
   "Tail-chasing",
   "Overthinking",
-  "Gradient-descending"
+  "Gradient-descending",
 ] as const;

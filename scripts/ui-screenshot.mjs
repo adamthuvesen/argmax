@@ -39,7 +39,7 @@ const CHROME_CANDIDATES = [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "/Applications/Chromium.app/Contents/MacOS/Chromium",
   "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  "/Applications/Arc.app/Contents/MacOS/Arc"
+  "/Applications/Arc.app/Contents/MacOS/Arc",
 ];
 
 function fail(message) {
@@ -59,7 +59,7 @@ function parseArgs(argv) {
     evaluate: null,
     settle: 900,
     scale: 1,
-    browserWs: null
+    browserWs: null,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -76,8 +76,10 @@ function parseArgs(argv) {
     else if (arg === "--browser-ws") options.browserWs = argv[++i];
     else fail(`unknown argument: ${arg}`);
   }
-  if (!["dark", "light", "system"].includes(options.theme)) fail("--theme must be dark, light, or system");
-  if (!Number.isFinite(options.scale) || options.scale <= 0) fail("--scale must be a positive number");
+  if (!["dark", "light", "system"].includes(options.theme))
+    fail("--theme must be dark, light, or system");
+  if (!Number.isFinite(options.scale) || options.scale <= 0)
+    fail("--scale must be a positive number");
   return options;
 }
 
@@ -110,21 +112,21 @@ function connectCdp(wsUrl) {
           return new Promise((resolveWait, rejectWait) => {
             const timer = setTimeout(
               () => rejectWait(new Error(`timed out waiting for CDP event ${method}`)),
-              timeoutMs
+              timeoutMs,
             );
             eventWaiters.push({
               method,
               resolve: (params) => {
                 clearTimeout(timer);
                 resolveWait(params);
-              }
+              },
             });
           });
         },
         close() {
           socket.close();
-        }
-      })
+        },
+      }),
     );
     socket.addEventListener("error", () => reject(new Error(`could not connect to ${wsUrl}`)));
     socket.addEventListener("message", (message) => {
@@ -133,7 +135,8 @@ function connectCdp(wsUrl) {
         const entry = pending.get(frame.id);
         if (!entry) return;
         pending.delete(frame.id);
-        if (frame.error) entry.reject(new Error(`${frame.error.message} (${frame.method ?? "CDP"})`));
+        if (frame.error)
+          entry.reject(new Error(`${frame.error.message} (${frame.method ?? "CDP"})`));
         else entry.resolve(frame.result);
         return;
       }
@@ -157,7 +160,7 @@ let baseUrl = options.url;
 if (!baseUrl) {
   const vite = spawn("npx", ["vite", "--port", String(VITE_PORT), "--strictPort"], {
     cwd: repoRoot,
-    stdio: ["ignore", "ignore", "inherit"]
+    stdio: ["ignore", "ignore", "inherit"],
   });
   cleanups.push(() => vite.kill("SIGTERM"));
   // Vite binds "localhost", which may resolve to ::1 only — probe the same name.
@@ -168,14 +171,15 @@ if (!baseUrl) {
         .then((response) => response.ok)
         .catch(() => false),
     20000,
-    "the vite dev server"
+    "the vite dev server",
   );
 }
 const pageUrl = options.mobile ? new URL("mobile.html", baseUrl).href : baseUrl;
 
 async function launchBrowser() {
   const chrome = CHROME_CANDIDATES.find((candidate) => existsSync(candidate));
-  if (!chrome) fail(`no Chromium-based browser found (looked for:\n  ${CHROME_CANDIDATES.join("\n  ")})`);
+  if (!chrome)
+    fail(`no Chromium-based browser found (looked for:\n  ${CHROME_CANDIDATES.join("\n  ")})`);
 
   const profileDir = mkdtempSync(path.join(tmpdir(), "argmax-ui-shot-"));
   const browser = spawn(
@@ -188,15 +192,18 @@ async function launchBrowser() {
       "--use-mock-keychain",
       "--hide-scrollbars",
       `--window-size=${options.width},${options.height}`,
-      "about:blank"
+      "about:blank",
     ],
-    { stdio: ["ignore", "ignore", "pipe"] }
+    { stdio: ["ignore", "ignore", "pipe"] },
   );
   cleanups.push(() => browser.kill("SIGTERM"));
 
   return new Promise((resolve, reject) => {
     let buffer = "";
-    const timer = setTimeout(() => reject(new Error("browser never printed its DevTools URL")), 15000);
+    const timer = setTimeout(
+      () => reject(new Error("browser never printed its DevTools URL")),
+      15000,
+    );
     browser.stderr.on("data", (chunk) => {
       buffer += String(chunk);
       const match = buffer.match(/DevTools listening on (ws:\/\/\S+)/);
@@ -217,21 +224,32 @@ await cdp.send("Page.enable", {}, sessionId);
 // Theme must exist before the app boots — theme.ts reads localStorage at startup.
 await cdp.send(
   "Page.addScriptToEvaluateOnNewDocument",
-  { source: `try { localStorage.setItem("argmax.theme.mode", ${JSON.stringify(options.theme)}); } catch {}` },
-  sessionId
+  {
+    source: `try { localStorage.setItem("argmax.theme.mode", ${JSON.stringify(options.theme)}); } catch {}`,
+  },
+  sessionId,
 );
 if (options.touch) {
   await cdp.send(
     "Emulation.setDeviceMetricsOverride",
     { width: options.width, height: options.height, deviceScaleFactor: 2, mobile: true },
-    sessionId
+    sessionId,
   );
-  await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 }, sessionId);
+  await cdp.send(
+    "Emulation.setTouchEmulationEnabled",
+    { enabled: true, maxTouchPoints: 5 },
+    sessionId,
+  );
 } else if (options.scale !== 1 || options.browserWs) {
   await cdp.send(
     "Emulation.setDeviceMetricsOverride",
-    { width: options.width, height: options.height, deviceScaleFactor: options.scale, mobile: false },
-    sessionId
+    {
+      width: options.width,
+      height: options.height,
+      deviceScaleFactor: options.scale,
+      mobile: false,
+    },
+    sessionId,
   );
 }
 const loaded = cdp.waitForEvent("Page.loadEventFired");
@@ -246,9 +264,10 @@ if (options.evaluate) {
   const { result, exceptionDetails } = await cdp.send(
     "Runtime.evaluate",
     { expression: options.evaluate, awaitPromise: true, returnByValue: true, userGesture: true },
-    sessionId
+    sessionId,
   );
-  if (exceptionDetails) fail(`--eval threw: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`);
+  if (exceptionDetails)
+    fail(`--eval threw: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`);
   evaluated = result?.value;
 }
 await new Promise((resolve) => setTimeout(resolve, options.settle));
@@ -266,7 +285,7 @@ console.log(
     theme: options.theme,
     width: options.width,
     height: options.height,
-    eval: evaluated
-  })
+    eval: evaluated,
+  }),
 );
 process.exit(0);

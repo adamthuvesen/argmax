@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   BACKGROUND_SEND_SHORTCUT_EVENT,
   BACKGROUND_SEND_SHORTCUT_KEY,
-  readBackgroundSendShortcut
+  readBackgroundSendShortcut,
 } from "../lib/backgroundSend.js";
 
 /**

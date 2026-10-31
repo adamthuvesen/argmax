@@ -14,7 +14,7 @@ describe("needsMath", () => {
       "$$E = mc^2$$",
       "\\[ x^2 \\]",
       "\\(\\tau\\) is the threshold",
-      "plain backslash \\ path"
+      "plain backslash \\ path",
     ]) {
       expect(needsMath(text)).toBe(true);
     }
@@ -30,7 +30,7 @@ describe("needsMath", () => {
       '```bash\nPRICE=$50\necho "\\[ preserved \\]"\n```',
       "C:\\Users\\name\\repo",
       "plain text",
-      "$x + y = z$ and \\(\\tau\\)"
+      "$x + y = z$ and \\(\\tau\\)",
     ];
     for (const text of samples) {
       if (normalizeMathDelimiters(text) !== text) {

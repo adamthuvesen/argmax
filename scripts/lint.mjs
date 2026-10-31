@@ -18,7 +18,7 @@ const RATCHETED = new Set([
   "argmax(no-container)",
   "argmax(no-node-access)",
   "argmax(no-timeline-payload-access)",
-  "argmax(no-raw-model-id)"
+  "argmax(no-raw-model-id)",
 ]);
 
 const args = process.argv.slice(2);
@@ -29,16 +29,18 @@ const oxlintArgs = [
   "-f",
   "json",
   ...args.filter((arg) => arg !== "--write-baseline"),
-  ...(args.some((arg) => !arg.startsWith("-")) ? [] : ["."])
+  ...(args.some((arg) => !arg.startsWith("-")) ? [] : ["."]),
 ];
 
 const run = spawnSync("node_modules/.bin/oxlint", oxlintArgs, {
   cwd: ROOT,
   encoding: "utf8",
-  maxBuffer: 64 * 1024 * 1024
+  maxBuffer: 64 * 1024 * 1024,
 });
 if (run.error || !run.stdout.trim().startsWith("{")) {
-  console.error(`error: oxlint could not run.\n${run.error?.message ?? (run.stderr || run.stdout)}`);
+  console.error(
+    `error: oxlint could not run.\n${run.error?.message ?? (run.stderr || run.stdout)}`,
+  );
   process.exit(1);
 }
 const { diagnostics } = JSON.parse(run.stdout);
@@ -69,7 +71,7 @@ for (const [filename, rules] of Object.entries(counts)) {
     const allowed = baseline[filename]?.[code] ?? 0;
     if (count > allowed)
       failures.push(
-        `${filename}: ${count} ${code} violations, baseline allows ${allowed}. Fix the new ones; do not raise the baseline.`
+        `${filename}: ${count} ${code} violations, baseline allows ${allowed}. Fix the new ones; do not raise the baseline.`,
       );
   }
 }
@@ -78,7 +80,9 @@ if (!partial) {
     for (const [code, allowed] of Object.entries(rules)) {
       const count = counts[filename]?.[code] ?? 0;
       if (count < allowed)
-        failures.push(`${filename}: ${code} fell from ${allowed} to ${count}. Run: npm run lint -- --write-baseline`);
+        failures.push(
+          `${filename}: ${code} fell from ${allowed} to ${count}. Run: npm run lint -- --write-baseline`,
+        );
     }
   }
 }

@@ -13,8 +13,8 @@ function box(top: number, height: number, scrollTop = 0): HTMLElement {
       width: 200,
       x: 0,
       y: top,
-      toJSON: () => ({})
-    })
+      toJSON: () => ({}),
+    }),
   } as HTMLElement;
 }
 

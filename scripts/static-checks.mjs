@@ -24,7 +24,7 @@ const CHECKS = [
     "--ignore-known",
     "--output-type",
     "err-long",
-    "src"
+    "src",
   ],
   ["remote contracts", "scripts/export-remote-contracts.mjs", "--check"],
   ["Swift contracts", "scripts/export-swift-contracts.mjs", "--check"],
@@ -32,7 +32,7 @@ const CHECKS = [
   ["iOS typography", "scripts/check-ios-fonts.mjs"],
   ["iOS model catalogue", "scripts/export-provider-models.mjs", "--check"],
   ["visualization runtime", "scripts/build-visualization-runtime.mjs", "--check"],
-  ["appearance bootstrap", "scripts/build-appearance-bootstrap.mjs", "--check"]
+  ["appearance bootstrap", "scripts/build-appearance-bootstrap.mjs", "--check"],
 ];
 
 for (const [label, ...args] of CHECKS) {

@@ -7,12 +7,20 @@ describe("ReviewNewTab", () => {
     const onOpen = vi.fn();
     const onBrowse = vi.fn();
     render(
-      <ReviewNewTab onOpen={onOpen} onBrowse={onBrowse} hasAgents hasTerminal hasSideChat hasBrowser artifactsEnabled />
+      <ReviewNewTab
+        onOpen={onOpen}
+        onBrowse={onBrowse}
+        hasAgents
+        hasTerminal
+        hasSideChat
+        hasBrowser
+        artifactsEnabled
+      />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Side chat" }));
     expect(onOpen).toHaveBeenCalledWith("side-chat");
     fireEvent.change(screen.getByRole("textbox", { name: "Search or enter a URL" }), {
-      target: { value: "example.com" }
+      target: { value: "example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Open address" }));
     expect(onBrowse).toHaveBeenCalledWith("https://example.com");
@@ -29,7 +37,7 @@ describe("ReviewNewTab", () => {
         hasSideChat={false}
         hasBrowser={false}
         artifactsEnabled
-      />
+      />,
     );
     expect(screen.getByRole("button", { name: "Files" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Side chat" })).not.toBeInTheDocument();

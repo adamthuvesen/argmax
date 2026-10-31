@@ -11,7 +11,7 @@ import { useEffect, useLayoutEffect, type JSX, type ReactNode } from "react";
 export function BottomSheet({
   label,
   onClose,
-  children
+  children,
 }: {
   label: string;
   onClose: () => void;
@@ -68,7 +68,7 @@ export function SheetOption({
   detail,
   selected = false,
   danger = false,
-  onSelect
+  onSelect,
 }: {
   label: string;
   detail?: string;
@@ -84,7 +84,9 @@ export function SheetOption({
       aria-pressed={selected}
       onClick={onSelect}
     >
-      <span className="mobile-sheet-option-check">{selected ? <Check size={16} aria-hidden="true" /> : null}</span>
+      <span className="mobile-sheet-option-check">
+        {selected ? <Check size={16} aria-hidden="true" /> : null}
+      </span>
       <span className="mobile-sheet-option-text">
         <span className="mobile-sheet-option-label">{label}</span>
         {detail ? <span className="mobile-sheet-option-detail">{detail}</span> : null}

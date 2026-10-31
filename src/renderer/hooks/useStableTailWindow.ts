@@ -17,7 +17,7 @@ export function useStableTailWindow<T>(
     pageSize: number;
     follow?: TranscriptFollow;
     getId: (item: T) => string;
-  }
+  },
 ): {
   visibleItems: T[];
   hiddenEarlierCount: number;
@@ -73,7 +73,7 @@ export function useStableTailWindow<T>(
           rerender();
         }
       }),
-    [follow]
+    [follow],
   );
 
   const showEarlier = (): void => {

@@ -8,6 +8,10 @@ export declare function checkoutFingerprint(repoRoot: string): Promise<{
 export declare function runChecked(
   command: string,
   args: string[],
-  options?: { cwd?: string; timeoutMs?: number }
+  options?: { cwd?: string; timeoutMs?: number },
 ): Promise<unknown>;
-export declare function writeTripwires(directory: string, logPath: string, names: string[]): Promise<void>;
+export declare function writeTripwires(
+  directory: string,
+  logPath: string,
+  names: string[],
+): Promise<void>;

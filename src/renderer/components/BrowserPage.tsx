@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore, type JSX } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useSyncExternalStore,
+  type JSX,
+} from "react";
 import {
   BROWSER_PAGE_OWNER_ID,
   claimBrowserSurface,
@@ -8,7 +15,7 @@ import {
   getBrowserRequest,
   lastBrowsedUrl,
   releaseBrowserSurface,
-  subscribeBrowserOwner
+  subscribeBrowserOwner,
 } from "../lib/browserPanel.js";
 import { BrowserPanel } from "./BrowserPanel.js";
 
@@ -18,7 +25,9 @@ import { BrowserPanel } from "./BrowserPanel.js";
  * so a chat click leaves this page.
  */
 export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
-  const ownerId = useSyncExternalStore(subscribeBrowserOwner, () => getBrowserOwnerId(BROWSER_PAGE_OWNER_ID));
+  const ownerId = useSyncExternalStore(subscribeBrowserOwner, () =>
+    getBrowserOwnerId(BROWSER_PAGE_OWNER_ID),
+  );
   const browserOwner = ownerId === BROWSER_PAGE_OWNER_ID;
   const [request, setRequest] = useState(() => {
     const pending = getBrowserRequest();
@@ -27,7 +36,7 @@ export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
       url: pending?.url || lastBrowsedUrl(BROWSER_PAGE_OWNER_ID),
       seq: pending?.seq ?? 1,
       tabId: pending?.tabId,
-      newTab: pending?.newTab
+      newTab: pending?.newTab,
     };
   });
 
@@ -43,7 +52,9 @@ export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
 
   const handleRequest = useCallback((seq: number): void => {
     setRequest((current) =>
-      current.seq === seq ? { ...current, url: "", seq, tabId: undefined, newTab: undefined } : current
+      current.seq === seq
+        ? { ...current, url: "", seq, tabId: undefined, newTab: undefined }
+        : current,
     );
   }, []);
 
@@ -75,7 +86,7 @@ export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
       url: lastBrowsedUrl(BROWSER_PAGE_OWNER_ID),
       seq: current.seq + 1,
       tabId: undefined,
-      newTab: undefined
+      newTab: undefined,
     }));
   }, []);
 

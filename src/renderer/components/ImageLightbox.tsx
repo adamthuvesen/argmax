@@ -1,5 +1,12 @@
 import { X } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type JSX,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
@@ -21,7 +28,7 @@ const PANE_SURFACE = ".conversation-surface, .launcher-surface";
 export function ImageLightbox({
   src,
   alt,
-  onClose
+  onClose,
 }: {
   src: string | null;
   alt: string;

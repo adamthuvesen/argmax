@@ -9,7 +9,7 @@ type Level = (typeof LEVELS)[number];
 export function DebugLogsTab({
   logs,
   error,
-  onClear
+  onClear,
 }: {
   logs: BackendLogEntry[];
   error: string | null;
@@ -32,7 +32,9 @@ export function DebugLogsTab({
       if (rank !== -1 && rank < threshold) return false;
       if (scope !== "all" && entry.scope !== scope) return false;
       if (!needle) return true;
-      return `${entry.scope} ${entry.message} ${JSON.stringify(entry.fields)}`.toLowerCase().includes(needle);
+      return `${entry.scope} ${entry.message} ${JSON.stringify(entry.fields)}`
+        .toLowerCase()
+        .includes(needle);
     });
   }, [logs, threshold, scope, query]);
 
@@ -45,7 +47,12 @@ export function DebugLogsTab({
   }, [scope, scopes]);
 
   return (
-    <div className="debug-tab" role="tabpanel" id="debug-panel-logs" aria-labelledby="debug-tab-logs">
+    <div
+      className="debug-tab"
+      role="tabpanel"
+      id="debug-panel-logs"
+      aria-labelledby="debug-tab-logs"
+    >
       <div className="debug-filters">
         <select
           className="debug-select"
@@ -83,7 +90,9 @@ export function DebugLogsTab({
       </div>
       <div className="debug-count" role="status">
         <span>
-          {visible.length === logs.length ? `${logs.length} lines` : `${visible.length} of ${logs.length} lines`}
+          {visible.length === logs.length
+            ? `${logs.length} lines`
+            : `${visible.length} of ${logs.length} lines`}
         </span>
         <span className="debug-count-actions">
           <button type="button" aria-pressed={follow} onClick={() => setFollow((on) => !on)}>
@@ -102,8 +111,8 @@ export function DebugLogsTab({
       <div className="debug-rows">
         {visible.length === 0 ? (
           <p className="debug-empty">
-            No log lines yet. The backend emits at <code>info</code>, and <code>argmax_lib</code> at <code>debug</code>,
-            unless <code>RUST_LOG</code> says otherwise.
+            No log lines yet. The backend emits at <code>info</code>, and <code>argmax_lib</code> at{" "}
+            <code>debug</code>, unless <code>RUST_LOG</code> says otherwise.
           </p>
         ) : (
           visible.map((entry) => <LogRow key={entry.seq} entry={entry} />)

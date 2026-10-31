@@ -17,10 +17,10 @@ function Harness(): JSX.Element {
   const { attachmentInputRef, openFilePicker, onAttachmentInputChange } = useComposerAttachments({
     draftKey: "launch-viewport",
     workspacePath: null,
-    setInput: () => undefined
+    setInput: () => undefined,
   });
   return (
-    <div ref={shellRef} className="mobile-shell">
+    <div ref={shellRef} className="mobile-shell" data-testid="mobile-shell">
       <input ref={attachmentInputRef} type="file" hidden onChange={onAttachmentInputChange} />
       <button type="button" onClick={() => openFilePicker()}>
         Attach
@@ -33,20 +33,19 @@ const viewport = {
   height: 932,
   offsetTop: 0,
   addEventListener: (_type: string, listener: () => void) => listeners.push(listener),
-  removeEventListener: () => undefined
+  removeEventListener: () => undefined,
 };
 let listeners: (() => void)[] = [];
 
 function renderShell(): void {
   render(<Harness />);
-  const shell = document.querySelector<HTMLElement>(".mobile-shell");
-  if (!shell) throw new Error("no shell");
+  const shell = screen.getByTestId("mobile-shell");
   Object.defineProperty(shell, "offsetHeight", {
     configurable: true,
     get: () => {
       reflowsWhileHidden.push(shell.style.display);
       return 0;
-    }
+    },
   });
 }
 
@@ -114,7 +113,7 @@ describe("useVisualViewportInsets", () => {
       expect(root.getPropertyValue("--mobile-viewport-height")).toBe("932px");
       expect(root.getPropertyValue("--mobile-viewport-offset")).toBe("0px");
       expect(root.getPropertyValue("--mobile-keyboard-inset")).toBe("0px");
-    }
+    },
   );
 
   it("reads a rotation as a new height, not as the bug", () => {

@@ -33,7 +33,7 @@ import {
   workspaceStatus,
   workspaceStatusSnapshot,
   workspaceRow,
-  sessionRow
+  sessionRow,
 } from "../test/appTestHarness.js";
 import { SIDEBAR_ARCHIVED_KEY } from "./lib/uiPreferences.js";
 
@@ -43,7 +43,10 @@ describe("App sidebar", () => {
   afterEach(() => {
     vi.useRealTimers();
     cleanup();
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: initialViewportWidth });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: initialViewportWidth,
+    });
   });
 
   beforeEach(() => {
@@ -54,7 +57,7 @@ describe("App sidebar", () => {
     const archivedSnapshot = {
       ...snapshot,
       workspaces: [{ ...snapshot.workspaces[0], state: "archived" as const }],
-      sessions: [{ ...snapshot.sessions[0], state: "complete" as const }]
+      sessions: [{ ...snapshot.sessions[0], state: "complete" as const }],
     };
     mockDashboardSnapshot(archivedSnapshot);
     workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(archivedSnapshot));
@@ -72,7 +75,7 @@ describe("App sidebar", () => {
     const archivedSnapshot = {
       ...snapshot,
       workspaces: [{ ...snapshot.workspaces[0], state: "archived" as const }],
-      sessions: [{ ...snapshot.sessions[0], state: "complete" as const }]
+      sessions: [{ ...snapshot.sessions[0], state: "complete" as const }],
     };
     mockDashboardSnapshot(archivedSnapshot);
     workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(archivedSnapshot));
@@ -116,7 +119,7 @@ describe("App sidebar", () => {
       branch: "main",
       path: "/tmp/project-1",
       sharedWorkspace: true,
-      lastActivityAt: new Date().toISOString()
+      lastActivityAt: new Date().toISOString(),
     });
     const forkedSession = sessionRow({
       id: "session-forked",
@@ -126,14 +129,17 @@ describe("App sidebar", () => {
       attention: "normal",
       startedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
-      lastActivityAt: new Date().toISOString()
+      lastActivityAt: new Date().toISOString(),
     });
     await act(async () => {
       dashboardDeltaListener?.({ workspaces: [forkedWorkspace], sessions: [forkedSession] });
       await Promise.resolve();
     });
 
-    expect(await screen.findByRole("button", { name: /Today chats/ })).toHaveAttribute("aria-expanded", "true");
+    expect(await screen.findByRole("button", { name: /Today chats/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
   });
 
   it("opens the nth sidebar row on Cmd+1..9, in the order the rows are shown", async () => {
@@ -150,7 +156,7 @@ describe("App sidebar", () => {
       dirty: false,
       changedFiles: 0,
       pinned: true,
-      lastActivityAt: "2026-05-08T15:00:00.000Z"
+      lastActivityAt: "2026-05-08T15:00:00.000Z",
     };
     const pinnedSession: DashboardSnapshot["sessions"][number] = {
       ...snapshot.sessions[0],
@@ -159,12 +165,12 @@ describe("App sidebar", () => {
       prompt: "Pinned work",
       state: "complete",
       completedAt: "2026-05-08T15:00:00.000Z",
-      lastActivityAt: "2026-05-08T15:00:00.000Z"
+      lastActivityAt: "2026-05-08T15:00:00.000Z",
     };
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, pinnedWorkspace],
-      sessions: [...snapshot.sessions, pinnedSession]
+      sessions: [...snapshot.sessions, pinnedSession],
     });
 
     render(<App />);
@@ -172,12 +178,18 @@ describe("App sidebar", () => {
 
     fireEvent.keyDown(document, { key: "1", code: "Digit1", metaKey: true });
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Pinned work/ })).toHaveAttribute("aria-current", "true")
+      expect(screen.getByRole("button", { name: /Pinned work/ })).toHaveAttribute(
+        "aria-current",
+        "true",
+      ),
     );
 
     fireEvent.keyDown(document, { key: "2", code: "Digit2", metaKey: true });
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Build dashboard/ })).toHaveAttribute("aria-current", "true")
+      expect(screen.getByRole("button", { name: /Build dashboard/ })).toHaveAttribute(
+        "aria-current",
+        "true",
+      ),
     );
 
     // Cmd+1..9 must work even when focus is inside the composer textarea
@@ -187,22 +199,34 @@ describe("App sidebar", () => {
 
     fireEvent.keyDown(promptInput, { key: "1", code: "Digit1", metaKey: true });
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Pinned work/ })).toHaveAttribute("aria-current", "true")
+      expect(screen.getByRole("button", { name: /Pinned work/ })).toHaveAttribute(
+        "aria-current",
+        "true",
+      ),
     );
 
     act(() => menuCommandListener?.("next-chat"));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Build dashboard/ })).toHaveAttribute("aria-current", "true")
+      expect(screen.getByRole("button", { name: /Build dashboard/ })).toHaveAttribute(
+        "aria-current",
+        "true",
+      ),
     );
 
     act(() => menuCommandListener?.("previous-chat"));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Pinned work/ })).toHaveAttribute("aria-current", "true")
+      expect(screen.getByRole("button", { name: /Pinned work/ })).toHaveAttribute(
+        "aria-current",
+        "true",
+      ),
     );
 
     act(() => menuCommandListener?.("previous-chat"));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Build dashboard/ })).toHaveAttribute("aria-current", "true")
+      expect(screen.getByRole("button", { name: /Build dashboard/ })).toHaveAttribute(
+        "aria-current",
+        "true",
+      ),
     );
   });
 
@@ -217,7 +241,7 @@ describe("App sidebar", () => {
       branch: "main",
       path: "/tmp/dotfiles",
       sharedWorkspace: true,
-      lastActivityAt: "2026-05-08T16:00:00.000Z"
+      lastActivityAt: "2026-05-08T16:00:00.000Z",
     });
     const movedSession = sessionRow({
       id: "session-moved",
@@ -231,7 +255,7 @@ describe("App sidebar", () => {
       attention: "normal",
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: "2026-05-08T16:00:00.000Z",
-      lastActivityAt: "2026-05-08T16:00:00.000Z"
+      lastActivityAt: "2026-05-08T16:00:00.000Z",
     });
     await act(async () => {
       dashboardDeltaListener?.({
@@ -252,24 +276,27 @@ describe("App sidebar", () => {
               destinationSessionId: movedSession.id,
               destinationWorkspaceId: movedWorkspace.id,
               destinationProjectName: "Dotfiles",
-              checkoutMode: "shared"
+              checkoutMode: "shared",
             },
-            createdAt: "2026-05-08T16:00:00.000Z"
-          }
-        ]
+            createdAt: "2026-05-08T16:00:00.000Z",
+          },
+        ],
       });
       await Promise.resolve();
     });
 
     expect(
       await screen.findByRole("status", {
-        name: "Argmax → Dotfiles, shared checkout"
-      })
+        name: "Argmax → Dotfiles, shared checkout",
+      }),
     ).toBeInTheDocument();
     // The sidebar has to name the repo the agent is working in now, not the
     // one it left.
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Dotfiles" })).toHaveAttribute("aria-current", "true")
+      expect(screen.getByRole("button", { name: "Dotfiles" })).toHaveAttribute(
+        "aria-current",
+        "true",
+      ),
     );
     expect(screen.getByRole("button", { name: "Argmax" })).not.toHaveAttribute("aria-current");
   });
@@ -283,12 +310,12 @@ describe("App sidebar", () => {
       type: "message.completed",
       message: "Second answer.",
       payload: {},
-      createdAt: "2026-05-08T16:04:00.000Z"
+      createdAt: "2026-05-08T16:04:00.000Z",
     };
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
-      sessions: [...snapshot.sessions, secondSession]
+      sessions: [...snapshot.sessions, secondSession],
     });
     sessionEventsSince.mockImplementation((input) => {
       if (input.sessionId === "session-2") {
@@ -301,7 +328,7 @@ describe("App sidebar", () => {
           deletedEventIds: [],
           deletedRawOutputIds: [],
           resetRequired: false,
-          hasMore: false
+          hasMore: false,
         });
       }
       return Promise.resolve({
@@ -313,7 +340,7 @@ describe("App sidebar", () => {
         deletedEventIds: [],
         deletedRawOutputIds: [],
         resetRequired: false,
-        hasMore: false
+        hasMore: false,
       });
     });
 
@@ -326,7 +353,10 @@ describe("App sidebar", () => {
     expect(screen.getByRole("button", { name: "Chat model" })).toHaveTextContent("Sonnet 5.5");
     expect(screen.queryByText("review-ready")).not.toBeInTheDocument();
     expect(screen.queryByText("complete")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
   });
 
@@ -343,15 +373,15 @@ describe("App sidebar", () => {
       expect(setWorkspaceIcon).toHaveBeenCalledWith({
         workspaceId: "workspace-1",
         icon: "Sparkles",
-        iconColor: "plum"
-      })
+        iconColor: "plum",
+      }),
     );
   });
 
   it("shows a thinking indicator while a session is running", async () => {
     mockDashboardSnapshot({
       ...snapshot,
-      events: []
+      events: [],
     });
     sessionEventsSince.mockResolvedValue({
       events: [],
@@ -362,7 +392,7 @@ describe("App sidebar", () => {
       deletedEventIds: [],
       deletedRawOutputIds: [],
       resetRequired: false,
-      hasMore: false
+      hasMore: false,
     });
 
     render(<App />);
@@ -392,26 +422,26 @@ describe("App sidebar", () => {
       type: "user.message",
       message: "very good!",
       payload: { source: "composer" },
-      createdAt: "2026-05-08T15:55:00.000Z"
+      createdAt: "2026-05-08T15:55:00.000Z",
     };
     const oldRawOutput: DashboardSnapshot["rawOutputs"][number] = {
       id: "raw-old",
       sessionId: "session-1",
       stream: "stdout",
       content: "old output\n",
-      createdAt: "2026-05-08T15:54:30.000Z"
+      createdAt: "2026-05-08T15:54:30.000Z",
     };
     const rawOutputAfterFollowUp: DashboardSnapshot["rawOutputs"][number] = {
       id: "raw-after-follow-up",
       sessionId: "session-1",
       stream: "stdout",
       content: '{"type":"turn.started"}\n',
-      createdAt: "2026-05-08T15:55:01.000Z"
+      createdAt: "2026-05-08T15:55:01.000Z",
     };
     mockDashboardSnapshot({
       ...snapshot,
       rawOutputs: [oldRawOutput, rawOutputAfterFollowUp],
-      events: [...snapshot.events, followUpEvent]
+      events: [...snapshot.events, followUpEvent],
     });
     sessionEventsSince.mockResolvedValue({
       events: [...snapshot.events, followUpEvent],
@@ -422,7 +452,7 @@ describe("App sidebar", () => {
       deletedEventIds: [],
       deletedRawOutputIds: [],
       resetRequired: false,
-      hasMore: false
+      hasMore: false,
     });
 
     render(<App />);
@@ -443,13 +473,13 @@ describe("App sidebar", () => {
     mockDashboardSnapshot({
       ...snapshot,
       sessions: [cancelledSession],
-      events: []
+      events: [],
     });
     sessionEventsSince.mockResolvedValue({
       events: [],
       rawOutputs: [],
       eventCursor: 0,
-      rawOutputCursor: 0
+      rawOutputCursor: 0,
     });
 
     render(<App />);
@@ -473,9 +503,9 @@ describe("App sidebar", () => {
             type: "user.message",
             message: "can you fix above?",
             payload: { source: "composer" },
-            createdAt: runningAt
-          }
-        ]
+            createdAt: runningAt,
+          },
+        ],
       });
       await Promise.resolve();
     });
@@ -486,8 +516,8 @@ describe("App sidebar", () => {
             ...cancelledSession,
             state: "cancelled" as const,
             completedAt: new Date().toISOString(),
-            lastActivityAt: new Date().toISOString()
-          }
+            lastActivityAt: new Date().toISOString(),
+          },
         ],
         events: [
           {
@@ -496,9 +526,9 @@ describe("App sidebar", () => {
             type: "session.cancelled",
             message: "Provider chat cancelled.",
             payload: {},
-            createdAt: new Date().toISOString()
-          }
-        ]
+            createdAt: new Date().toISOString(),
+          },
+        ],
       });
       await Promise.resolve();
     });
@@ -507,14 +537,17 @@ describe("App sidebar", () => {
   });
 
   it("sends follow-up prompts to the selected live session", async () => {
-    const completeSessions = snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }));
+    const completeSessions = snapshot.sessions.map((session) => ({
+      ...session,
+      state: "complete" as const,
+    }));
     const completeSnapshot = {
       ...snapshot,
-      sessions: completeSessions
+      sessions: completeSessions,
     };
     mockDashboardSnapshot({
       ...snapshot,
-      sessions: completeSessions
+      sessions: completeSessions,
     });
     workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(completeSnapshot));
     render(<App />);
@@ -523,7 +556,7 @@ describe("App sidebar", () => {
     expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
     const input = await screen.findByLabelText("Chat prompt");
     fireEvent.change(input, {
-      target: { value: "continue with tests" }
+      target: { value: "continue with tests" },
     });
     fireEvent.click(screen.getByTitle("Send follow-up"));
 
@@ -537,8 +570,8 @@ describe("App sidebar", () => {
         reasoningEffort: "medium",
         fastMode: false,
         agentMode: "auto",
-        attachments: null
-      })
+        attachments: null,
+      }),
     );
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
     expect(launchProvider).not.toHaveBeenCalled();
@@ -546,7 +579,10 @@ describe("App sidebar", () => {
   });
 
   it("appends @path references when files are dropped onto the composer", async () => {
-    const completeSessions = snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }));
+    const completeSessions = snapshot.sessions.map((session) => ({
+      ...session,
+      state: "complete" as const,
+    }));
     const completeSnapshot = { ...snapshot, sessions: completeSessions };
     mockDashboardSnapshot(completeSnapshot);
     workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(completeSnapshot));
@@ -554,22 +590,22 @@ describe("App sidebar", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     const input = await screen.findByLabelText("Chat prompt");
-    const form = input.closest("form");
-    expect(form).not.toBeNull();
+    const form = screen.getByRole("form", { name: "Session composer" });
+    expect(form).toContainElement(input);
 
     // Synthesize a Tauri-shaped drop: File objects with a `path` field.
     const insideWorkspace = new File([], "app.ts");
     Object.defineProperty(insideWorkspace, "path", {
-      value: "/tmp/worktrees/dashboard/src/app.ts"
+      value: "/tmp/worktrees/dashboard/src/app.ts",
     });
     const outsideWorkspace = new File([], "notes.md");
     Object.defineProperty(outsideWorkspace, "path", { value: "/tmp/notes.md" });
 
-    fireEvent.drop(form!, {
+    fireEvent.drop(form, {
       dataTransfer: {
         files: [insideWorkspace, outsideWorkspace],
-        types: ["Files"]
-      }
+        types: ["Files"],
+      },
     });
 
     await waitFor(() => {
@@ -599,7 +635,9 @@ describe("App sidebar", () => {
     // Stop replaces the send/queue button in the same slot while running.
     // Follow-ups are queued via Enter in the textarea, not via a visible button.
     expect(
-      screen.queryByRole("button", { name: "Queue follow-up — sent when the current turn finishes" })
+      screen.queryByRole("button", {
+        name: "Queue follow-up — sent when the current turn finishes",
+      }),
     ).not.toBeInTheDocument();
 
     fireEvent.click(stopButton);
@@ -609,10 +647,13 @@ describe("App sidebar", () => {
   });
 
   it("switches the session model for the next follow-up prompt", async () => {
-    const completeSessions = snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }));
+    const completeSessions = snapshot.sessions.map((session) => ({
+      ...session,
+      state: "complete" as const,
+    }));
     mockDashboardSnapshot({
       ...snapshot,
-      sessions: completeSessions
+      sessions: completeSessions,
     });
     render(<App />);
 
@@ -622,7 +663,7 @@ describe("App sidebar", () => {
     // GPT-6.1 Sol is effort-capable; selecting it seeds the default Medium effort.
     fireEvent.click(within(modelPopover).getByRole("button", { name: "GPT-6.1 Sol" }));
     fireEvent.change(await screen.findByLabelText("Chat prompt"), {
-      target: { value: "use the stronger model" }
+      target: { value: "use the stronger model" },
     });
     fireEvent.click(screen.getByTitle("Send follow-up"));
 
@@ -636,15 +677,15 @@ describe("App sidebar", () => {
         reasoningEffort: "medium",
         fastMode: false,
         agentMode: "auto",
-        attachments: null
-      })
+        attachments: null,
+      }),
     );
   });
 
   it("opens a changed file review panel with parsed diff lines", async () => {
     listChangedFiles.mockResolvedValue([
       { path: "src/renderer/App.tsx", status: "M", additions: 2, deletions: 2, staged: false },
-      { path: "src/renderer/styles.css", status: "M", additions: 0, deletions: 15, staged: false }
+      { path: "src/renderer/styles.css", status: "M", additions: 0, deletions: 15, staged: false },
     ]);
     loadDiff.mockResolvedValue({
       workspaceId: "workspace-1",
@@ -660,9 +701,9 @@ describe("App sidebar", () => {
         " const after = true;",
         "@@ -20,2 +20,2 @@",
         "-const stale = true;",
-        "+const fresh = true;"
+        "+const fresh = true;",
       ].join("\n"),
-      revision: "test-revision"
+      revision: "test-revision",
     });
 
     render(<App />);
@@ -670,7 +711,7 @@ describe("App sidebar", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
     const changesButton = await screen.findByRole("button", {
-      name: "Open changed files in review panel: 2 files changed, 2 additions, 17 deletions"
+      name: "Open changed files in review panel: 2 files changed, 2 additions, 17 deletions",
     });
     expect(changesButton).toHaveTextContent("+2");
     expect(changesButton).toHaveTextContent("-17");
@@ -679,7 +720,11 @@ describe("App sidebar", () => {
 
     fireEvent.click(changesButton);
 
-    const reviewPanel = await screen.findByRole("complementary", { name: "Review panel" }, { timeout: 5000 });
+    const reviewPanel = await screen.findByRole(
+      "complementary",
+      { name: "Review panel" },
+      { timeout: 5000 },
+    );
     expect(reviewPanel).toBeInTheDocument();
     // Opening the Changes view selects the first changed file for the reader,
     // so its diff loads without anyone picking one.
@@ -688,10 +733,12 @@ describe("App sidebar", () => {
         { kind: "workspace", id: "workspace-1" },
         "src/renderer/App.tsx",
         "branch",
-        undefined
-      )
+        undefined,
+      ),
     );
-    expect(await screen.findByRole("button", { name: "Collapse src/renderer/App.tsx diff" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Collapse src/renderer/App.tsx diff" }),
+    ).toBeInTheDocument();
     // shiki tokenizes lines into per-token <span> children, so getByText on
     // the full source line misses. toHaveTextContent matches concatenated
     // textContent regardless of token carving (same workaround P6.01 used).
@@ -707,12 +754,14 @@ describe("App sidebar", () => {
         { kind: "workspace", id: "workspace-1" },
         "src/renderer/App.tsx",
         "branch",
-        25
-      )
+        25,
+      ),
     );
 
     fireEvent.keyDown(document, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument(),
+    );
   });
 
   it("browses workspace files via the Files tab and previews a selection", async () => {
@@ -721,7 +770,7 @@ describe("App sidebar", () => {
       { path: "src-tauri/src/index.ts" },
       { path: "src/renderer/lib/tauriBridge.ts" },
       { path: "src/renderer/App.tsx" },
-      { path: "README.md" }
+      { path: "README.md" },
     ]);
     readWorkspaceFile.mockImplementation((_workspaceId, filePath) =>
       Promise.resolve({
@@ -731,8 +780,8 @@ describe("App sidebar", () => {
             ? "export const tauriBridge = true;\n"
             : "export const hello = 'world';\n",
         size: 30,
-        mtimeMs: 0
-      })
+        mtimeMs: 0,
+      }),
     );
 
     render(<App />);
@@ -749,14 +798,17 @@ describe("App sidebar", () => {
     // Expand src-tauri/ then src/ to reach the file
     fireEvent.click(await screen.findByRole("treeitem", { name: /^src-tauri$/ }));
     const nestedSrc = (await screen.findAllByRole("treeitem", { name: /^src$/ })).find(
-      (node) => node.getAttribute("title") === "src-tauri/src"
+      (node) => node.getAttribute("title") === "src-tauri/src",
     );
     expect(nestedSrc).toBeDefined();
     fireEvent.click(nestedSrc!);
     fireEvent.click(await screen.findByRole("treeitem", { name: /^index\.ts$/ }));
 
     await waitFor(() =>
-      expect(readWorkspaceFile).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" }, "src-tauri/src/index.ts")
+      expect(readWorkspaceFile).toHaveBeenCalledWith(
+        { kind: "workspace", id: "workspace-1" },
+        "src-tauri/src/index.ts",
+      ),
     );
     // The shiki highlighter tokenizes lines into per-token spans, so the line
     // text spans multiple DOM nodes. Query the preview wrapper by aria-label
@@ -766,7 +818,7 @@ describe("App sidebar", () => {
     expect(preview).toHaveTextContent("export const hello = 'world';");
 
     const appSrc = (await screen.findAllByRole("treeitem", { name: /^src$/ })).find(
-      (node) => node.getAttribute("title") === "src"
+      (node) => node.getAttribute("title") === "src",
     );
     expect(appSrc).toBeDefined();
     fireEvent.click(appSrc!);
@@ -776,34 +828,42 @@ describe("App sidebar", () => {
     await waitFor(() =>
       expect(readWorkspaceFile).toHaveBeenCalledWith(
         { kind: "workspace", id: "workspace-1" },
-        "src/renderer/lib/tauriBridge.ts"
-      )
+        "src/renderer/lib/tauriBridge.ts",
+      ),
     );
-    expect(await screen.findByLabelText("Preview of src/renderer/lib/tauriBridge.ts")).toHaveTextContent(
-      "export const tauriBridge = true;"
-    );
+    expect(
+      await screen.findByLabelText("Preview of src/renderer/lib/tauriBridge.ts"),
+    ).toHaveTextContent("export const tauriBridge = true;");
 
     const tablist = screen.getByRole("tablist", { name: "Workspace tabs" });
     expect(within(tablist).getByRole("tab", { name: "src-tauri/src/index.ts" })).toHaveAttribute(
       "aria-selected",
-      "false"
+      "false",
     );
-    expect(within(tablist).getByRole("tab", { name: "src/renderer/lib/tauriBridge.ts" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
+    expect(
+      within(tablist).getByRole("tab", { name: "src/renderer/lib/tauriBridge.ts" }),
+    ).toHaveAttribute("aria-selected", "true");
 
     fireEvent.click(within(tablist).getByRole("tab", { name: "src-tauri/src/index.ts" }));
     expect(await screen.findByLabelText("Preview of src-tauri/src/index.ts")).toHaveTextContent(
-      "export const hello = 'world';"
+      "export const hello = 'world';",
     );
   });
 
   it("opens workspace files in the review panel with Cmd+G", async () => {
     listChangedFiles.mockResolvedValue([
-      { path: "src/renderer/App.tsx", status: "modified", additions: 2, deletions: 1, staged: false }
+      {
+        path: "src/renderer/App.tsx",
+        status: "modified",
+        additions: 2,
+        deletions: 1,
+        staged: false,
+      },
     ]);
-    listWorkspaceFiles.mockResolvedValue([{ path: "src-tauri/src/index.ts" }, { path: "src/renderer/App.tsx" }]);
+    listWorkspaceFiles.mockResolvedValue([
+      { path: "src-tauri/src/index.ts" },
+      { path: "src/renderer/App.tsx" },
+    ]);
 
     render(<App />);
 
@@ -817,7 +877,9 @@ describe("App sidebar", () => {
     expect(screen.queryByText("1 file")).not.toBeInTheDocument();
 
     fireEvent.keyDown(input, { key: "g", metaKey: true });
-    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument(),
+    );
 
     fireEvent.keyDown(input, { key: "g", metaKey: true });
     fireEvent.contextMenu(await screen.findByRole("tab", { name: "Changes" }));
@@ -842,20 +904,27 @@ describe("App sidebar", () => {
     fireEvent.keyDown(input, { key: "I", metaKey: true, shiftKey: true });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
-    expect(await screen.findByRole("tab", { name: "https://www.google.com", selected: true })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("tab", { name: "https://www.google.com", selected: true }),
+    ).toBeInTheDocument();
 
     fireEvent.keyDown(input, { key: "I", metaKey: true, shiftKey: true });
-    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument(),
+    );
   });
 
   it("opens workspace files via the unified command palette on Cmd+P", async () => {
     listChangedFiles.mockResolvedValue([]);
-    listWorkspaceFiles.mockResolvedValue([{ path: "src-tauri/src/index.ts" }, { path: "src/renderer/App.tsx" }]);
+    listWorkspaceFiles.mockResolvedValue([
+      { path: "src-tauri/src/index.ts" },
+      { path: "src/renderer/App.tsx" },
+    ]);
     readWorkspaceFile.mockResolvedValue({
       kind: "text",
       content: "export const hello = 'world';\n",
       size: 30,
-      mtimeMs: 0
+      mtimeMs: 0,
     });
 
     render(<App />);
@@ -870,7 +939,9 @@ describe("App sidebar", () => {
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     const input = within(palette).getByLabelText("Command palette query");
     fireEvent.change(input, { target: { value: "index" } });
-    await waitFor(() => expect(listWorkspaceFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" }));
+    await waitFor(() =>
+      expect(listWorkspaceFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" }),
+    );
     // uFuzzy may split the basename across highlighted spans; the option's
     // accessible name remains stable.
     await within(palette).findByRole("option", { name: /index\.ts/ });
@@ -878,7 +949,10 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     await waitFor(() =>
-      expect(readWorkspaceFile).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" }, "src-tauri/src/index.ts")
+      expect(readWorkspaceFile).toHaveBeenCalledWith(
+        { kind: "workspace", id: "workspace-1" },
+        "src-tauri/src/index.ts",
+      ),
     );
   });
 
@@ -920,7 +994,7 @@ describe("App sidebar", () => {
   it("opens slash autocomplete in the launcher composer without a workspace id", async () => {
     skillsList.mockResolvedValue([
       { name: "plan", description: "Phased plan", source: "user" },
-      { name: "impl", description: "Implement code", source: "user" }
+      { name: "impl", description: "Implement code", source: "user" },
     ]);
 
     render(<App />);
@@ -950,7 +1024,7 @@ describe("App sidebar", () => {
       kind: "text",
       content: "export function App() {}\n",
       size: 25,
-      mtimeMs: 0
+      mtimeMs: 0,
     });
 
     render(<App />);
@@ -963,7 +1037,10 @@ describe("App sidebar", () => {
     const input = within(palette).getByLabelText("Command palette query");
     fireEvent.change(input, { target: { value: "app" } });
     await waitFor(() =>
-      expect(listProjectFiles).toHaveBeenCalledWith({ kind: "projectFolder", id: "project-1:primary" })
+      expect(listProjectFiles).toHaveBeenCalledWith({
+        kind: "projectFolder",
+        id: "project-1:primary",
+      }),
     );
     await within(palette).findByRole("option", { name: /App\.tsx/ });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -972,8 +1049,8 @@ describe("App sidebar", () => {
     await waitFor(() =>
       expect(readProjectFile).toHaveBeenCalledWith(
         { kind: "projectFolder", id: "project-1:primary" },
-        "src/renderer/App.tsx"
-      )
+        "src/renderer/App.tsx",
+      ),
     );
   });
 
@@ -981,13 +1058,13 @@ describe("App sidebar", () => {
     listProjectFiles.mockResolvedValue([
       { path: "src-tauri/src/main.ts" },
       { path: "index.ts" },
-      { path: "README.md" }
+      { path: "README.md" },
     ]);
     readProjectFile.mockResolvedValue({
       kind: "text",
       content: "export const ok = true;\n",
       size: 24,
-      mtimeMs: 123
+      mtimeMs: 123,
     });
     mockDashboardSnapshot({
       ...snapshot,
@@ -998,9 +1075,9 @@ describe("App sidebar", () => {
           id: "workspace-checkout",
           path: primaryProject().repoPath,
           sharedWorkspace: true,
-          taskLabel: "Argmax checkout"
-        }
-      ]
+          taskLabel: "Argmax checkout",
+        },
+      ],
     });
 
     render(<App />);
@@ -1014,10 +1091,15 @@ describe("App sidebar", () => {
     fireEvent.contextMenu(screen.getByRole("button", { name: "New workspace tab" }));
     expect(await screen.findByRole("menuitem", { name: "Terminal" })).toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu", { name: "Open workspace tab" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("menu", { name: "Open workspace tab" })).not.toBeInTheDocument(),
+    );
     expect(screen.getByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(screen.queryByText("2 files")).not.toBeInTheDocument();
-    expect(listProjectFiles).toHaveBeenCalledWith({ kind: "projectFolder", id: "project-1:primary" });
+    expect(listProjectFiles).toHaveBeenCalledWith({
+      kind: "projectFolder",
+      id: "project-1:primary",
+    });
 
     fireEvent.click(screen.getByRole("treeitem", { name: "index.ts" }));
     const editor = await screen.findByLabelText("Editor for index.ts");
@@ -1028,12 +1110,14 @@ describe("App sidebar", () => {
         { kind: "projectFolder", id: "project-1:primary" },
         "index.ts",
         "export const ok = false;\n",
-        123
-      )
+        123,
+      ),
     );
 
     fireEvent.keyDown(document, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument(),
+    );
   });
 
   it("dismisses the launcher review panel when New chat is clicked", async () => {
@@ -1048,7 +1132,9 @@ describe("App sidebar", () => {
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
 
-    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument(),
+    );
     expect(screen.getByLabelText("Task prompt")).toBeInTheDocument();
   });
 
@@ -1061,19 +1147,19 @@ describe("App sidebar", () => {
       window.dispatchEvent(new Event("resize"));
     });
 
-    const shell = document.querySelector(".app-shell");
-    const sidebar = document.querySelector(".sidebar");
-    const peekZone = document.querySelector(".sidebar-peek-zone");
+    const shell = screen.getByRole("main");
+    const sidebar = screen.getByTestId("sidebar");
+    const peekZone = screen.getByTestId("sidebar-peek-zone");
     expect(shell).toHaveAttribute("data-sidebar-collapsed", "true");
     expect(sidebar).toBeInTheDocument();
     expect(peekZone).toBeInTheDocument();
 
-    fireEvent.mouseEnter(peekZone!);
+    fireEvent.mouseEnter(peekZone);
     expect(shell).toHaveAttribute("data-sidebar-peek", "true");
-    fireEvent.mouseLeave(sidebar!);
+    fireEvent.mouseLeave(sidebar);
     expect(shell).not.toHaveAttribute("data-sidebar-peek");
 
-    fireEvent.mouseEnter(peekZone!);
+    fireEvent.mouseEnter(peekZone);
     fireEvent.click(screen.getByRole("button", { name: "Show sidebar" }));
     expect(shell).not.toHaveAttribute("data-sidebar-peek");
   });
@@ -1110,7 +1196,10 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
-    expect(listProjectFiles).toHaveBeenCalledWith({ kind: "projectFolder", id: "project-1:primary" });
+    expect(listProjectFiles).toHaveBeenCalledWith({
+      kind: "projectFolder",
+      id: "project-1:primary",
+    });
   });
 
   it("opens the launcher review panel in project files mode with Cmd+G", async () => {
@@ -1124,10 +1213,15 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
-    expect(listProjectFiles).toHaveBeenCalledWith({ kind: "projectFolder", id: "project-1:primary" });
+    expect(listProjectFiles).toHaveBeenCalledWith({
+      kind: "projectFolder",
+      id: "project-1:primary",
+    });
 
     fireEvent.keyDown(prompt, { key: "g", metaKey: true });
-    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument(),
+    );
 
     fireEvent.keyDown(prompt, { key: "g", metaKey: true });
     fireEvent.contextMenu(await screen.findByRole("tab", { name: "Changes" }));
@@ -1167,10 +1261,12 @@ describe("App sidebar", () => {
       if (provider === "codex") {
         return Promise.resolve([
           { name: "opsx-apply", description: "Apply a change", source: "codex-prompt" },
-          { name: "opsx-archive", description: "Archive a change", source: "codex-prompt" }
+          { name: "opsx-archive", description: "Archive a change", source: "codex-prompt" },
         ]);
       }
-      return Promise.resolve([{ name: "impl", description: "Implement code from a plan", source: "user" }]);
+      return Promise.resolve([
+        { name: "impl", description: "Implement code from a plan", source: "user" },
+      ]);
     });
 
     render(<App />);
@@ -1187,7 +1283,7 @@ describe("App sidebar", () => {
     const options = within(listbox).getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
       "opsx-applyApply a changePrompt",
-      "opsx-archiveArchive a changePrompt"
+      "opsx-archiveArchive a changePrompt",
     ]);
     // Claude-only skill must not be present in a Codex session.
     expect(screen.queryByText("/impl")).not.toBeInTheDocument();
@@ -1205,10 +1301,8 @@ describe("App sidebar", () => {
     const input = await screen.findByLabelText("Task prompt");
     fireEvent.change(input, { target: { value: "Implement PTY launch" } });
 
-    const form = input.closest("form");
-    if (!form) {
-      throw new Error("Composer form not found");
-    }
+    const form = screen.getByTestId("launch-composer");
+    expect(form).toContainElement(input);
 
     // Dispatch a real submit event so we can read defaultPrevented after the
     // React onSubmit handler runs (a target-phase listener would observe the
@@ -1220,7 +1314,7 @@ describe("App sidebar", () => {
 
     await waitFor(() => expect(launchProvider).toHaveBeenCalledTimes(1));
     expect(launchProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ prompt: "Implement PTY launch", provider: "claude" })
+      expect.objectContaining({ prompt: "Implement PTY launch", provider: "claude" }),
     );
     expect(submitEvent.defaultPrevented).toBe(true);
   });
@@ -1249,18 +1343,18 @@ describe("App sidebar", () => {
       projects: [
         {
           ...primaryProject(),
-          name: "Stale-Project"
-        }
-      ]
+          name: "Stale-Project",
+        },
+      ],
     };
     const fastSnapshot: DashboardSnapshot = {
       ...snapshot,
       projects: [
         {
           ...primaryProject(),
-          name: "Fresh-Project"
-        }
-      ]
+          name: "Fresh-Project",
+        },
+      ],
     };
 
     let callCount = 0;
@@ -1301,14 +1395,14 @@ describe("App sidebar", () => {
       branch: "argmax/waiting-chat",
       path: "/tmp/worktrees/waiting-chat",
       state: "waiting",
-      lastActivityAt: attentionChangedAt
+      lastActivityAt: attentionChangedAt,
     });
     const otherWorkspace = workspaceRow({
       id: "workspace-other",
       taskLabel: "Other chat",
       branch: "argmax/other-chat",
       path: "/tmp/worktrees/other-chat",
-      lastActivityAt: "2026-05-08T16:00:00.000Z"
+      lastActivityAt: "2026-05-08T16:00:00.000Z",
     });
     const waitingSession = sessionRow({
       id: "session-wait",
@@ -1319,7 +1413,7 @@ describe("App sidebar", () => {
       attention: "blocked",
       attentionChangedAt,
       completedAt: null,
-      lastActivityAt: attentionChangedAt
+      lastActivityAt: attentionChangedAt,
     });
     const otherSession = sessionRow({
       id: "session-other",
@@ -1329,12 +1423,12 @@ describe("App sidebar", () => {
       attentionChangedAt,
       startedAt: "2026-05-08T15:50:00.000Z",
       completedAt: "2026-05-08T16:00:00.000Z",
-      lastActivityAt: "2026-05-08T16:00:00.000Z"
+      lastActivityAt: "2026-05-08T16:00:00.000Z",
     });
     const demotionSnapshot: DashboardSnapshot = {
       ...snapshot,
       workspaces: [...snapshot.workspaces, waitingWorkspace, otherWorkspace],
-      sessions: [...snapshot.sessions, waitingSession, otherSession]
+      sessions: [...snapshot.sessions, waitingSession, otherSession],
     };
     mockDashboardSnapshot(demotionSnapshot);
     sessionEventsSince.mockImplementation((input) => {
@@ -1348,7 +1442,7 @@ describe("App sidebar", () => {
           deletedEventIds: [],
           deletedRawOutputIds: [],
           resetRequired: false,
-          hasMore: false
+          hasMore: false,
         });
       }
       return Promise.resolve({
@@ -1360,19 +1454,22 @@ describe("App sidebar", () => {
         deletedEventIds: [],
         deletedRawOutputIds: [],
         resetRequired: false,
-        hasMore: false
+        hasMore: false,
       });
     });
     setPriorityDismissed.mockImplementation(({ workspaceId, dismissed }) => {
-      const current = demotionSnapshot.workspaces.find((item) => item.id === workspaceId) ?? waitingWorkspace;
+      const current =
+        demotionSnapshot.workspaces.find((item) => item.id === workspaceId) ?? waitingWorkspace;
       const updated = {
         ...current,
         priorityDismissedAt: dismissed ? new Date().toISOString() : null,
-        priorityAddedAt: null
+        priorityAddedAt: null,
       };
       const next = {
         ...demotionSnapshot,
-        workspaces: demotionSnapshot.workspaces.map((item) => (item.id === workspaceId ? updated : item))
+        workspaces: demotionSnapshot.workspaces.map((item) =>
+          item.id === workspaceId ? updated : item,
+        ),
       };
       workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(next));
       dashboardDeltaListener?.({ workspaces: [updated] });
@@ -1391,7 +1488,7 @@ describe("App sidebar", () => {
     expect(setPriorityDismissed).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: /Waiting chat/ })).toHaveAttribute(
       "title",
-      expect.stringContaining("waiting for input")
+      expect.stringContaining("waiting for input"),
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Waiting chat/ }));
@@ -1400,13 +1497,13 @@ describe("App sidebar", () => {
     await waitFor(() =>
       expect(setPriorityDismissed).toHaveBeenCalledWith({
         workspaceId: "workspace-wait",
-        dismissed: true
-      })
+        dismissed: true,
+      }),
     );
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Waiting chat/ }).getAttribute("title")).not.toContain(
-        "waiting for input"
-      )
+      expect(
+        screen.getByRole("button", { name: /Waiting chat/ }).getAttribute("title"),
+      ).not.toContain("waiting for input"),
     );
   });
 
@@ -1418,14 +1515,14 @@ describe("App sidebar", () => {
       taskLabel: "Working chat",
       branch: "argmax/working-chat",
       path: "/tmp/worktrees/working-chat",
-      state: "running"
+      state: "running",
     });
     const otherWorkspace = workspaceRow({
       id: "workspace-other",
       taskLabel: "Other chat",
       branch: "argmax/other-chat",
       path: "/tmp/worktrees/other-chat",
-      lastActivityAt: "2026-05-08T16:00:00.000Z"
+      lastActivityAt: "2026-05-08T16:00:00.000Z",
     });
     const workingSnapshot: DashboardSnapshot = {
       ...snapshot,
@@ -1451,7 +1548,7 @@ describe("App sidebar", () => {
           tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           contextTokens: 0,
           imported: false,
-          launchKind: "agent"
+          launchKind: "agent",
         },
         {
           id: "session-other",
@@ -1472,9 +1569,9 @@ describe("App sidebar", () => {
           tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           contextTokens: 0,
           imported: false,
-          launchKind: "agent"
-        }
-      ]
+          launchKind: "agent",
+        },
+      ],
     };
     mockDashboardSnapshot(workingSnapshot);
 
@@ -1484,12 +1581,15 @@ describe("App sidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: /Other chat/ }));
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Other chat/ })).toHaveAttribute("aria-current", "true")
+      expect(screen.getByRole("button", { name: /Other chat/ })).toHaveAttribute(
+        "aria-current",
+        "true",
+      ),
     );
     expect(setPriorityDismissed).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: /Working chat/ })).toHaveAttribute(
       "title",
-      expect.stringContaining("needs approval")
+      expect.stringContaining("needs approval"),
     );
   });
 });

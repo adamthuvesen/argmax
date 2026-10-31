@@ -10,7 +10,7 @@ import { resolveModelId } from "../../shared/providerModels.js";
 const CODEX_STEER_MAX_CONTEXT_RATIO = 0.85;
 
 export function hasSteeringContextHeadroom(
-  session: Pick<SessionSummary, "provider" | "contextTokens" | "contextWindow">
+  session: Pick<SessionSummary, "provider" | "contextTokens" | "contextWindow">,
 ): boolean {
   if (session.provider !== "codex") return true;
   if (!session.contextWindow || session.contextWindow <= 0) return true;
@@ -32,15 +32,18 @@ export function canSteerQueuedMessage(
     SessionSummary,
     "state" | "provider" | "modelId" | "reasoningEffort" | "contextTokens" | "contextWindow"
   >,
-  entry: Pick<PendingMessage, "modelId" | "reasoningEffort" | "provider">
+  entry: Pick<PendingMessage, "modelId" | "reasoningEffort" | "provider">,
 ): boolean {
   return (
     session.state === "running" &&
     // A row bound for another provider cannot be handed to this turn.
     (entry.provider == null || entry.provider === session.provider) &&
-    (session.provider === "codex" || session.provider === "claude" || session.provider === "opencode") &&
+    (session.provider === "codex" ||
+      session.provider === "claude" ||
+      session.provider === "opencode") &&
     hasSteeringContextHeadroom(session) &&
-    (entry.modelId === undefined || entry.modelId === resolveModelId(session.provider, session.modelId)) &&
+    (entry.modelId === undefined ||
+      entry.modelId === resolveModelId(session.provider, session.modelId)) &&
     (entry.reasoningEffort === undefined || entry.reasoningEffort === session.reasoningEffort)
   );
 }

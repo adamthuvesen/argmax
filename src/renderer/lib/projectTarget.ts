@@ -15,12 +15,17 @@ export interface ProjectTarget {
  * The wire form. The key stays optional because the iPhone app ships separately
  * from the Mac build, so the primary folder is sent as no key at all.
  */
-export function projectFolderInput(target: Pick<ProjectTarget, "projectFolderId">): { projectFolderId?: string } {
+export function projectFolderInput(target: Pick<ProjectTarget, "projectFolderId">): {
+  projectFolderId?: string;
+} {
   return target.projectFolderId ? { projectFolderId: target.projectFolderId } : {};
 }
 
 /** Where the file palette and the `@` menu read this target's files. */
-export function projectFileSource(target: ProjectTarget): { kind: "projectFolder" | "project"; id: string } {
+export function projectFileSource(target: ProjectTarget): {
+  kind: "projectFolder" | "project";
+  id: string;
+} {
   return target.projectFolderId
     ? { kind: "projectFolder", id: target.projectFolderId }
     : { kind: "project", id: target.project.id };

@@ -17,7 +17,7 @@ describe("refreshSessionPrs", () => {
       () =>
         new Promise((resolve) => {
           settle = () => resolve([]);
-        })
+        }),
     );
     stubRefresh(refresh);
 

@@ -37,7 +37,10 @@ export function checkFile(path, { fast = false } = {}) {
   if (generated) return [`${path} is generated. Change its source, then run: ${generated.run}`];
   const problems = [];
   if (path.endsWith(".rs") && path.startsWith("src-tauri/")) {
-    if (run("rustfmt", ["--check", "--edition", "2021", "--config", "skip_children=true", path]).status === 1) {
+    if (
+      run("rustfmt", ["--check", "--edition", "2021", "--config", "skip_children=true", path])
+        .status === 1
+    ) {
       problems.push(`${path}: not formatted. Run: cargo fmt --manifest-path src-tauri/Cargo.toml`);
     }
     const boundaries = runNode("scripts/check-rust-boundaries.mjs");
@@ -49,7 +52,9 @@ export function checkFile(path, { fast = false } = {}) {
   if (path.endsWith(".swift")) {
     const fonts = runNode("scripts/check-ios-fonts.mjs");
     if (fonts.status !== 0)
-      problems.push(...outputLines(fonts).filter((line) => line.includes(path) || line.includes("Fix")));
+      problems.push(
+        ...outputLines(fonts).filter((line) => line.includes(path) || line.includes("Fix")),
+      );
   }
   if (!fast && /\.(ts|tsx)$/.test(path) && path.startsWith("src/")) {
     const related = run("npx", [
@@ -59,14 +64,14 @@ export function checkFile(path, { fast = false } = {}) {
       "--run",
       "--passWithNoTests",
       "--reporter=dot",
-      path
+      path,
     ]);
     if (related.status !== 0) {
       problems.push(`${path}: related tests fail. Run: npx vitest related --run ${path}`);
       problems.push(
         ...outputLines(related)
           .filter((line) => /FAIL|AssertionError|Error:/.test(line))
-          .slice(0, 12)
+          .slice(0, 12),
       );
     }
   }
@@ -86,9 +91,15 @@ function checkTypescript(files) {
   if (failure.length) return failure;
   const lines = outputLines(result);
   const diagnostics = lines.filter((line) => /^.+\(\d+,\d+\): error TS\d+:/.test(line));
-  const globalErrors = lines.filter((line) => !diagnostics.includes(line) && /error|Error/.test(line));
-  if (!diagnostics.length && !globalErrors.length) return ["TypeScript failed. Run: npm run typecheck", ...lines];
-  return [...diagnostics.filter((line) => files.some((file) => line.startsWith(`${file}(`))), ...globalErrors];
+  const globalErrors = lines.filter(
+    (line) => !diagnostics.includes(line) && /error|Error/.test(line),
+  );
+  if (!diagnostics.length && !globalErrors.length)
+    return ["TypeScript failed. Run: npm run typecheck", ...lines];
+  return [
+    ...diagnostics.filter((line) => files.some((file) => line.startsWith(`${file}(`))),
+    ...globalErrors,
+  ];
 }
 
 function checkLint(files) {
@@ -97,11 +108,15 @@ function checkLint(files) {
   const result = runNode("scripts/lint.mjs", ...lintable);
   if (result.status === 0) return [];
   const failure = commandFailure(result, "oxlint");
-  return failure.length ? failure : outputLines(result).filter((line) => !/^error: \d+ lint problems?\.$/.test(line));
+  return failure.length
+    ? failure
+    : outputLines(result).filter((line) => !/^error: \d+ lint problems?\.$/.test(line));
 }
 
 function checkDependencies(files) {
-  const sources = files.filter((file) => /^src\/.*\.(ts|tsx)$/.test(file) && existsSync(resolve(ROOT, file)));
+  const sources = files.filter(
+    (file) => /^src\/.*\.(ts|tsx)$/.test(file) && existsSync(resolve(ROOT, file)),
+  );
   if (!sources.length) return [];
   const result = run(process.execPath, [
     "--import",
@@ -110,7 +125,7 @@ function checkDependencies(files) {
     "--ignore-known",
     "--output-type",
     "err-long",
-    ...sources
+    ...sources,
   ]);
   return result.status === 0
     ? []
@@ -131,7 +146,7 @@ function checkRustCompiles(files) {
     "src-tauri/Cargo.toml",
     "--workspace",
     "--message-format",
-    "short"
+    "short",
   ]);
   if (result.status === 0) return [];
   const failure = commandFailure(result, "cargo check");
@@ -142,10 +157,15 @@ function checkRustCompiles(files) {
     (line) =>
       !diagnostics.includes(line) &&
       /(?:^|: )error(?:\[|:)/.test(line) &&
-      !(diagnostics.length && /^error: could not compile .+ due to \d+ previous errors?/.test(line))
+      !(
+        diagnostics.length && /^error: could not compile .+ due to \d+ previous errors?/.test(line)
+      ),
   );
   if (!diagnostics.length && !globalErrors.length)
-    return ["cargo check failed. Run: cargo check --manifest-path src-tauri/Cargo.toml --workspace", ...lines];
+    return [
+      "cargo check failed. Run: cargo check --manifest-path src-tauri/Cargo.toml --workspace",
+      ...lines,
+    ];
   return [...diagnostics.filter((line) => isOwnedError(line, files)), ...globalErrors];
 }
 
@@ -158,7 +178,7 @@ export function checkFiles(files) {
     ...(typescript.length ? checkTypescript(typescript) : []),
     ...checkLint(present),
     ...checkDependencies(present),
-    ...checkRustCompiles(present)
+    ...checkRustCompiles(present),
   ];
 }
 

@@ -40,7 +40,7 @@ export type SubagentCluster = {
 export function buildSubagentCluster(
   tools: readonly ToolCall[],
   codenames: Map<string, string>,
-  multitasks: readonly MultitaskChild[] = []
+  multitasks: readonly MultitaskChild[] = [],
 ): SubagentCluster | null {
   const roster = buildAgentRoster(tools, codenames, multitasks);
   if (roster.entries.length === 0) return null;
@@ -51,11 +51,11 @@ export function buildSubagentCluster(
     status: entry.status,
     iconColor: entry.emblem.hue,
     emblem: entry.emblem,
-    multitask: entry.multitask !== null
+    multitask: entry.multitask !== null,
   }));
   return {
     entries,
     running: roster.running,
-    hasMultitask: entries.some((entry) => entry.multitask)
+    hasMultitask: entries.some((entry) => entry.multitask),
   };
 }

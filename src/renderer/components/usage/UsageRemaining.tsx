@@ -1,5 +1,9 @@
 import type { JSX } from "react";
-import type { UsageLimitWindow, UsageProviderRemaining, UsageRemaining } from "../../../shared/types.js";
+import type {
+  UsageLimitWindow,
+  UsageProviderRemaining,
+  UsageRemaining,
+} from "../../../shared/types.js";
 import { WebLink } from "../WebLink.js";
 import { LoadingLine } from "../LoadingLine.js";
 import { RemainingBar } from "./RemainingBar.js";
@@ -37,7 +41,13 @@ function WindowMeter({ window }: { window: UsageLimitWindow }): JSX.Element {
   );
 }
 
-function RemainingDetail({ message, messageUrl }: { message: string; messageUrl?: string | null }): JSX.Element {
+function RemainingDetail({
+  message,
+  messageUrl,
+}: {
+  message: string;
+  messageUrl?: string | null;
+}): JSX.Element {
   if (!messageUrl) {
     return <p className="usage-remaining-detail">{message}</p>;
   }
@@ -67,7 +77,11 @@ function RemainingRow({ row }: { row: UsageProviderRemaining }): JSX.Element {
   const title = kindLabel(row);
   const showWindows = row.kind === "subscription" && row.windows.length > 0;
   return (
-    <li className="usage-remaining-row usage-series" data-provider={row.provider} data-kind={row.kind}>
+    <li
+      className="usage-remaining-row usage-series"
+      data-provider={row.provider}
+      data-kind={row.kind}
+    >
       <div className="usage-remaining-head">
         <span className="usage-series-dot" aria-hidden="true" />
         <span className="usage-remaining-name">{providerLabel(row.provider)}</span>
@@ -80,9 +94,14 @@ function RemainingRow({ row }: { row: UsageProviderRemaining }): JSX.Element {
           ))}
         </div>
       ) : (
-        <RemainingDetail message={row.message ?? "No remaining usage to show."} messageUrl={row.messageUrl} />
+        <RemainingDetail
+          message={row.message ?? "No remaining usage to show."}
+          messageUrl={row.messageUrl}
+        />
       )}
-      {showWindows && row.message ? <RemainingDetail message={row.message} messageUrl={row.messageUrl} /> : null}
+      {showWindows && row.message ? (
+        <RemainingDetail message={row.message} messageUrl={row.messageUrl} />
+      ) : null}
     </li>
   );
 }
@@ -90,7 +109,7 @@ function RemainingRow({ row }: { row: UsageProviderRemaining }): JSX.Element {
 export function UsageRemainingCard({
   remaining,
   error,
-  onRefresh
+  onRefresh,
 }: {
   remaining: UsageRemaining | null;
   error: string | null;

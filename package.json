@@ -39,7 +39,7 @@
     "check:bundle": "node scripts/check-bundle.mjs",
     "check:ios-fonts": "node scripts/check-ios-fonts.mjs",
     "check:provider-models": "node scripts/export-provider-models.mjs --check",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "generate:contracts": "node scripts/build-visualization-runtime.mjs && npm run generate:bindings && node scripts/export-remote-contracts.mjs && node scripts/export-swift-contracts.mjs",
     "check:docs": "node scripts/check-docs.mjs",
     "check:rust-boundaries": "node scripts/check-rust-boundaries.mjs",

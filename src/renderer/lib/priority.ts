@@ -36,7 +36,7 @@ const REASON_RANK: Record<PriorityReasonKind, number> = {
   failed: 4,
   "ci-red": 3,
   "review-ready": 2,
-  "pr-open": 1
+  "pr-open": 1,
 };
 
 /** Reasons that are also a session attention value, so a row can wear one. */
@@ -45,7 +45,7 @@ const ATTENTION_REASONS = new Set<PriorityReasonKind>([
   "question-asked",
   "blocked",
   "failed",
-  "review-ready"
+  "review-ready",
 ]);
 
 interface PriorityReason {
@@ -92,7 +92,9 @@ function rank(kind: PriorityReasonKind): number {
 }
 
 function attentionReason(attention: string): PriorityReasonKind | null {
-  return ATTENTION_REASONS.has(attention as PriorityReasonKind) ? (attention as PriorityReasonKind) : null;
+  return ATTENTION_REASONS.has(attention as PriorityReasonKind)
+    ? (attention as PriorityReasonKind)
+    : null;
 }
 
 interface WorkspaceAttention {
@@ -105,9 +107,12 @@ interface WorkspaceAttention {
 
 /** The session whose attention speaks for the workspace, if any does. */
 function loudestSession(
-  sessions: SessionSummary[]
+  sessions: SessionSummary[],
 ): Map<string, { kind: PriorityReasonKind; changedAt: string | null; lastActivityAt: string }> {
-  const bySession = new Map<string, { kind: PriorityReasonKind; changedAt: string | null; lastActivityAt: string }>();
+  const bySession = new Map<
+    string,
+    { kind: PriorityReasonKind; changedAt: string | null; lastActivityAt: string }
+  >();
   for (const session of sessions) {
     const kind = attentionReason(session.attention);
     if (!kind) continue;
@@ -122,7 +127,7 @@ function loudestSession(
     bySession.set(session.workspaceId, {
       kind,
       changedAt: session.attentionChangedAt ?? null,
-      lastActivityAt: session.lastActivityAt
+      lastActivityAt: session.lastActivityAt,
     });
   }
   return bySession;
@@ -217,7 +222,7 @@ function computeWorkspaceReasons(input: WorkspaceReasonsInput): Map<string, Prio
 export function computeWorkspaceAttention(
   workspaces: WorkspaceSummary[],
   sessions: SessionSummary[],
-  unreadWorkspaceIds?: ReadonlySet<string>
+  unreadWorkspaceIds?: ReadonlySet<string>,
 ): Map<string, WorkspaceAttention> {
   const bySession = loudestSession(sessions);
   const reasons = computeWorkspaceReasons({ workspaces, sessions, unreadWorkspaceIds });
@@ -229,7 +234,7 @@ export function computeWorkspaceAttention(
     result.set(workspaceId, {
       attention: top.kind as PriorityAttention,
       changedAt: top.since,
-      lastActivityAt: session.lastActivityAt
+      lastActivityAt: session.lastActivityAt,
     });
   }
   return result;
@@ -261,12 +266,12 @@ export function computeWorkspaceAttention(
 export function computePriorityEntries(
   workspaces: WorkspaceSummary[],
   sessions: SessionSummary[],
-  unreadWorkspaceIds?: ReadonlySet<string>
+  unreadWorkspaceIds?: ReadonlySet<string>,
 ): PriorityEntry[] {
   const reasonsByWorkspace = computeWorkspaceReasons({
     workspaces,
     sessions,
-    unreadWorkspaceIds
+    unreadWorkspaceIds,
   });
   const workingWorkspaces = workingWorkspaceIds(sessions);
 
@@ -292,7 +297,7 @@ export function computePriorityEntries(
       // its own; otherwise it renders plain.
       reason: top?.kind ?? null,
       attention: top && ATTENTION_REASONS.has(top.kind) ? (top.kind as PriorityAttention) : null,
-      working
+      working,
     });
   }
 

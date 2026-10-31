@@ -17,7 +17,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         index: resolve(import.meta.dirname, "index.html"),
-        mobile: resolve(import.meta.dirname, "mobile.html")
+        mobile: resolve(import.meta.dirname, "mobile.html"),
       },
       output: {
         // Split a few specific heavyweight vendor packages into named chunks
@@ -45,12 +45,12 @@ export default defineConfig({
             }
           }
           return undefined;
-        }
-      }
-    }
+        },
+      },
+    },
   },
   server: {
     port: 5173,
-    strictPort: true
-  }
+    strictPort: true,
+  },
 });

@@ -16,7 +16,7 @@ import {
   rerenderConversation,
   reviewStub,
   workspace,
-  STARTED_TURN
+  STARTED_TURN,
 } from "../../test/sessionConversationTestHarness.js";
 
 describe("SessionConversation — streaming & composer", () => {
@@ -44,18 +44,21 @@ describe("SessionConversation — streaming & composer", () => {
         event("c2", "command.started", "Read", "2026-09-05T13:12:20.000Z", {
           id: "c2",
           name: "Read",
-          input: { file_path: "localize.md" }
+          input: { file_path: "localize.md" },
         }),
         event("m2", "message.completed", second, "2026-09-05T13:12:20.000Z"),
-        event("c1-end", "command.completed", "Read", "2026-09-05T13:12:16.000Z", { id: "c1", content: "" }),
+        event("c1-end", "command.completed", "Read", "2026-09-05T13:12:16.000Z", {
+          id: "c1",
+          content: "",
+        }),
         event("c1", "command.started", "Read", "2026-09-05T13:12:15.000Z", {
           id: "c1",
           name: "Read",
-          input: { file_path: "debug.md" }
+          input: { file_path: "debug.md" },
         }),
         event("m1", "message.completed", first, "2026-09-05T13:12:15.000Z"),
-        event("u1", "user.message", "debug the drop", "2026-09-05T13:12:05.000Z")
-      ]
+        event("u1", "user.message", "debug the drop", "2026-09-05T13:12:05.000Z"),
+      ],
     },
     {
       // Cursor CLI uses the same chat typewriter. Its live groups are folded
@@ -67,35 +70,53 @@ describe("SessionConversation — streaming & composer", () => {
         event("c2", "command.started", "Read", "2026-09-05T13:12:20.000Z", {
           id: "c2",
           name: "Read",
-          input: { file_path: "localize.md" }
+          input: { file_path: "localize.md" },
         }),
-        event("a2", "message.delta", second, "2026-09-05T13:12:20.000Z", cursorAssistantPayload(`${first} ${second}`)),
-        event("c1-end", "command.completed", "Read", "2026-09-05T13:12:16.000Z", { id: "c1", content: "" }),
+        event(
+          "a2",
+          "message.delta",
+          second,
+          "2026-09-05T13:12:20.000Z",
+          cursorAssistantPayload(`${first} ${second}`),
+        ),
+        event("c1-end", "command.completed", "Read", "2026-09-05T13:12:16.000Z", {
+          id: "c1",
+          content: "",
+        }),
         event("c1", "command.started", "Read", "2026-09-05T13:12:15.000Z", {
           id: "c1",
           name: "Read",
-          input: { file_path: "debug.md" }
+          input: { file_path: "debug.md" },
         }),
-        event("a1", "message.delta", first, "2026-09-05T13:12:15.000Z", cursorAssistantPayload(first)),
-        event("u1", "user.message", "debug the drop", "2026-09-05T13:12:05.000Z")
-      ]
-    }
-  ])("does not retype already-arrived $label when a live turn is reopened", ({ provider, buildEvents }) => {
-    // Switching sessions remounts the pane: without the restore flag those
-    // finished bubbles would all type out from nothing at once.
-    const first =
-      "I'll start by reading the debug workflow and locating the composer drag-and-drop path, especially the new-chat composer.";
-    const second =
-      "The drop path looks split between the composer and a workspace overlay. I'll read the debug localization notes and the composer/launch handlers next.";
-    renderConversation(baseSession({ provider, state: "running" }), buildEvents(first, second));
+        event(
+          "a1",
+          "message.delta",
+          first,
+          "2026-09-05T13:12:15.000Z",
+          cursorAssistantPayload(first),
+        ),
+        event("u1", "user.message", "debug the drop", "2026-09-05T13:12:05.000Z"),
+      ],
+    },
+  ])(
+    "does not retype already-arrived $label when a live turn is reopened",
+    ({ provider, buildEvents }) => {
+      // Switching sessions remounts the pane: without the restore flag those
+      // finished bubbles would all type out from nothing at once.
+      const first =
+        "I'll start by reading the debug workflow and locating the composer drag-and-drop path, especially the new-chat composer.";
+      const second =
+        "The drop path looks split between the composer and a workspace overlay. I'll read the debug localization notes and the composer/launch handlers next.";
+      renderConversation(baseSession({ provider, state: "running" }), buildEvents(first, second));
 
-    expect(screen.getByText(first)).toBeInTheDocument();
-    expect(screen.getByText(second)).toBeInTheDocument();
-  });
+      expect(screen.getByText(first)).toBeInTheDocument();
+      expect(screen.getByText(second)).toBeInTheDocument();
+    },
+  );
 
   it.each([
     { label: "completed Grok narration", provider: "grok" as const },
-    { label: "Cursor cumulative deltas", provider: "cursor" as const }
+    { label: "Cursor cumulative deltas", provider: "cursor" as const },
   ])("does not retype $label that backfills after the pane has mounted", ({ provider }) => {
     // The real reopen path, which the case above never exercised: an
     // unselected session is unsubscribed and receives no events, so the pane
@@ -111,17 +132,20 @@ describe("SessionConversation — streaming & composer", () => {
       event("c2", "command.started", "Read", "2026-09-05T13:12:20.000Z", {
         id: "c2",
         name: "Read",
-        input: { file_path: "localize.md" }
+        input: { file_path: "localize.md" },
       }),
       event("m2", "message.completed", second, "2026-09-05T13:12:20.000Z"),
-      event("c1-end", "command.completed", "Read", "2026-09-05T13:12:16.000Z", { id: "c1", content: "" }),
+      event("c1-end", "command.completed", "Read", "2026-09-05T13:12:16.000Z", {
+        id: "c1",
+        content: "",
+      }),
       event("c1", "command.started", "Read", "2026-09-05T13:12:15.000Z", {
         id: "c1",
         name: "Read",
-        input: { file_path: "debug.md" }
+        input: { file_path: "debug.md" },
       }),
       event("m1", "message.completed", first, "2026-09-05T13:12:15.000Z"),
-      event("u1", "user.message", "debug the drop", "2026-09-05T13:12:05.000Z")
+      event("u1", "user.message", "debug the drop", "2026-09-05T13:12:05.000Z"),
     ];
     const session = baseSession({ provider, state: "running" });
     vi.useFakeTimers();
@@ -141,13 +165,15 @@ describe("SessionConversation — streaming & composer", () => {
     const v1 = baseSession({
       modelLabel: "GPT-5.6 Terra",
       modelId: "gpt-5.6-terra",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     });
     const { rerender } = renderConversation(v1);
 
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
     fireEvent.click(
-      within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "GPT-6.1 Sol" })
+      within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", {
+        name: "GPT-6.1 Sol",
+      }),
     );
     expect(screen.getByRole("button", { name: "Chat model" }).textContent).toContain("GPT-6.1 Sol");
 
@@ -157,7 +183,7 @@ describe("SessionConversation — streaming & composer", () => {
     const v2 = baseSession({
       modelLabel: "Haiku 5.5",
       modelId: "claude-haiku-5-5",
-      reasoningEffort: undefined
+      reasoningEffort: undefined,
     });
     rerender(
       <SessionConversation
@@ -172,7 +198,7 @@ describe("SessionConversation — streaming & composer", () => {
         review={reviewStub()}
         session={v2}
         workspace={workspace}
-      />
+      />,
     );
 
     expect(screen.getByRole("button", { name: "Chat model" }).textContent).toContain("GPT-6.1 Sol");
@@ -184,17 +210,19 @@ describe("SessionConversation — streaming & composer", () => {
       id: "session-a",
       modelLabel: "GPT-5.6 Terra",
       modelId: "gpt-5.6-terra",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     });
     const { rerender } = renderConversation(original);
-    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toContain("GPT-5.6 Terra");
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toContain(
+      "GPT-5.6 Terra",
+    );
 
     const switched = baseSession({
       id: "session-b",
       provider: "claude",
       modelLabel: "Haiku 5.5",
       modelId: "claude-haiku-5-5",
-      reasoningEffort: undefined
+      reasoningEffort: undefined,
     });
     rerender(
       <SessionConversation
@@ -209,7 +237,7 @@ describe("SessionConversation — streaming & composer", () => {
         review={reviewStub()}
         session={switched}
         workspace={workspace}
-      />
+      />,
     );
 
     const pickerAfter = screen.getByRole("button", { name: "Chat model" });
@@ -223,8 +251,10 @@ describe("SessionConversation — streaming & composer", () => {
     // that names what it holds and toggles the group's open state.
     renderConversation(baseSession(), [], {
       review: reviewStub({
-        files: [{ path: "src/a.ts", status: "modified", additions: 10, deletions: 1, staged: false }]
-      })
+        files: [
+          { path: "src/a.ts", status: "modified", additions: 10, deletions: 1, staged: false },
+        ],
+      }),
     });
 
     const trigger = screen.getByRole("button", { name: /^Workspace context:/ });
@@ -248,7 +278,7 @@ describe("SessionConversation — streaming & composer", () => {
     cleanup();
     renderConversation(session, [], { contextIndicatorEnabled: true });
     expect(
-      screen.getByRole("button", { name: "Context window 10% full — 10,000 of 100,000 tokens" })
+      screen.getByRole("button", { name: "Context window 10% full — 10,000 of 100,000 tokens" }),
     ).toBeInTheDocument();
   });
 
@@ -258,15 +288,15 @@ describe("SessionConversation — streaming & composer", () => {
       review: reviewStub({
         files: [
           { path: "src/a.ts", status: "modified", additions: 3, deletions: 1, staged: false },
-          { path: "src/b.ts", status: "added", additions: 7, deletions: 0, staged: false }
+          { path: "src/b.ts", status: "added", additions: 7, deletions: 0, staged: false },
         ],
-        toggleChangesPanel
-      })
+        toggleChangesPanel,
+      }),
     });
 
     expect(screen.queryByText("2 files changed")).not.toBeInTheDocument();
     const changesButton = screen.getByRole("button", {
-      name: "Open changed files in review panel: 2 files changed, 10 additions, 1 deletion"
+      name: "Open changed files in review panel: 2 files changed, 10 additions, 1 deletion",
     });
     expect(changesButton).toHaveTextContent("+10");
     expect(changesButton).toHaveTextContent("-1");
@@ -279,16 +309,18 @@ describe("SessionConversation — streaming & composer", () => {
   it("marks the compact changed-file action pressed when Changes is open", () => {
     renderConversation(baseSession(), [], {
       review: reviewStub({
-        files: [{ path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false }],
+        files: [
+          { path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false },
+        ],
         isPanelOpen: true,
-        mode: "changes"
-      })
+        mode: "changes",
+      }),
     });
 
     expect(
       screen.getByRole("button", {
-        name: "Open changed files in review panel: 1 file changed, 1 addition, 1 deletion"
-      })
+        name: "Open changed files in review panel: 1 file changed, 1 addition, 1 deletion",
+      }),
     ).toHaveAttribute("aria-pressed", "true");
   });
 
@@ -297,7 +329,7 @@ describe("SessionConversation — streaming & composer", () => {
     renderConversation(baseSession({ provider: "cursor", state: "running" }), [
       event("e2", "message.delta", text, "2026-05-12T15:00:01.000Z", cursorAssistantPayload(text)),
       event("e1", "message.delta", text, "2026-05-12T15:00:00.000Z", cursorAssistantPayload(text)),
-      event("u1", "user.message", "summarize this repo", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "summarize this repo", "2026-05-12T15:00:00.000Z"),
     ]);
 
     expect(screen.getAllByText(text)).toHaveLength(1);
@@ -306,7 +338,7 @@ describe("SessionConversation — streaming & composer", () => {
   it("marks an in-flight assistant bubble with .markdown-streaming while deltas arrive", () => {
     const { container } = renderConversation(baseSession({ state: "running" }), [
       event("u1", "user.message", "scan repo", "2026-05-12T15:00:00.000Z"),
-      event("d1", "message.delta", "1. First\n2. Second", "2026-05-12T15:00:01.000Z")
+      event("d1", "message.delta", "1. First\n2. Second", "2026-05-12T15:00:01.000Z"),
     ]);
 
     expect(container.querySelector(".markdown-streaming")).not.toBeNull();
@@ -318,11 +350,16 @@ describe("SessionConversation — streaming & composer", () => {
     const text = [
       "Here are 100 items you can buy in a store:",
       "1. Milk 2. Eggs 3. Bread 4. Butter 5. Cheese 6. Yogurt",
-      "7. Bananas 8. Apples 9. Oranges 10. Potatoes 11. Onions"
+      "7. Bananas 8. Apples 9. Oranges 10. Potatoes 11. Onions",
     ].join(" ");
     const { container } = renderConversation(baseSession({ state: "cancelled" }), [
-      event("u1", "user.message", "list 100 items you can buy in a store", "2026-05-12T15:00:00.000Z"),
-      event("d1", "message.delta", text, "2026-05-12T15:00:01.000Z")
+      event(
+        "u1",
+        "user.message",
+        "list 100 items you can buy in a store",
+        "2026-05-12T15:00:00.000Z",
+      ),
+      event("d1", "message.delta", text, "2026-05-12T15:00:01.000Z"),
     ]);
 
     expect(container.querySelector(".markdown-streaming")).toBeNull();
@@ -341,9 +378,9 @@ describe("SessionConversation — streaming & composer", () => {
         // Extended-thinking is surfaced by the normalizer as a message.delta
         // with payload.thinking === true.
         event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true }),
-        event("m1", "message.completed", answer, "2026-05-12T15:00:02.000Z")
+        event("m1", "message.completed", answer, "2026-05-12T15:00:02.000Z"),
       ],
-      { thinkingDisplay: "preview" }
+      { thinkingDisplay: "preview" },
     );
 
     // The Thought disclosure survives the turn's completion (not pruned), and
@@ -367,8 +404,10 @@ describe("SessionConversation — streaming & composer", () => {
     renderConversation(baseSession({ state: "complete" }), [
       event("u1", "user.message", "what is this repo", "2026-05-12T15:00:00.000Z"),
       event("t1", "message.delta", "First look.", "2026-05-12T15:00:01.000Z", { thinking: true }),
-      event("t2", "message.delta", " Still looking.", "2026-05-12T15:00:06.000Z", { thinking: true }),
-      event("m1", "message.completed", "Here's the repo overview.", "2026-05-12T15:00:07.000Z")
+      event("t2", "message.delta", " Still looking.", "2026-05-12T15:00:06.000Z", {
+        thinking: true,
+      }),
+      event("m1", "message.completed", "Here's the repo overview.", "2026-05-12T15:00:07.000Z"),
     ]);
 
     expect(screen.getByRole("button", { name: "Thought 5s" })).toBeInTheDocument();
@@ -379,12 +418,12 @@ describe("SessionConversation — streaming & composer", () => {
     const session = baseSession({ state: "running" });
     const events = [
       event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
-      event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true })
+      event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true }),
     ];
     const options = {
       thinkingDisplay: "inline" as const,
       defaultToolCallsDisplay: "collapsed" as const,
-      defaultToolCallGroupsExpanded: false
+      defaultToolCallGroupsExpanded: false,
     };
     const { rerender } = renderConversation(session, events, options);
     expect(screen.getByText(thinking)).toBeInTheDocument();
@@ -395,7 +434,7 @@ describe("SessionConversation — streaming & composer", () => {
     const history = [
       ...events,
       event("a1", "message.completed", "Here we go", "2026-05-12T15:00:02.000Z"),
-      event("u2", "user.message", "continue", "2026-05-12T15:00:03.000Z")
+      event("u2", "user.message", "continue", "2026-05-12T15:00:03.000Z"),
     ];
     rerenderConversation(rerender, session, history, options);
     expect(screen.getByText(thinking)).toBeInTheDocument();
@@ -427,18 +466,18 @@ describe("SessionConversation — streaming & composer", () => {
       event("c1", "command.started", "Bash", "2026-05-12T15:00:02.000Z", {
         type: "tool_use",
         tool_use_id: "tu_grep",
-        input: { command: "grep -rn thinking" }
+        input: { command: "grep -rn thinking" },
       }),
       event("c1-end", "command.completed", "Bash", "2026-05-12T15:00:03.000Z", {
         tool_use_id: "tu_grep",
-        content: "cursor.rs:24"
+        content: "cursor.rs:24",
       }),
-      event("t2", "message.delta", newest, "2026-05-12T15:00:04.000Z", { thinking: true })
+      event("t2", "message.delta", newest, "2026-05-12T15:00:04.000Z", { thinking: true }),
     ];
     const options = {
       thinkingDisplay: "preview" as const,
       defaultToolCallsDisplay: "collapsed" as const,
-      defaultToolCallGroupsExpanded: false
+      defaultToolCallGroupsExpanded: false,
     };
 
     const { rerender } = renderConversation(session, events, options);
@@ -465,13 +504,18 @@ describe("SessionConversation — streaming & composer", () => {
     rerenderConversation(
       rerender,
       session,
-      [...events, event("m1", "message.completed", "Here is the answer.", "2026-05-12T15:00:05.000Z")],
-      options
+      [
+        ...events,
+        event("m1", "message.completed", "Here is the answer.", "2026-05-12T15:00:05.000Z"),
+      ],
+      options,
     );
 
     expect(screen.getAllByRole("button", { name: "Thought" })).toHaveLength(2);
     expect(
-      screen.getAllByRole("button", { name: "Thought" }).map((button) => button.getAttribute("aria-expanded"))
+      screen
+        .getAllByRole("button", { name: "Thought" })
+        .map((button) => button.getAttribute("aria-expanded")),
     ).toEqual(["false", "true"]);
     expect(screen.getByText("Full analysis start")).toBeInTheDocument();
     expect(screen.getByText("Here is the answer.")).toBeInTheDocument();
@@ -485,91 +529,121 @@ describe("SessionConversation — streaming & composer", () => {
   // could sit behind the generic cue with its reasoning filed away.
   it.each([
     { label: "compact", display: "collapsed" as const, thinkingDisplay: "collapsed" as const },
-    { label: "minimal", display: "single-line" as const, thinkingDisplay: "collapsed" as const }
-  ])("gives the beat to reasoning that continues after an answer ($label)", ({ display, thinkingDisplay, label }) => {
-    vi.useFakeTimers();
-    // The cue's waits count from the newest event, so a pane that watches it
-    // land has its clock sitting on that event's timestamp.
-    vi.setSystemTime(new Date("2026-05-12T15:00:05.000Z"));
-    renderConversation(
-      baseSession({ provider: "codex", state: "running" }),
-      [
-        event("t2", "message.delta", "**Planning the next edit**", "2026-05-12T15:00:05.000Z", {
-          thinking: true
-        }),
-        event("c1-end", "command.completed", "Bash", "2026-05-12T15:00:04.000Z", {
-          tool_use_id: "tu_git",
-          content: "main"
-        }),
-        event("c1", "command.started", "Bash", "2026-05-12T15:00:03.000Z", {
-          type: "tool_use",
-          id: "tu_git",
-          name: "Bash",
-          input: { command: "git status --short" }
-        }),
-        event("m1", "message.completed", "Agreed, I'll rework the board.", "2026-05-12T15:00:02.000Z"),
-        event("t1", "message.delta", "**Weighing the lanes**", "2026-05-12T15:00:01.000Z", {
-          thinking: true
-        }),
-        event("u1", "user.message", "reorder the lanes", "2026-05-12T15:00:00.000Z")
-      ],
-      { defaultToolCallsDisplay: display, thinkingDisplay }
-    );
+    { label: "minimal", display: "single-line" as const, thinkingDisplay: "collapsed" as const },
+  ])(
+    "gives the beat to reasoning that continues after an answer ($label)",
+    ({ display, thinkingDisplay, label }) => {
+      vi.useFakeTimers();
+      // The cue's waits count from the newest event, so a pane that watches it
+      // land has its clock sitting on that event's timestamp.
+      vi.setSystemTime(new Date("2026-05-12T15:00:05.000Z"));
+      renderConversation(
+        baseSession({ provider: "codex", state: "running" }),
+        [
+          event("t2", "message.delta", "**Planning the next edit**", "2026-05-12T15:00:05.000Z", {
+            thinking: true,
+          }),
+          event("c1-end", "command.completed", "Bash", "2026-05-12T15:00:04.000Z", {
+            tool_use_id: "tu_git",
+            content: "main",
+          }),
+          event("c1", "command.started", "Bash", "2026-05-12T15:00:03.000Z", {
+            type: "tool_use",
+            id: "tu_git",
+            name: "Bash",
+            input: { command: "git status --short" },
+          }),
+          event(
+            "m1",
+            "message.completed",
+            "Agreed, I'll rework the board.",
+            "2026-05-12T15:00:02.000Z",
+          ),
+          event("t1", "message.delta", "**Weighing the lanes**", "2026-05-12T15:00:01.000Z", {
+            thinking: true,
+          }),
+          event("u1", "user.message", "reorder the lanes", "2026-05-12T15:00:00.000Z"),
+        ],
+        { defaultToolCallsDisplay: display, thinkingDisplay },
+      );
 
-    act(() => {
-      vi.advanceTimersByTime(3000);
-    });
-    expect(screen.queryByRole("article", { name: "Thinking" })).not.toBeInTheDocument();
-    if (label === "minimal") {
-      expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "false");
-    } else {
-      // Compact folds the thought into the run it ends; that line carries the beat.
-      expect(screen.getByRole("button", { name: /^Ran a command/ })).toHaveAttribute("aria-busy", "true");
-    }
-  });
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(screen.queryByRole("article", { name: "Thinking" })).not.toBeInTheDocument();
+      if (label === "minimal") {
+        expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute(
+          "aria-expanded",
+          "false",
+        );
+      } else {
+        // Compact folds the thought into the run it ends; that line carries the beat.
+        expect(screen.getByRole("button", { name: /^Ran a command/ })).toHaveAttribute(
+          "aria-busy",
+          "true",
+        );
+      }
+    },
+  );
 
   it.each([
     { label: "compact", display: "collapsed" as const, thinkingDisplay: "collapsed" as const },
     { label: "steps", display: "collapsed" as const, thinkingDisplay: "preview" as const },
-    { label: "minimal", display: "single-line" as const, thinkingDisplay: "collapsed" as const }
-  ])("leaves the pre-answer beat to the live Thought block alone ($label)", ({ display, thinkingDisplay, label }) => {
-    vi.useFakeTimers();
-    renderConversation(
-      baseSession({ provider: "codex", state: "running" }),
-      [
-        event("t1", "message.delta", "**Mapping the renderer**", "2026-05-12T15:00:01.000Z", {
-          thinking: true
-        }),
-        event("u1", "user.message", "map the renderer", "2026-05-12T15:00:00.000Z")
-      ],
-      { defaultToolCallsDisplay: display, thinkingDisplay }
-    );
+    { label: "minimal", display: "single-line" as const, thinkingDisplay: "collapsed" as const },
+  ])(
+    "leaves the pre-answer beat to the live Thought block alone ($label)",
+    ({ display, thinkingDisplay, label }) => {
+      vi.useFakeTimers();
+      renderConversation(
+        baseSession({ provider: "codex", state: "running" }),
+        [
+          event("t1", "message.delta", "**Mapping the renderer**", "2026-05-12T15:00:01.000Z", {
+            thinking: true,
+          }),
+          event("u1", "user.message", "map the renderer", "2026-05-12T15:00:00.000Z"),
+        ],
+        { defaultToolCallsDisplay: display, thinkingDisplay },
+      );
 
-    act(() => {
-      vi.advanceTimersByTime(3000);
-    });
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
 
-    // Compact keeps the live activity disclosure collapsed, Steps shows a
-    // capped preview behind a closed disclosure, and Minimal names the live
-    // thought without spelling it out.
-    if (label === "compact") {
-      expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "false");
-    } else if (label === "steps") {
-      expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "false");
-      expect(screen.getByLabelText("Thinking preview")).toHaveTextContent("**Mapping the renderer**");
-    } else {
-      expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "false");
-    }
-    expect(screen.queryByRole("article", { name: "Thinking" })).not.toBeInTheDocument();
-  });
+      // Compact keeps the live activity disclosure collapsed, Steps shows a
+      // capped preview behind a closed disclosure, and Minimal names the live
+      // thought without spelling it out.
+      if (label === "compact") {
+        expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute(
+          "aria-expanded",
+          "false",
+        );
+      } else if (label === "steps") {
+        expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute(
+          "aria-expanded",
+          "false",
+        );
+        expect(screen.getByLabelText("Thinking preview")).toHaveTextContent(
+          "**Mapping the renderer**",
+        );
+      } else {
+        expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute(
+          "aria-expanded",
+          "false",
+        );
+      }
+      expect(screen.queryByRole("article", { name: "Thinking" })).not.toBeInTheDocument();
+    },
+  );
 
   it("renders a Thought block collapsed when the answer is already there on mount", () => {
     renderConversation(baseSession({ state: "running" }), [
       event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
-      event("t1", "message.delta", "Reasoning about it.", "2026-05-12T15:00:01.000Z", { thinking: true }),
+      event("t1", "message.delta", "Reasoning about it.", "2026-05-12T15:00:01.000Z", {
+        thinking: true,
+      }),
       // Answer text already present → the block never opened itself here, so
       // there is nothing to hold open: it follows the saved default.
-      event("a1", "message.delta", "Here we go", "2026-05-12T15:00:02.000Z")
+      event("a1", "message.delta", "Here we go", "2026-05-12T15:00:02.000Z"),
     ]);
 
     const toggle = screen.getByRole("button", { name: "Thought" });
@@ -583,7 +657,7 @@ describe("SessionConversation — streaming & composer", () => {
     const session = baseSession({ state: "running" });
     const events = [
       event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
-      event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true })
+      event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true }),
     ];
     const renderWith = (timeline: TimelineEvent[]): ReactElement => (
       <SessionConversation
@@ -601,13 +675,19 @@ describe("SessionConversation — streaming & composer", () => {
       />
     );
     const { rerender } = renderConversation(session, events);
-    expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
 
     // The answer starts arriving. The label settles to "Thought", but folding
     // the body away here would take its whole height out of the transcript at
     // the exact moment the agent starts writing. A reader pinned to the
     // bottom gets pulled up by that much.
-    const answering = [...events, event("a1", "message.delta", "Here we go", "2026-05-12T15:00:02.000Z")];
+    const answering = [
+      ...events,
+      event("a1", "message.delta", "Here we go", "2026-05-12T15:00:02.000Z"),
+    ];
     rerender(renderWith(answering));
 
     const settled = screen.getByRole("button", { name: "Thought" });
@@ -616,7 +696,12 @@ describe("SessionConversation — streaming & composer", () => {
 
     // A newer turn takes over: now the reasoning folds, above a viewport full
     // of the answer it belongs to.
-    rerender(renderWith([...answering, event("u2", "user.message", "now ship it", "2026-05-12T15:00:03.000Z")]));
+    rerender(
+      renderWith([
+        ...answering,
+        event("u2", "user.message", "now ship it", "2026-05-12T15:00:03.000Z"),
+      ]),
+    );
 
     const folded = screen.getByRole("button", { name: "Thought" });
     expect(folded).toHaveAttribute("aria-expanded", "false");
@@ -634,16 +719,19 @@ describe("SessionConversation — streaming & composer", () => {
         event("c1", "command.started", "Read", "2026-05-12T15:00:02.000Z", {
           id: "c1",
           name: "Read",
-          input: { file_path: "architecture.md" }
+          input: { file_path: "architecture.md" },
         }),
-        event("c1-end", "command.completed", "Read", "2026-05-12T15:00:03.000Z", { id: "c1", content: "" }),
-        event("m1", "message.completed", "Done.", "2026-05-12T15:00:04.000Z")
+        event("c1-end", "command.completed", "Read", "2026-05-12T15:00:03.000Z", {
+          id: "c1",
+          content: "",
+        }),
+        event("m1", "message.completed", "Done.", "2026-05-12T15:00:04.000Z"),
       ],
       {
         thinkingDisplay: "inline",
         defaultToolCallsDisplay: "expanded",
-        defaultToolCallGroupsExpanded: true
-      }
+        defaultToolCallGroupsExpanded: true,
+      },
     );
 
     expect(screen.queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
@@ -668,16 +756,19 @@ describe("SessionConversation — streaming & composer", () => {
         event("c1", "command.started", "Read", "2026-05-12T15:00:02.000Z", {
           id: "c1",
           name: "Read",
-          input: { file_path: "ipc.md" }
+          input: { file_path: "ipc.md" },
         }),
-        event("c1-end", "command.completed", "Read", "2026-05-12T15:00:03.000Z", { id: "c1", content: "" }),
-        event("m1", "message.completed", "Done.", "2026-05-12T15:00:04.000Z")
+        event("c1-end", "command.completed", "Read", "2026-05-12T15:00:03.000Z", {
+          id: "c1",
+          content: "",
+        }),
+        event("m1", "message.completed", "Done.", "2026-05-12T15:00:04.000Z"),
       ],
       {
         thinkingDisplay: "collapsed",
         defaultToolCallsDisplay: "collapsed",
-        defaultToolCallGroupsExpanded: false
-      }
+        defaultToolCallGroupsExpanded: false,
+      },
     );
 
     const activity = screen.getByRole("button", { name: "Read a file" });
@@ -694,7 +785,10 @@ describe("SessionConversation — streaming & composer", () => {
     const details = detailsId ? document.getElementById(detailsId) : null;
     expect(details).not.toBeNull();
     if (details)
-      expect(within(details).getByRole("button", { name: "Thought" })).toHaveAttribute("aria-expanded", "true");
+      expect(within(details).getByRole("button", { name: "Thought" })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
     expect(screen.getByText(thinking)).toBeTruthy();
   });
 
@@ -704,19 +798,25 @@ describe("SessionConversation — streaming & composer", () => {
       event("u1", "user.message", "hi", "2026-05-12T15:00:00.000Z"),
       event("d1", "message.delta", "Hel", "2026-05-12T15:00:01.000Z"),
       event("d2", "message.delta", "lo ", "2026-05-12T15:00:02.000Z"),
-      event("d3", "message.delta", "world", "2026-05-12T15:00:03.000Z")
+      event("d3", "message.delta", "world", "2026-05-12T15:00:03.000Z"),
     ]);
 
     expect(screen.getAllByText("Hello world")).toHaveLength(1);
   });
 
   it("renders stderr error events as a log block, not assistant prose", () => {
-    const log = '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
+    const log =
+      '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
     renderConversation(baseSession({ state: "complete" }), [
       event("u1", "user.message", "hi", "2026-05-12T15:00:00.000Z"),
       event("m1", "message.completed", "Ready for review.", "2026-05-12T15:00:01.000Z"),
       event("e1", "error", log, "2026-05-12T15:00:02.000Z"),
-      event("e2", "error", log.replace("004170", "017965").replace("abc", "def"), "2026-05-12T15:00:03.000Z")
+      event(
+        "e2",
+        "error",
+        log.replace("004170", "017965").replace("abc", "def"),
+        "2026-05-12T15:00:03.000Z",
+      ),
     ]);
 
     expect(screen.getByText("Ready for review.")).toBeInTheDocument();
@@ -734,7 +834,7 @@ describe("SessionConversation — streaming & composer", () => {
       event("u1", "user.message", "hi", "2026-05-12T15:00:00.000Z"),
       event("m1", "message.completed", "Ready for review.", "2026-05-12T15:00:01.000Z"),
       event("e1", "error", log, "2026-05-12T15:00:02.000Z"),
-      event("d1", "message.delta", log, "2026-05-12T15:00:03.000Z")
+      event("d1", "message.delta", log, "2026-05-12T15:00:03.000Z"),
     ]);
 
     expect(screen.getByText("Ready for review.")).toBeInTheDocument();
@@ -749,7 +849,7 @@ describe("SessionConversation — streaming & composer", () => {
       event("u1", "user.message", "hi", "2026-05-12T15:00:00.000Z"),
       event("m1", "message.completed", "Ready for review.", "2026-05-12T15:00:01.000Z"),
       event("e1", "error", log, "2026-05-12T15:00:02.000Z"),
-      event("d1", "message.delta", log, "2026-05-12T15:00:03.000Z")
+      event("d1", "message.delta", log, "2026-05-12T15:00:03.000Z"),
     ]);
 
     expect(screen.getByText("Ready for review.")).toBeInTheDocument();
@@ -766,26 +866,30 @@ describe("SessionConversation — streaming & composer", () => {
         "m1",
         "message.completed",
         "The preregistration is now written before any candidate scores.",
-        "2026-09-01T09:06:31.000Z"
+        "2026-09-01T09:06:31.000Z",
       ),
       event("d1", "message.delta", header, "2026-09-01T09:08:10.411Z", { stream: "stdout" }),
       event("d2", "message.delta", "point = points[tau]", "2026-09-01T09:08:10.411Z", {
-        stream: "stdout"
+        stream: "stdout",
       }),
       event("c1", "command.started", "Bash", "2026-09-01T09:09:06.000Z", {
         id: "c1",
-        name: "Bash"
+        name: "Bash",
       }),
       event(
         "m2",
         "message.completed",
         "The preregistered runner and focused tests are ready.",
-        "2026-09-01T09:09:16.000Z"
-      )
+        "2026-09-01T09:09:16.000Z",
+      ),
     ]);
 
-    expect(screen.getByText("The preregistration is now written before any candidate scores.")).toBeInTheDocument();
-    expect(screen.getByText("The preregistered runner and focused tests are ready.")).toBeInTheDocument();
+    expect(
+      screen.getByText("The preregistration is now written before any candidate scores."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("The preregistered runner and focused tests are ready."),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("status", { name: "Error" })).not.toBeInTheDocument();
     expect(screen.queryByText(/apply_patch/)).not.toBeInTheDocument();
     expect(screen.queryByText(/point = points\[tau\]/)).not.toBeInTheDocument();
@@ -799,7 +903,7 @@ describe("SessionConversation — streaming & composer", () => {
       event("d3", "message.delta", "world", "2026-05-12T15:00:03.000Z"),
       event("d2", "message.delta", "lo ", "2026-05-12T15:00:02.000Z"),
       event("d1", "message.delta", "Hel", "2026-05-12T15:00:01.000Z"),
-      event("u1", "user.message", "hi", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "hi", "2026-05-12T15:00:00.000Z"),
     ]);
 
     // The streamed deltas are superseded by the completion → exactly one bubble.
@@ -810,18 +914,33 @@ describe("SessionConversation — streaming & composer", () => {
     const cursorPayload = (text: string, timestampMs: number): Record<string, unknown> => ({
       type: "assistant",
       message: { role: "assistant", content: [{ type: "text", text }] },
-      timestamp_ms: timestampMs
+      timestamp_ms: timestampMs,
     });
-    const { container } = renderConversation(baseSession({ provider: "cursor", state: "running" }), [
-      event("a2", "message.delta", " Block B.", "2026-05-12T15:00:05.000Z", cursorPayload("Block A. Block B.", 2)),
-      event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
-        id: "c1",
-        name: "Read",
-        input: { file_path: "architecture.md" }
-      }),
-      event("a1", "message.delta", "Block A.", "2026-05-12T15:00:01.000Z", cursorPayload("Block A.", 1)),
-      event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z")
-    ]);
+    const { container } = renderConversation(
+      baseSession({ provider: "cursor", state: "running" }),
+      [
+        event(
+          "a2",
+          "message.delta",
+          " Block B.",
+          "2026-05-12T15:00:05.000Z",
+          cursorPayload("Block A. Block B.", 2),
+        ),
+        event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+          id: "c1",
+          name: "Read",
+          input: { file_path: "architecture.md" },
+        }),
+        event(
+          "a1",
+          "message.delta",
+          "Block A.",
+          "2026-05-12T15:00:01.000Z",
+          cursorPayload("Block A.", 1),
+        ),
+        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
+      ],
+    );
 
     const text = container.querySelector(".conversation-list")?.textContent ?? "";
     expect(text.match(/Block A\./g)?.length ?? 0).toBe(1);
@@ -829,28 +948,31 @@ describe("SessionConversation — streaming & composer", () => {
   });
 
   it("keeps Cursor narration, tools, and later streamed answer in chronological order", () => {
-    const { container } = renderConversation(baseSession({ provider: "cursor", state: "running" }), [
-      event(
-        "a2",
-        "message.delta",
-        "Here is the answer",
-        "2026-05-12T15:00:05.000Z",
-        cursorAssistantPayload("Here is the answer")
-      ),
-      event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
-        id: "c1",
-        name: "Read",
-        input: { file_path: "architecture.md" }
-      }),
-      event(
-        "a1",
-        "message.delta",
-        "Reading the file first.",
-        "2026-05-12T15:00:02.000Z",
-        cursorAssistantPayload("Reading the file first.")
-      ),
-      event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z")
-    ]);
+    const { container } = renderConversation(
+      baseSession({ provider: "cursor", state: "running" }),
+      [
+        event(
+          "a2",
+          "message.delta",
+          "Here is the answer",
+          "2026-05-12T15:00:05.000Z",
+          cursorAssistantPayload("Here is the answer"),
+        ),
+        event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+          id: "c1",
+          name: "Read",
+          input: { file_path: "architecture.md" },
+        }),
+        event(
+          "a1",
+          "message.delta",
+          "Reading the file first.",
+          "2026-05-12T15:00:02.000Z",
+          cursorAssistantPayload("Reading the file first."),
+        ),
+        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
+      ],
+    );
 
     const text = container.querySelector(".conversation-list")?.textContent ?? "";
     expect(text).toContain("architecture.md");
@@ -859,21 +981,24 @@ describe("SessionConversation — streaming & composer", () => {
   });
 
   it("keeps a still-streaming pre-tool narration above the started tool", () => {
-    const { container } = renderConversation(baseSession({ provider: "cursor", state: "running" }), [
-      event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
-        id: "c1",
-        name: "Read",
-        input: { file_path: "architecture.md" }
-      }),
-      event(
-        "a1",
-        "message.delta",
-        "Reading the file",
-        "2026-05-12T15:00:02.000Z",
-        cursorAssistantPayload("Reading the file")
-      ),
-      event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z")
-    ]);
+    const { container } = renderConversation(
+      baseSession({ provider: "cursor", state: "running" }),
+      [
+        event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+          id: "c1",
+          name: "Read",
+          input: { file_path: "architecture.md" },
+        }),
+        event(
+          "a1",
+          "message.delta",
+          "Reading the file",
+          "2026-05-12T15:00:02.000Z",
+          cursorAssistantPayload("Reading the file"),
+        ),
+        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
+      ],
+    );
 
     const text = container.querySelector(".conversation-list")?.textContent ?? "";
     expect(text).toContain("architecture.md");
@@ -884,16 +1009,19 @@ describe("SessionConversation — streaming & composer", () => {
   it("keeps a completed pre-tool narration above the tool it precedes", () => {
     // A narration chunk that COMPLETED before the tool started is anchored at its
     // own time and must stay above the tool.
-    const { container } = renderConversation(baseSession({ provider: "claude", state: "running" }), [
-      event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
-        id: "c1",
-        name: "Read",
-        input: { file_path: "architecture.md" }
-      }),
-      event("m1", "message.completed", "Let me read the file", "2026-05-12T15:00:02.500Z"),
-      event("d1", "message.delta", "Let me read the file", "2026-05-12T15:00:02.000Z"),
-      event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z")
-    ]);
+    const { container } = renderConversation(
+      baseSession({ provider: "claude", state: "running" }),
+      [
+        event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+          id: "c1",
+          name: "Read",
+          input: { file_path: "architecture.md" },
+        }),
+        event("m1", "message.completed", "Let me read the file", "2026-05-12T15:00:02.500Z"),
+        event("d1", "message.delta", "Let me read the file", "2026-05-12T15:00:02.000Z"),
+        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
+      ],
+    );
 
     const text = container.querySelector(".conversation-list")?.textContent ?? "";
     expect(text).toContain("Let me read the file");
@@ -906,31 +1034,36 @@ describe("SessionConversation — streaming & composer", () => {
       event("cmd1-start", "command.started", "command_execution", "2026-05-12T15:00:01.000Z", {
         id: "cmd1",
         name: "command_execution",
-        input: { command: "/bin/zsh -lc \"sed -n '1,120p' src/a.ts\"" }
+        input: { command: "/bin/zsh -lc \"sed -n '1,120p' src/a.ts\"" },
       }),
       event("cmd1-end", "command.completed", "command_execution", "2026-05-12T15:00:02.000Z", {
         id: "cmd1",
-        content: ""
+        content: "",
       }),
-      event("m1", "message.completed", "Checking the surrounding code.", "2026-05-12T15:00:03.000Z"),
+      event(
+        "m1",
+        "message.completed",
+        "Checking the surrounding code.",
+        "2026-05-12T15:00:03.000Z",
+      ),
       event("cmd2-start", "command.started", "command_execution", "2026-05-12T15:00:04.000Z", {
         id: "cmd2",
         name: "command_execution",
-        input: { command: '/bin/zsh -lc "rg -n useReviewState src"' }
+        input: { command: '/bin/zsh -lc "rg -n useReviewState src"' },
       }),
       event("cmd2-end", "command.completed", "command_execution", "2026-05-12T15:00:05.000Z", {
         id: "cmd2",
-        content: ""
+        content: "",
       }),
       event("cmd3-start", "command.started", "command_execution", "2026-05-12T15:00:06.000Z", {
         id: "cmd3",
         name: "command_execution",
-        input: { command: '/bin/zsh -lc "npm run lint"' }
+        input: { command: '/bin/zsh -lc "npm run lint"' },
       }),
       event("cmd3-end", "command.completed", "command_execution", "2026-05-12T15:00:07.000Z", {
         id: "cmd3",
-        content: ""
-      })
+        content: "",
+      }),
     ]);
 
     // Assistant prose is a real boundary: the first command belongs above the
@@ -940,21 +1073,34 @@ describe("SessionConversation — streaming & composer", () => {
     const groupedBurst = commandGroups[0];
     const firstUpdate = screen.getByText("Checking the surrounding code.");
     const singletonCommand = screen.getByText("sed -n '1,120p' src/a.ts");
-    expect(singletonCommand.compareDocumentPosition(firstUpdate) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(firstUpdate.compareDocumentPosition(groupedBurst) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(
+      singletonCommand.compareDocumentPosition(firstUpdate) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      firstUpdate.compareDocumentPosition(groupedBurst) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
     expect(screen.queryByText(/\/bin\/zsh/)).not.toBeInTheDocument();
   });
 
   it("renders image attachments as previews above user.message bubbles", () => {
-    const imagePath = "/Users/me/Library/Application Support/argmax/local-state/attachments/session-a/screenshot 1.png";
+    const imagePath =
+      "/Users/me/Library/Application Support/argmax/local-state/attachments/session-a/screenshot 1.png";
     const { container } = renderConversation(baseSession({ state: "running" }), [
-      event("u1", "user.message", `Check this screenshot @${imagePath}`, "2026-05-12T15:00:00.000Z", {
-        attachments: [{ filePath: imagePath, mimeType: "image/png", sizeBytes: 1234 }]
-      })
+      event(
+        "u1",
+        "user.message",
+        `Check this screenshot @${imagePath}`,
+        "2026-05-12T15:00:00.000Z",
+        {
+          attachments: [{ filePath: imagePath, mimeType: "image/png", sizeBytes: 1234 }],
+        },
+      ),
     ]);
 
     const image = screen.getByRole("img", { name: "Attached image: screenshot 1.png" });
-    const bubble = screen.getByText("Check this screenshot", { selector: "p" }).closest(".chat-bubble.user");
+    const bubble = screen
+      .getByText("Check this screenshot", { selector: "p" })
+      .closest(".chat-bubble.user");
     const attachmentStrip = image.closest(".user-message-attachments");
     expect(image).toHaveAttribute("src", attachmentProtocolUrl(imagePath));
     expect(bubble).not.toBeNull();
@@ -962,15 +1108,24 @@ describe("SessionConversation — streaming & composer", () => {
     expect(bubble?.contains(image)).toBe(false);
     expect(attachmentStrip?.nextElementSibling).toBe(bubble);
     expect(screen.queryByText("screenshot 1.png")).toBeNull();
-    expect(container.querySelector(".chat-bubble.user")?.textContent).not.toContain(`@${imagePath}`);
+    expect(container.querySelector(".chat-bubble.user")?.textContent).not.toContain(
+      `@${imagePath}`,
+    );
   });
 
   it("opens an attached screenshot in a pane-scoped preview", () => {
-    const imagePath = "/Users/me/Library/Application Support/argmax/local-state/attachments/session-a/screenshot 1.png";
+    const imagePath =
+      "/Users/me/Library/Application Support/argmax/local-state/attachments/session-a/screenshot 1.png";
     renderConversation(baseSession({ state: "running" }), [
-      event("u1", "user.message", `Check this screenshot @${imagePath}`, "2026-05-12T15:00:00.000Z", {
-        attachments: [{ filePath: imagePath, mimeType: "image/png", sizeBytes: 1234 }]
-      })
+      event(
+        "u1",
+        "user.message",
+        `Check this screenshot @${imagePath}`,
+        "2026-05-12T15:00:00.000Z",
+        {
+          attachments: [{ filePath: imagePath, mimeType: "image/png", sizeBytes: 1234 }],
+        },
+      ),
     ]);
 
     fireEvent.click(screen.getByRole("button", { name: "View image: screenshot 1.png" }));
@@ -987,7 +1142,7 @@ describe("SessionConversation — streaming & composer", () => {
 
   it("does not duplicate the user bubble once the real user.message event arrives", () => {
     renderConversation(baseSession({ state: "running", prompt: "@AGENTS.md" }), [
-      event("u1", "user.message", "@AGENTS.md", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "@AGENTS.md", "2026-05-12T15:00:00.000Z"),
     ]);
 
     // Only the real event's bubble — the synth must drop out of renderItems.
@@ -1004,8 +1159,8 @@ describe("SessionConversation — streaming & composer", () => {
         input: {
           subagent_type: "Explore",
           description: "Map documentation structure and identify gaps",
-          prompt: "Explore the documentation in this Tauri/React Argmax project."
-        }
+          prompt: "Explore the documentation in this Tauri/React Argmax project.",
+        },
       }),
       event(
         "m-subagent-prompt",
@@ -1015,17 +1170,19 @@ describe("SessionConversation — streaming & composer", () => {
         {
           type: "user",
           parent_tool_use_id: "toolu_parent_task",
-          subagent_type: "Explore"
-        }
-      )
+          subagent_type: "Explore",
+        },
+      ),
     ]);
 
     expect(
-      screen.getByLabelText(startedAgentName("Map documentation structure and identify gaps"))
+      screen.getByLabelText(startedAgentName("Map documentation structure and identify gaps")),
     ).toBeInTheDocument();
     // What must not come back is the echoed child bubble in the parent stream.
     expect(
-      screen.queryByText("Explore the documentation in this Tauri/React Argmax project.", { selector: "p" })
+      screen.queryByText("Explore the documentation in this Tauri/React Argmax project.", {
+        selector: "p",
+      }),
     ).not.toBeInTheDocument();
   });
   it("keeps Thinking for Codex during the pre-content wait after session.streaming", () => {
@@ -1035,7 +1192,7 @@ describe("SessionConversation — streaming & composer", () => {
     // working — it yields once a real message/tool arrives.
     renderConversation(baseSession({ provider: "codex", state: "running" }), [
       event("stream", "session.streaming", "", "2026-05-12T15:00:00.500Z"),
-      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z"),
     ]);
 
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
@@ -1053,14 +1210,14 @@ describe("SessionConversation — streaming & composer", () => {
       event("a1-end", "command.completed", "tool_result", "2026-05-12T15:00:01.100Z", {
         id: "tu_agent",
         content:
-          "Async agent launched successfully. (This tool result is internal metadata — never quote or paste any part of it into a user-facing reply.)"
+          "Async agent launched successfully. (This tool result is internal metadata — never quote or paste any part of it into a user-facing reply.)",
       }),
       event("a1", "command.started", "Agent", "2026-05-12T15:00:01.000Z", {
         id: "tu_agent",
         name: "Agent",
-        input: { description: "Research loading animation SOTA", prompt: "Research task." }
+        input: { description: "Research loading animation SOTA", prompt: "Research task." },
       }),
-      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z"),
     ]);
 
     await waitFor(() => expect(screen.queryByLabelText("Thinking")).toBeTruthy());
@@ -1077,9 +1234,9 @@ describe("SessionConversation — streaming & composer", () => {
       event("t1", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
         id: "tu_live",
         name: "Bash",
-        input: { command: "npm test" }
+        input: { command: "npm test" },
       }),
-      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z"),
     ]);
 
     await waitFor(() => expect(rendererLogSnapshot().length).toBeGreaterThan(0));
@@ -1099,15 +1256,20 @@ describe("SessionConversation — streaming & composer", () => {
       let events = [
         event("read-end", "command.completed", "Read", "2026-05-12T15:00:03.000Z", {
           id: "read",
-          content: "file contents"
+          content: "file contents",
         }),
         event("read", "command.started", "Read", "2026-05-12T15:00:02.000Z", {
           id: "read",
           name: "Read",
-          input: { file_path: "package.json" }
+          input: { file_path: "package.json" },
         }),
-        event("narration", "message.completed", "I will inspect the project first.", "2026-05-12T15:00:01.000Z"),
-        event("u1", "user.message", "Review the project", "2026-05-12T15:00:00.000Z")
+        event(
+          "narration",
+          "message.completed",
+          "I will inspect the project first.",
+          "2026-05-12T15:00:01.000Z",
+        ),
+        event("u1", "user.message", "Review the project", "2026-05-12T15:00:00.000Z"),
       ];
       const view = renderConversation(session, events, options);
       const activity = screen.getByRole("button", { name: /Read a file/ });
@@ -1115,7 +1277,7 @@ describe("SessionConversation — streaming & composer", () => {
 
       for (const [type, at] of [
         ["session.compacting", "2026-05-12T15:00:04.000Z"],
-        ["session.compacted", "2026-05-12T15:02:04.000Z"]
+        ["session.compacted", "2026-05-12T15:02:04.000Z"],
       ] as const) {
         events = [event(type, type, "", at), ...events];
         rerenderConversation(view.rerender, session, events, options);
@@ -1128,14 +1290,17 @@ describe("SessionConversation — streaming & composer", () => {
         expect(screen.queryByRole("button", { name: /^Worked/ })).not.toBeInTheDocument();
       }
 
-      events = [event("resumed", "message.completed", "I found the cause.", "2026-05-12T15:02:20.000Z"), ...events];
+      events = [
+        event("resumed", "message.completed", "I found the cause.", "2026-05-12T15:02:20.000Z"),
+        ...events,
+      ];
       rerenderConversation(view.rerender, session, events, options);
       expect(screen.getByText("I found the cause.")).toBeVisible();
       expect(screen.getAllByRole("button", { name: "Working" })).toHaveLength(1);
 
       rerenderConversation(view.rerender, { ...session, state: "complete" }, events, options);
       expect(screen.queryByRole("button", { name: "Working" })).not.toBeInTheDocument();
-    }
+    },
   );
 
   it("shows Thinking after a send even with a stranded compaction marker", async () => {
@@ -1151,11 +1316,15 @@ describe("SessionConversation — streaming & composer", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const events = [
       event("c1", "session.compacting", "", "2026-05-12T15:00:01.000Z"),
-      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z"),
     ];
-    const { rerender } = renderConversation(baseSession({ provider: "claude", state: "complete" }), events, {
-      onSendSessionInput
-    });
+    const { rerender } = renderConversation(
+      baseSession({ provider: "claude", state: "complete" }),
+      events,
+      {
+        onSendSessionInput,
+      },
+    );
 
     const box = screen.getByRole("textbox");
     fireEvent.change(box, { target: { value: "keep going" } });
@@ -1169,7 +1338,7 @@ describe("SessionConversation — streaming & composer", () => {
       rerender,
       baseSession({ provider: "claude", state: "running" }),
       [event("u2", "user.message", "keep going", "2026-05-12T15:01:00.000Z"), ...events],
-      { onSendSessionInput }
+      { onSendSessionInput },
     );
 
     await act(async () => {
@@ -1190,7 +1359,7 @@ describe("SessionConversation — streaming & composer", () => {
     renderConversation(
       baseSession({ provider: "claude", state: "failed" }),
       [event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")],
-      { onSendSessionInput }
+      { onSendSessionInput },
     );
 
     const box = screen.getByRole("textbox");
@@ -1211,32 +1380,47 @@ describe("SessionConversation — streaming & composer", () => {
     { provider: "codex" as const, prompt: "ask Curie to continue", hasReferences: true },
     { provider: "opencode" as const, prompt: "ask Curie to continue", hasReferences: true },
     { provider: "cursor" as const, prompt: "ask Curie to continue", hasReferences: true },
-    { provider: "cursor" as const, prompt: "ask Curie to continue", hasReferences: false, modelId: "composer-2.5" },
-    { provider: "opencode" as const, prompt: "ask Curieville to continue", hasReferences: false }
+    {
+      provider: "cursor" as const,
+      prompt: "ask Curie to continue",
+      hasReferences: false,
+      modelId: "composer-2.5",
+    },
+    { provider: "opencode" as const, prompt: "ask Curieville to continue", hasReferences: false },
   ])(
     "passes native child references for $provider follow-up only for a whole-word alias ($prompt)",
     async ({ provider, prompt, hasReferences, modelId }) => {
       const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
-      const nativeAgent = event("agent-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
-        type: "tool_use",
-        id: "task-root",
-        name: "Task",
-        input: { description: "investigate" },
-        providerChildSessionId: "child-native",
-        providerParentConversationId: "parent-native",
-        agentRootToolUseId: "task-root",
-        agentRunId: "task-root",
-        agentCodename: "Curie"
-      });
+      const nativeAgent = event(
+        "agent-start",
+        "command.started",
+        "Task",
+        "2026-05-12T15:00:01.000Z",
+        {
+          type: "tool_use",
+          id: "task-root",
+          name: "Task",
+          input: { description: "investigate" },
+          providerChildSessionId: "child-native",
+          providerParentConversationId: "parent-native",
+          agentRootToolUseId: "task-root",
+          agentRunId: "task-root",
+          agentCodename: "Curie",
+        },
+      );
       renderConversation(
         baseSession({
           provider,
           state: "complete",
-          ...(modelId ? { modelId } : provider === "cursor" ? { modelId: "cursor-grok-4.6-medium" } : {}),
-          providerConversationId: "parent-native"
+          ...(modelId
+            ? { modelId }
+            : provider === "cursor"
+              ? { modelId: "cursor-grok-4.6-medium" }
+              : {}),
+          providerConversationId: "parent-native",
         }),
         [nativeAgent],
-        { onSendSessionInput }
+        { onSendSessionInput },
       );
 
       const box = screen.getByRole("textbox");
@@ -1250,13 +1434,13 @@ describe("SessionConversation — streaming & composer", () => {
           {
             name: "Curie",
             providerChildSessionId: "child-native",
-            providerParentConversationId: "parent-native"
-          }
+            providerParentConversationId: "parent-native",
+          },
         ]);
       } else {
         expect(call).toHaveLength(5);
       }
-    }
+    },
   );
 
   it.each([
@@ -1265,15 +1449,15 @@ describe("SessionConversation — streaming & composer", () => {
       currentModel: { modelLabel: "GPT-5.6 Terra", modelId: "gpt-5.6-terra" },
       switchedModel: "Sonnet 5.5",
       switchedProvider: "claude",
-      dialogName: "Switch this chat to Claude"
+      dialogName: "Switch this chat to Claude",
     },
     {
       currentProvider: "claude",
       currentModel: { modelLabel: "Sonnet 5.5", modelId: "claude-sonnet-5-5" },
       switchedModel: "GPT-5.6 Terra",
       switchedProvider: "codex",
-      dialogName: "Switch this chat to Codex"
-    }
+      dialogName: "Switch this chat to Codex",
+    },
   ] as const)(
     "sends after a $currentProvider to $switchedProvider switch without stale native references",
     async ({ currentProvider, currentModel, switchedModel, dialogName }) => {
@@ -1283,7 +1467,7 @@ describe("SessionConversation — streaming & composer", () => {
           provider: currentProvider,
           modelLabel: currentModel.modelLabel,
           modelId: currentModel.modelId,
-          providerConversationId: "parent-native"
+          providerConversationId: "parent-native",
         }),
         [
           event("agent-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
@@ -1295,17 +1479,17 @@ describe("SessionConversation — streaming & composer", () => {
             providerParentConversationId: "parent-native",
             agentRootToolUseId: "task-root",
             agentRunId: "task-root",
-            agentCodename: "Curie"
-          })
+            agentCodename: "Curie",
+          }),
         ],
-        { onSendSessionInput }
+        { onSendSessionInput },
       );
 
       fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
       fireEvent.click(
         within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", {
-          name: switchedModel
-        })
+          name: switchedModel,
+        }),
       );
       fireEvent.click(screen.getByRole("button", { name: "Switch" }));
       const box = screen.getByRole("textbox");
@@ -1315,7 +1499,7 @@ describe("SessionConversation — streaming & composer", () => {
       await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
       expect(screen.queryByRole("dialog", { name: dialogName })).toBeNull();
       expect(onSendSessionInput.mock.calls[0]).toHaveLength(5);
-    }
+    },
   );
 
   it("keeps the Thinking line's slot in the list whether or not the line is in it", () => {
@@ -1324,14 +1508,14 @@ describe("SessionConversation — streaming & composer", () => {
     // transcript and leaves the moment the answer starts, so the row has
     // to hold its space or a transcript pinned to the bottom jumps by its height.
     const live = renderConversation(baseSession({ provider: "codex", state: "running" }), [
-      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z"),
     ]);
     expect(screen.getByLabelText("Thinking").closest(".conversation-tail")).not.toBeNull();
     live.unmount();
 
     const settled = renderConversation(baseSession({ provider: "codex", state: "complete" }), [
       event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z"),
-      event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z")
+      event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
     ]);
     expect(screen.queryByLabelText("Thinking")).toBeNull();
     expect(settled.container.querySelector(".conversation-tail")).not.toBeNull();
@@ -1342,8 +1526,8 @@ describe("SessionConversation — streaming & composer", () => {
     const events = [
       event("u1", "user.message", "Review the change", "2026-05-12T15:00:00.000Z"),
       event("steer", "user.message", "Start with the tests", "2026-05-12T15:00:01.000Z", {
-        delivery: "steer"
-      })
+        delivery: "steer",
+      }),
     ];
     const view = renderConversation(session, events);
     expect(screen.getByText("Start with the tests")).toBeVisible();
@@ -1364,8 +1548,8 @@ describe("SessionConversation — streaming & composer", () => {
         event("task", "command.started", "Agent", "2026-05-12T15:00:01.000Z", {
           id: "reviewer",
           name: "Agent",
-          input: { description: "Review changes" }
-        })
+          input: { description: "Review changes" },
+        }),
       ];
       const options = { defaultToolCallsDisplay: "collapsed" as const };
       const view = renderConversation(session, events, options);
@@ -1379,26 +1563,35 @@ describe("SessionConversation — streaming & composer", () => {
           ...events,
           event(`steer-${index}`, "user.message", text, `2026-05-12T15:00:0${index + 2}.000Z`, {
             delivery: "steer",
-            attachments: [{ filePath: `/tmp/guidance-${index}.png`, mimeType: "image/png", sizeBytes: 1234 }]
+            attachments: [
+              { filePath: `/tmp/guidance-${index}.png`, mimeType: "image/png", sizeBytes: 1234 },
+            ],
           }),
-          event(`ack-${index}`, "message.completed", "Acknowledged.", `2026-05-12T15:00:0${index + 2}.000Z`, {
-            phase: "commentary"
-          })
+          event(
+            `ack-${index}`,
+            "message.completed",
+            "Acknowledged.",
+            `2026-05-12T15:00:0${index + 2}.000Z`,
+            {
+              phase: "commentary",
+            },
+          ),
         ];
         rerenderConversation(view.rerender, session, events, options);
         expect(prompt.closest("[data-turn-anchor]")).not.toBeNull();
         expect(screen.getByText(text).closest("[data-turn-anchor]")).toBeNull();
         expect(agent).toBeInTheDocument();
-        expect(screen.getByRole("img", { name: `Attached image: guidance-${index}.png` })).toHaveAttribute(
-          "src",
-          attachmentProtocolUrl(`/tmp/guidance-${index}.png`)
-        );
+        expect(
+          screen.getByRole("img", { name: `Attached image: guidance-${index}.png` }),
+        ).toHaveAttribute("src", attachmentProtocolUrl(`/tmp/guidance-${index}.png`));
         expect(screen.getAllByRole("button", { name: /Working/ })).toHaveLength(1);
         expect(screen.getByRole("button", { name: /Working/ })).toBe(workingChip);
         expect(screen.queryByRole("button", { name: /Worked/ })).not.toBeInTheDocument();
         const replies = screen.getAllByText("Acknowledged.");
         expect(replies).toHaveLength(index + 1);
-        expect(screen.getByText(text).compareDocumentPosition(replies[index])).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+        expect(screen.getByText(text).compareDocumentPosition(replies[index])).toBe(
+          Node.DOCUMENT_POSITION_FOLLOWING,
+        );
       }
 
       rerenderConversation(view.rerender, { ...session, state: "complete" }, events, options);
@@ -1415,15 +1608,17 @@ describe("SessionConversation — streaming & composer", () => {
         event("next-task", "command.started", "Read", "2026-05-12T15:00:05.000Z", {
           id: "next-read",
           name: "Read",
-          input: { file_path: "/tmp/another-change.ts" }
-        })
+          input: { file_path: "/tmp/another-change.ts" },
+        }),
       ];
       rerenderConversation(view.rerender, session, events, options);
       expect(prompt.closest("[data-turn-anchor]")).toBeNull();
-      expect(screen.getByText("Now review another change").closest("[data-turn-anchor]")).not.toBeNull();
+      expect(
+        screen.getByText("Now review another change").closest("[data-turn-anchor]"),
+      ).not.toBeNull();
       expect(screen.getAllByRole("button", { name: /Worked/ })).toHaveLength(1);
       expect(screen.getAllByRole("button", { name: /Working/ })).toHaveLength(1);
-    }
+    },
   );
 
   it("hides Thinking for Codex once a visible tool starts running", () => {
@@ -1433,8 +1628,8 @@ describe("SessionConversation — streaming & composer", () => {
       event("cmd-start", "command.started", "command_execution", "2026-05-12T15:00:01.000Z", {
         id: "cmd1",
         name: "command_execution",
-        input: { command: "/bin/zsh -lc 'ls'" }
-      })
+        input: { command: "/bin/zsh -lc 'ls'" },
+      }),
     ]);
 
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
@@ -1449,7 +1644,7 @@ describe("SessionConversation — streaming & composer", () => {
     // bubble, while still marking genuinely long mid-turn silences.
     renderConversation(baseSession({ provider: "claude", state: "running" }), [
       event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
-      event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z"),
     ]);
 
     expect(screen.getByText("Done.")).toBeInTheDocument();
@@ -1469,7 +1664,7 @@ describe("SessionConversation — streaming & composer", () => {
     vi.setSystemTime(new Date("2026-05-12T15:00:01.000Z"));
     const events = [
       event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
-      event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z"),
     ];
     const baseProps = {
       events,
@@ -1481,11 +1676,14 @@ describe("SessionConversation — streaming & composer", () => {
       project,
       rawOutputs: [],
       review: reviewStub(),
-      workspace
+      workspace,
     };
 
     const { rerender } = render(
-      <SessionConversation {...baseProps} session={baseSession({ provider: "claude", state: "running" })} />
+      <SessionConversation
+        {...baseProps}
+        session={baseSession({ provider: "claude", state: "running" })}
+      />,
     );
 
     expect(screen.getByText("Done.")).toBeInTheDocument();
@@ -1494,7 +1692,12 @@ describe("SessionConversation — streaming & composer", () => {
     });
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
 
-    rerender(<SessionConversation {...baseProps} session={baseSession({ provider: "claude", state: "complete" })} />);
+    rerender(
+      <SessionConversation
+        {...baseProps}
+        session={baseSession({ provider: "claude", state: "complete" })}
+      />,
+    );
     act(() => {
       vi.advanceTimersByTime(2000);
     });
@@ -1510,9 +1713,15 @@ describe("SessionConversation — streaming & composer", () => {
     // `running` until the provider process exits about a second after the last
     // message, so keying the hide on that flip left the label sitting under a
     // finished answer for that whole second.
-    const reasoning = event("r1", "message.delta", "**Drafting the summary**", "2026-05-12T15:00:01.000Z", {
-      thinking: true
-    });
+    const reasoning = event(
+      "r1",
+      "message.delta",
+      "**Drafting the summary**",
+      "2026-05-12T15:00:01.000Z",
+      {
+        thinking: true,
+      },
+    );
     const userMessage = event("u1", "user.message", "summarize it", "2026-05-12T15:00:00.000Z");
     const baseProps = {
       isLogOpen: false,
@@ -1523,12 +1732,12 @@ describe("SessionConversation — streaming & composer", () => {
       project,
       rawOutputs: [],
       review: reviewStub(),
-      workspace
+      workspace,
     };
     const running = baseSession({ provider: "codex", state: "running" });
 
     const { rerender } = render(
-      <SessionConversation {...baseProps} events={[reasoning, userMessage]} session={running} />
+      <SessionConversation {...baseProps} events={[reasoning, userMessage]} session={running} />,
     );
     act(() => {
       vi.advanceTimersByTime(700);
@@ -1543,10 +1752,10 @@ describe("SessionConversation — streaming & composer", () => {
         events={[
           event("m1", "message.completed", "Here is the summary.", "2026-05-12T15:00:03.000Z"),
           reasoning,
-          userMessage
+          userMessage,
         ]}
         session={running}
-      />
+      />,
     );
     // No advance: an answer takes the beat on the commit it lands on.
     expect(screen.getByText("Here is the summary.")).toBeInTheDocument();
@@ -1568,15 +1777,15 @@ describe("SessionConversation — streaming & composer", () => {
     renderConversation(baseSession({ provider: "claude", state: "running" }), [
       event("c1-end", "command.completed", "Bash", "2026-05-12T15:00:02.000Z", {
         tool_use_id: "tu_grep",
-        content: "match"
+        content: "match",
       }),
       event("c1", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
         type: "tool_use",
         id: "tu_grep",
         name: "Bash",
-        input: { command: "grep foo" }
+        input: { command: "grep foo" },
       }),
-      event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
     ]);
 
     expect(screen.getByRole("button", { name: "Ran grep foo" })).toBeInTheDocument();
@@ -1620,15 +1829,15 @@ describe("SessionConversation — streaming & composer", () => {
           type: "tool_use",
           id: `tu_${call}`,
           name: "Bash",
-          input: { command: `grep step-${call}` }
-        })
+          input: { command: `grep step-${call}` },
+        }),
       );
       advanceTo(startMs + 200);
       land(
         event(`c${call}-end`, "command.completed", "Bash", at(startMs + 200), {
           tool_use_id: `tu_${call}`,
-          content: "match"
-        })
+          content: "match",
+        }),
       );
       // Sample the whole gap, not only its ends: the cue must not surface at
       // any point inside it.
@@ -1649,15 +1858,15 @@ describe("SessionConversation — streaming & composer", () => {
     renderConversation(baseSession({ provider: "claude", state: "running" }), [
       event("c0-end", "command.completed", "Bash", "2026-05-12T15:00:00.400Z", {
         tool_use_id: "tu_0",
-        content: "match"
+        content: "match",
       }),
       event("c0", "command.started", "Bash", "2026-05-12T15:00:00.200Z", {
         type: "tool_use",
         id: "tu_0",
         name: "Bash",
-        input: { command: "grep foo" }
+        input: { command: "grep foo" },
       }),
-      event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
     ]);
 
     act(() => {
@@ -1694,14 +1903,17 @@ describe("SessionConversation — streaming & composer", () => {
       type: "tool_use",
       id: "tu_0",
       name: "Bash",
-      input: { command: "npm test" }
+      input: { command: "npm test" },
     });
     rerenderConversation(view.rerender, running, [started, first]);
     advanceTo(6_000);
     rerenderConversation(view.rerender, running, [
-      event("c0-end", "command.completed", "Bash", at(6_000), { tool_use_id: "tu_0", content: "ok" }),
+      event("c0-end", "command.completed", "Bash", at(6_000), {
+        tool_use_id: "tu_0",
+        content: "ok",
+      }),
       started,
-      first
+      first,
     ]);
 
     advanceTo(7_200);
@@ -1728,9 +1940,9 @@ describe("SessionConversation — streaming & composer", () => {
         type: "tool_use",
         id: "tu_bash",
         name: "Bash",
-        input: { command: "ls" }
+        input: { command: "ls" },
       }),
-      ...events
+      ...events,
     ]);
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
     expect(view.container.querySelector('.thinking-indicator[data-leaving="true"]')).not.toBeNull();
@@ -1751,15 +1963,15 @@ describe("SessionConversation — streaming & composer", () => {
     renderConversation(baseSession({ provider: "claude", state: "running" }), [
       event("c1-end", "command.completed", "Bash", "2026-05-12T15:00:02.000Z", {
         tool_use_id: "tu_grep",
-        content: "match"
+        content: "match",
       }),
       event("c1", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
         type: "tool_use",
         id: "tu_grep",
         name: "Bash",
-        input: { command: "grep foo" }
+        input: { command: "grep foo" },
       }),
-      event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
     ]);
 
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
@@ -1771,7 +1983,7 @@ describe("SessionConversation — streaming & composer", () => {
     vi.setSystemTime(new Date("2026-05-12T15:00:02.000Z"));
     renderConversation(baseSession({ provider: "claude", state: "running" }), [
       event("m1", "message.completed", "Now I'll edit the file.", "2026-05-12T15:00:01.000Z"),
-      event("u1", "user.message", "edit it", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "edit it", "2026-05-12T15:00:00.000Z"),
     ]);
 
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
@@ -1792,18 +2004,23 @@ describe("SessionConversation — streaming & composer", () => {
     // waits. Child tool rows fold under the launch row and never render here,
     // so a child heartbeat must not toggle the parent's Thinking label.
     const waiting = [
-      event("m1", "message.completed", "Exploration agent is running in the background.", "2026-05-12T15:00:03.000Z"),
+      event(
+        "m1",
+        "message.completed",
+        "Exploration agent is running in the background.",
+        "2026-05-12T15:00:03.000Z",
+      ),
       event("task-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
         tool_use_id: "toolu_task",
-        content: "Agent launched"
+        content: "Agent launched",
       }),
       event("task", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
         type: "tool_use",
         id: "toolu_task",
         name: "Task",
-        input: { description: "Explore this repo", prompt: "Explore the repo quickly." }
+        input: { description: "Explore this repo", prompt: "Explore the repo quickly." },
       }),
-      event("u1", "user.message", "launch a subagent", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "launch a subagent", "2026-05-12T15:00:00.000Z"),
     ];
     const baseProps = {
       isLogOpen: false,
@@ -1815,7 +2032,7 @@ describe("SessionConversation — streaming & composer", () => {
       rawOutputs: [],
       review: reviewStub(),
       session: baseSession({ provider: "claude", state: "running" }),
-      workspace
+      workspace,
     };
 
     const { rerender } = render(<SessionConversation {...baseProps} events={waiting} />);
@@ -1832,9 +2049,9 @@ describe("SessionConversation — streaming & composer", () => {
         id: "toolu_child",
         name: "Grep",
         input: { pattern: "thinking" },
-        parent_tool_use_id: "toolu_task"
+        parent_tool_use_id: "toolu_task",
       }),
-      ...waiting
+      ...waiting,
     ];
     rerender(<SessionConversation {...baseProps} events={childRunning} />);
     act(() => {
@@ -1845,9 +2062,9 @@ describe("SessionConversation — streaming & composer", () => {
     const childDone = [
       event("child-1-end", "command.completed", "tool_result", "2026-05-12T15:00:05.000Z", {
         tool_use_id: "toolu_child",
-        content: "match"
+        content: "match",
       }),
-      ...childRunning
+      ...childRunning,
     ];
     rerender(<SessionConversation {...baseProps} events={childDone} />);
     act(() => {
@@ -1864,14 +2081,18 @@ describe("SessionConversation — streaming & composer", () => {
     // working. The card itself conveys "waiting for you".
     renderConversation(baseSession({ provider: "claude", state: "running" }), [
       event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z", {
-        agentMode: "auto"
+        agentMode: "auto",
       }),
       event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
         type: "tool_use",
         id: "tu_q_running",
         name: "AskUserQuestion",
-        input: { questions: [{ question: "?", header: "?", multiSelect: false, options: [{ label: "A" }] }] }
-      })
+        input: {
+          questions: [
+            { question: "?", header: "?", multiSelect: false, options: [{ label: "A" }] },
+          ],
+        },
+      }),
       // No command.completed yet — tool still running.
     ]);
 
@@ -1885,20 +2106,24 @@ describe("SessionConversation — streaming & composer", () => {
     // free to indicate that the next turn is being processed.
     renderConversation(baseSession({ provider: "claude", state: "running" }), [
       event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z", {
-        agentMode: "auto"
+        agentMode: "auto",
       }),
       event("tu-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
         type: "tool_use",
         id: "tu_q_done",
         name: "AskUserQuestion",
-        input: { questions: [{ question: "?", header: "?", multiSelect: false, options: [{ label: "A" }] }] }
+        input: {
+          questions: [
+            { question: "?", header: "?", multiSelect: false, options: [{ label: "A" }] },
+          ],
+        },
       }),
       event("tu-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
         tool_use_id: "tu_q_done",
         content: "Answer questions?",
-        is_error: true
+        is_error: true,
       }),
-      event("u2", "user.message", "**Question**: A", "2026-05-12T15:00:03.000Z")
+      event("u2", "user.message", "**Question**: A", "2026-05-12T15:00:03.000Z"),
     ]);
 
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
@@ -1915,13 +2140,13 @@ describe("SessionConversation — streaming & composer", () => {
       event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
       // Repeat the same text to prove an older matching row cannot acknowledge
       // the optimistic send that follows it.
-      event("u1", "user.message", "and now the tests", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "and now the tests", "2026-05-12T15:00:00.000Z"),
     ];
     let resolveSend: (() => void) | undefined;
     const send = vi.fn(() =>
       new Promise<void>((resolve) => {
         resolveSend = resolve;
-      }).then(() => STARTED_TURN)
+      }).then(() => STARTED_TURN),
     );
     const { rerender } = render(
       <SessionConversation
@@ -1936,13 +2161,13 @@ describe("SessionConversation — streaming & composer", () => {
         review={reviewStub()}
         session={baseSession({ provider: "codex", state: "complete" })}
         workspace={workspace}
-      />
+      />,
     );
 
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Chat prompt"), {
-      target: { value: "and now the tests" }
+      target: { value: "and now the tests" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Send follow-up" }));
 
@@ -1962,7 +2187,10 @@ describe("SessionConversation — streaming & composer", () => {
 
     rerender(
       <SessionConversation
-        events={[event("u2", "user.message", "and now the tests", "2026-05-12T15:00:03.000Z"), ...previousTurn]}
+        events={[
+          event("u2", "user.message", "and now the tests", "2026-05-12T15:00:03.000Z"),
+          ...previousTurn,
+        ]}
         isLogOpen={false}
         onSendSessionInput={send}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
@@ -1973,7 +2201,7 @@ describe("SessionConversation — streaming & composer", () => {
         review={reviewStub()}
         session={baseSession({ provider: "codex", state: "running" })}
         workspace={workspace}
-      />
+      />,
     );
     expect(screen.getAllByText("and now the tests")).toHaveLength(2);
   });
@@ -1988,7 +2216,7 @@ describe("SessionConversation — streaming & composer", () => {
       <SessionConversation
         events={[
           event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
-          event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
+          event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z"),
         ]}
         isLogOpen={false}
         onSendSessionInput={vi.fn(() => new Promise<never>(() => {}))}
@@ -2000,7 +2228,7 @@ describe("SessionConversation — streaming & composer", () => {
         review={reviewStub()}
         session={baseSession({ provider: "claude", state: "running" })}
         workspace={workspace}
-      />
+      />,
     );
 
     const prompt = screen.getByLabelText("Chat prompt");
@@ -2019,7 +2247,7 @@ describe("SessionConversation — streaming & composer", () => {
     const session = baseSession({ provider: "codex", state: "complete" });
     const previousTurn = [
       event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
-      event("u1", "user.message", "start", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "start", "2026-05-12T15:00:00.000Z"),
     ];
     const { rerender } = renderConversation(session, previousTurn, { onSendSessionInput: send });
     const sendContinue = async (): Promise<void> => {
@@ -2036,7 +2264,7 @@ describe("SessionConversation — streaming & composer", () => {
       rerender,
       baseSession({ provider: "codex", state: "running" }),
       [event("u2", "user.message", "continue", "2026-05-12T15:00:02.000Z"), ...previousTurn],
-      { onSendSessionInput: send }
+      { onSendSessionInput: send },
     );
     expect(screen.getAllByText("continue")).toHaveLength(2);
 
@@ -2046,9 +2274,9 @@ describe("SessionConversation — streaming & composer", () => {
       [
         event("u3", "user.message", "continue", "2026-05-12T15:00:03.000Z"),
         event("u2", "user.message", "continue", "2026-05-12T15:00:02.000Z"),
-        ...previousTurn
+        ...previousTurn,
       ],
-      { onSendSessionInput: send }
+      { onSendSessionInput: send },
     );
     expect(screen.getAllByText("continue")).toHaveLength(2);
   });
@@ -2063,11 +2291,13 @@ describe("SessionConversation — streaming & composer", () => {
       baseSession({ provider: "opencode", state: "waiting" }),
       [
         event("m1", "message.completed", "Which scope?", "2026-05-12T15:00:01.000Z"),
-        event("u1", "user.message", "clean up old worktrees", "2026-05-12T15:00:00.000Z")
+        event("u1", "user.message", "clean up old worktrees", "2026-05-12T15:00:00.000Z"),
       ],
-      { onSendSessionInput: send }
+      { onSendSessionInput: send },
     );
-    fireEvent.change(screen.getByLabelText("Chat prompt"), { target: { value: "all good, thanks" } });
+    fireEvent.change(screen.getByLabelText("Chat prompt"), {
+      target: { value: "all good, thanks" },
+    });
     fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Enter" });
 
     // Past the cue's reveal delay, so a cue left counting would be on screen.
@@ -2083,7 +2313,7 @@ describe("SessionConversation — streaming & composer", () => {
     vi.useFakeTimers();
     const previousTurn = [
       event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
-      event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
+      event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z"),
     ];
     const baseProps = {
       isLogOpen: false,
@@ -2095,12 +2325,12 @@ describe("SessionConversation — streaming & composer", () => {
       rawOutputs: [],
       review: reviewStub(),
       session: baseSession({ provider: "codex", state: "running" }),
-      workspace
+      workspace,
     };
 
     const { rerender } = render(<SessionConversation {...baseProps} events={previousTurn} />);
     fireEvent.change(screen.getByLabelText("Chat prompt"), {
-      target: { value: "and now the tests" }
+      target: { value: "and now the tests" },
     });
     fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Enter" });
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
@@ -2109,7 +2339,7 @@ describe("SessionConversation — streaming & composer", () => {
     const answering = [
       event("d1", "message.delta", "Writing them now", "2026-05-12T15:00:04.000Z"),
       event("u2", "user.message", "and now the tests", "2026-05-12T15:00:03.000Z"),
-      ...previousTurn
+      ...previousTurn,
     ];
     // No timer advance: answer text is the frame the reader was waiting for,
     // so the cue yields it on the same commit rather than dissolving over it.
@@ -2138,11 +2368,11 @@ describe("SessionConversation — streaming & composer", () => {
         review={reviewStub()}
         session={baseSession({ provider: "codex", state: "complete" })}
         workspace={workspace}
-      />
+      />,
     );
 
     fireEvent.change(screen.getByLabelText("Chat prompt"), {
-      target: { value: "and now the tests" }
+      target: { value: "and now the tests" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Send follow-up" }));
     expect(screen.getByText("and now the tests")).toBeInTheDocument();
@@ -2165,10 +2395,10 @@ describe("SessionConversation — streaming & composer", () => {
     renderConversation(baseSession({ state: "complete" }), [
       event("e2", "error", "event payload truncated", "2026-05-12T15:00:01.000Z", {
         truncatedEventId: "truncated-1",
-        originalSize: 70_000
+        originalSize: 70_000,
       }),
       event("e1", "message.completed", "Done", "2026-05-12T15:00:00.000Z"),
-      event("u1", "user.message", "summarize this repo", "2026-05-12T14:59:59.000Z")
+      event("u1", "user.message", "summarize this repo", "2026-05-12T14:59:59.000Z"),
     ]);
 
     expect(screen.queryByText("event payload truncated")).not.toBeInTheDocument();
@@ -2184,20 +2414,20 @@ describe("SessionConversation — streaming & composer", () => {
         sessionId: "session-a",
         content: "add tests for the queue",
         agentMode: "auto",
-        queuedAt
+        queuedAt,
       },
       {
         id: "queued-2",
         sessionId: "session-a",
         content: "then run lint",
         agentMode: "auto",
-        queuedAt
-      }
+        queuedAt,
+      },
     ];
 
     renderConversation(baseSession({ state: "running" }), [], {
       pendingMessages: pending,
-      onCancelQueuedMessage: onCancel
+      onCancelQueuedMessage: onCancel,
     });
 
     expect(screen.getByText("add tests for the queue")).toBeInTheDocument();
@@ -2222,7 +2452,7 @@ describe("SessionConversation — streaming & composer", () => {
       () =>
         new Promise<void>((resolve) => {
           resolveSend = resolve;
-        })
+        }),
     );
     const pending: PendingMessage[] = [
       {
@@ -2230,22 +2460,24 @@ describe("SessionConversation — streaming & composer", () => {
         sessionId: "session-a",
         content: "use the simpler approach",
         agentMode: "auto",
-        queuedAt: "2026-05-12T15:30:30.000Z"
-      }
+        queuedAt: "2026-05-12T15:30:30.000Z",
+      },
     ];
 
     renderConversation(baseSession({ state: "running" }), [], {
       pendingMessages: pending,
-      onSendQueuedMessageNow
+      onSendQueuedMessageNow,
     });
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Send queued follow-up: use the simpler approach"
-      })
+        name: "Send queued follow-up: use the simpler approach",
+      }),
     );
 
-    await waitFor(() => expect(onSendQueuedMessageNow).toHaveBeenCalledWith("session-a", "queued-1", "interrupt"));
+    await waitFor(() =>
+      expect(onSendQueuedMessageNow).toHaveBeenCalledWith("session-a", "queued-1", "interrupt"),
+    );
     expect(screen.getByRole("button", { name: "Stop chat" })).toBeDisabled();
 
     resolveSend?.();
@@ -2260,22 +2492,24 @@ describe("SessionConversation — streaming & composer", () => {
         sessionId: "session-a",
         content: "Focus on the smallest change",
         agentMode: "auto",
-        queuedAt: "2026-05-12T15:30:30.000Z"
-      }
+        queuedAt: "2026-05-12T15:30:30.000Z",
+      },
     ];
 
     renderConversation(baseSession({ state: "running" }), [], {
       pendingMessages: pending,
-      onSendQueuedMessageNow
+      onSendQueuedMessageNow,
     });
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Steer queued follow-up: Focus on the smallest change"
-      })
+        name: "Steer queued follow-up: Focus on the smallest change",
+      }),
     );
 
-    await waitFor(() => expect(onSendQueuedMessageNow).toHaveBeenCalledWith("session-a", "queued-1", "steer"));
+    await waitFor(() =>
+      expect(onSendQueuedMessageNow).toHaveBeenCalledWith("session-a", "queued-1", "steer"),
+    );
     expect(screen.getByRole("button", { name: "Stop chat" })).toBeEnabled();
   });
 
@@ -2286,7 +2520,7 @@ describe("SessionConversation — streaming & composer", () => {
         modelId: "claude-sonnet-5-5",
         reasoningEffort: "high",
         agentMode: "auto",
-        state: "running"
+        state: "running",
       }),
       [],
       {
@@ -2298,22 +2532,22 @@ describe("SessionConversation — streaming & composer", () => {
             modelId: "claude-sonnet-5-5",
             reasoningEffort: "high",
             agentMode: "auto",
-            queuedAt: "2026-05-12T15:30:30.000Z"
-          }
-        ]
-      }
+            queuedAt: "2026-05-12T15:30:30.000Z",
+          },
+        ],
+      },
     );
 
     expect(
       screen.getByRole("button", {
-        name: "Steer queued follow-up: Keep the current tool running"
-      })
+        name: "Steer queued follow-up: Keep the current tool running",
+      }),
     ).toBeInTheDocument();
   });
 
   it.each([
     ["model", { modelId: "gpt-5.5" }],
-    ["reasoning effort", { reasoningEffort: "high" as const }]
+    ["reasoning effort", { reasoningEffort: "high" as const }],
   ])("hides Steer when the queued %s does not match the active turn", (_field, override) => {
     renderConversation(baseSession({ state: "running" }), [], {
       pendingMessages: [
@@ -2323,15 +2557,15 @@ describe("SessionConversation — streaming & composer", () => {
           content: "Use the existing helper",
           agentMode: "auto",
           queuedAt: "2026-05-12T15:30:30.000Z",
-          ...override
-        }
-      ]
+          ...override,
+        },
+      ],
     });
 
     expect(
       screen.queryByRole("button", {
-        name: "Steer queued follow-up: Use the existing helper"
-      })
+        name: "Steer queued follow-up: Use the existing helper",
+      }),
     ).not.toBeInTheDocument();
   });
 
@@ -2343,13 +2577,13 @@ describe("SessionConversation — streaming & composer", () => {
           sessionId: "session-a",
           content: "Use the existing helper",
           agentMode: "auto",
-          queuedAt: "2026-05-12T15:30:30.000Z"
-        }
-      ]
+          queuedAt: "2026-05-12T15:30:30.000Z",
+        },
+      ],
     });
 
     expect(
-      screen.queryByRole("button", { name: "Steer queued follow-up: Use the existing helper" })
+      screen.queryByRole("button", { name: "Steer queued follow-up: Use the existing helper" }),
     ).not.toBeInTheDocument();
   });
 
@@ -2361,13 +2595,15 @@ describe("SessionConversation — streaming & composer", () => {
           sessionId: "session-a",
           content: "Keep the tool running",
           agentMode: "auto",
-          queuedAt: "2026-05-12T15:30:30.000Z"
-        }
+          queuedAt: "2026-05-12T15:30:30.000Z",
+        },
       ],
-      onSendQueuedMessageNow: vi.fn().mockRejectedValue(new Error("turn already completed"))
+      onSendQueuedMessageNow: vi.fn().mockRejectedValue(new Error("turn already completed")),
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Steer queued follow-up: Keep the tool running" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Steer queued follow-up: Keep the tool running" }),
+    );
 
     await waitFor(() => expect(toastSnapshot()?.message).toBe("turn already completed"));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -2379,12 +2615,12 @@ describe("SessionConversation — streaming & composer", () => {
     const queuedAt = "2026-05-12T15:30:30.000Z";
     const pending: PendingMessage[] = [
       { id: "queued-1", sessionId: "session-a", content: "first", agentMode: "auto", queuedAt },
-      { id: "queued-2", sessionId: "session-a", content: "second", agentMode: "auto", queuedAt }
+      { id: "queued-2", sessionId: "session-a", content: "second", agentMode: "auto", queuedAt },
     ];
 
     renderConversation(baseSession({ state: "running" }), [], {
       pendingMessages: pending,
-      onCancelQueuedMessage: onCancel
+      onCancelQueuedMessage: onCancel,
     });
 
     const firstChip = screen.getByLabelText("Queued follow-up: first");
@@ -2409,14 +2645,19 @@ describe("SessionConversation — streaming & composer", () => {
   // never reaches the user during the pre-answer thinking window.
   it("suppresses the raw-stdout transcript once session.streaming fires", () => {
     const sess = baseSession({ id: "session-a", state: "running" });
-    const userEvent: TimelineEvent = event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z");
+    const userEvent: TimelineEvent = event(
+      "u1",
+      "user.message",
+      "explore",
+      "2026-05-12T15:00:00.000Z",
+    );
     const streamingBeacon: TimelineEvent = {
       id: "ss-1",
       sessionId: sess.id,
       type: "session.streaming",
       message: "",
       payload: {},
-      createdAt: "2026-05-12T15:00:00.500Z"
+      createdAt: "2026-05-12T15:00:00.500Z",
     };
     // Two raw chunks that together exceed an 8 KB stream-json line without
     // ever forming a complete `{...}` parseable object. `buildTerminalTranscript`
@@ -2430,8 +2671,8 @@ describe("SessionConversation — streaming & composer", () => {
         sessionId: sess.id,
         stream: "stdout",
         content: '{"type":"system","subtype":"init","cwd":"/x","tools":["A"',
-        createdAt: "2026-05-12T15:00:00.700Z"
-      }
+        createdAt: "2026-05-12T15:00:00.700Z",
+      },
     ];
 
     const baseProps = {
@@ -2443,13 +2684,15 @@ describe("SessionConversation — streaming & composer", () => {
       project,
       review: reviewStub(),
       session: sess,
-      workspace
+      workspace,
     } as const;
 
     // Without the beacon: transcript fallback should appear so the existing
     // behaviour for non-stream-json providers (where raw stdout IS the
     // human-readable output) keeps working.
-    const without = render(<SessionConversation {...baseProps} events={[userEvent]} rawOutputs={rawOutputs} />);
+    const without = render(
+      <SessionConversation {...baseProps} events={[userEvent]} rawOutputs={rawOutputs} />,
+    );
     expect(without.container.querySelector(".terminal-transcript")).not.toBeNull();
     cleanup();
 
@@ -2457,7 +2700,11 @@ describe("SessionConversation — streaming & composer", () => {
     // any normalized text yet. The chat shows an empty/Thinking state instead
     // of the JSON wall.
     const withBeacon = render(
-      <SessionConversation {...baseProps} events={[streamingBeacon, userEvent]} rawOutputs={rawOutputs} />
+      <SessionConversation
+        {...baseProps}
+        events={[streamingBeacon, userEvent]}
+        rawOutputs={rawOutputs}
+      />,
     );
     expect(withBeacon.container.querySelector(".terminal-transcript")).toBeNull();
   });

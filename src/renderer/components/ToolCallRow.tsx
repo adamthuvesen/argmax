@@ -9,7 +9,7 @@ import {
   isWebToolName,
   parseMcpToolName,
   splitLeadingVerb,
-  type ToolCall
+  type ToolCall,
 } from "../lib/toolCalls.js";
 import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
@@ -49,7 +49,7 @@ function ToolCallRowInner({
   onExpandedChange,
   agentCodename,
   onOpenFile,
-  onOpenAgent
+  onOpenAgent,
 }: {
   tool: ToolCall;
   childTools?: ToolCall[];
@@ -65,7 +65,8 @@ function ToolCallRowInner({
   // this row. That keeps the turn chip authoritative for single-tool rows
   // (including MCP calls) while preserving per-row overrides.
   const [userToggle, setUserToggle] = useState<UserToggle | null>(null);
-  const localExpanded = userToggle && userToggle.defaultExpanded === defaultExpanded ? userToggle.value : null;
+  const localExpanded =
+    userToggle && userToggle.defaultExpanded === defaultExpanded ? userToggle.value : null;
 
   // Agent rows get a deterministic codename so the same spawn is recognizable
   // across the chat row, its tab, and its activity pane. Keep the verb "Started
@@ -77,21 +78,31 @@ function ToolCallRowInner({
     : describeToolAction(tool);
   const baseSplit = splitLeadingVerb(action);
 
-  const changes = useMemo(() => interpretFileChange(tool.name, tool.inputFull), [tool.name, tool.inputFull]);
+  const changes = useMemo(
+    () => interpretFileChange(tool.name, tool.inputFull),
+    [tool.name, tool.inputFull],
+  );
   const counts =
-    tool.status === "done" && !tool.cancelled && tool.completionObserved !== false && changes && changes.length > 0
+    tool.status === "done" &&
+    !tool.cancelled &&
+    tool.completionObserved !== false &&
+    changes &&
+    changes.length > 0
       ? summarizeFileChanges(changes)
       : null;
-  const overrideVerb = !tool.activity && counts && changes && changes.length > 0 ? verbForChanges(changes) : null;
+  const overrideVerb =
+    !tool.activity && counts && changes && changes.length > 0 ? verbForChanges(changes) : null;
   const verb = overrideVerb ?? baseSplit.verb;
   const target = baseSplit.rest;
   const toolTypeBucket = getToolTypeBucket(tool.name);
   const mcpServer = parseMcpToolName(tool.name)?.server ?? null;
-  const iconServer = tool.activity?.kind === "computer" ? null : (mcpServer ?? commandIconServer(tool));
+  const iconServer =
+    tool.activity?.kind === "computer" ? null : (mcpServer ?? commandIconServer(tool));
   const iconKind = tool.activity?.kind ?? "tool";
   // A delete is a file change, not a failure: it keeps the edit colour so red
   // stays the mark of work that did not finish.
-  const iconIsDanger = tool.status === "error" || tool.cancelled === true || iconKind === "agent-stop";
+  const iconIsDanger =
+    tool.status === "error" || tool.cancelled === true || iconKind === "agent-stop";
   const hasLeadingContent = Boolean(childTools && childTools.length > 0);
   const hasDetail = toolCallHasExpandableDetail(tool, { hasLeadingContent });
   // A backgrounded launch is marked running by inference, not by evidence:
@@ -145,7 +156,9 @@ function ToolCallRowInner({
         )}
       </span>
       <span className="tool-call-row-verb reading-wave-text">{verb}</span>
-      {target ? <span className="tool-call-row-target reading-wave-text">{shortenPathsInText(target)}</span> : null}
+      {target ? (
+        <span className="tool-call-row-target reading-wave-text">{shortenPathsInText(target)}</span>
+      ) : null}
       {counts ? <ActivityStat counts={counts} /> : null}
       {opensAgentPane || inertAgentRow || !hasDetail ? null : (
         <ChevronRight size={11} className="tool-call-row-chevron" aria-hidden="true" />
@@ -156,7 +169,7 @@ function ToolCallRowInner({
   const rowButtonProps = {
     ref: setRowButton,
     className: "tool-call-row-button",
-    "data-reading-wave": isRunning ? "true" : undefined
+    "data-reading-wave": isRunning ? "true" : undefined,
   };
   const rowButton = opensAgentPane ? (
     <button {...rowButtonProps} type="button" aria-label={action} onClick={() => onOpenAgent(tool)}>
@@ -165,7 +178,13 @@ function ToolCallRowInner({
   ) : inertAgentRow ? (
     <div {...rowButtonProps}>{rowContent}</div>
   ) : hasDetail ? (
-    <button {...rowButtonProps} type="button" aria-expanded={expanded} aria-label={action} onClick={toggleExpanded}>
+    <button
+      {...rowButtonProps}
+      type="button"
+      aria-expanded={expanded}
+      aria-label={action}
+      onClick={toggleExpanded}
+    >
       {rowContent}
     </button>
   ) : (

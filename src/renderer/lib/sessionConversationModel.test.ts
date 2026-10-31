@@ -8,7 +8,7 @@ import {
   lastSignificantSessionEvent,
   eventsAfterLatestClear,
   openRunMarkerAt,
-  subAgentToolUseIds
+  subAgentToolUseIds,
 } from "./sessionConversationModel.js";
 
 function event(
@@ -16,7 +16,7 @@ function event(
   type: EventType,
   createdAt: string,
   message = id,
-  payload: Record<string, unknown> = {}
+  payload: Record<string, unknown> = {},
 ): TimelineEvent {
   return {
     id,
@@ -24,7 +24,7 @@ function event(
     type,
     message,
     payload,
-    createdAt
+    createdAt,
   };
 }
 
@@ -32,25 +32,37 @@ function codexSpawnEvents(children: readonly string[]): TimelineEvent[] {
   return children.flatMap((child, index) => {
     const second = index + 1;
     return [
-      event(`spawn-${child}-end`, "command.completed", `2026-05-12T15:00:0${second}.500Z`, "spawn_agent", {
-        id: `spawn-${child}`,
-        name: "spawn_agent",
-        status: "completed",
-        input: {
-          prompt: `Inspect ${child}.`,
-          receiver_thread_ids: [`thread-${child}`],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event(`spawn-${child}-start`, "command.started", `2026-05-12T15:00:0${second}.000Z`, "spawn_agent", {
-        id: `spawn-${child}`,
-        name: "spawn_agent",
-        input: {
-          prompt: `Inspect ${child}.`,
-          receiver_thread_ids: [],
-          sender_thread_id: "thread-parent"
-        }
-      })
+      event(
+        `spawn-${child}-end`,
+        "command.completed",
+        `2026-05-12T15:00:0${second}.500Z`,
+        "spawn_agent",
+        {
+          id: `spawn-${child}`,
+          name: "spawn_agent",
+          status: "completed",
+          input: {
+            prompt: `Inspect ${child}.`,
+            receiver_thread_ids: [`thread-${child}`],
+            sender_thread_id: "thread-parent",
+          },
+        },
+      ),
+      event(
+        `spawn-${child}-start`,
+        "command.started",
+        `2026-05-12T15:00:0${second}.000Z`,
+        "spawn_agent",
+        {
+          id: `spawn-${child}`,
+          name: "spawn_agent",
+          input: {
+            prompt: `Inspect ${child}.`,
+            receiver_thread_ids: [],
+            sender_thread_id: "thread-parent",
+          },
+        },
+      ),
     ];
   });
 }
@@ -61,17 +73,21 @@ describe("buildConversationEvents", () => {
       event("done", "message.completed", "2026-05-12T15:00:04.000Z", "Final answer"),
       event("raw", "message.completed", "2026-05-12T15:00:03.900Z", "raw", { raw: true }),
       event("delta", "message.delta", "2026-05-12T15:00:03.000Z", "Final "),
-      event("thinking", "message.delta", "2026-05-12T15:00:02.000Z", "Reasoning", { thinking: true }),
-      event("subagent", "message.delta", "2026-05-12T15:00:01.500Z", "echo", { parent_tool_use_id: "tool-1" }),
+      event("thinking", "message.delta", "2026-05-12T15:00:02.000Z", "Reasoning", {
+        thinking: true,
+      }),
+      event("subagent", "message.delta", "2026-05-12T15:00:01.500Z", "echo", {
+        parent_tool_use_id: "tool-1",
+      }),
       event("codex-agent", "message.completed", "2026-05-12T15:00:01.450Z", "child update", {
         item_type: "agent_message",
-        thread_id: "thread-child"
+        thread_id: "thread-child",
       }),
       event("truncated", "error", "2026-05-12T15:00:01.400Z", "event payload truncated", {
-        truncatedEventId: "big"
+        truncatedEventId: "big",
       }),
       event("turn", "message.completed", "2026-05-12T15:00:01.300Z", "turn.completed"),
-      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go"),
     ];
 
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "thinking", "done"]);
@@ -87,10 +103,10 @@ describe("buildConversationEvents", () => {
         "2026-05-12T15:00:02.000Z",
         "Resuming the archive scheduled before Argmax last quit.",
         {
-          operation: "workspace.archive"
-        }
+          operation: "workspace.archive",
+        },
       ),
-      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go"),
     ];
 
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "note"]);
@@ -100,24 +116,26 @@ describe("buildConversationEvents", () => {
     const events = [
       event("new", "user.message", "2026-05-12T15:00:03.000Z", "after"),
       event("clear", "session.cleared", "2026-05-12T15:00:02.000Z", "Cleared conversation."),
-      event("old", "user.message", "2026-05-12T15:00:01.000Z", "before")
+      event("old", "user.message", "2026-05-12T15:00:01.000Z", "before"),
     ];
     expect(eventsAfterLatestClear(events).map((e) => e.id)).toEqual(["new"]);
-    expect(buildConversationEvents(eventsAfterLatestClear(events)).map((e) => e.id)).toEqual(["new"]);
+    expect(buildConversationEvents(eventsAfterLatestClear(events)).map((e) => e.id)).toEqual([
+      "new",
+    ]);
   });
 
   it("keeps parent Codex agent_message rows when they are not child-thread messages", () => {
     const events = [
       event("parent-final", "message.completed", "2026-05-12T15:00:03.000Z", "Parent answer", {
         item_type: "agent_message",
-        item: { id: "item_6", type: "agent_message", text: "Parent answer" }
+        item: { id: "item_6", type: "agent_message", text: "Parent answer" },
       }),
       event("child-agent", "message.completed", "2026-05-12T15:00:02.000Z", "Child answer", {
         item_type: "agent_message",
         thread_id: "thread-child",
-        item: { id: "item_child", type: "agent_message", text: "Child answer" }
+        item: { id: "item_child", type: "agent_message", text: "Child answer" },
       }),
-      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go"),
     ];
 
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "parent-final"]);
@@ -127,33 +145,45 @@ describe("buildConversationEvents", () => {
     const events = [
       event("delta-2", "message.delta", "2026-05-12T15:00:03.000Z", "there"),
       event("delta-1", "message.delta", "2026-05-12T15:00:02.000Z", "Hi "),
-      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go"),
     ];
 
-    expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "delta-1", "delta-2"]);
+    expect(buildConversationEvents(events).map((e) => e.id)).toEqual([
+      "user",
+      "delta-1",
+      "delta-2",
+    ]);
   });
 
   it("keeps an unfinished answer when the next user turn arrives", () => {
     const events = [
       event("follow-up", "user.message", "2026-05-12T15:00:03.000Z", "Next question"),
       event("delta", "message.delta", "2026-05-12T15:00:02.000Z", "Unfinished answer"),
-      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go"),
     ];
 
-    expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "delta", "follow-up"]);
+    expect(buildConversationEvents(events).map((e) => e.id)).toEqual([
+      "user",
+      "delta",
+      "follow-up",
+    ]);
   });
 
   it("keeps a steer in the active turn without treating it as a new boundary", () => {
     const events = [
       event("done", "message.completed", "2026-05-12T15:00:04.000Z", "Final answer"),
       event("steer", "user.message", "2026-05-12T15:00:03.000Z", "Use the existing helper", {
-        delivery: "steer"
+        delivery: "steer",
       }),
       event("delta", "message.delta", "2026-05-12T15:00:02.000Z", "Final "),
-      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go"),
     ];
 
-    expect(buildConversationEvents(events).map((event) => event.id)).toEqual(["user", "steer", "done"]);
+    expect(buildConversationEvents(events).map((event) => event.id)).toEqual([
+      "user",
+      "steer",
+      "done",
+    ]);
   });
 
   it("keeps pre-tool narration when a later completed answer lands", () => {
@@ -161,10 +191,10 @@ describe("buildConversationEvents", () => {
       event("done", "message.completed", "2026-05-12T15:00:05.000Z", "Final answer"),
       event("tool", "command.started", "2026-05-12T15:00:03.000Z", "", {
         id: "tool-1",
-        name: "Read"
+        name: "Read",
       }),
       event("intro", "message.delta", "2026-05-12T15:00:02.000Z", "Reading the file first."),
-      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go"),
     ];
 
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "intro", "done"]);
@@ -172,13 +202,18 @@ describe("buildConversationEvents", () => {
 
   it("drops a pre-tool delta that is only a prefix of the completed answer", () => {
     const events = [
-      event("done", "message.completed", "2026-05-12T15:00:05.000Z", "Verification agent is running."),
+      event(
+        "done",
+        "message.completed",
+        "2026-05-12T15:00:05.000Z",
+        "Verification agent is running.",
+      ),
       event("tool", "command.started", "2026-05-12T15:00:04.000Z", "", {
         id: "tool-1",
-        name: "Bash"
+        name: "Bash",
       }),
       event("prefix", "message.delta", "2026-05-12T15:00:03.000Z", "Ver"),
-      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go"),
     ];
 
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "done"]);
@@ -191,10 +226,10 @@ describe("buildConversationEvents", () => {
       event("child-tool", "command.started", "2026-05-12T15:00:02.000Z", "Bash", {
         id: "child-tool-1",
         name: "Bash",
-        parent_tool_use_id: "task-1"
+        parent_tool_use_id: "task-1",
       }),
       event("prefix", "message.delta", "2026-05-12T15:00:01.000Z", "H"),
-      event("user", "user.message", "2026-05-12T15:00:00.000Z", "Go")
+      event("user", "user.message", "2026-05-12T15:00:00.000Z", "Go"),
     ];
 
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "done"]);
@@ -205,14 +240,19 @@ describe("buildConversationEvents", () => {
       event("c2", "message.completed", "2026-05-12T15:00:07.000Z", "Final conclusion."),
       event("d6", "message.delta", "2026-05-12T15:00:06.000Z", "ion."),
       event("d5", "message.delta", "2026-05-12T15:00:05.000Z", "Final conclus"),
-      event("tool-res", "command.completed", "2026-05-12T15:00:04.000Z", "ok", { tool_use_id: "tool-1" }),
-      event("tool", "command.started", "2026-05-12T15:00:03.000Z", "read_file", { id: "tool-1", name: "read_file" }),
+      event("tool-res", "command.completed", "2026-05-12T15:00:04.000Z", "ok", {
+        tool_use_id: "tool-1",
+      }),
+      event("tool", "command.started", "2026-05-12T15:00:03.000Z", "read_file", {
+        id: "tool-1",
+        name: "read_file",
+      }),
       event("c1", "message.completed", "2026-05-12T15:00:02.500Z", "I will inspect the file."),
       event("d4", "message.delta", "2026-05-12T15:00:02.400Z", "file."),
       event("d3", "message.delta", "2026-05-12T15:00:02.300Z", " the "),
       event("d2", "message.delta", "2026-05-12T15:00:02.200Z", "inspect"),
       event("d1", "message.delta", "2026-05-12T15:00:02.100Z", "I will "),
-      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go"),
     ];
 
     expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "c1", "c2"]);
@@ -220,18 +260,35 @@ describe("buildConversationEvents", () => {
 
   it("keeps multitask rows, which are chat cards rather than provider output", () => {
     const events = [
-      event("mt-done", "multitask.finished", "2026-05-12T15:00:05.000Z", "Fix the typo finished alongside", {
-        childSessionId: "child-1",
-        state: "complete"
-      }),
+      event(
+        "mt-done",
+        "multitask.finished",
+        "2026-05-12T15:00:05.000Z",
+        "Fix the typo finished alongside",
+        {
+          childSessionId: "child-1",
+          state: "complete",
+        },
+      ),
       event("done", "message.completed", "2026-05-12T15:00:04.000Z", "Final answer"),
-      event("mt-start", "multitask.launched", "2026-05-12T15:00:02.000Z", "Running alongside: Fix the typo", {
-        childSessionId: "child-1"
-      }),
-      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+      event(
+        "mt-start",
+        "multitask.launched",
+        "2026-05-12T15:00:02.000Z",
+        "Running alongside: Fix the typo",
+        {
+          childSessionId: "child-1",
+        },
+      ),
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go"),
     ];
 
-    expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "mt-start", "done", "mt-done"]);
+    expect(buildConversationEvents(events).map((e) => e.id)).toEqual([
+      "user",
+      "mt-start",
+      "done",
+      "mt-done",
+    ]);
   });
 });
 
@@ -240,16 +297,27 @@ describe("hasRenderableSessionContent", () => {
     const onlyUser = [event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")];
     expect(hasRenderableSessionContent(buildConversationEvents(onlyUser), onlyUser)).toBe(false);
 
-    const withAssistant = [event("done", "message.completed", "2026-05-12T15:00:02.000Z", "Done"), ...onlyUser];
-    expect(hasRenderableSessionContent(buildConversationEvents(withAssistant), withAssistant)).toBe(true);
+    const withAssistant = [
+      event("done", "message.completed", "2026-05-12T15:00:02.000Z", "Done"),
+      ...onlyUser,
+    ];
+    expect(hasRenderableSessionContent(buildConversationEvents(withAssistant), withAssistant)).toBe(
+      true,
+    );
 
     const withTool = [
-      event("tool", "command.started", "2026-05-12T15:00:02.000Z", "", { id: "tool-1", name: "Read" }),
-      ...onlyUser
+      event("tool", "command.started", "2026-05-12T15:00:02.000Z", "", {
+        id: "tool-1",
+        name: "Read",
+      }),
+      ...onlyUser,
     ];
     expect(hasRenderableSessionContent(buildConversationEvents(withTool), withTool)).toBe(true);
 
-    const withBeacon = [event("beacon", "session.streaming", "2026-05-12T15:00:02.000Z"), ...onlyUser];
+    const withBeacon = [
+      event("beacon", "session.streaming", "2026-05-12T15:00:02.000Z"),
+      ...onlyUser,
+    ];
     expect(hasRenderableSessionContent(buildConversationEvents(withBeacon), withBeacon)).toBe(true);
   });
 });
@@ -265,7 +333,10 @@ describe("openRunMarkerAt", () => {
     const closers: EventType[] = ["session.completed", "session.cancelled", "error"];
     for (const type of closers) {
       expect(
-        openRunMarkerAt([event("close", type, "2026-05-12T15:00:03.000Z"), beacon("2026-05-12T15:00:02.000Z")])
+        openRunMarkerAt([
+          event("close", type, "2026-05-12T15:00:03.000Z"),
+          beacon("2026-05-12T15:00:02.000Z"),
+        ]),
       ).toBeNull();
     }
   });
@@ -275,18 +346,18 @@ describe("openRunMarkerAt", () => {
     expect(
       openRunMarkerAt([
         event("truncated", "error", "2026-05-12T15:00:03.000Z", "event payload truncated", {
-          truncatedEventId: "e1"
+          truncatedEventId: "e1",
         }),
-        beacon("2026-05-12T15:00:02.000Z")
-      ])
+        beacon("2026-05-12T15:00:02.000Z"),
+      ]),
     ).toBe("2026-05-12T15:00:02.000Z");
 
     expect(
       openRunMarkerAt([
         beacon("2026-05-12T15:00:04.000Z"),
         event("close", "session.completed", "2026-05-12T15:00:03.000Z"),
-        beacon("2026-05-12T15:00:02.000Z")
-      ])
+        beacon("2026-05-12T15:00:02.000Z"),
+      ]),
     ).toBe("2026-05-12T15:00:04.000Z");
   });
 });
@@ -297,17 +368,17 @@ describe("buildSessionToolCalls", () => {
       event("bash-start", "command.started", "2026-05-12T15:00:03.000Z", "", {
         id: "bash-1",
         name: "Bash",
-        input: { command: "npm test" }
+        input: { command: "npm test" },
       }),
       event("read-done", "command.completed", "2026-05-12T15:00:02.000Z", "", {
         tool_use_id: "read-1",
-        content: "ok"
+        content: "ok",
       }),
       event("read-start", "command.started", "2026-05-12T15:00:01.000Z", "", {
         id: "read-1",
         name: "Read",
-        input: { file_path: "src/renderer/App.tsx" }
-      })
+        input: { file_path: "src/renderer/App.tsx" },
+      }),
     ];
 
     const tools = buildSessionToolCalls(events);
@@ -319,13 +390,13 @@ describe("buildSessionToolCalls", () => {
       inputPreview: "src/renderer/App.tsx",
       output: "ok",
       status: "done",
-      completionObserved: true
+      completionObserved: true,
     });
     expect(tools[1]).toMatchObject({
       name: "Bash",
       inputPreview: "npm test",
       status: "running",
-      completedAt: null
+      completedAt: null,
     });
   });
 
@@ -336,25 +407,25 @@ describe("buildSessionToolCalls", () => {
       event("second-end", "command.completed", "2026-05-12T15:10:02.000Z", "tool_result", {
         tool_use_id: "toolu_1",
         content: "second",
-        providerInvocationId: "inv-2"
+        providerInvocationId: "inv-2",
       }),
       event("second-start", "command.started", "2026-05-12T15:10:01.000Z", "Read", {
         id: "toolu_1",
         name: "Read",
         input: { file_path: "b.ts" },
-        providerInvocationId: "inv-2"
+        providerInvocationId: "inv-2",
       }),
       event("first-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
         tool_use_id: "toolu_1",
         content: "first",
-        providerInvocationId: "inv-1"
+        providerInvocationId: "inv-1",
       }),
       event("first-start", "command.started", "2026-05-12T15:00:01.000Z", "Read", {
         id: "toolu_1",
         name: "Read",
         input: { file_path: "a.ts" },
-        providerInvocationId: "inv-1"
-      })
+        providerInvocationId: "inv-1",
+      }),
     ];
 
     const tools = buildSessionToolCalls(events, false);
@@ -370,20 +441,20 @@ describe("buildSessionToolCalls", () => {
       event("second-end", "command.completed", "2026-05-12T15:10:02.000Z", "", {
         id: "item_1",
         content: "second",
-        providerInvocationId: "inv-2"
+        providerInvocationId: "inv-2",
       }),
       event("second-start", "command.started", "2026-05-12T15:10:01.000Z", "", {
         id: "item_1",
         name: "Bash",
         input: { command: "npm test" },
-        providerInvocationId: "inv-2"
+        providerInvocationId: "inv-2",
       }),
       event("first-start", "command.started", "2026-05-12T15:00:01.000Z", "", {
         id: "item_1",
         name: "Bash",
         input: { command: "npm run lint" },
-        providerInvocationId: "inv-1"
-      })
+        providerInvocationId: "inv-1",
+      }),
     ];
 
     const tools = buildSessionToolCalls(events, true);
@@ -399,22 +470,22 @@ describe("buildSessionToolCalls", () => {
     const events = [
       event("second-end", "command.completed", "2026-05-12T15:10:02.000Z", "", {
         call_id: "call_1",
-        content: "second"
+        content: "second",
       }),
       event("second-start", "command.started", "2026-05-12T15:10:01.000Z", "", {
         call_id: "call_1",
         name: "read",
-        input: { filePath: "b.ts" }
+        input: { filePath: "b.ts" },
       }),
       event("first-end", "command.completed", "2026-05-12T15:00:02.000Z", "", {
         call_id: "call_1",
-        content: "first"
+        content: "first",
       }),
       event("first-start", "command.started", "2026-05-12T15:00:01.000Z", "", {
         call_id: "call_1",
         name: "read",
-        input: { filePath: "a.ts" }
-      })
+        input: { filePath: "a.ts" },
+      }),
     ];
 
     const tools = buildSessionToolCalls(events, false);
@@ -427,22 +498,22 @@ describe("buildSessionToolCalls", () => {
     const events = [
       event("legacy-end", "command.completed", "2026-05-12T15:00:04.000Z", "", {
         id: "item_1",
-        content: "legacy"
+        content: "legacy",
       }),
       event("stamped-end", "command.completed", "2026-05-12T15:00:03.000Z", "", {
         id: "item_1",
         content: "stamped",
-        providerInvocationId: "inv-1"
+        providerInvocationId: "inv-1",
       }),
       event("legacy-start", "command.started", "2026-05-12T15:00:02.000Z", "", {
         id: "item_1",
-        name: "Bash"
+        name: "Bash",
       }),
       event("stamped-start", "command.started", "2026-05-12T15:00:01.000Z", "", {
         id: "item_1",
         name: "Bash",
-        providerInvocationId: "inv-1"
-      })
+        providerInvocationId: "inv-1",
+      }),
     ];
 
     const tools = buildSessionToolCalls(events, false);
@@ -453,16 +524,25 @@ describe("buildSessionToolCalls", () => {
   it("orders same-timestamp rows by rowCursor when joining", () => {
     const at = "2026-05-12T15:00:01.000Z";
     const rows: TimelineEvent[] = [
-      { ...event("second-end", "command.completed", at, "", { call_id: "call_1", content: "second" }), rowCursor: 4 },
-      { ...event("first-end", "command.completed", at, "", { call_id: "call_1", content: "first" }), rowCursor: 2 },
+      {
+        ...event("second-end", "command.completed", at, "", {
+          call_id: "call_1",
+          content: "second",
+        }),
+        rowCursor: 4,
+      },
+      {
+        ...event("first-end", "command.completed", at, "", { call_id: "call_1", content: "first" }),
+        rowCursor: 2,
+      },
       {
         ...event("first-start", "command.started", at, "", { call_id: "call_1", name: "read" }),
-        rowCursor: 1
+        rowCursor: 1,
       },
       {
         ...event("second-start", "command.started", at, "", { call_id: "call_1", name: "read" }),
-        rowCursor: 3
-      }
+        rowCursor: 3,
+      },
     ];
 
     const tools = buildSessionToolCalls(rows, false);
@@ -477,19 +557,19 @@ describe("buildSessionToolCalls", () => {
         id: "tool-1",
         is_error: true,
         content: "permission denied",
-        input: { path: "src/renderer/App.tsx" }
+        input: { path: "src/renderer/App.tsx" },
       }),
       event("start", "command.started", "2026-05-12T15:00:01.000Z", "", {
         id: "tool-1",
-        name: "Read"
-      })
+        name: "Read",
+      }),
     ];
 
     expect(buildSessionToolCalls(events)[0]).toMatchObject({
       inputPreview: "src/renderer/App.tsx",
       output: "permission denied",
       status: "error",
-      error: "permission denied"
+      error: "permission denied",
     });
   });
 
@@ -498,13 +578,13 @@ describe("buildSessionToolCalls", () => {
       event("start", "command.started", "2026-05-12T15:00:01.000Z", "", {
         id: "read-1",
         name: "Read",
-        input: { file_path: "shot.png" }
-      })
+        input: { file_path: "shot.png" },
+      }),
     ];
 
     expect(buildSessionToolCalls(events, true)[0]).toMatchObject({
       status: "running",
-      completedAt: null
+      completedAt: null,
     });
   });
 
@@ -514,14 +594,14 @@ describe("buildSessionToolCalls", () => {
       event("start", "command.started", "2026-05-12T15:00:01.000Z", "", {
         id: "read-1",
         name: "Read",
-        input: { file_path: "shot.png" }
-      })
+        input: { file_path: "shot.png" },
+      }),
     ];
 
     expect(buildSessionToolCalls(events, true)[0]).toMatchObject({
       status: "done",
       completedAt: "2026-05-12T15:00:01.000Z",
-      error: null
+      error: null,
     });
   });
 
@@ -529,17 +609,17 @@ describe("buildSessionToolCalls", () => {
     const events = [
       {
         ...event("old-persisted", "message.delta", "2026-05-12T14:00:00.000Z", "Earlier by time"),
-        rowCursor: 100
+        rowCursor: 100,
       },
       event("new-optimistic", "message.delta", "2026-05-12T16:00:00.000Z", "Later by time"),
       {
         ...event("start", "command.started", "2026-05-12T17:00:01.000Z", "", {
           id: "read-1",
           name: "Read",
-          input: { file_path: "shot.png" }
+          input: { file_path: "shot.png" },
         }),
-        rowCursor: 50
-      }
+        rowCursor: 50,
+      },
     ];
 
     expect(buildSessionToolCalls(events, true)[0]).toMatchObject({ status: "done" });
@@ -547,21 +627,26 @@ describe("buildSessionToolCalls", () => {
 
   it("keeps an uncorrelated agent tool running even after later assistant text", () => {
     const events = [
-      event("answer", "message.delta", "2026-05-12T15:00:02.000Z", "Waiting for the exploration agent."),
+      event(
+        "answer",
+        "message.delta",
+        "2026-05-12T15:00:02.000Z",
+        "Waiting for the exploration agent.",
+      ),
       event("start", "command.started", "2026-05-12T15:00:01.000Z", "", {
         id: "agent-1",
         name: "Agent",
         input: {
           description: "Explore repo structure",
-          prompt: "Read the repo and report back."
-        }
-      })
+          prompt: "Read the repo and report back.",
+        },
+      }),
     ];
 
     expect(buildSessionToolCalls(events, true)[0]).toMatchObject({
       name: "Agent",
       status: "running",
-      completedAt: null
+      completedAt: null,
     });
   });
 
@@ -572,16 +657,16 @@ describe("buildSessionToolCalls", () => {
           tool_use_id: "call-spawn",
           content: JSON.stringify({
             type: "Text",
-            text: "Subagent started in background.\nsubagent_id: child-1"
-          })
+            text: "Subagent started in background.\nsubagent_id: child-1",
+          }),
         }),
         event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_subagent", {
           id: "call-spawn",
           name: "spawn_subagent",
-          input: { description: "Review screenshot drop fix", subagent_type: "reviewer" }
-        })
+          input: { description: "Review screenshot drop fix", subagent_type: "reviewer" },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools).toHaveLength(1);
@@ -589,7 +674,7 @@ describe("buildSessionToolCalls", () => {
       toolUseId: "call-spawn",
       name: "spawn_subagent",
       status: "running",
-      completedAt: null
+      completedAt: null,
     });
     expect(tools[0]?.output).toContain("Subagent started in background");
     expect(tools[0]?.output).not.toContain('"type"');
@@ -603,8 +688,8 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt: "Explore the repo.",
             receiver_thread_ids: ["thread-child"],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
         event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
           id: "spawn-1",
@@ -612,11 +697,11 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt: "Explore the repo.",
             receiver_thread_ids: [],
-            sender_thread_id: "thread-parent"
-          }
-        })
+            sender_thread_id: "thread-parent",
+          },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools).toHaveLength(1);
@@ -624,7 +709,7 @@ describe("buildSessionToolCalls", () => {
       toolUseId: "spawn-1",
       name: "spawn_agent",
       status: "running",
-      completedAt: null
+      completedAt: null,
     });
   });
 
@@ -635,24 +720,24 @@ describe("buildSessionToolCalls", () => {
           id: "trace-spawn-child",
           name: "spawn_agent",
           traceSyntheticLaunch: true,
-          providerChildSessionId: "child"
+          providerChildSessionId: "child",
         }),
         event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
           id: "trace-spawn-child",
           name: "spawn_agent",
           traceSyntheticLaunch: true,
           providerChildSessionId: "child",
-          input: { receiver_thread_ids: ["child"] }
-        })
+          input: { receiver_thread_ids: ["child"] },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools).toHaveLength(1);
     expect(tools[0]).toMatchObject({
       toolUseId: "trace-spawn-child",
       status: "done",
-      completedAt: "2026-05-12T15:00:02.000Z"
+      completedAt: "2026-05-12T15:00:02.000Z",
     });
   });
 
@@ -662,22 +747,22 @@ describe("buildSessionToolCalls", () => {
         event("real-start", "command.started", "2026-05-12T15:00:03.000Z", "spawn_agent", {
           id: "real-spawn",
           name: "spawn_agent",
-          input: { receiver_thread_ids: ["child"] }
+          input: { receiver_thread_ids: ["child"] },
         }),
         event("synthetic-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
           id: "trace-spawn-child",
           name: "spawn_agent",
           traceSyntheticSuperseded: true,
-          traceSupersededBy: "real-spawn"
+          traceSupersededBy: "real-spawn",
         }),
         event("synthetic-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
           id: "trace-spawn-child",
           name: "spawn_agent",
           traceSyntheticSuperseded: true,
-          traceSupersededBy: "real-spawn"
-        })
+          traceSupersededBy: "real-spawn",
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools).toHaveLength(1);
@@ -690,7 +775,7 @@ describe("buildSessionToolCalls", () => {
         event("task-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
           tool_use_id: "task-1",
           content:
-            "Async agent launched successfully. output_file: /tmp/agent.txt. This tool result is internal metadata."
+            "Async agent launched successfully. output_file: /tmp/agent.txt. This tool result is internal metadata.",
         }),
         event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
           id: "task-1",
@@ -698,11 +783,11 @@ describe("buildSessionToolCalls", () => {
           input: {
             description: "Map renderer",
             prompt: "Explore the repo.",
-            subagent_type: "explorer"
-          }
-        })
+            subagent_type: "explorer",
+          },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools).toHaveLength(1);
@@ -710,7 +795,7 @@ describe("buildSessionToolCalls", () => {
       toolUseId: "task-1",
       name: "Task",
       status: "running",
-      completedAt: null
+      completedAt: null,
     });
   });
 
@@ -720,7 +805,7 @@ describe("buildSessionToolCalls", () => {
         event("task-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
           tool_use_id: "task-1",
           content:
-            "Async agent launched successfully. output_file: /tmp/agent.txt. This tool result is internal metadata."
+            "Async agent launched successfully. output_file: /tmp/agent.txt. This tool result is internal metadata.",
         }),
         event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
           id: "task-1",
@@ -728,11 +813,11 @@ describe("buildSessionToolCalls", () => {
           input: {
             description: "Map renderer",
             prompt: "Explore the repo.",
-            subagent_type: "explorer"
-          }
-        })
+            subagent_type: "explorer",
+          },
+        }),
       ],
-      false
+      false,
     );
 
     expect(tools).toHaveLength(1);
@@ -740,7 +825,7 @@ describe("buildSessionToolCalls", () => {
       toolUseId: "task-1",
       name: "Task",
       status: "done",
-      completedAt: "2026-05-12T15:00:02.000Z"
+      completedAt: "2026-05-12T15:00:02.000Z",
     });
   });
 
@@ -752,16 +837,16 @@ describe("buildSessionToolCalls", () => {
           providerInvocationId: "invoke-task",
           name: "task",
           input: { _toolName: "task", description: "Map session workspace tools" },
-          result: { durationMs: 34, isBackground: true }
+          result: { durationMs: 34, isBackground: true },
         }),
         event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
           call_id: "call-task",
           providerInvocationId: "invoke-task",
           name: "task",
-          input: { _toolName: "task", description: "Map session workspace tools" }
-        })
+          input: { _toolName: "task", description: "Map session workspace tools" },
+        }),
       ],
-      false
+      false,
     );
 
     expect(tools).toHaveLength(1);
@@ -769,7 +854,7 @@ describe("buildSessionToolCalls", () => {
       toolUseId: "call-task",
       name: "task",
       status: "running",
-      completedAt: null
+      completedAt: null,
     });
   });
 
@@ -782,23 +867,23 @@ describe("buildSessionToolCalls", () => {
           agentRootToolUseId: "call-task",
           agentRunId: "call-task",
           status: "completed",
-          traceImported: true
+          traceImported: true,
         }),
         event("task-end", "command.completed", "2026-05-12T15:00:01.120Z", "task", {
           call_id: "call-task",
           providerInvocationId: "invoke-task",
           name: "task",
           input: { _toolName: "task", description: "Map session workspace tools" },
-          result: { durationMs: 34, isBackground: true }
+          result: { durationMs: 34, isBackground: true },
         }),
         event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
           call_id: "call-task",
           providerInvocationId: "invoke-task",
           name: "task",
-          input: { _toolName: "task", description: "Map session workspace tools" }
-        })
+          input: { _toolName: "task", description: "Map session workspace tools" },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools).toHaveLength(1);
@@ -806,7 +891,7 @@ describe("buildSessionToolCalls", () => {
       toolUseId: "call-task",
       status: "done",
       completedAt: "2026-05-12T15:00:07.000Z",
-      providerChildSessionId: "child-task"
+      providerChildSessionId: "child-task",
     });
   });
 
@@ -817,15 +902,15 @@ describe("buildSessionToolCalls", () => {
           call_id: "call-task",
           name: "task",
           input: { _toolName: "task", description: "Map session workspace tools" },
-          result: { success: { agentId: "child-1" }, durationMs: 94_000, isBackground: false }
+          result: { success: { agentId: "child-1" }, durationMs: 94_000, isBackground: false },
         }),
         event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
           call_id: "call-task",
           name: "task",
-          input: { _toolName: "task", description: "Map session workspace tools" }
-        })
+          input: { _toolName: "task", description: "Map session workspace tools" },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools).toHaveLength(1);
@@ -837,7 +922,7 @@ describe("buildSessionToolCalls", () => {
       [
         event("task-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
           tool_use_id: "task-bg",
-          content: "Agent dispatched."
+          content: "Agent dispatched.",
         }),
         event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
           id: "task-bg",
@@ -845,11 +930,11 @@ describe("buildSessionToolCalls", () => {
           input: {
             description: "Background worker",
             prompt: "Run tests.",
-            run_in_background: true
-          }
-        })
+            run_in_background: true,
+          },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools).toHaveLength(1);
@@ -857,7 +942,7 @@ describe("buildSessionToolCalls", () => {
       toolUseId: "task-bg",
       name: "Task",
       status: "running",
-      completedAt: null
+      completedAt: null,
     });
   });
 
@@ -871,8 +956,8 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt: "Read README.md and summarize it quickly.",
             receiver_thread_ids: ["thread-child"],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
         event("real-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
           id: "item_1",
@@ -880,8 +965,8 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt: "Read README.md and summarize it quickly.",
             receiver_thread_ids: [],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
         event("noop-end", "command.completed", "2026-05-12T15:00:04.000Z", "spawn_agent", {
           id: "item_2",
@@ -889,8 +974,8 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt: "Actually, please ignore this duplicate if you receive it; no action needed.",
             receiver_thread_ids: ["thread-noop"],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
         event("noop-start", "command.started", "2026-05-12T15:00:03.000Z", "spawn_agent", {
           id: "item_2",
@@ -898,16 +983,22 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt: "Actually, please ignore this duplicate if you receive it; no action needed.",
             receiver_thread_ids: [],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
-        event("noop-child", "message.completed", "2026-05-12T15:00:05.000Z", "Got it. No action taken.", {
-          parent_tool_use_id: "item_2",
-          providerChildSessionId: "thread-noop",
-          traceImported: true
-        })
+        event(
+          "noop-child",
+          "message.completed",
+          "2026-05-12T15:00:05.000Z",
+          "Got it. No action taken.",
+          {
+            parent_tool_use_id: "item_2",
+            providerChildSessionId: "thread-noop",
+            traceImported: true,
+          },
+        ),
       ],
-      true
+      true,
     );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["item_1"]);
@@ -927,8 +1018,8 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt,
             receiver_thread_ids: ["thread-child"],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
         event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "spawn_agent", {
           id: "item_1",
@@ -936,8 +1027,8 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt,
             receiver_thread_ids: [],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
         event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
           id: "item_0",
@@ -945,11 +1036,11 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt,
             receiver_thread_ids: [],
-            sender_thread_id: "thread-parent"
-          }
-        })
+            sender_thread_id: "thread-parent",
+          },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["item_0", "item_1"]);
@@ -961,26 +1052,26 @@ describe("buildSessionToolCalls", () => {
       [
         event("second-end", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
           tool_use_id: "toolu_2",
-          content: "Second result."
+          content: "Second result.",
         }),
         event("second-start", "command.started", "2026-05-12T15:00:02.000Z", "Task", {
           id: "toolu_2",
           name: "Task",
           input: {
             description: "Review README",
-            prompt
-          }
+            prompt,
+          },
         }),
         event("first-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
           id: "toolu_1",
           name: "Task",
           input: {
             description: "Review README",
-            prompt
-          }
-        })
+            prompt,
+          },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["toolu_1", "toolu_2"]);
@@ -998,8 +1089,8 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt,
             receiver_thread_ids: ["thread-child"],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
         event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "spawn_agent", {
           id: "item_2",
@@ -1007,8 +1098,8 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt,
             receiver_thread_ids: [],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
         event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
           id: "item_1",
@@ -1016,11 +1107,11 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt,
             receiver_thread_ids: [],
-            sender_thread_id: "thread-parent"
-          }
-        })
+            sender_thread_id: "thread-parent",
+          },
+        }),
       ],
-      false
+      false,
     );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["item_2"]);
@@ -1035,28 +1126,28 @@ describe("buildSessionToolCalls", () => {
           name: "taskToolCall",
           result: {
             success: {
-              agentId: "cursor-agent-1"
-            }
-          }
+              agentId: "cursor-agent-1",
+            },
+          },
         }),
         event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "taskToolCall", {
           call_id: "call_2",
           name: "taskToolCall",
           input: {
             description: "Review README",
-            prompt
-          }
+            prompt,
+          },
         }),
         event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "taskToolCall", {
           call_id: "call_1",
           name: "taskToolCall",
           input: {
             description: "Review README",
-            prompt
-          }
-        })
+            prompt,
+          },
+        }),
       ],
-      false
+      false,
     );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["call_2"]);
@@ -1068,26 +1159,26 @@ describe("buildSessionToolCalls", () => {
       [
         event("retry-end", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
           tool_use_id: "toolu_2",
-          content: "README is OK."
+          content: "README is OK.",
         }),
         event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "Task", {
           id: "toolu_2",
           name: "Task",
           input: {
             description: "Review README",
-            prompt
-          }
+            prompt,
+          },
         }),
         event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
           id: "toolu_1",
           name: "Task",
           input: {
             description: "Review README",
-            prompt
-          }
-        })
+            prompt,
+          },
+        }),
       ],
-      false
+      false,
     );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["toolu_2"]);
@@ -1099,38 +1190,38 @@ describe("buildSessionToolCalls", () => {
       [
         event("retry-end", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
           tool_use_id: "toolu_2",
-          content: "README is OK."
+          content: "README is OK.",
         }),
         event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "Task", {
           id: "toolu_2",
           name: "Task",
           input: {
             description: "Review README",
-            prompt
-          }
+            prompt,
+          },
         }),
         event("failed-end", "command.completed", "2026-05-12T15:00:01.500Z", "tool_result", {
           tool_use_id: "toolu_1",
           is_error: true,
-          content: "permission denied"
+          content: "permission denied",
         }),
         event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
           id: "toolu_1",
           name: "Task",
           input: {
             description: "Review README",
-            prompt
-          }
-        })
+            prompt,
+          },
+        }),
       ],
-      false
+      false,
     );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["toolu_1", "toolu_2"]);
     expect(tools[0]).toMatchObject({
       toolUseId: "toolu_1",
       status: "error",
-      error: "permission denied"
+      error: "permission denied",
     });
   });
 
@@ -1140,30 +1231,30 @@ describe("buildSessionToolCalls", () => {
       [
         event("second-end", "command.completed", "2026-05-12T15:00:04.000Z", "tool_result", {
           tool_use_id: "toolu_2",
-          content: "Second result."
+          content: "Second result.",
         }),
         event("second-start", "command.started", "2026-05-12T15:00:03.000Z", "Task", {
           id: "toolu_2",
           name: "Task",
           input: {
             description: "Review README",
-            prompt
-          }
+            prompt,
+          },
         }),
         event("first-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
           tool_use_id: "toolu_1",
-          content: "First result."
+          content: "First result.",
         }),
         event("first-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
           id: "toolu_1",
           name: "Task",
           input: {
             description: "Review README",
-            prompt
-          }
-        })
+            prompt,
+          },
+        }),
       ],
-      false
+      false,
     );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["toolu_1", "toolu_2"]);
@@ -1175,20 +1266,20 @@ describe("buildSessionToolCalls", () => {
         event("search", "command.started", "2026-05-12T15:00:01.000Z", "ToolSearch", {
           id: "search",
           name: "ToolSearch",
-          input: { query: "notion fetch" }
+          input: { query: "notion fetch" },
         }),
         event("todo", "command.started", "2026-05-12T15:00:02.000Z", "TodoWrite", {
           id: "todo",
           name: "TodoWrite",
-          input: { todos: [{ content: "Read page", status: "in_progress" }] }
+          input: { todos: [{ content: "Read page", status: "in_progress" }] },
         }),
         event("discover", "command.started", "2026-05-12T15:00:03.000Z", "getMcpToolsToolCall", {
           call_id: "discover",
           name: "getMcpToolsToolCall",
           input: {
             server: "plugin-notion-workspace-notion",
-            toolName: "notion-fetch"
-          }
+            toolName: "notion-fetch",
+          },
         }),
         event("fetch", "command.started", "2026-05-12T15:00:04.000Z", "mcpToolCall", {
           call_id: "fetch",
@@ -1197,17 +1288,17 @@ describe("buildSessionToolCalls", () => {
             args: { id: "page-1" },
             serverIdentifier: "plugin-notion-workspace-notion",
             toolCallId: "fetch",
-            toolName: "notion-fetch"
-          }
-        })
+            toolName: "notion-fetch",
+          },
+        }),
       ],
-      false
+      false,
     );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["search", "discover", "fetch"]);
     expect(tools[2]).toMatchObject({
       name: "mcp__plugin-notion-workspace-notion__notion-fetch",
-      inputFull: { id: "page-1" }
+      inputFull: { id: "page-1" },
     });
   });
 
@@ -1220,17 +1311,17 @@ describe("buildSessionToolCalls", () => {
           input: {
             _toolName: "task",
             description: "Review code",
-            prompt: "Review the current changes."
-          }
-        })
+            prompt: "Review the current changes.",
+          },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools[0]).toMatchObject({
       name: "task",
       inputPreview: "Review code",
-      status: "running"
+      status: "running",
     });
   });
 
@@ -1242,8 +1333,8 @@ describe("buildSessionToolCalls", () => {
           name: "wait",
           input: {
             receiver_thread_ids: ["thread-child"],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
         event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
           id: "spawn-1",
@@ -1252,8 +1343,8 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt: "Explore the repo.",
             receiver_thread_ids: ["thread-child"],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
         event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
           id: "spawn-1",
@@ -1261,17 +1352,17 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt: "Explore the repo.",
             receiver_thread_ids: [],
-            sender_thread_id: "thread-parent"
-          }
-        })
+            sender_thread_id: "thread-parent",
+          },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools.map((tool) => tool.name)).toEqual(["spawn_agent"]);
     expect(tools[0]).toMatchObject({
       status: "running",
-      completedAt: null
+      completedAt: null,
     });
   });
 
@@ -1284,23 +1375,23 @@ describe("buildSessionToolCalls", () => {
         event("read-start", "command.started", "2026-05-12T15:00:01.000Z", "Read", {
           id: "read-1",
           name: "Read",
-          input: { file_path: "/repo/a.ts" }
+          input: { file_path: "/repo/a.ts" },
         }),
         event("wait-start", "command.started", "2026-05-12T15:00:02.000Z", "wait", {
           id: "wait-1",
           name: "wait",
           input: {
             receiver_thread_ids: [],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
         event("close-start", "command.started", "2026-05-12T15:00:03.000Z", "close_agent", {
           id: "close-1",
           name: "close_agent",
-          input: { receiver_thread_ids: ["thread-child"] }
-        })
+          input: { receiver_thread_ids: ["thread-child"] },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools.map((tool) => tool.name)).toEqual(["Read"]);
@@ -1312,10 +1403,10 @@ describe("buildSessionToolCalls", () => {
         event("wait-start", "command.started", "2026-05-12T15:00:01.000Z", "wait", {
           id: "wait-1",
           name: "wait",
-          input: { seconds: 30 }
-        })
+          input: { seconds: 30 },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools.map((tool) => tool.name)).toEqual(["wait"]);
@@ -1329,14 +1420,18 @@ describe("buildSessionToolCalls", () => {
         name: "wait",
         input: {
           receiver_thread_ids: ["thread-alpha", "thread-beta", "thread-gamma"],
-          sender_thread_id: "thread-parent"
-        }
-      })
+          sender_thread_id: "thread-parent",
+        },
+      }),
     );
 
     const tools = buildSessionToolCalls(events, true);
 
-    expect(tools.map((tool) => tool.toolUseId)).toEqual(["spawn-alpha", "spawn-beta", "spawn-gamma"]);
+    expect(tools.map((tool) => tool.toolUseId)).toEqual([
+      "spawn-alpha",
+      "spawn-beta",
+      "spawn-gamma",
+    ]);
     expect(tools.map((tool) => tool.status)).toEqual(["running", "running", "running"]);
   });
 
@@ -1347,45 +1442,45 @@ describe("buildSessionToolCalls", () => {
         id: "wait-timeout",
         input: {
           receiver_thread_ids: [],
-          sender_thread_id: "thread-parent"
-        }
+          sender_thread_id: "thread-parent",
+        },
       }),
       event("wait-timeout-start", "command.started", "2026-05-12T15:00:05.000Z", "wait", {
         id: "wait-timeout",
         name: "wait",
         input: {
           receiver_thread_ids: ["thread-alpha", "thread-beta", "thread-gamma"],
-          sender_thread_id: "thread-parent"
-        }
-      })
+          sender_thread_id: "thread-parent",
+        },
+      }),
     ];
 
-    expect(buildSessionToolCalls([...spawnEvents, ...timeoutEvents], true).map((tool) => tool.status)).toEqual([
-      "running",
-      "running",
-      "running"
-    ]);
+    expect(
+      buildSessionToolCalls([...spawnEvents, ...timeoutEvents], true).map((tool) => tool.status),
+    ).toEqual(["running", "running", "running"]);
 
     const gammaDoneEvents = [
       event("wait-gamma-end", "command.completed", "2026-05-12T15:00:08.000Z", "wait", {
         id: "wait-gamma",
         input: {
           receiver_thread_ids: ["thread-gamma"],
-          sender_thread_id: "thread-parent"
-        }
+          sender_thread_id: "thread-parent",
+        },
       }),
       event("wait-gamma-start", "command.started", "2026-05-12T15:00:07.000Z", "wait", {
         id: "wait-gamma",
         name: "wait",
         input: {
           receiver_thread_ids: ["thread-alpha", "thread-beta", "thread-gamma"],
-          sender_thread_id: "thread-parent"
-        }
-      })
+          sender_thread_id: "thread-parent",
+        },
+      }),
     ];
 
     expect(
-      buildSessionToolCalls([...spawnEvents, ...timeoutEvents, ...gammaDoneEvents], true).map((tool) => tool.status)
+      buildSessionToolCalls([...spawnEvents, ...timeoutEvents, ...gammaDoneEvents], true).map(
+        (tool) => tool.status,
+      ),
     ).toEqual(["running", "running", "done"]);
 
     const betaDoneEvents = [
@@ -1393,23 +1488,24 @@ describe("buildSessionToolCalls", () => {
         id: "wait-beta",
         input: {
           receiver_thread_ids: ["thread-beta"],
-          sender_thread_id: "thread-parent"
-        }
+          sender_thread_id: "thread-parent",
+        },
       }),
       event("wait-beta-start", "command.started", "2026-05-12T15:00:09.000Z", "wait", {
         id: "wait-beta",
         name: "wait",
         input: {
           receiver_thread_ids: ["thread-alpha", "thread-beta"],
-          sender_thread_id: "thread-parent"
-        }
-      })
+          sender_thread_id: "thread-parent",
+        },
+      }),
     ];
 
     expect(
-      buildSessionToolCalls([...spawnEvents, ...timeoutEvents, ...gammaDoneEvents, ...betaDoneEvents], true).map(
-        (tool) => tool.status
-      )
+      buildSessionToolCalls(
+        [...spawnEvents, ...timeoutEvents, ...gammaDoneEvents, ...betaDoneEvents],
+        true,
+      ).map((tool) => tool.status),
     ).toEqual(["running", "done", "done"]);
   });
 
@@ -1424,8 +1520,8 @@ describe("buildSessionToolCalls", () => {
           name: "wait",
           input: {
             receiver_thread_ids: ["thread-child"],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
         event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
           id: "spawn-1",
@@ -1433,11 +1529,11 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt: "Explore the repo.",
             receiver_thread_ids: [],
-            sender_thread_id: "thread-parent"
-          }
-        })
+            sender_thread_id: "thread-parent",
+          },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools.map((tool) => tool.name)).toEqual(["spawn_agent"]);
@@ -1449,15 +1545,15 @@ describe("buildSessionToolCalls", () => {
       [
         event("wait-end", "command.completed", "2026-05-12T15:00:05.000Z", "wait", {
           id: "wait-1",
-          content: "Child agent finished."
+          content: "Child agent finished.",
         }),
         event("wait-start", "command.started", "2026-05-12T15:00:03.000Z", "wait", {
           id: "wait-1",
           name: "wait",
           input: {
             receiver_thread_ids: ["thread-child"],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
         event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
           id: "spawn-1",
@@ -1466,8 +1562,8 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt: "Explore the repo.",
             receiver_thread_ids: ["thread-child"],
-            sender_thread_id: "thread-parent"
-          }
+            sender_thread_id: "thread-parent",
+          },
         }),
         event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
           id: "spawn-1",
@@ -1475,18 +1571,18 @@ describe("buildSessionToolCalls", () => {
           input: {
             prompt: "Explore the repo.",
             receiver_thread_ids: [],
-            sender_thread_id: "thread-parent"
-          }
-        })
+            sender_thread_id: "thread-parent",
+          },
+        }),
       ],
-      true
+      true,
     );
 
     expect(tools.map((tool) => tool.name)).toEqual(["spawn_agent"]);
     expect(tools[0]).toMatchObject({
       output: "Child agent finished.",
       status: "done",
-      completedAt: "2026-05-12T15:00:05.000Z"
+      completedAt: "2026-05-12T15:00:05.000Z",
     });
   });
 
@@ -1498,15 +1594,15 @@ describe("buildSessionToolCalls", () => {
       event("start", "command.started", "2026-05-12T15:00:01.000Z", "", {
         id: "read-1",
         name: "Read",
-        input: { file_path: "shot.png" }
-      })
+        input: { file_path: "shot.png" },
+      }),
     ];
 
     expect(buildSessionToolCalls(events, false)[0]).toMatchObject({
       status: "done",
       completionObserved: false,
       completedAt: "2026-05-12T15:00:01.000Z",
-      error: null
+      error: null,
     });
   });
 
@@ -1516,7 +1612,7 @@ describe("buildSessionToolCalls", () => {
     const events = [
       event("thought", "message.delta", "2026-10-06T05:18:42.878Z", "Let me ask.", {
         type: "reasoning",
-        thinking: true
+        thinking: true,
       }),
       event("ask", "command.started", "2026-10-06T05:18:42.832Z", "AskUserQuestion", {
         id: "que_1",
@@ -1525,12 +1621,17 @@ describe("buildSessionToolCalls", () => {
         input: {
           delivery: "blocking",
           requestId: "request-1",
-          questions: [{ id: "q1", question: "Next?", header: "Next", options: [{ label: "Stop" }] }]
-        }
-      })
+          questions: [
+            { id: "q1", question: "Next?", header: "Next", options: [{ label: "Stop" }] },
+          ],
+        },
+      }),
     ];
 
-    expect(buildSessionToolCalls(events, true)[0]).toMatchObject({ status: "running", completedAt: null });
+    expect(buildSessionToolCalls(events, true)[0]).toMatchObject({
+      status: "running",
+      completedAt: null,
+    });
   });
 
   it("settles an uncompleted agent launch at the session end that outlived it", () => {
@@ -1542,22 +1643,25 @@ describe("buildSessionToolCalls", () => {
       event("spawn-start", "command.started", "2026-09-14T13:26:37.000Z", "spawn_agent", {
         id: "spawn-1",
         name: "spawn_agent",
-        input: { prompt: "Audit the browser panel." }
-      })
+        input: { prompt: "Audit the browser panel." },
+      }),
     ];
 
     expect(buildSessionToolCalls(events, true)[0]).toMatchObject({
       status: "running",
-      completedAt: null
+      completedAt: null,
     });
 
-    const interrupted = [event("cancel", "session.cancelled", "2026-09-14T13:42:14.000Z"), ...events];
+    const interrupted = [
+      event("cancel", "session.cancelled", "2026-09-14T13:42:14.000Z"),
+      ...events,
+    ];
 
     expect(buildSessionToolCalls(interrupted, true)[0]).toMatchObject({
       status: "error",
       completionObserved: false,
       completedAt: "2026-09-14T13:42:14.000Z",
-      error: "Session ended before the tool reported completion."
+      error: "Session ended before the tool reported completion.",
     });
   });
 
@@ -1568,14 +1672,14 @@ describe("buildSessionToolCalls", () => {
       event("spawn-start", "command.started", "2026-09-14T13:50:00.000Z", "spawn_agent", {
         id: "spawn-2",
         name: "spawn_agent",
-        input: { prompt: "Audit the browser panel." }
+        input: { prompt: "Audit the browser panel." },
       }),
-      event("cancel", "session.cancelled", "2026-09-14T13:42:14.000Z")
+      event("cancel", "session.cancelled", "2026-09-14T13:42:14.000Z"),
     ];
 
     expect(buildSessionToolCalls(events, true)[0]).toMatchObject({
       status: "running",
-      completedAt: null
+      completedAt: null,
     });
   });
 
@@ -1589,21 +1693,21 @@ describe("buildSessionToolCalls", () => {
         providerInvocationId: "invoke-task",
         name: "task",
         input: { _toolName: "task", description: "Map session workspace tools" },
-        result: { durationMs: 34, isBackground: true }
+        result: { durationMs: 34, isBackground: true },
       }),
       event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
         call_id: "call-task",
         providerInvocationId: "invoke-task",
         name: "task",
-        input: { _toolName: "task", description: "Map session workspace tools" }
-      })
+        input: { _toolName: "task", description: "Map session workspace tools" },
+      }),
     ];
 
     expect(buildSessionToolCalls(events, false)[0]).toMatchObject({
       toolUseId: "call-task",
       status: "running",
       backgroundLaunch: true,
-      completedAt: null
+      completedAt: null,
     });
   });
 });
@@ -1613,13 +1717,13 @@ describe("lastSignificantSessionEvent", () => {
     const events = [
       event("raw", "message.delta", "2026-05-12T15:00:05.000Z", "raw", { raw: true }),
       event("subagent", "message.completed", "2026-05-12T15:00:04.000Z", "echo", {
-        parent_tool_use_id: "tool-1"
+        parent_tool_use_id: "tool-1",
       }),
       event("truncated", "error", "2026-05-12T15:00:03.000Z", "event payload truncated", {
-        truncatedEventId: "big"
+        truncatedEventId: "big",
       }),
       event("answer", "message.completed", "2026-05-12T15:00:02.000Z", "Done"),
-      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go"),
     ];
 
     expect(lastSignificantSessionEvent(events)?.id).toBe("answer");
@@ -1630,21 +1734,21 @@ describe("lastSignificantSessionEvent", () => {
     // parent's post-answer grace period restart on every child tool call.
     const events = [
       event("child-end", "command.completed", "2026-05-12T15:00:05.000Z", "tool_result", {
-        tool_use_id: "toolu_child"
+        tool_use_id: "toolu_child",
       }),
       event("child-start", "command.started", "2026-05-12T15:00:04.000Z", "Grep", {
         id: "toolu_child",
         name: "Grep",
         input: { pattern: "x" },
-        parent_tool_use_id: "toolu_task"
+        parent_tool_use_id: "toolu_task",
       }),
       event("answer", "message.completed", "2026-05-12T15:00:03.000Z", "Waiting on the agent."),
       event("task", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
         id: "toolu_task",
         name: "Task",
-        input: { prompt: "explore" }
+        input: { prompt: "explore" },
       }),
-      event("user", "user.message", "2026-05-12T15:00:00.000Z", "Go")
+      event("user", "user.message", "2026-05-12T15:00:00.000Z", "Go"),
     ];
     const childToolUseIds = subAgentToolUseIds(buildSessionToolCalls(events));
 
@@ -1658,7 +1762,7 @@ describe("lastAgentResponseEvent", () => {
     const events = [
       event("follow-up", "user.message", "2026-05-12T15:00:03.000Z", "And now the tests"),
       event("answer", "message.completed", "2026-05-12T15:00:02.000Z", "Done"),
-      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
+      event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go"),
     ];
 
     expect(lastAgentResponseEvent(events)?.id).toBe("answer");
@@ -1667,7 +1771,7 @@ describe("lastAgentResponseEvent", () => {
   it("counts a failure as the agent responding", () => {
     const events = [
       event("boom", "error", "2026-05-12T15:00:04.000Z", "Provider exited"),
-      event("follow-up", "user.message", "2026-05-12T15:00:03.000Z", "And now the tests")
+      event("follow-up", "user.message", "2026-05-12T15:00:03.000Z", "And now the tests"),
     ];
 
     expect(lastAgentResponseEvent(events)?.id).toBe("boom");
@@ -1677,12 +1781,12 @@ describe("lastAgentResponseEvent", () => {
     const events = [
       event("raw", "message.delta", "2026-05-12T15:00:06.000Z", "raw", { raw: true }),
       event("truncated", "error", "2026-05-12T15:00:05.000Z", "event payload truncated", {
-        truncatedEventId: "big"
+        truncatedEventId: "big",
       }),
       event("child", "message.completed", "2026-05-12T15:00:04.000Z", "echo", {
-        parent_tool_use_id: "toolu_task"
+        parent_tool_use_id: "toolu_task",
       }),
-      event("answer", "message.completed", "2026-05-12T15:00:03.000Z", "Parent answer")
+      event("answer", "message.completed", "2026-05-12T15:00:03.000Z", "Parent answer"),
     ];
 
     expect(lastAgentResponseEvent(events)?.id).toBe("answer");
@@ -1696,20 +1800,20 @@ describe("persistent native subagent runs", () => {
         id: "toolu_bash",
         name: "Bash",
         providerInvocationId: "invocation-1",
-        input: { command: "cargo test" }
+        input: { command: "cargo test" },
       }),
       event("bash-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
         tool_use_id: "toolu_bash",
         providerInvocationId: "invocation-1",
         is_error: true,
-        content: "test failed"
+        content: "test failed",
       }),
       event("bogus-agent-end", "agent.completed", "2026-05-12T15:00:03.000Z", "cargo test", {
         agentRunId: "toolu_bash",
         providerInvocationId: "invocation-1",
         providerChildSessionId: "b8c01gzk0",
-        status: "completed"
-      })
+        status: "completed",
+      }),
     ];
 
     expect(buildSessionToolCalls(events, true)[0]).toMatchObject({
@@ -1718,44 +1822,47 @@ describe("persistent native subagent runs", () => {
       completedAt: "2026-05-12T15:00:02.000Z",
       error: "test failed",
       agentRunId: null,
-      providerChildSessionId: null
+      providerChildSessionId: null,
     });
   });
 
-  it.each(["SendMessage", "send_input"])("turns %s into an agent row linked to the original launch", (name) => {
-    const events = [
-      event("agent-start", "agent.started", "2026-05-12T15:00:02.100Z", "Agent started", {
-        providerInvocationId: "invocation-2",
-        providerChildSessionId: "child-native",
-        providerParentConversationId: "parent-native",
-        agentRunId: "send-2",
-        agentRootToolUseId: "task-root",
+  it.each(["SendMessage", "send_input"])(
+    "turns %s into an agent row linked to the original launch",
+    (name) => {
+      const events = [
+        event("agent-start", "agent.started", "2026-05-12T15:00:02.100Z", "Agent started", {
+          providerInvocationId: "invocation-2",
+          providerChildSessionId: "child-native",
+          providerParentConversationId: "parent-native",
+          agentRunId: "send-2",
+          agentRootToolUseId: "task-root",
+          description: "Check the tests",
+          prompt: "Now check the tests.",
+        }),
+        event("send", "command.started", "2026-05-12T15:00:02.000Z", name, {
+          id: "send-2",
+          name,
+          providerInvocationId: "invocation-2",
+          input: { to: "child-native", message: "Now check the tests." },
+        }),
+      ];
+
+      expect(buildSessionToolCalls(events, true)).toEqual([
+        expect.objectContaining({
+          name: "Agent",
+          toolUseId: "send-2",
+          agentRunId: "send-2",
+          agentRootToolUseId: "task-root",
+          providerChildSessionId: "child-native",
+          providerParentConversationId: "parent-native",
+        }),
+      ]);
+      expect(buildSessionToolCalls(events, true)[0]?.inputFull).toMatchObject({
         description: "Check the tests",
-        prompt: "Now check the tests."
-      }),
-      event("send", "command.started", "2026-05-12T15:00:02.000Z", name, {
-        id: "send-2",
-        name,
-        providerInvocationId: "invocation-2",
-        input: { to: "child-native", message: "Now check the tests." }
-      })
-    ];
-
-    expect(buildSessionToolCalls(events, true)).toEqual([
-      expect.objectContaining({
-        name: "Agent",
-        toolUseId: "send-2",
-        agentRunId: "send-2",
-        agentRootToolUseId: "task-root",
-        providerChildSessionId: "child-native",
-        providerParentConversationId: "parent-native"
-      })
-    ]);
-    expect(buildSessionToolCalls(events, true)[0]?.inputFull).toMatchObject({
-      description: "Check the tests",
-      prompt: "Now check the tests."
-    });
-  });
+        prompt: "Now check the tests.",
+      });
+    },
+  );
 
   it("hides Codex transport without letting a completed wait settle an active native run", () => {
     const input = { sender_thread_id: "parent", receiver_thread_ids: ["child"] };
@@ -1764,34 +1871,34 @@ describe("persistent native subagent runs", () => {
       providerChildSessionId: "child",
       providerParentConversationId: "parent",
       agentRootToolUseId: "spawn",
-      agentRunId: "spawn"
+      agentRunId: "spawn",
     };
     const events = [
       event("spawn", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
         id: "spawn",
         name: "spawn_agent",
         providerInvocationId: "invocation",
-        input
+        input,
       }),
       event("native", "agent.started", "2026-05-12T15:00:01.100Z", "Agent started", {
         ...identity,
-        prompt: "Original assignment"
+        prompt: "Original assignment",
       }),
       ...["resume_agent", "send_input", "wait"].flatMap((name, index) => [
         event(`${name}-start`, "command.started", `2026-05-12T15:00:0${index + 2}.000Z`, name, {
           id: name,
           name,
           providerInvocationId: "invocation",
-          input
+          input,
         }),
         event(`${name}-end`, "command.completed", `2026-05-12T15:00:0${index + 2}.100Z`, name, {
           id: name,
           name,
           providerInvocationId: "invocation",
           input,
-          status: "completed"
-        })
-      ])
+          status: "completed",
+        }),
+      ]),
     ];
     const active = buildSessionToolCalls(events, true);
     expect(active).toHaveLength(1);
@@ -1800,8 +1907,8 @@ describe("persistent native subagent runs", () => {
       event("native-end", "agent.completed", "2026-05-12T15:00:05.000Z", "Done", {
         ...identity,
         prompt: null,
-        status: "completed"
-      })
+        status: "completed",
+      }),
     );
     const completed = buildSessionToolCalls(events, true);
     expect(completed[0]?.status).toBe("done");
@@ -1815,19 +1922,25 @@ describe("persistent native subagent runs", () => {
       providerChildSessionId: "child",
       providerParentConversationId: "parent",
       agentRootToolUseId: "spawn",
-      agentRunId: "spawn"
+      agentRunId: "spawn",
     };
     const events = [
       { ...event("start", "agent.started", timestamp, "Started", identity), rowCursor: 2 },
-      { ...event("done", "agent.completed", timestamp, "Done", { ...identity, status: "completed" }), rowCursor: 3 },
+      {
+        ...event("done", "agent.completed", timestamp, "Done", {
+          ...identity,
+          status: "completed",
+        }),
+        rowCursor: 3,
+      },
       {
         ...event("tool", "command.started", timestamp, "spawn_agent", {
           id: "spawn",
           name: "spawn_agent",
-          providerInvocationId: "invocation"
+          providerInvocationId: "invocation",
         }),
-        rowCursor: 1
-      }
+        rowCursor: 1,
+      },
     ];
     expect(buildSessionToolCalls(events, true)[0]?.status).toBe("done");
     expect(buildSessionToolCalls([...events].reverse(), true)[0]?.status).toBe("done");

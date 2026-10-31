@@ -10,7 +10,7 @@ export function MobileScreenHeader({
   onBack,
   backLabel,
   title,
-  actions
+  actions,
 }: {
   onBack: () => void;
   /** What the back chevron announces — the screen it returns to. */

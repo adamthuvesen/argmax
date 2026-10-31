@@ -7,7 +7,7 @@ import type {
   VisualizationAppearance,
   VisualizationControl,
   VisualizationControlGroup,
-  VisualizationHostMessage
+  VisualizationHostMessage,
 } from "../../shared/visualization/types.js";
 import { decodeVisualizationMessage } from "../lib/visualizationBridge.js";
 import { restoreDraft } from "../lib/composerDrafts.js";
@@ -15,7 +15,8 @@ import { openWebUrl } from "../lib/openWebUrl.js";
 
 function readAppearance(element: HTMLElement): VisualizationAppearance {
   const styles = getComputedStyle(element);
-  const token = (name: string, fallback: string): string => styles.getPropertyValue(name).trim() || fallback;
+  const token = (name: string, fallback: string): string =>
+    styles.getPropertyValue(name).trim() || fallback;
   const foreground = token("--text", "#1c1b18");
   const background = token("--bg", "#f7f7f7");
   const border = token("--line", "#d9dde0");
@@ -26,7 +27,7 @@ function readAppearance(element: HTMLElement): VisualizationAppearance {
     token("--activity-green", "#1b7249"),
     token("--activity-coral", "#a73924"),
     token("--activity-purple", "#7449a8"),
-    token("--activity-red", "#c72e43")
+    token("--activity-red", "#c72e43"),
   ];
   return {
     dark: document.documentElement.dataset.theme === "dark",
@@ -58,8 +59,8 @@ function readAppearance(element: HTMLElement): VisualizationAppearance {
       "--red": series[5],
       "--purple": series[4],
       "--yellow": series[1],
-      ...Object.fromEntries(series.map((color, index) => [`--viz-series-${index + 1}`, color]))
-    }
+      ...Object.fromEntries(series.map((color, index) => [`--viz-series-${index + 1}`, color])),
+    },
   };
 }
 
@@ -83,7 +84,7 @@ export function HtmlVisualization({
   path,
   sourceEventId,
   mode,
-  title = "Visualization"
+  title = "Visualization",
 }: {
   sessionId: string;
   artifactId?: string;
@@ -103,7 +104,11 @@ export function HtmlVisualization({
   const [groups, setGroups] = useState<VisualizationControlGroup[]>([]);
   const [visible, setVisible] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [followUp, setFollowUp] = useState<{ requestId: string; prompt: string; title?: string } | null>(null);
+  const [followUp, setFollowUp] = useState<{
+    requestId: string;
+    prompt: string;
+    title?: string;
+  } | null>(null);
   const [link, setLink] = useState<string | null>(null);
   const [original, setOriginal] = useState(false);
   const stateWrites = useRef<Promise<unknown>>(Promise.resolve());
@@ -126,7 +131,7 @@ export function HtmlVisualization({
               title,
               mode: mode ?? null,
               summary: null,
-              sourceEventId: sourceEventId ?? null
+              sourceEventId: sourceEventId ?? null,
             })
           ).id;
         }
@@ -142,9 +147,9 @@ export function HtmlVisualization({
     onError: (error) => {
       setState({
         kind: "error",
-        message: `Could not load visualization: ${error instanceof Error ? error.message : String(error)}`
+        message: `Could not load visualization: ${error instanceof Error ? error.message : String(error)}`,
       });
-    }
+    },
   });
 
   useEffect(() => {
@@ -153,16 +158,19 @@ export function HtmlVisualization({
     savedControls.current = {};
     setGroups([]);
     setHeight(480);
-    if (!visualizationActions()) setState({ kind: "error", message: "Visualization access is unavailable." });
+    if (!visualizationActions())
+      setState({ kind: "error", message: "Visualization access is unavailable." });
   }, [sessionId, artifactId, path, sourceEventId, title, mode, retry]);
 
-  const send = (message: VisualizationHostMessage): void => iframeRef.current?.contentWindow?.postMessage(message, "*");
+  const send = (message: VisualizationHostMessage): void =>
+    iframeRef.current?.contentWindow?.postMessage(message, "*");
 
   useLayoutEffect(() => {
     if (state.kind !== "ready") return;
     const id = state.value.artifact.id;
     const onMessage = (event: MessageEvent<unknown>): void => {
-      if (!iframeRef.current?.contentWindow || event.source !== iframeRef.current.contentWindow) return;
+      if (!iframeRef.current?.contentWindow || event.source !== iframeRef.current.contentWindow)
+        return;
       const message = decodeVisualizationMessage(event.data, id);
       if (!message) return;
       if (message.type === "argmax:visualization-height") {
@@ -181,7 +189,7 @@ export function HtmlVisualization({
               await api.setState({ sessionId, artifactId: id, state: message.state });
               frame.postMessage(
                 { type: "argmax:visualization-ack", instanceId: id, requestId: message.requestId },
-                "*"
+                "*",
               );
             } catch (error) {
               frame.postMessage(
@@ -189,9 +197,9 @@ export function HtmlVisualization({
                   type: "argmax:visualization-ack",
                   instanceId: id,
                   requestId: message.requestId,
-                  error: String(error)
+                  error: String(error),
                 },
-                "*"
+                "*",
               );
             }
           });
@@ -208,7 +216,7 @@ export function HtmlVisualization({
         send({
           type: "argmax:visualization-appearance",
           instanceId: id,
-          appearance: readAppearance(figureRef.current)
+          appearance: readAppearance(figureRef.current),
         });
     });
     observer.observe(document.documentElement, { attributes: true });
@@ -221,7 +229,9 @@ export function HtmlVisualization({
   useEffect(() => {
     const figure = figureRef.current;
     if (!figure || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { rootMargin: "300px" });
+    const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), {
+      rootMargin: "300px",
+    });
     observer.observe(figure);
     return () => observer.disconnect();
   }, []);
@@ -230,25 +240,33 @@ export function HtmlVisualization({
     const figure = figureRef.current;
     const column = figure?.parentElement;
     if (mode !== "wide" || !figure || !column) return;
-    const transcript = figure.closest<HTMLElement>(".conversation-content, .agent-activity-content");
+    const transcript = figure.closest<HTMLElement>(
+      ".conversation-content, .agent-activity-content",
+    );
     const session = figure.closest<HTMLElement>(".session-main-column");
     const card = session?.querySelector<HTMLElement>(".workspace-card");
     const measure = (): void => {
       const bounds = column.getBoundingClientRect();
       const safe = (transcript ?? session ?? column).getBoundingClientRect();
       const clearance = session
-        ? Number.parseFloat(getComputedStyle(session).getPropertyValue("--workspace-card-clearance")) || 0
+        ? Number.parseFloat(
+            getComputedStyle(session).getPropertyValue("--workspace-card-clearance"),
+          ) || 0
         : 0;
       const right =
         card && getComputedStyle(card).display !== "none"
           ? Math.min(safe.right, card.getBoundingClientRect().left - clearance)
           : safe.right;
-      const breakout = Math.max(0, Math.min(bounds.left - safe.left, right - bounds.right, (1024 - bounds.width) / 2));
+      const breakout = Math.max(
+        0,
+        Math.min(bounds.left - safe.left, right - bounds.right, (1024 - bounds.width) / 2),
+      );
       figure.style.setProperty("--visualization-breakout", `${breakout}px`);
     };
     measure();
     const observer = new ResizeObserver(measure);
-    for (const element of [column, transcript, session, card]) if (element) observer.observe(element);
+    for (const element of [column, transcript, session, card])
+      if (element) observer.observe(element);
     return () => observer.disconnect();
   }, [mode]);
 
@@ -269,7 +287,12 @@ export function HtmlVisualization({
     if (state.kind !== "ready") return;
     savedControls.current[control.id] = value;
     persistControls();
-    send({ type: "argmax:visualization-control", instanceId: state.value.artifact.id, id: control.id, value });
+    send({
+      type: "argmax:visualization-control",
+      instanceId: state.value.artifact.id,
+      id: control.id,
+      value,
+    });
   };
   const exportDocument = async (): Promise<void> => {
     if (state.kind !== "ready") return;
@@ -284,7 +307,10 @@ export function HtmlVisualization({
         const api = visualizationActions();
         if (!api) throw new Error("Visualization export is unavailable.");
         await stateWrites.current;
-        download(await api.export({ sessionId, artifactId: state.value.artifact.id }), state.value.artifact.title);
+        download(
+          await api.export({ sessionId, artifactId: state.value.artifact.id }),
+          state.value.artifact.title,
+        );
       }
     } catch (error) {
       setActionError(`Could not export visualization: ${String(error)}`);
@@ -299,7 +325,9 @@ export function HtmlVisualization({
       aria-label={state.kind === "ready" ? state.value.artifact.title : title}
     >
       <div className="html-visualization-toolbar">
-        <span className="html-visualization-title">{state.kind === "ready" ? state.value.artifact.title : title}</span>
+        <span className="html-visualization-title">
+          {state.kind === "ready" ? state.value.artifact.title : title}
+        </span>
         {state.kind === "ready" ? (
           <div className="html-visualization-actions">
             {groups.length > 0 ? (
@@ -352,7 +380,11 @@ export function HtmlVisualization({
       {state.kind === "error" ? (
         <div className="html-visualization-status">
           <p role="alert">{state.message}</p>
-          <button type="button" className="html-visualization-retry" onClick={() => setRetry((value) => value + 1)}>
+          <button
+            type="button"
+            className="html-visualization-retry"
+            onClick={() => setRetry((value) => value + 1)}
+          >
             Retry
           </button>
         </div>
@@ -427,7 +459,7 @@ export function HtmlVisualization({
                   send({
                     type: "argmax:visualization-appearance",
                     instanceId: id,
-                    appearance: readAppearance(figureRef.current)
+                    appearance: readAppearance(figureRef.current),
                   });
                 const snapshot = savedState.current ?? state.value.state;
                 send({
@@ -435,13 +467,22 @@ export function HtmlVisualization({
                   instanceId: id,
                   state: {
                     modelContent: snapshot.modelContent ?? null,
-                    privateContent: snapshot.privateContent ?? null
-                  }
+                    privateContent: snapshot.privateContent ?? null,
+                  },
                 });
                 send({ type: "argmax:visualization-reset", instanceId: id });
                 for (const [controlId, value] of Object.entries(savedControls.current)) {
-                  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean")
-                    send({ type: "argmax:visualization-control", instanceId: id, id: controlId, value });
+                  if (
+                    typeof value === "string" ||
+                    typeof value === "number" ||
+                    typeof value === "boolean"
+                  )
+                    send({
+                      type: "argmax:visualization-control",
+                      instanceId: id,
+                      id: controlId,
+                      value,
+                    });
                 }
               }}
             />
@@ -485,7 +526,10 @@ export function HtmlVisualization({
                       ) : control.kind === "color" ? (
                         <input
                           type="color"
-                          value={String(control.value).replace(/^#([\da-f])([\da-f])([\da-f])$/i, "#$1$1$2$2$3$3")}
+                          value={String(control.value).replace(
+                            /^#([\da-f])([\da-f])([\da-f])$/i,
+                            "#$1$1$2$2$3$3",
+                          )}
                           onChange={(event) => updateControl(control, event.target.value)}
                         />
                       ) : (
@@ -505,12 +549,13 @@ export function HtmlVisualization({
                   <button
                     type="button"
                     onClick={() => {
-                      for (const control of group.controls) delete savedControls.current[control.id];
+                      for (const control of group.controls)
+                        delete savedControls.current[control.id];
                       persistControls();
                       send({
                         type: "argmax:visualization-reset",
                         instanceId: state.value.artifact.id,
-                        groupId: group.id
+                        groupId: group.id,
                       });
                     }}
                   >
@@ -525,7 +570,7 @@ export function HtmlVisualization({
                   send({
                     type: "argmax:visualization-original",
                     instanceId: state.value.artifact.id,
-                    active: !original
+                    active: !original,
                   });
                   setOriginal((value) => !value);
                 }}
@@ -537,7 +582,7 @@ export function HtmlVisualization({
                 onClick={() =>
                   restoreDraft(sessionId, {
                     text: `Apply these visualization design changes:\n${groups.flatMap((group) => group.controls.map((control) => `${group.label}: ${control.label} = ${String(control.value)}`)).join("\n")}`,
-                    attachments: []
+                    attachments: [],
                   })
                 }
               >

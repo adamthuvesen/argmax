@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { isMermaidFenceClass } from "./mermaidFence.js";
-import { cssColorToHex, mermaidBreakoutWidth, mermaidErrorMessage, mermaidLayout } from "./mermaidRuntime.js";
+import {
+  cssColorToHex,
+  mermaidBreakoutWidth,
+  mermaidErrorMessage,
+  mermaidLayout,
+} from "./mermaidRuntime.js";
 
 describe("isMermaidFenceClass", () => {
   it("recognises mermaid and mmd fences", () => {
@@ -38,7 +43,9 @@ describe("cssColorToHex", () => {
 
 describe("mermaidErrorMessage", () => {
   it("keeps the first line and strips an Error prefix", () => {
-    expect(mermaidErrorMessage(new Error("Parse error on line 2:\n  extra"))).toBe("Parse error on line 2:");
+    expect(mermaidErrorMessage(new Error("Parse error on line 2:\n  extra"))).toBe(
+      "Parse error on line 2:",
+    );
   });
 });
 

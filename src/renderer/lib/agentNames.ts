@@ -96,7 +96,7 @@ export function assignAgentCodenames(tools: readonly ToolCall[]): Map<string, st
 export function nativeAgentReferences(
   tools: readonly ToolCall[],
   codenames: ReadonlyMap<string, string>,
-  providerParentConversationId: string | null
+  providerParentConversationId: string | null,
 ): AgentReference[] {
   if (!providerParentConversationId) return [];
   const references = new Map<string, AgentReference>();
@@ -113,7 +113,7 @@ export function nativeAgentReferences(
     references.set(providerChildSessionId, {
       name,
       providerChildSessionId,
-      providerParentConversationId
+      providerParentConversationId,
     });
   }
   return [...references.values()];
@@ -124,7 +124,10 @@ export function nativeAgentReferences(
  * spawns (falling back to the hash-only name if events aren't loaded yet), or
  * undefined for any non-agent tool.
  */
-export function codenameForTool(tool: ToolCall, codenames?: Map<string, string>): string | undefined {
+export function codenameForTool(
+  tool: ToolCall,
+  codenames?: Map<string, string>,
+): string | undefined {
   if (getToolTypeBucket(tool.name) !== "agent") return undefined;
   const key = agentCodenameKey(tool);
   return codenames?.get(key) ?? fallbackCodename(key);

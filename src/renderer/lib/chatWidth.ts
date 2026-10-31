@@ -12,7 +12,7 @@ export const CHAT_WIDTH_MAX: ChatWidth = 5;
 const LEGACY_CHAT_WIDTHS: Readonly<Record<string, ChatWidth>> = {
   narrow: 2,
   standard: 3,
-  wide: 4
+  wide: 4,
 };
 
 /** Caption under the width control, one per level. */
@@ -21,7 +21,7 @@ export const CHAT_WIDTH_HINTS: Readonly<Record<ChatWidth, string>> = {
   2: "Narrow.",
   3: "Argmax's default column.",
   4: "Wide.",
-  5: "Widest. Fills the pane."
+  5: "Widest. Fills the pane.",
 };
 
 export function readStoredChatWidth(): ChatWidth {

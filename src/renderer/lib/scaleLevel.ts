@@ -28,7 +28,10 @@ export function toScaleLevel(raw: string | number | null | undefined): ScaleLeve
  * setting may still hold. The next persist writes the level back, so the
  * legacy value converts on first run rather than lingering.
  */
-export function readStoredScaleLevel(key: string, legacy: Readonly<Record<string, ScaleLevel>>): ScaleLevel | null {
+export function readStoredScaleLevel(
+  key: string,
+  legacy: Readonly<Record<string, ScaleLevel>>,
+): ScaleLevel | null {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(key);
   if (!raw) return null;

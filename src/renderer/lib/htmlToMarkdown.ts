@@ -21,7 +21,7 @@ function getConverter(): TurndownService {
       bulletListMarker: "-",
       codeBlockStyle: "fenced",
       fence: "```",
-      emDelimiter: "*"
+      emDelimiter: "*",
     });
     converter.escape = (text) => text;
   }

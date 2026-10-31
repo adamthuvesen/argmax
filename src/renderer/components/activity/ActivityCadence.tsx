@@ -1,7 +1,13 @@
 import type { JSX } from "react";
 import type { ActivityCadence as Cadence } from "./activityContract.js";
 import { formatCount } from "./activityFormat.js";
-import { ACTIVITY_WEEKDAYS, cadenceReading, peakHour, peakWeekday, type ActivityPeak } from "./activityPresentation.js";
+import {
+  ACTIVITY_WEEKDAYS,
+  cadenceReading,
+  peakHour,
+  peakWeekday,
+  type ActivityPeak,
+} from "./activityPresentation.js";
 
 /**
  * When the work landed: two small multiples on one card, then one sentence
@@ -41,7 +47,7 @@ const HOUR_LABELS = [
   "",
   "",
   "",
-  "23"
+  "23",
 ];
 
 interface BarChartProps {
@@ -57,7 +63,15 @@ interface BarChartProps {
   title: string;
 }
 
-function BarChart({ values, labels, width, gap, showEveryValue, peak, title }: BarChartProps): JSX.Element {
+function BarChart({
+  values,
+  labels,
+  width,
+  gap,
+  showEveryValue,
+  peak,
+  title,
+}: BarChartProps): JSX.Element {
   const plotHeight = CHART_HEIGHT - CHART_TOP - CHART_BOTTOM;
   const base = CHART_TOP + plotHeight;
   const max = values.reduce((best, value) => Math.max(best, value), 0);
@@ -70,7 +84,9 @@ function BarChart({ values, labels, width, gap, showEveryValue, peak, title }: B
       viewBox={`0 0 ${width} ${CHART_HEIGHT}`}
       role="img"
       aria-label={
-        peak ? `${title}. Peak ${peak.label}, ${formatCount(peak.value)} commits.` : `${title}. Nothing recorded.`
+        peak
+          ? `${title}. Peak ${peak.label}, ${formatCount(peak.value)} commits.`
+          : `${title}. Nothing recorded.`
       }
     >
       <line className="activity-bars-base" x1="0" x2={width} y1={base + 0.5} y2={base + 0.5} />
@@ -118,7 +134,7 @@ function BarChart({ values, labels, width, gap, showEveryValue, peak, title }: B
 
 export function ActivityCadence({
   cadence,
-  commits
+  commits,
 }: {
   cadence: Cadence;
   /** The window's commit count, so the card can name what it is describing. */

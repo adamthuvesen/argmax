@@ -1,10 +1,20 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { commitChatCycle, jumpToAdjacentChat, noteChatVisited, resetChatCycle, stepChatCycle } from "./chatCycle.js";
+import {
+  commitChatCycle,
+  jumpToAdjacentChat,
+  noteChatVisited,
+  resetChatCycle,
+  stepChatCycle,
+} from "./chatCycle.js";
 
 const VISIBLE = ["workspace-1", "workspace-2", "workspace-3", "workspace-4"];
 
 /** One ⌘§ press and release, the way the hook drives it. */
-function tap(step: 1 | -1, currentId: string | null, visible: readonly string[] = VISIBLE): string | null {
+function tap(
+  step: 1 | -1,
+  currentId: string | null,
+  visible: readonly string[] = VISIBLE,
+): string | null {
   const landed = stepChatCycle(step, visible, currentId);
   commitChatCycle();
   if (landed) noteChatVisited(landed);

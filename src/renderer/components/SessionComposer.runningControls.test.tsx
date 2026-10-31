@@ -1,13 +1,17 @@
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { baseSession, renderConversation, STARTED_TURN } from "../../test/sessionConversationTestHarness.js";
+import {
+  baseSession,
+  renderConversation,
+  STARTED_TURN,
+} from "../../test/sessionConversationTestHarness.js";
 
 function runningComposer() {
   const onTerminateSession = vi.fn(() => Promise.resolve());
   const onSendSessionInput = vi.fn(() => Promise.resolve(STARTED_TURN));
   renderConversation(baseSession({ state: "running" }), [], {
     onSendSessionInput,
-    onTerminateSession
+    onTerminateSession,
   });
   return { onSendSessionInput, onTerminateSession };
 }
@@ -32,7 +36,7 @@ describe("SessionComposer — running turn controls", () => {
     const onSendSessionInput = vi.fn(() => Promise.resolve(STARTED_TURN));
     renderConversation(baseSession({ state: "running" }), [], {
       defaultFollowUpDelivery: "steer",
-      onSendSessionInput
+      onSendSessionInput,
     });
 
     const prompt = screen.getByLabelText("Chat prompt");
@@ -47,8 +51,8 @@ describe("SessionComposer — running turn controls", () => {
         "auto",
         undefined,
         undefined,
-        "steer"
-      )
+        "steer",
+      ),
     );
   });
 
@@ -58,13 +62,13 @@ describe("SessionComposer — running turn controls", () => {
       baseSession({
         state: "running",
         contextTokens: 226_235,
-        contextWindow: 258_400
+        contextWindow: 258_400,
       }),
       [],
       {
         defaultFollowUpDelivery: "steer",
-        onSendSessionInput
-      }
+        onSendSessionInput,
+      },
     );
 
     const prompt = screen.getByLabelText("Chat prompt");
@@ -77,8 +81,8 @@ describe("SessionComposer — running turn controls", () => {
         "Prioritize the migration",
         expect.anything(),
         "auto",
-        undefined
-      )
+        undefined,
+      ),
     );
   });
 
@@ -107,7 +111,7 @@ describe("SessionComposer — running turn controls", () => {
   describe("on a touch surface", () => {
     beforeEach(() => {
       vi.spyOn(window, "matchMedia").mockImplementation(
-        (query: string) => ({ matches: query.includes("coarse"), media: query }) as MediaQueryList
+        (query: string) => ({ matches: query.includes("coarse"), media: query }) as MediaQueryList,
       );
     });
 
@@ -125,7 +129,13 @@ describe("SessionComposer — running turn controls", () => {
       fireEvent.click(screen.getByRole("button", { name: "Queue follow-up" }));
 
       await waitFor(() =>
-        expect(onSendSessionInput).toHaveBeenCalledWith("session-a", "MCP", expect.anything(), "auto", undefined)
+        expect(onSendSessionInput).toHaveBeenCalledWith(
+          "session-a",
+          "MCP",
+          expect.anything(),
+          "auto",
+          undefined,
+        ),
       );
       expect(onTerminateSession).not.toHaveBeenCalled();
     });

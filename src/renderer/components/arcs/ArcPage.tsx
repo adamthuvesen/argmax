@@ -1,5 +1,10 @@
 import { Check, Clock, Copy, FolderOpen, Pencil, Trash2 } from "lucide-react";
-import { arcActions, bridgeAvailable, routineActions, systemActions } from "../../data/bridgeActions.js";
+import {
+  arcActions,
+  bridgeAvailable,
+  routineActions,
+  systemActions,
+} from "../../data/bridgeActions.js";
 import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import type {
@@ -12,9 +17,13 @@ import type {
   ProviderId,
   Routine,
   SessionState,
-  SessionSummary
+  SessionSummary,
 } from "../../../shared/types.js";
-import { PROVIDER_DISPLAY_NAMES, modelLabelFor, resolveModelId } from "../../../shared/providerModels.js";
+import {
+  PROVIDER_DISPLAY_NAMES,
+  modelLabelFor,
+  resolveModelId,
+} from "../../../shared/providerModels.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
 import { readStoredManualLaunchModel } from "../../lib/launchModelPreference.js";
 import { describeSchedule } from "../../lib/schedule.js";
@@ -29,7 +38,7 @@ import { ArcTimeline } from "./ArcTimeline.js";
 const ARC_STATE_LABEL: Record<ArcState, string> = {
   active: "Active",
   paused: "Paused",
-  done: "Done"
+  done: "Done",
 };
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -44,14 +53,18 @@ function isProviderId(value: string): value is ProviderId {
  *  otherwise the user's ordinary launch default. */
 function resolveCoordinatorModel(
   previous: ArcMemberSummary | null,
-  previousSession: SessionSummary | null
+  previousSession: SessionSummary | null,
 ): ModelPickerSelection {
   if (previousSession) {
     return {
       provider: previousSession.provider,
-      label: modelLabelFor(previousSession.provider, previousSession.modelId) ?? previousSession.modelLabel,
+      label:
+        modelLabelFor(previousSession.provider, previousSession.modelId) ??
+        previousSession.modelLabel,
       modelId: resolveModelId(previousSession.provider, previousSession.modelId),
-      ...(previousSession.reasoningEffort ? { reasoningEffort: previousSession.reasoningEffort } : {})
+      ...(previousSession.reasoningEffort
+        ? { reasoningEffort: previousSession.reasoningEffort }
+        : {}),
     };
   }
   if (previous && isProviderId(previous.provider) && previous.modelLabel && previous.modelId) {
@@ -68,12 +81,15 @@ function demoDetail(snapshot: DashboardSnapshot, arcId: string): ArcDetail | nul
   const members = snapshot.sessions
     .filter((session) => session.arcId === arcId)
     .map((session): ArcMemberSummary => {
-      const workspace = snapshot.workspaces.find((candidate) => candidate.id === session.workspaceId);
+      const workspace = snapshot.workspaces.find(
+        (candidate) => candidate.id === session.workspaceId,
+      );
       return {
         sessionId: session.id,
         taskLabel: workspace?.taskLabel ?? "",
         projectId: workspace?.projectId ?? "",
-        projectName: snapshot.projects.find((project) => project.id === workspace?.projectId)?.name ?? "",
+        projectName:
+          snapshot.projects.find((project) => project.id === workspace?.projectId)?.name ?? "",
         workspaceId: session.workspaceId,
         state: session.state,
         provider: session.provider,
@@ -82,7 +98,7 @@ function demoDetail(snapshot: DashboardSnapshot, arcId: string): ArcDetail | nul
         startedAt: session.startedAt,
         isCoordinator: session.id === summary.coordinatorSessionId,
         prNumber: workspace?.prNumber ?? null,
-        prState: workspace?.prState ?? null
+        prState: workspace?.prState ?? null,
       };
     });
   return {
@@ -96,12 +112,12 @@ function demoDetail(snapshot: DashboardSnapshot, arcId: string): ArcDetail | nul
       dir: summary.dir,
       createdAt: summary.updatedAt,
       updatedAt: summary.updatedAt,
-      archivedAt: summary.archivedAt
+      archivedAt: summary.archivedAt,
     },
     members,
     membersTruncated: false,
     launchesLast24h: 0,
-    limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 }
+    limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 },
   };
 }
 
@@ -110,7 +126,7 @@ export function ArcPage({
   snapshot,
   projects,
   onOpenSession,
-  onClose
+  onClose,
 }: {
   arcId: string;
   snapshot: DashboardSnapshot;
@@ -144,9 +160,11 @@ export function ArcPage({
     const previous = seededArc.current;
     seededArc.current = record;
     setBriefDraft((draft) =>
-      previous && previous.id === record.id && draft !== previous.brief ? draft : record.brief
+      previous && previous.id === record.id && draft !== previous.brief ? draft : record.brief,
     );
-    setNameDraft((draft) => (previous && previous.id === record.id && draft !== previous.name ? draft : record.name));
+    setNameDraft((draft) =>
+      previous && previous.id === record.id && draft !== previous.name ? draft : record.name,
+    );
   }, []);
 
   const applyArc = useCallback(
@@ -154,7 +172,7 @@ export function ArcPage({
       setDetail((current) => (current ? { ...current, arc: record } : current));
       applyRecord(record);
     },
-    [applyRecord]
+    [applyRecord],
   );
 
   const summary = snapshot.arcs?.find((candidate) => candidate.id === arcId) ?? null;
@@ -185,7 +203,7 @@ export function ArcPage({
       applyRecord(next.arc);
       setLoadError(null);
     },
-    onError: (error) => setLoadError(errorMessage(error, "Could not load this arc."))
+    onError: (error) => setLoadError(errorMessage(error, "Could not load this arc.")),
   });
   useEffect(() => {
     if (bridgeAvailable()) return;
@@ -214,7 +232,7 @@ export function ArcPage({
       } else {
         setTriggersError(message);
       }
-    }
+    },
   });
 
   useEffect(() => {
@@ -244,7 +262,9 @@ export function ArcPage({
       const routines = routineActions();
       const system = systemActions();
       if (!routines || !system) return;
-      const confirmed = await system.confirm(`Delete “${routine.name}”? Chats it already started stay in the sidebar.`);
+      const confirmed = await system.confirm(
+        `Delete “${routine.name}”? Chats it already started stay in the sidebar.`,
+      );
       if (!confirmed) return;
       setRemovingRoutineId(routine.id);
       try {
@@ -256,17 +276,17 @@ export function ArcPage({
         setRemovingRoutineId(null);
       }
     },
-    [loadTriggers]
+    [loadTriggers],
   );
 
   const project = useMemo(
     () => (arc ? (projects.find((candidate) => candidate.id === arc.homeProjectId) ?? null) : null),
-    [arc, projects]
+    [arc, projects],
   );
 
   const sessionsById = useMemo(
     () => new Map(snapshot.sessions.map((session) => [session.id, session])),
-    [snapshot.sessions]
+    [snapshot.sessions],
   );
 
   const coordinator = useMemo<ArcMemberSummary | null>(
@@ -274,25 +294,27 @@ export function ArcPage({
       arc?.coordinatorSessionId
         ? (detail?.members.find((member) => member.sessionId === arc.coordinatorSessionId) ?? null)
         : null,
-    [arc, detail]
+    [arc, detail],
   );
   const coordinatorSession = coordinator ? (sessionsById.get(coordinator.sessionId) ?? null) : null;
 
   const members = useMemo(
-    () => (detail?.members ?? []).filter((member) => member.sessionId !== arc?.coordinatorSessionId),
-    [detail, arc]
+    () =>
+      (detail?.members ?? []).filter((member) => member.sessionId !== arc?.coordinatorSessionId),
+    [detail, arc],
   );
 
   /** A member's live state: the snapshot's when the chat is in it, since the
    *  detail is only refetched when the arc itself changes. */
   const liveState = useCallback(
-    (member: ArcMemberSummary): SessionState => sessionsById.get(member.sessionId)?.state ?? member.state,
-    [sessionsById]
+    (member: ArcMemberSummary): SessionState =>
+      sessionsById.get(member.sessionId)?.state ?? member.state,
+    [sessionsById],
   );
 
   const activeMembers = useMemo(
     () => members.filter((member) => !SETTLED_STATES.has(liveState(member))),
-    [members, liveState]
+    [members, liveState],
   );
 
   const pullRequests = useMemo(() => {
@@ -311,10 +333,13 @@ export function ArcPage({
   const timelineRefreshKey = [
     summary?.lastEventAt ?? "",
     summaryKey,
-    (detail?.members ?? []).map((member) => `${member.sessionId}:${liveState(member)}`).join(",")
+    (detail?.members ?? []).map((member) => `${member.sessionId}:${liveState(member)}`).join(","),
   ].join("|");
 
-  const canOpenSession = useCallback((sessionId: string) => sessionsById.has(sessionId), [sessionsById]);
+  const canOpenSession = useCallback(
+    (sessionId: string) => sessionsById.has(sessionId),
+    [sessionsById],
+  );
 
   const isDone = arc?.state === "done";
 
@@ -331,7 +356,7 @@ export function ArcPage({
         setBusy(false);
       }
     },
-    [arc, applyArc]
+    [arc, applyArc],
   );
 
   const handleSetArchived = useCallback(
@@ -347,7 +372,7 @@ export function ArcPage({
         setBusy(false);
       }
     },
-    [arc, applyArc]
+    [arc, applyArc],
   );
 
   const handleSaveName = useCallback(async (): Promise<void> => {
@@ -393,7 +418,7 @@ export function ArcPage({
       if (!arc || !arcs || !system) return;
       if (isNew) {
         const confirmed = await system.confirm(
-          "Start a new coordinator chat? The current one stays in the sidebar as history. The new chat starts fresh from BRIEF.md and NOTES.md."
+          "Start a new coordinator chat? The current one stays in the sidebar as history. The new chat starts fresh from BRIEF.md and NOTES.md.",
         );
         if (!confirmed) return;
       }
@@ -406,8 +431,8 @@ export function ArcPage({
             provider: model.provider,
             modelLabel: model.label,
             modelId: model.modelId,
-            reasoningEffort: model.reasoningEffort ?? null
-          })
+            reasoningEffort: model.reasoningEffort ?? null,
+          }),
         );
       } catch (error) {
         showErrorToast(errorMessage(error, "Could not launch the coordinator."));
@@ -415,7 +440,7 @@ export function ArcPage({
         setBusy(false);
       }
     },
-    [arc, coordinator, coordinatorSession, applyArc]
+    [arc, coordinator, coordinatorSession, applyArc],
   );
 
   if (loadError && !arc) {
@@ -596,7 +621,11 @@ export function ArcPage({
           <p className="arc-chats-summary">{chatsSummary(activeMembers.length, pullRequests)}</p>
         </header>
         <div className="arc-chat-row">
-          <span className="arc-state-dot" data-session-state={coordinatorState ?? undefined} aria-hidden="true" />
+          <span
+            className="arc-state-dot"
+            data-session-state={coordinatorState ?? undefined}
+            aria-hidden="true"
+          />
           {coordinator ? (
             <MemberOpenButton
               className="arc-chat-open"
@@ -607,12 +636,16 @@ export function ArcPage({
                   {isProviderId(coordinator.provider)
                     ? PROVIDER_DISPLAY_NAMES[coordinator.provider]
                     : coordinator.provider}
-                  {coordinator.modelLabel ? <span className="arc-chat-model">{coordinator.modelLabel}</span> : null}
+                  {coordinator.modelLabel ? (
+                    <span className="arc-chat-model">{coordinator.modelLabel}</span>
+                  ) : null}
                 </>
               }
             />
           ) : (
-            <span className="arc-chat-missing">{arc.coordinatorSessionId ? "Loading…" : "No coordinator"}</span>
+            <span className="arc-chat-missing">
+              {arc.coordinatorSessionId ? "Loading…" : "No coordinator"}
+            </span>
           )}
           <span className="arc-chat-meta">
             Coordinator
@@ -643,7 +676,11 @@ export function ArcPage({
           <ul className="arc-chat-list" aria-label="Members working now">
             {activeMembers.map((member) => (
               <li key={member.sessionId} className="arc-chat-row">
-                <span className="arc-state-dot" data-session-state={liveState(member)} aria-hidden="true" />
+                <span
+                  className="arc-state-dot"
+                  data-session-state={liveState(member)}
+                  aria-hidden="true"
+                />
                 <MemberOpenButton
                   className="arc-chat-open"
                   canOpen={sessionsById.has(member.sessionId)}
@@ -672,7 +709,9 @@ export function ArcPage({
           <div className="arc-setup-row">
             <div className="arc-setup-label">
               <span>Folder</span>
-              <span className="arc-card-hint">BRIEF.md and NOTES.md live here. Only the coordinator writes to it.</span>
+              <span className="arc-card-hint">
+                BRIEF.md and NOTES.md live here. Only the coordinator writes to it.
+              </span>
             </div>
             <div className="arc-folder-row">
               <code className="arc-folder-path" title={arc.dir}>
@@ -702,7 +741,7 @@ export function ArcPage({
                       void withToast(
                         async () => systemActions()?.openPath({ path: arc.dir }),
                         showToast,
-                        "Could not open the arc folder."
+                        "Could not open the arc folder.",
                       )
                     }
                   >
@@ -715,7 +754,7 @@ export function ArcPage({
                       void withToast(
                         async () => systemActions()?.openPath({ path: `${arc.dir}/NOTES.md` }),
                         showToast,
-                        "Could not open NOTES.md."
+                        "Could not open NOTES.md.",
                       )
                     }
                   >
@@ -732,8 +771,9 @@ export function ArcPage({
             <div className="arc-setup-label">
               <span>Limits</span>
               <span className="arc-card-hint">
-                Up to {detail?.limits.maxActiveMembers ?? 8} members working at once. {detail?.launchesLast24h ?? 0} of{" "}
-                {detail?.limits.maxLaunchesPerDay ?? 40} launches used today.
+                Up to {detail?.limits.maxActiveMembers ?? 8} members working at once.{" "}
+                {detail?.launchesLast24h ?? 0} of {detail?.limits.maxLaunchesPerDay ?? 40} launches
+                used today.
               </span>
             </div>
           </div>
@@ -755,7 +795,9 @@ export function ArcPage({
               </p>
             ) : null}
             {triggersRemote ? (
-              <p className="arc-card-hint">Scheduled tasks for this arc are listed in the desktop app.</p>
+              <p className="arc-card-hint">
+                Scheduled tasks for this arc are listed in the desktop app.
+              </p>
             ) : triggerRoutines.length === 0 ? (
               <p className="arc-card-hint">No scheduled tasks yet.</p>
             ) : (
@@ -764,7 +806,9 @@ export function ArcPage({
                   <li key={routine.id} className="arc-trigger-row">
                     <Clock size={13} aria-hidden="true" className="arc-trigger-glyph" />
                     <div className="arc-trigger-body">
-                      <span className="arc-member-label">{routine.prompt.split("\n")[0] || routine.name}</span>
+                      <span className="arc-member-label">
+                        {routine.prompt.split("\n")[0] || routine.name}
+                      </span>
                       <span className="arc-member-meta">
                         {describeSchedule(routine)} · {routine.enabled ? "On" : "Paused"}
                       </span>
@@ -849,7 +893,10 @@ function describeSessionState(state: SessionState | null): string {
 function chatsSummary(working: number, pullRequests: { open: number; merged: number }): string {
   const parts = [working === 0 ? "None working" : `${working} working`];
   if (pullRequests.open + pullRequests.merged > 0) {
-    parts.push(`${pullRequests.open} ${pullRequests.open === 1 ? "PR" : "PRs"} open`, `${pullRequests.merged} merged`);
+    parts.push(
+      `${pullRequests.open} ${pullRequests.open === 1 ? "PR" : "PRs"} open`,
+      `${pullRequests.merged} merged`,
+    );
   }
   return parts.join(" · ");
 }
@@ -866,7 +913,7 @@ function MemberOpenButton({
   label,
   className,
   canOpen,
-  onOpen
+  onOpen,
 }: {
   label: ReactNode;
   className: string;

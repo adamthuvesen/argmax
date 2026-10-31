@@ -6,7 +6,7 @@ import {
   launchProjectIdFrom,
   persistLaunchProjectId,
   readLaunchProjectRecency,
-  sortProjectsByLaunchRecency
+  sortProjectsByLaunchRecency,
 } from "./launchProjectPreference.js";
 
 afterEach(() => {
@@ -21,9 +21,9 @@ describe("launch project preference", () => {
     persistLaunchProjectId("");
 
     expect(readLaunchProjectRecency()).toEqual(["project-2", "project-1"]);
-    expect(launchProjectIdFrom([{ id: "project-1" }, { id: "project-2" }, { id: SCRATCH_PROJECT_ID }])).toBe(
-      "project-2"
-    );
+    expect(
+      launchProjectIdFrom([{ id: "project-1" }, { id: "project-2" }, { id: SCRATCH_PROJECT_ID }]),
+    ).toBe("project-2");
   });
 
   it("skips a stored id that is no longer in the project list", () => {
@@ -40,9 +40,11 @@ describe("launch project preference", () => {
     persistLaunchProjectId("project-2");
 
     expect(
-      sortProjectsByLaunchRecency([{ id: "project-1" }, { id: "project-2" }, { id: "project-3" }]).map(
-        (project) => project.id
-      )
+      sortProjectsByLaunchRecency([
+        { id: "project-1" },
+        { id: "project-2" },
+        { id: "project-3" },
+      ]).map((project) => project.id),
     ).toEqual(["project-2", "project-1", "project-3"]);
   });
 });

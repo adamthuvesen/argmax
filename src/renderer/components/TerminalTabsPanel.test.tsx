@@ -1,13 +1,18 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import type { ArgmaxApi, TerminalAgentOpenEvent, TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
+import type {
+  ArgmaxApi,
+  TerminalAgentOpenEvent,
+  TerminalDataEvent,
+  TerminalExitEvent,
+} from "../../shared/types.js";
 import { TerminalTabsPanel } from "./TerminalTabsPanel.js";
 import {
   addAgentTerminalTab,
   getWorkspaceTerminalState,
   closeTerminalTab,
   ensureAgentTerminalSync,
-  resetTerminalTabsForTests
+  resetTerminalTabsForTests,
 } from "../lib/terminalTabs.js";
 import { resetTerminalRuntimesForTests } from "../lib/terminalRuntime.js";
 
@@ -18,7 +23,7 @@ const terminalMockState = vi.hoisted(() => ({
     options: Record<string, unknown>;
     write: ReturnType<typeof vi.fn>;
   }>,
-  nextSize: null as { cols: number; rows: number } | null
+  nextSize: null as { cols: number; rows: number } | null,
 }));
 
 // xterm.js is too DOM-heavy for jsdom to be useful here — the value of these
@@ -42,13 +47,13 @@ vi.mock("@xterm/xterm", () => ({
       terminalMockState.instances.push(this);
       terminalMockState.nextSize = null;
     }
-  }
+  },
 }));
 
 vi.mock("@xterm/addon-fit", () => ({
   FitAddon: class FakeFitAddon {
     fit = vi.fn();
-  }
+  },
 }));
 
 vi.mock("@xterm/xterm/css/xterm.css", () => ({}));
@@ -103,8 +108,8 @@ function installArgmaxStub(): ArgmaxStub {
         return () => {
           agentOpenListeners.delete(listener);
         };
-      }
-    }
+      },
+    },
   } as unknown as ArgmaxApi;
 
   return {
@@ -120,7 +125,7 @@ function installArgmaxStub(): ArgmaxStub {
     },
     emitAgentOpen: (event) => {
       for (const l of agentOpenListeners) l(event);
-    }
+    },
   };
 }
 
@@ -161,7 +166,7 @@ describe("TerminalTabsPanel", () => {
       <>
         <TerminalTabsPanel workspaceId="ws-1" controlledTabId={first.id} visible />
         <TerminalTabsPanel workspaceId="ws-1" controlledTabId={second.id} visible />
-      </>
+      </>,
     );
     await waitFor(() => expect(terminalMockState.instances).toHaveLength(2));
     expect(screen.getByRole("tabpanel", { name: "Server" })).toBeInTheDocument();
@@ -203,7 +208,7 @@ describe("TerminalTabsPanel", () => {
       stub.emitAgentOpen({
         workspaceId: "ws-1",
         terminalId: "fast-pty",
-        command: "printf done"
+        command: "printf done",
       });
       stub.emitData({ terminalId: "fast-pty", data: "done\r\n" });
       stub.emitExit({ terminalId: "fast-pty", exitCode: 0, signal: null });
@@ -211,9 +216,11 @@ describe("TerminalTabsPanel", () => {
 
     render(<TerminalTabsPanel workspaceId="ws-1" visible />);
 
-    await waitFor(() => expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith("done\r\n"));
+    await waitFor(() =>
+      expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith("done\r\n"),
+    );
     expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith(
-      expect.stringContaining("process exited with code 0")
+      expect.stringContaining("process exited with code 0"),
     );
     expect(stub.spawn).not.toHaveBeenCalled();
   });
@@ -235,7 +242,7 @@ describe("TerminalTabsPanel", () => {
     await waitFor(() => expect(terminalMockState.instances).toHaveLength(1));
     expect(terminalMockState.instances[0]?.options).toMatchObject({
       fontFamily: '"Token Mono", monospace',
-      fontSize: 15
+      fontSize: 15,
     });
   });
 
@@ -248,8 +255,8 @@ describe("TerminalTabsPanel", () => {
       expect(stub.spawn).toHaveBeenCalledWith({
         workspaceId: "ws-1",
         cols: 20,
-        rows: 24
-      })
+        rows: 24,
+      }),
     );
   });
 
@@ -257,15 +264,15 @@ describe("TerminalTabsPanel", () => {
     stub.spawn.mockRejectedValueOnce({
       code: "SERVICE_ERROR",
       subCode: "TERMINAL_PTY_SPAWN_FAILED",
-      message: "could not spawn terminal shell: No such file or directory"
+      message: "could not spawn terminal shell: No such file or directory",
     });
 
     render(<TerminalTabsPanel workspaceId="ws-1" visible />);
 
     await waitFor(() =>
       expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith(
-        expect.stringContaining("could not spawn terminal shell")
-      )
+        expect.stringContaining("could not spawn terminal shell"),
+      ),
     );
   });
 
@@ -277,7 +284,9 @@ describe("TerminalTabsPanel", () => {
 
     render(<TerminalTabsPanel workspaceId="ws-1" visible />);
 
-    await waitFor(() => expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith("adam@argmax % "));
+    await waitFor(() =>
+      expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith("adam@argmax % "),
+    );
   });
 
   it("clicking + adds a tab, spawns a second PTY, and switches active", async () => {
@@ -349,7 +358,9 @@ describe("TerminalTabsPanel", () => {
     expect(screen.getByRole("tab", { name: "zsh 3" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Close zsh 2" }));
-    await waitFor(() => expect(screen.queryByRole("tab", { name: "zsh 2" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("tab", { name: "zsh 2" })).not.toBeInTheDocument(),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
     expect(await screen.findByRole("tab", { name: "zsh 2" })).toBeInTheDocument();

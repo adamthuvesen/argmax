@@ -27,7 +27,9 @@ describe("MarkdownImage", () => {
   // The fallback is a link or a file chip, not an image, so there is nothing
   // to enlarge and no button to offer.
   it("gives a remote image a link rather than a lightbox", () => {
-    render(<MarkdownImage src="https://example.com/chart.png" alt="A chart" workspace={workspace} />);
+    render(
+      <MarkdownImage src="https://example.com/chart.png" alt="A chart" workspace={workspace} />,
+    );
 
     expect(screen.queryByRole("button", { name: /view larger/ })).toBeNull();
     expect(screen.getByRole("link", { name: "example.com" })).toBeTruthy();

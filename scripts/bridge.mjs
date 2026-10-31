@@ -50,8 +50,12 @@ export const LAUNCH_MODEL_DEFAULTS = {
   claude: { modelLabel: "Opus 5.5", modelId: "claude-opus-5-5", reasoningEffort: null },
   codex: { modelLabel: "GPT-6.1 Sol", modelId: "gpt-6.1-sol", reasoningEffort: null },
   cursor: { modelLabel: "Grok 4.7 (Cursor)", modelId: "grok-4.7-medium", reasoningEffort: null },
-  opencode: { modelLabel: "GLM-5.3-Flash", modelId: "openrouter/z-ai/glm-5.3-flash", reasoningEffort: "high" },
-  grok: { modelLabel: "Grok 4.7", modelId: "grok-4.7", reasoningEffort: null }
+  opencode: {
+    modelLabel: "GLM-5.3-Flash",
+    modelId: "openrouter/z-ai/glm-5.3-flash",
+    reasoningEffort: "high",
+  },
+  grok: { modelLabel: "Grok 4.7", modelId: "grok-4.7", reasoningEffort: null },
 };
 
 const TERMINAL_SESSION_STATES = new Set(["complete", "failed", "cancelled"]);
@@ -130,13 +134,18 @@ async function commandChat(bridge, flags) {
   if (!flags.repo || !flags.prompt) fail("usage: bridge.mjs chat --repo <path> --prompt '…'");
   const provider = flags.provider ?? "claude";
   const defaults = LAUNCH_MODEL_DEFAULTS[provider];
-  if (!defaults) fail(`unknown provider "${provider}" (${Object.keys(LAUNCH_MODEL_DEFAULTS).join(", ")})`);
+  if (!defaults)
+    fail(`unknown provider "${provider}" (${Object.keys(LAUNCH_MODEL_DEFAULTS).join(", ")})`);
   const timeoutMs = Number(flags.timeout ?? 600) * 1000;
 
   const project = await resolveProject(bridge, flags.repo);
   const taskLabel = flags.prompt.length > 60 ? `${flags.prompt.slice(0, 57)}…` : flags.prompt;
   const workspace = flags.worktree
-    ? await bridge.call("workspaces:create-isolated", { projectId: project.id, taskLabel, baseRef: null })
+    ? await bridge.call("workspaces:create-isolated", {
+        projectId: project.id,
+        taskLabel,
+        baseRef: null,
+      })
     : await bridge.call("workspaces:create-current", { projectId: project.id, taskLabel });
 
   const startedAt = Date.now();
@@ -153,7 +162,7 @@ async function commandChat(bridge, flags) {
     cols: 120,
     rows: 32,
     attachments: null,
-    autoTier: flags.auto ?? null
+    autoTier: flags.auto ?? null,
   });
   console.log(
     JSON.stringify({
@@ -165,10 +174,10 @@ async function commandChat(bridge, flags) {
             provider: session.provider,
             modelId: session.modelId,
             effort: session.reasoningEffort,
-            autoRoute: session.autoRoute
+            autoRoute: session.autoRoute,
           }
-        : {})
-    })
+        : {}),
+    }),
   );
   await followSession(bridge, {
     sessionId: session.id,
@@ -176,7 +185,7 @@ async function commandChat(bridge, flags) {
     initialState: session.state,
     startedAt,
     timeoutMs,
-    decide: approvalDecision(flags)
+    decide: approvalDecision(flags),
   });
 }
 
@@ -191,7 +200,7 @@ async function commandReply(bridge, flags) {
   const before = await bridge.call("session:events-since", {
     sessionId: session.id,
     eventCursor: null,
-    rawOutputCursor: null
+    rawOutputCursor: null,
   });
   const startedAt = Date.now();
   const sent = await bridge.call("providers:send-input", {
@@ -201,7 +210,7 @@ async function commandReply(bridge, flags) {
     modelLabel: null,
     modelId: null,
     reasoningEffort: null,
-    fastMode: Boolean(flags.fast)
+    fastMode: Boolean(flags.fast),
   });
   console.log(JSON.stringify({ sent: true, queued: sent.queued, sessionId: session.id }));
   await followSession(bridge, {
@@ -212,7 +221,7 @@ async function commandReply(bridge, flags) {
     timeoutMs,
     eventCursor: before.eventCursor,
     rawOutputCursor: before.rawOutputCursor,
-    decide: approvalDecision(flags)
+    decide: approvalDecision(flags),
   });
 }
 
@@ -236,8 +245,8 @@ async function decidePendingApprovals(bridge, sessionId, decision) {
         command: request.command,
         cwd: request.cwd,
         riskLevel: request.riskLevel,
-        decision
-      })
+        decision,
+      }),
     );
     await bridge.call("approvals:resolve", { approvalId: request.id, status: decision });
   }
@@ -262,13 +271,14 @@ async function followSession(bridge, options) {
     const batch = await bridge.call("session:events-since", {
       sessionId,
       eventCursor,
-      rawOutputCursor
+      rawOutputCursor,
     });
     eventCursor = batch.eventCursor;
     rawOutputCursor = batch.rawOutputCursor;
     for (const event of batch.events) {
       eventCount += 1;
-      const message = event.message.length > 2000 ? `${event.message.slice(0, 2000)}…` : event.message;
+      const message =
+        event.message.length > 2000 ? `${event.message.slice(0, 2000)}…` : event.message;
       console.log(JSON.stringify({ at: event.createdAt, type: event.type, message }));
     }
     if (decide) await decidePendingApprovals(bridge, sessionId, decide);
@@ -286,14 +296,15 @@ async function followSession(bridge, options) {
       eventCount,
       seconds: Math.round((Date.now() - startedAt) / 100) / 10,
       costUsd: cost?.costUsd ?? null,
-      tokens: cost?.tokens ?? null
-    })
+      tokens: cost?.tokens ?? null,
+    }),
   );
   process.exit(state === "complete" ? 0 : 2);
 }
 
 async function commandTerminal(bridge, flags) {
-  if (!flags.workspace || !flags.run) fail("usage: bridge.mjs terminal --workspace <id> --run '<shell command>'");
+  if (!flags.workspace || !flags.run)
+    fail("usage: bridge.mjs terminal --workspace <id> --run '<shell command>'");
   const seconds = Number(flags.seconds ?? 10);
   const chunks = [];
   let exit = null;
@@ -303,7 +314,11 @@ async function commandTerminal(bridge, flags) {
     if (channel === "terminal:data") chunks.push(payload.data.length);
     else if (channel === "terminal:exit") exit = payload;
   });
-  const spawned = await bridge.call("terminal:spawn", { workspaceId: flags.workspace, cols: 120, rows: 32 });
+  const spawned = await bridge.call("terminal:spawn", {
+    workspaceId: flags.workspace,
+    cols: 120,
+    rows: 32,
+  });
   terminalId = spawned.terminalId ?? spawned.id;
   if (!terminalId) fail(`terminal:spawn returned no id: ${JSON.stringify(spawned)}`);
   // A short settle lets the shell print its prompt before the command lands.
@@ -319,8 +334,8 @@ async function commandTerminal(bridge, flags) {
       chunks: output.length,
       bytes: output.reduce((sum, size) => sum + size, 0),
       largestChunk: output.reduce((max, size) => Math.max(max, size), 0),
-      exit
-    })
+      exit,
+    }),
   );
 }
 
@@ -340,8 +355,8 @@ async function commandPerf(bridge, flags) {
       samples: capture.samples.length,
       droppedSamples: capture.droppedSamples,
       output: outputPath,
-      summary: capture.summary
-    })
+      summary: capture.summary,
+    }),
   );
 }
 

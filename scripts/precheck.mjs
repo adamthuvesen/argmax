@@ -76,7 +76,7 @@ function parsePushStdin() {
         localRef: parts[0],
         localSha: parts[1],
         remoteRef: parts[2],
-        remoteSha: parts[3]
+        remoteSha: parts[3],
       });
     }
   }
@@ -85,7 +85,9 @@ function parsePushStdin() {
 
 function mergeBase(headRef = "HEAD", remote = null) {
   const primaryRemote = remote || "origin";
-  const candidates = requestedBase ? [requestedBase] : [`${primaryRemote}/main`, "origin/main", "main"];
+  const candidates = requestedBase
+    ? [requestedBase]
+    : [`${primaryRemote}/main`, "origin/main", "main"];
   const seen = new Set();
   for (const candidate of candidates) {
     if (seen.has(candidate)) continue;
@@ -116,7 +118,7 @@ const RUST_PATHS = [
   /^assets\/browser-blocking\//,
   /^\.cargo\//,
   /^rust-toolchain\.toml$/,
-  /^\.github\/workflows\//
+  /^\.github\/workflows\//,
 ];
 const JS_PATHS = [
   /^src\//,
@@ -132,9 +134,16 @@ const JS_PATHS = [
   /^\.ox(lint|fmt)rc\.json$/,
   /^lint-baseline\.json$/,
   /^scripts\//,
-  /^\.github\/workflows\//
+  /^\.github\/workflows\//,
 ];
-const INERT_PATHS = [/^docs\//, /^\.githooks\//, /^[^/]*\.md$/, /^LICENSE$/, /^\.gitignore$/, /^\.gitattributes$/];
+const INERT_PATHS = [
+  /^docs\//,
+  /^\.githooks\//,
+  /^[^/]*\.md$/,
+  /^LICENSE$/,
+  /^\.gitignore$/,
+  /^\.gitattributes$/,
+];
 
 function touches(files, patterns) {
   for (const file of files) {
@@ -146,7 +155,9 @@ function touches(files, patterns) {
 function scopeForFiles(files, reason, vitestBase) {
   const hasUnclassifiedPath =
     files.size === 0 ||
-    [...files].some((file) => !touches([file], [...RUST_PATHS, ...JS_PATHS, ...IOS_PATHS, ...INERT_PATHS]));
+    [...files].some(
+      (file) => !touches([file], [...RUST_PATHS, ...JS_PATHS, ...IOS_PATHS, ...INERT_PATHS]),
+    );
   const rust = hasUnclassifiedPath || touches(files, RUST_PATHS);
   const js = hasUnclassifiedPath || touches(files, JS_PATHS);
   return {
@@ -155,7 +166,7 @@ function scopeForFiles(files, reason, vitestBase) {
     bundle: js,
     ios: touches(files, IOS_PATHS),
     reason: hasUnclassifiedPath ? `${reason}; unclassified path` : reason,
-    vitestBase
+    vitestBase,
   };
 }
 
@@ -171,7 +182,8 @@ function decideScope() {
       process.exit(0);
     }
 
-    const isDelete = (entry) => entry.localSha === ZERO_SHA || entry.localRef === "(delete)" || !entry.localRef;
+    const isDelete = (entry) =>
+      entry.localSha === ZERO_SHA || entry.localRef === "(delete)" || !entry.localRef;
     if (pushEntries.every(isDelete)) {
       console.log("precheck: deleting remote ref, skipping checks.");
       process.exit(0);
@@ -206,17 +218,28 @@ function decideScope() {
           bundle: true,
           ios: true,
           reason: `cannot find merge base for ${entry.localRef}`,
-          vitestBase: null
+          vitestBase: null,
         };
       }
     }
 
-    return scopeForFiles(files, `${files.size} file(s) differ across ${activeEntries.length} push ref(s)`, vitestBase);
+    return scopeForFiles(
+      files,
+      `${files.size} file(s) differ across ${activeEntries.length} push ref(s)`,
+      vitestBase,
+    );
   }
 
   const base = mergeBase("HEAD", targetRemote);
   if (!base) {
-    return { rust: true, js: true, bundle: true, ios: true, reason: "no main to diff against", vitestBase: null };
+    return {
+      rust: true,
+      js: true,
+      bundle: true,
+      ios: true,
+      reason: "no main to diff against",
+      vitestBase: null,
+    };
   }
   const files = changedFiles(base);
   return scopeForFiles(files, `${files.size} file(s) differ from ${base.ref}`, base.sha);
@@ -225,17 +248,27 @@ function decideScope() {
 function step(label, command, commandArgs) {
   const started = Date.now();
   process.stdout.write(`\n▶ ${label}\n`);
-  const run = spawnSync(command, commandArgs, { cwd: ROOT, stdio: ["ignore", "inherit", "inherit"] });
+  const run = spawnSync(command, commandArgs, {
+    cwd: ROOT,
+    stdio: ["ignore", "inherit", "inherit"],
+  });
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   if (run.status !== 0) {
-    console.error(`\nerror: ${label} failed after ${seconds}s (${command} ${commandArgs.join(" ")})`);
+    console.error(
+      `\nerror: ${label} failed after ${seconds}s (${command} ${commandArgs.join(" ")})`,
+    );
     process.exit(run.status ?? 1);
   }
   process.stdout.write(`✓ ${label} (${seconds}s)\n`);
 }
 
 const scope = decideScope();
-const lanes = [scope.js && "js", scope.rust && "rust", scope.bundle && "bundle", scope.ios && "ios"].filter(Boolean);
+const lanes = [
+  scope.js && "js",
+  scope.rust && "rust",
+  scope.bundle && "bundle",
+  scope.ios && "ios",
+].filter(Boolean);
 console.log(`precheck: ${lanes.length ? lanes.join(" + ") : "docs only"} (${scope.reason})`);
 const vitestBase = runEverything ? null : scope.vitestBase;
 
@@ -255,8 +288,18 @@ if (scope.js) {
   step("oxfmt", "npx", ["oxfmt", "--check"]);
   // `--changed` runs only the test files whose import graph reaches a
   // changed file; a config or setup change widens it to the full suite.
-  step("vitest", "npx", vitestBase ? ["vitest", "run", "--changed", vitestBase] : ["vitest", "run"]);
-  step("perf budgets", "npx", ["vitest", "run", "--config", "vitest.perf.config.ts", "--no-file-parallelism"]);
+  step(
+    "vitest",
+    "npx",
+    vitestBase ? ["vitest", "run", "--changed", vitestBase] : ["vitest", "run"],
+  );
+  step("perf budgets", "npx", [
+    "vitest",
+    "run",
+    "--config",
+    "vitest.perf.config.ts",
+    "--no-file-parallelism",
+  ]);
 }
 
 if (scope.rust) {
@@ -269,7 +312,7 @@ if (scope.rust) {
     "--all-targets",
     "--",
     "-D",
-    "warnings"
+    "warnings",
   ]);
 }
 

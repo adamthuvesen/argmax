@@ -32,7 +32,10 @@ const DEFINITION_LINE = /^ {0,3}\[\^?[^\]\n]+\]:/m;
  * Incremental: when `source` extends `previous.source`, only the open blocks
  * are lexed again, so a frame's cost is theirs, not the whole answer's.
  */
-export function splitMarkdownBlocks(source: string, previous?: MarkdownBlockSplit | null): MarkdownBlockSplit {
+export function splitMarkdownBlocks(
+  source: string,
+  previous?: MarkdownBlockSplit | null,
+): MarkdownBlockSplit {
   if (DEFINITION_LINE.test(source)) {
     return { source, stableEnd: 0, blocks: source ? [{ start: 0, text: source }] : [] };
   }
@@ -62,7 +65,7 @@ export function splitMarkdownBlocks(source: string, previous?: MarkdownBlockSpli
     return {
       source,
       stableEnd,
-      blocks: tail ? [...stable, { start: stableEnd, text: tail }] : stable
+      blocks: tail ? [...stable, { start: stableEnd, text: tail }] : stable,
     };
   }
 
@@ -94,7 +97,7 @@ const TAIL_HEALING: RemendOptions = {
   htmlTags: false,
   inlineKatex: false,
   katex: false,
-  singleTilde: false
+  singleTilde: false,
 };
 
 /**

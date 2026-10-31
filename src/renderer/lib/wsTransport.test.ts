@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWsTransport, subscribeRemoteConnection } from "./wsTransport.js";
-import type { ConnectRemote, RemoteConnectionState, RemoteSocket, RemoteSocketHandlers } from "./wsTransport.js";
+import type {
+  ConnectRemote,
+  RemoteConnectionState,
+  RemoteSocket,
+  RemoteSocketHandlers,
+} from "./wsTransport.js";
 
 const TOKEN_KEY = "argmax.remote.token";
 /** Backoff cap: advancing past it fires whichever delay was scheduled. */
@@ -21,7 +26,7 @@ class FakeSocket implements RemoteSocket {
 
   constructor(
     readonly url: string,
-    private readonly handlers: RemoteSocketHandlers
+    private readonly handlers: RemoteSocketHandlers,
   ) {}
 
   send(data: string): void {
@@ -103,7 +108,9 @@ describe("wsTransport", () => {
     expect(sockets[1].requests()[0]).toEqual(original);
     sockets[1].deliver({ type: "response", id: original.id, ok: "sent", operationSettled: true });
     await expect(sent).resolves.toBe("sent");
-    expect(JSON.parse(sessionStorage.getItem("argmax.remote.unresolvedOperations") ?? "[]")).toEqual([]);
+    expect(
+      JSON.parse(sessionStorage.getItem("argmax.remote.unresolvedOperations") ?? "[]"),
+    ).toEqual([]);
   });
 
   it("keeps a replayed mutation alive after its offline deadline", async () => {
@@ -148,7 +155,7 @@ describe("wsTransport", () => {
     sockets[0].deliver({
       type: "response",
       id: 1,
-      error: { sub_code: "REMOTE_OUTCOME_UNKNOWN", message: "host interrupted" }
+      error: { sub_code: "REMOTE_OUTCOME_UNKNOWN", message: "host interrupted" },
     });
     await expect(first).rejects.toThrow("host interrupted");
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
@@ -193,7 +200,7 @@ describe("wsTransport", () => {
     sockets[0].deliver({
       type: "response",
       id: 1,
-      error: { sub_code: "REMOTE_OPERATION_PENDING", message: "running" }
+      error: { sub_code: "REMOTE_OPERATION_PENDING", message: "running" },
     });
     await vi.advanceTimersByTimeAsync(500);
     expect(sockets[0].requests()[1]).toEqual(original);
@@ -228,7 +235,9 @@ describe("wsTransport", () => {
     expect(socket.requests()).toHaveLength(0);
 
     socket.deliver({ type: "auth-ok" });
-    expect(socket.requests()).toEqual([{ type: "request", id: 1, channel: "health:ping", input: {} }]);
+    expect(socket.requests()).toEqual([
+      { type: "request", id: 1, channel: "health:ping", input: {} },
+    ]);
 
     socket.deliver({ type: "response", id: 1, ok: { ok: true } });
     await expect(pending).resolves.toEqual({ ok: true });
@@ -244,7 +253,7 @@ describe("wsTransport", () => {
     socket.deliver({
       type: "response",
       id: 1,
-      error: { code: "SERVICE_ERROR", sub_code: "GIT_FAILED", message: "worktree is dirty" }
+      error: { code: "SERVICE_ERROR", sub_code: "GIT_FAILED", message: "worktree is dirty" },
     });
 
     await expect(pending).rejects.toThrow("worktree is dirty");
@@ -259,13 +268,13 @@ describe("wsTransport", () => {
       Promise.resolve({
         ok: true,
         status: 200,
-        json: () => Promise.resolve(JSON.parse(responseBody) as unknown)
-      } as Response)
+        json: () => Promise.resolve(JSON.parse(responseBody) as unknown),
+      } as Response),
     );
     const transport = createWsTransport({
       connect,
       fetch,
-      url: "wss://mac.example:8790/api/ws?ignored=true"
+      url: "wss://mac.example:8790/api/ws?ignored=true",
     });
     const socket = sockets[0];
     socket.authenticate();
@@ -278,8 +287,8 @@ describe("wsTransport", () => {
       error: {
         code: "SERVICE_ERROR",
         sub_code: "REMOTE_RESPONSE_TOO_LARGE",
-        message: "fetch this transcript over HTTP"
-      }
+        message: "fetch this transcript over HTTP",
+      },
     });
 
     await expect(pending).resolves.toEqual({ events: [{ message: answer }] });
@@ -291,8 +300,8 @@ describe("wsTransport", () => {
       method: "POST",
       headers: {
         Authorization: "Bearer secret-token",
-        "Content-Type": "application/json"
-      }
+        "Content-Type": "application/json",
+      },
     });
     expect(typeof init?.body).toBe("string");
     if (typeof init?.body !== "string") throw new Error("expected a JSON request body");
@@ -307,9 +316,13 @@ describe("wsTransport", () => {
         status: 200,
         json: () =>
           Promise.resolve({
-            error: { code: "SERVICE_ERROR", sub_code: "TRANSCRIPT_FAILED", message: "transcript failed" }
-          })
-      } as Response)
+            error: {
+              code: "SERVICE_ERROR",
+              sub_code: "TRANSCRIPT_FAILED",
+              message: "transcript failed",
+            },
+          }),
+      } as Response),
     );
     const reads = createWsTransport({ connect: first.connect, fetch });
     first.sockets[0].authenticate();
@@ -317,12 +330,12 @@ describe("wsTransport", () => {
     first.sockets[0].deliver({
       type: "response",
       id: 1,
-      error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" }
+      error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" },
     });
     await expect(read).rejects.toMatchObject({
       code: "SERVICE_ERROR",
       sub_code: "TRANSCRIPT_FAILED",
-      message: "transcript failed"
+      message: "transcript failed",
     });
 
     const second = fakeTransportSeam();
@@ -333,7 +346,7 @@ describe("wsTransport", () => {
       type: "response",
       id: 1,
       operationSettled: true,
-      error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" }
+      error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" },
     });
     await expect(mutation).rejects.toMatchObject({ sub_code: "REMOTE_RESPONSE_TOO_LARGE" });
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -353,7 +366,7 @@ describe("wsTransport", () => {
     sockets[0].deliver({
       type: "response",
       id: 1,
-      error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" }
+      error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" },
     });
     expect(fetch).toHaveBeenCalledTimes(1);
 
@@ -370,7 +383,9 @@ describe("wsTransport", () => {
       void target;
       return new Promise<Response>((resolve, reject) => {
         void resolve;
-        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("Aborted", "AbortError")),
+        );
       });
     });
     const transport = createWsTransport({ connect, fetch });
@@ -379,14 +394,14 @@ describe("wsTransport", () => {
     sockets[0].deliver({
       type: "response",
       id: 1,
-      error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" }
+      error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" },
     });
 
     // oxlint-disable-next-line vitest/valid-expect -- awaited after the fake clock advances
     const rejected = expect(read).rejects.toMatchObject({
       code: "SERVICE_ERROR",
       sub_code: "REMOTE_RESPONSE_TIMEOUT",
-      message: "The Mac did not confirm this request in time."
+      message: "The Mac did not confirm this request in time.",
     });
     for (let elapsed = 0; elapsed < TRANSCRIPT_HTTP_TIMEOUT_MS; elapsed += HEARTBEAT_MS) {
       await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
@@ -460,16 +475,22 @@ describe("wsTransport", () => {
     second.authenticate();
 
     expect(second.frames()[0]).toEqual({ type: "auth", token: "secret-token" });
-    expect(second.requests()).toEqual([{ type: "request", id: 2, channel: "health:ping", input: {} }]);
+    expect(second.requests()).toEqual([
+      { type: "request", id: 2, channel: "health:ping", input: {} },
+    ]);
 
-    second.deliver({ type: "response", id: 2, ok: { ok: true, timestamp: "2026-08-28T00:00:00Z" } });
+    second.deliver({
+      type: "response",
+      id: 2,
+      ok: { ok: true, timestamp: "2026-08-28T00:00:00Z" },
+    });
     await expect(queued).resolves.toEqual({ ok: true, timestamp: "2026-08-28T00:00:00Z" });
     expect(states.map((state) => state.status)).toEqual([
       "connecting",
       "connected",
       "offline",
       "connecting",
-      "connected"
+      "connected",
     ]);
   });
 
@@ -523,7 +544,7 @@ describe("wsTransport", () => {
     sockets[0].authenticate();
     expect(states).toEqual([
       { status: "connecting", resync: false },
-      { status: "connected", resync: false }
+      { status: "connected", resync: false },
     ]);
 
     sockets[0].close();
@@ -651,7 +672,9 @@ describe("wsTransport", () => {
     const { connect, sockets } = fakeTransportSeam();
     const transport = createWsTransport({ connect });
 
-    const pending = Array.from({ length: MAX_QUEUED_REQUESTS + 1 }, () => transport.invoke("health:ping", {}));
+    const pending = Array.from({ length: MAX_QUEUED_REQUESTS + 1 }, () =>
+      transport.invoke("health:ping", {}),
+    );
 
     await expect(pending[0]).rejects.toThrow("Argmax remote connection lost");
     sockets[0].authenticate();

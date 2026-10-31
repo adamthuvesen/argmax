@@ -11,7 +11,7 @@ import { objectValue, stringValue } from "../../shared/typeGuards.js";
  */
 export function useTurnCheckpoints(
   workspaceId: string | undefined,
-  sessionState: string | undefined
+  sessionState: string | undefined,
 ): {
   checkpointIds: ReadonlyMap<string, string>;
   refresh: () => void;
@@ -57,5 +57,7 @@ export function readCheckpointUnavailableReason(payload: unknown): string | null
     return null;
   }
   const reason = stringValue(object.checkpointUnavailableReason);
-  return reason ? `No checkpoint was saved before this turn. ${reason}` : "No checkpoint was saved before this turn.";
+  return reason
+    ? `No checkpoint was saved before this turn. ${reason}`
+    : "No checkpoint was saved before this turn.";
 }

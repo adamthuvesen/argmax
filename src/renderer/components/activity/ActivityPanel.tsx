@@ -4,7 +4,7 @@ import {
   getActivityUiState,
   getCachedActivitySummary,
   patchActivityUiState,
-  requestActivitySummary
+  requestActivitySummary,
 } from "../../lib/ledgerPageState.js";
 import { SegmentedControl, SettingsListPicker } from "../settings/settingsPrimitives.js";
 import { LedgerSwitch } from "../usage/LedgerSwitch.js";
@@ -17,7 +17,7 @@ import {
   metricValue,
   repositorySlots,
   windowDelta,
-  type ActivityMetric
+  type ActivityMetric,
 } from "./activityPresentation.js";
 import { ActivityCadence } from "./ActivityCadence.js";
 import { ActivityChart } from "./ActivityChart.js";
@@ -60,7 +60,7 @@ function hostTimeZone(): string {
 async function fetchSummary(
   activityWindow: ActivityWindow,
   projectId: string | null,
-  timeZone: string
+  timeZone: string,
 ): Promise<ActivitySummary> {
   const api = globalThis.window?.argmax;
   if (api) return api.activity.summary({ window: activityWindow, projectId, timeZone });
@@ -80,7 +80,7 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
   const [summary, setSummary] = useState<ActivitySummary | null>(() =>
-    getCachedActivitySummary(cachedUi.activityWindow, cachedUi.projectId, timeZoneRef.current)
+    getCachedActivitySummary(cachedUi.activityWindow, cachedUi.projectId, timeZoneRef.current),
   );
   const [error, setError] = useState<string | null>(null);
   // Only the newest request may write state: a slow 12-month walk must not
@@ -92,7 +92,7 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
     requestRef.current = request;
     try {
       const next = await requestActivitySummary(target, scope, timeZoneRef.current, () =>
-        fetchSummary(target, scope, timeZoneRef.current)
+        fetchSummary(target, scope, timeZoneRef.current),
       );
       if (requestRef.current !== request) return;
       setSummary(next);
@@ -133,7 +133,9 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
   const rangeLabel = summary
     ? formatRangeLabel(summary.rangeStart, summary.rangeEnd, summary.resolution, summary.timeZone)
     : "";
-  const scanStamp = summary ? formatScanStamp(summary.scan.lastCompletedAt, summary.timeZone) : null;
+  const scanStamp = summary
+    ? formatScanStamp(summary.scan.lastCompletedAt, summary.timeZone)
+    : null;
   const withCommits = summary?.repositories.filter((repo) => repo.commits > 0).length ?? 0;
   const author = summary?.authorEmails[0] ?? null;
 
@@ -198,14 +200,23 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
         {error ? (
           <div className="activity-notice" data-tone="error" role="alert">
             <p className="activity-notice-line">{error}</p>
-            <button type="button" className="sched-button" onClick={() => void load(activityWindow, projectId)}>
+            <button
+              type="button"
+              className="sched-button"
+              onClick={() => void load(activityWindow, projectId)}
+            >
               Try again
             </button>
           </div>
         ) : null}
 
         {summary ? (
-          <ActivityBody summary={summary} metric={metric} projectId={projectId} onSelectRepository={setProjectId} />
+          <ActivityBody
+            summary={summary}
+            metric={metric}
+            projectId={projectId}
+            onSelectRepository={setProjectId}
+          />
         ) : null}
         {!summary && !error ? <ActivitySkeleton /> : null}
       </div>
@@ -223,7 +234,7 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
 function ActivityRepositoryPicker({
   summary,
   value,
-  onChange
+  onChange,
 }: {
   summary: ActivitySummary | null;
   value: string | null;
@@ -243,8 +254,8 @@ function ActivityRepositoryPicker({
           data-slot={slots.get(repo.projectId) ?? "tail"}
           aria-hidden="true"
         />
-      )
-    }))
+      ),
+    })),
   ];
   return (
     <SettingsListPicker<string>
@@ -261,7 +272,7 @@ function ActivityBody({
   summary,
   metric,
   projectId,
-  onSelectRepository
+  onSelectRepository,
 }: {
   summary: ActivitySummary;
   metric: ActivityMetric;
@@ -277,8 +288,8 @@ function ActivityBody({
       <div className="activity-blank">
         <p className="activity-blank-headline">No repositories to read yet.</p>
         <p className="activity-blank-body">
-          Activity is walked out of the git clones behind your projects. Add a project, and every commit you have
-          authored in it — on any branch — shows up here.
+          Activity is walked out of the git clones behind your projects. Add a project, and every
+          commit you have authored in it — on any branch — shows up here.
         </p>
       </div>
     );
@@ -297,8 +308,8 @@ function ActivityBody({
       {summary.scan.phase === "scanning" ? (
         <div className="activity-notice" data-tone="scanning" role="status">
           <p className="activity-notice-line">
-            Still walking your clones — {formatCount(summary.scan.reposDone)} of {formatCount(summary.scan.reposTotal)}{" "}
-            repositories. These numbers are partial.
+            Still walking your clones — {formatCount(summary.scan.reposDone)} of{" "}
+            {formatCount(summary.scan.reposTotal)} repositories. These numbers are partial.
           </p>
         </div>
       ) : null}
@@ -316,7 +327,11 @@ function ActivityBody({
               away from them to learn which is which. */}
           <ul className="activity-chart-legend" aria-hidden="true">
             {series.map((entry) => (
-              <li className="activity-chart-legend-item activity-series" key={entry.key} data-slot={entry.slot}>
+              <li
+                className="activity-chart-legend-item activity-series"
+                key={entry.key}
+                data-slot={entry.slot}
+              >
                 <span className="activity-series-dot" />
                 {entry.label}
               </li>
@@ -332,7 +347,12 @@ function ActivityBody({
         />
       </section>
 
-      <ActivityRepositories summary={summary} metric={metric} selected={projectId} onSelect={onSelectRepository} />
+      <ActivityRepositories
+        summary={summary}
+        metric={metric}
+        selected={projectId}
+        onSelect={onSelectRepository}
+      />
 
       {/* The two GitHub cards. They fail together and independently of the
           rest of the page: a signed-out `gh` costs these two panels, not the

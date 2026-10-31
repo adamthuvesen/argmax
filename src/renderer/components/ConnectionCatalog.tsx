@@ -1,4 +1,14 @@
-import { Check, CircleAlert, CircleCheck, CircleHelp, Copy, Link2, PlugZap, Puzzle, RefreshCw } from "lucide-react";
+import {
+  Check,
+  CircleAlert,
+  CircleCheck,
+  CircleHelp,
+  Copy,
+  Link2,
+  PlugZap,
+  Puzzle,
+  RefreshCw,
+} from "lucide-react";
 import { useEffect, useState, type JSX } from "react";
 import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
@@ -14,7 +24,7 @@ type LoadState =
 export function ConnectionCatalog({
   provider,
   workspaceId = null,
-  compact = false
+  compact = false,
 }: {
   provider: ProviderId;
   workspaceId?: string | null;
@@ -29,8 +39,8 @@ export function ConnectionCatalog({
       setLoad((current) => ({
         state: "error",
         rows: current.rows,
-        message: error instanceof Error ? error.message : "Could not load connections."
-      }))
+        message: error instanceof Error ? error.message : "Could not load connections.",
+      })),
   });
   const loadConnections = (): void => {
     setLoad((current) => ({ state: "loading", rows: current.rows }));
@@ -40,7 +50,11 @@ export function ConnectionCatalog({
     setLoad((current) =>
       isAvailable
         ? { state: "loading", rows: current.rows }
-        : { state: "error", rows: current.rows, message: "Connection inventory is unavailable in this preview." }
+        : {
+            state: "error",
+            rows: current.rows,
+            message: "Connection inventory is unavailable in this preview.",
+          },
     );
   }, [isAvailable, provider, workspaceId]);
 
@@ -86,7 +100,10 @@ export function ConnectionCatalog({
         </p>
       ) : null}
       {load.rows.length > 0 ? (
-        <ul className="connection-list" aria-label={`${PROVIDER_DISPLAY_NAMES[provider]} connections`}>
+        <ul
+          className="connection-list"
+          aria-label={`${PROVIDER_DISPLAY_NAMES[provider]} connections`}
+        >
           {load.rows.map((connection) => (
             <ConnectionRow key={`${connection.kind}:${connection.name}`} connection={connection} />
           ))}
@@ -95,8 +112,8 @@ export function ConnectionCatalog({
         <p className="connection-catalog-empty">No connections found.</p>
       ) : null}
       <p className="connection-catalog-footnote">
-        Confirmed means the provider health-check succeeded. Unknown means the provider does not expose login validity.
-        It does not mean that login failed.
+        Confirmed means the provider health-check succeeded. Unknown means the provider does not
+        expose login validity. It does not mean that login failed.
       </p>
     </div>
   );
@@ -105,7 +122,8 @@ export function ConnectionCatalog({
 function ConnectionRow({ connection }: { connection: ConnectionSummary }): JSX.Element {
   const [copyState, copy] = useCopyToClipboard();
   const status = rowStatus(connection);
-  const KindIcon = connection.kind === "plugin" ? Puzzle : connection.kind === "connector" ? Link2 : PlugZap;
+  const KindIcon =
+    connection.kind === "plugin" ? Puzzle : connection.kind === "connector" ? Link2 : PlugZap;
   const StatusIcon =
     status === "connected" || status === "available"
       ? CircleCheck
@@ -137,7 +155,11 @@ function ConnectionRow({ connection }: { connection: ConnectionSummary }): JSX.E
           aria-label={`Copy authentication instructions for ${connection.name}`}
           title={connection.authenticationCommand}
         >
-          {copyState === "copied" ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+          {copyState === "copied" ? (
+            <Check size={13} aria-hidden="true" />
+          ) : (
+            <Copy size={13} aria-hidden="true" />
+          )}
           {copyState === "copied" ? "Copied" : "Login"}
         </button>
       ) : null}
@@ -152,9 +174,9 @@ function summarize(rows: ConnectionSummary[]): {
   return rows.reduce(
     (counts, row) => ({
       connected: counts.connected + (row.authentication === "authenticated" ? 1 : 0),
-      needsAuthentication: counts.needsAuthentication + (row.authentication === "required" ? 1 : 0)
+      needsAuthentication: counts.needsAuthentication + (row.authentication === "required" ? 1 : 0),
     }),
-    { connected: 0, needsAuthentication: 0 }
+    { connected: 0, needsAuthentication: 0 },
   );
 }
 

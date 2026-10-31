@@ -21,7 +21,7 @@ interface LauncherSurfaceSnapshot {
 const INITIAL: LauncherSurfaceSnapshot = {
   fullLauncherOpen: false,
   sideChatMode: false,
-  resetSignal: 0
+  resetSignal: 0,
 };
 
 let state: LauncherSurfaceSnapshot = INITIAL;
@@ -68,7 +68,11 @@ function launcherSurfaceSnapshot(): LauncherSurfaceSnapshot {
 }
 
 export function useLauncherSurface(): LauncherSurfaceSnapshot {
-  return useSyncExternalStore(subscribeLauncherSurface, launcherSurfaceSnapshot, launcherSurfaceSnapshot);
+  return useSyncExternalStore(
+    subscribeLauncherSurface,
+    launcherSurfaceSnapshot,
+    launcherSurfaceSnapshot,
+  );
 }
 
 export function resetLauncherSurfaceForTests(): void {

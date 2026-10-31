@@ -6,7 +6,7 @@ import {
   formatDelta,
   traceLabels,
   type TraceRow,
-  type TraceSource
+  type TraceSource,
 } from "../../lib/debugTrace.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
 import type { RawProviderOutput, TimelineEvent } from "../../../shared/types.js";
@@ -23,7 +23,7 @@ const STALL_MS = 1_500;
 
 export function DebugTraceTab({
   events,
-  rawOutputs
+  rawOutputs,
 }: {
   events: TimelineEvent[];
   rawOutputs: RawProviderOutput[];
@@ -34,7 +34,10 @@ export function DebugTraceTab({
 
   const rows = useMemo(() => buildTraceRows(events, rawOutputs), [events, rawOutputs]);
   const labels = useMemo(() => traceLabels(rows, source), [rows, source]);
-  const matched = useMemo(() => filterTraceRows(rows, { source, label, query }), [rows, source, label, query]);
+  const matched = useMemo(
+    () => filterTraceRows(rows, { source, label, query }),
+    [rows, source, label, query],
+  );
   const visible = matched.slice(-RENDER_CAP);
 
   // A label chosen under one source facet usually doesn't exist under the
@@ -44,17 +47,27 @@ export function DebugTraceTab({
   }, [label, labels]);
 
   return (
-    <div className="debug-tab" role="tabpanel" id="debug-panel-trace" aria-labelledby="debug-tab-trace">
+    <div
+      className="debug-tab"
+      role="tabpanel"
+      id="debug-panel-trace"
+      aria-labelledby="debug-tab-trace"
+    >
       <div className="debug-filters">
         <div className="debug-segmented" role="group" aria-label="Trace source">
           {(
             [
               ["all", "All"],
               ["event", "Events"],
-              ["raw", "Raw"]
+              ["raw", "Raw"],
             ] as const
           ).map(([value, text]) => (
-            <button key={value} type="button" aria-pressed={source === value} onClick={() => setSource(value)}>
+            <button
+              key={value}
+              type="button"
+              aria-pressed={source === value}
+              onClick={() => setSource(value)}
+            >
               {text}
             </button>
           ))}
@@ -82,12 +95,16 @@ export function DebugTraceTab({
         />
       </div>
       <p className="debug-count" role="status">
-        {matched.length === rows.length ? `${rows.length} rows` : `${matched.length} of ${rows.length} rows`}
+        {matched.length === rows.length
+          ? `${rows.length} rows`
+          : `${matched.length} of ${rows.length} rows`}
         {matched.length > visible.length ? ` · showing last ${visible.length}` : ""}
       </p>
       <div className="debug-rows">
         {visible.length === 0 ? (
-          <p className="debug-empty">Nothing matches. Raw provider output appears here as the session streams.</p>
+          <p className="debug-empty">
+            Nothing matches. Raw provider output appears here as the session streams.
+          </p>
         ) : (
           visible.map((row) => <TraceRowView key={row.id} row={row} />)
         )}
@@ -109,10 +126,18 @@ function TraceRowView({ row }: { row: TraceRow }): JSX.Element {
         aria-expanded={expanded}
         onClick={() => setExpanded((open) => !open)}
       >
-        {expanded ? <ChevronDown size={12} aria-hidden="true" /> : <ChevronRight size={12} aria-hidden="true" />}
+        {expanded ? (
+          <ChevronDown size={12} aria-hidden="true" />
+        ) : (
+          <ChevronRight size={12} aria-hidden="true" />
+        )}
         <span className="debug-row-label">{row.label}</span>
         <span className="debug-row-summary">{row.summary}</span>
-        <span className="debug-row-delta" data-stalled={stalled || undefined} title="Time since previous row">
+        <span
+          className="debug-row-delta"
+          data-stalled={stalled || undefined}
+          title="Time since previous row"
+        >
           {formatDelta(row.deltaMs)}
         </span>
       </button>
@@ -125,9 +150,16 @@ function TraceRowView({ row }: { row: TraceRow }): JSX.Element {
               <pre>{row.raw}</pre>
             </details>
           ) : null}
-          <button type="button" className="debug-copy" onClick={() => void copy(row.raw)} aria-label="Copy row">
+          <button
+            type="button"
+            className="debug-copy"
+            onClick={() => void copy(row.raw)}
+            aria-label="Copy row"
+          >
             <Copy size={12} aria-hidden="true" />
-            <span>{flash === "copied" ? "Copied" : flash === "failed" ? "Couldn't copy" : "Copy"}</span>
+            <span>
+              {flash === "copied" ? "Copied" : flash === "failed" ? "Couldn't copy" : "Copy"}
+            </span>
           </button>
         </div>
       ) : null}

@@ -6,7 +6,13 @@ import { PROVIDER_DISPLAY_NAMES } from "../../../shared/providerModels.js";
  * spend first, then the rest. A provider's colour follows its identity,
  * never its rank, so a window that reorders the rows never repaints them.
  */
-export const USAGE_PROVIDER_ORDER: readonly ProviderId[] = ["claude", "codex", "cursor", "opencode", "grok"];
+export const USAGE_PROVIDER_ORDER: readonly ProviderId[] = [
+  "claude",
+  "codex",
+  "cursor",
+  "opencode",
+  "grok",
+];
 
 /**
  * A model id without its routing prefix: `openrouter/deepseek/deepseek-v4.1-flash-1017`
@@ -41,7 +47,7 @@ export function providerValue(row: UsageProviderSummary, metric: UsageMetric): n
  */
 export function orderedProviderRows(
   providers: readonly UsageProviderSummary[],
-  metric: UsageMetric
+  metric: UsageMetric,
 ): UsageProviderSummary[] {
   const rank = new Map(USAGE_PROVIDER_ORDER.map((id, index) => [id, index]));
   return [...providers].sort((a, b) => {

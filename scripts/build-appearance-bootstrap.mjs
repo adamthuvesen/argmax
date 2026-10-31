@@ -15,7 +15,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const check = process.argv.includes("--check");
 const ENTRIES = [
   { html: "index.html", surface: "desktop" },
-  { html: "mobile.html", surface: "mobile" }
+  { html: "mobile.html", surface: "mobile" },
 ];
 const REGION = /<!-- appearance-bootstrap:start -->[\s\S]*?<!-- appearance-bootstrap:end -->/;
 
@@ -24,7 +24,7 @@ async function loadScriptBuilder() {
     configFile: false,
     root: repoRoot,
     server: { middlewareMode: true },
-    logLevel: "error"
+    logLevel: "error",
   });
   try {
     return await server.ssrLoadModule("/src/renderer/lib/appearanceBootstrap.ts");
@@ -39,7 +39,9 @@ for (const { html, surface } of ENTRIES) {
   const file = path.join(repoRoot, html);
   const current = await readFile(file, "utf8");
   if (!REGION.test(current)) {
-    console.error(`error: ${html} has no appearance-bootstrap region. Restore the start and end comments.`);
+    console.error(
+      `error: ${html} has no appearance-bootstrap region. Restore the start and end comments.`,
+    );
     process.exit(1);
   }
   const body = appearanceBootstrapScript(surface)
@@ -51,7 +53,7 @@ for (const { html, surface } of ENTRIES) {
   if (next === current) continue;
   if (check) {
     console.error(
-      `error: ${html} differs from src/renderer/lib/appearanceBootstrap.ts. Run npm run build:appearance-bootstrap.`
+      `error: ${html} differs from src/renderer/lib/appearanceBootstrap.ts. Run npm run build:appearance-bootstrap.`,
     );
     stale = true;
   } else {

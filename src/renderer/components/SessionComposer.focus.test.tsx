@@ -5,7 +5,7 @@ import {
   event,
   renderConversation,
   rerenderConversation,
-  STARTED_TURN
+  STARTED_TURN,
 } from "../../test/sessionConversationTestHarness.js";
 
 const questionEvents = [
@@ -20,11 +20,11 @@ const questionEvents = [
           question: "Pick a direction",
           header: "Direction",
           multiSelect: false,
-          options: [{ label: "Fix findings" }, { label: "General maintenance" }]
-        }
-      ]
-    }
-  })
+          options: [{ label: "Fix findings" }, { label: "General maintenance" }],
+        },
+      ],
+    },
+  }),
 ];
 
 describe("SessionComposer focus during background updates", () => {
@@ -33,17 +33,19 @@ describe("SessionComposer focus during background updates", () => {
   it("does not steal a neighboring draft when an unfocused pane mounts", () => {
     const neighborView = render(<textarea aria-label="Neighbor draft" />);
     const neighbor = within(neighborView.container).getByRole<HTMLTextAreaElement>("textbox", {
-      name: "Neighbor draft"
+      name: "Neighbor draft",
     });
     neighbor.focus();
 
     // Mount another background pane after the reader has started typing. Its
     // composer must not claim focus merely because its input became available.
     const background = renderConversation(baseSession({ id: "session-b" }), [], {
-      isFocused: false
+      isFocused: false,
     });
 
-    expect(within(background.container).getByRole("textbox", { name: "Chat prompt" })).not.toHaveFocus();
+    expect(
+      within(background.container).getByRole("textbox", { name: "Chat prompt" }),
+    ).not.toHaveFocus();
     expect(neighbor).toHaveFocus();
   });
 
@@ -53,7 +55,7 @@ describe("SessionComposer focus during background updates", () => {
     const prompt = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Chat prompt" });
     const neighborView = render(<textarea aria-label="Neighbor draft" />);
     const neighbor = within(neighborView.container).getByRole<HTMLTextAreaElement>("textbox", {
-      name: "Neighbor draft"
+      name: "Neighbor draft",
     });
     neighbor.focus();
 
@@ -66,13 +68,19 @@ describe("SessionComposer focus during background updates", () => {
     const session = baseSession({ provider: "claude", state: "running" });
     const first = renderConversation(session);
     const second = renderConversation(baseSession({ id: "session-b" }));
-    const neighbor = within(second.container).getByRole<HTMLTextAreaElement>("textbox", { name: "Chat prompt" });
+    const neighbor = within(second.container).getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Chat prompt",
+    });
     act(() => neighbor.focus());
     fireEvent.change(neighbor, { target: { value: "Keep writing" } });
     neighbor.setSelectionRange(2, 4);
     rerenderConversation(first.rerender, session, questionEvents);
-    expect(within(first.container).queryByRole("textbox", { name: "Chat prompt" })).not.toBeInTheDocument();
-    expect(within(first.container).getByRole("button", { name: "Answer in your own words" })).toBeInTheDocument();
+    expect(
+      within(first.container).queryByRole("textbox", { name: "Chat prompt" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(first.container).getByRole("button", { name: "Answer in your own words" }),
+    ).toBeInTheDocument();
     expect(neighbor).toHaveFocus();
     expect(neighbor.selectionStart).toBe(2);
     expect(neighbor.selectionEnd).toBe(4);
@@ -97,7 +105,12 @@ describe("SessionComposer focus during background updates", () => {
     expect(prompt).toHaveValue("A follow-up in progress");
     expect(prompt.selectionStart).toBe(5);
     expect(prompt.selectionEnd).toBe(9);
-    rerenderConversation(rerender, baseSession({ ...session, state: "complete" }), questionEvents, options);
+    rerenderConversation(
+      rerender,
+      baseSession({ ...session, state: "complete" }),
+      questionEvents,
+      options,
+    );
     expect(screen.getByRole("textbox", { name: "Chat prompt" })).toBe(prompt);
     expect(screen.queryByLabelText("Question from agent")).not.toBeInTheDocument();
     expect(prompt).toHaveValue("A follow-up in progress");
@@ -109,7 +122,7 @@ describe("SessionComposer focus during background updates", () => {
       resolveSend = resolve;
     });
     renderConversation(baseSession({ state: "running" }), [], {
-      onSendSessionInput: () => sendComplete.then(() => STARTED_TURN)
+      onSendSessionInput: () => sendComplete.then(() => STARTED_TURN),
     });
     const prompt = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Chat prompt" });
     expect(prompt).toHaveFocus();
@@ -133,7 +146,7 @@ describe("SessionComposer focus during background updates", () => {
       resolveSend = resolve;
     });
     const first = renderConversation(baseSession({ state: "running" }), [], {
-      onSendSessionInput: () => sendComplete.then(() => STARTED_TURN)
+      onSendSessionInput: () => sendComplete.then(() => STARTED_TURN),
     });
     const prompt = within(first.container).getByRole("textbox", { name: "Chat prompt" });
     fireEvent.change(prompt, { target: { value: "Send this follow-up" } });
@@ -141,7 +154,9 @@ describe("SessionComposer focus during background updates", () => {
     expect(prompt).toBeDisabled();
 
     const second = renderConversation(baseSession({ id: "session-b" }));
-    const neighbor = within(second.container).getByRole<HTMLTextAreaElement>("textbox", { name: "Chat prompt" });
+    const neighbor = within(second.container).getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Chat prompt",
+    });
     neighbor.focus();
     fireEvent.change(neighbor, { target: { value: "Still writing here" } });
     neighbor.setSelectionRange(5, 5);
@@ -161,7 +176,9 @@ describe("SessionComposer focus during background updates", () => {
     prompt.focus();
     fireEvent.change(prompt, { target: { value: "A follow-up in progress" } });
     prompt.setSelectionRange(5, 5);
-    const events = [event("reply", "assistant_message", "Working on it", "2026-05-12T15:31:00.000Z")];
+    const events = [
+      event("reply", "assistant_message", "Working on it", "2026-05-12T15:31:00.000Z"),
+    ];
     for (const state of ["running", "complete"] as const) {
       rerenderConversation(rerender, baseSession({ state }), events);
       expect(screen.getByRole("textbox", { name: "Chat prompt" })).toBe(prompt);

@@ -17,8 +17,8 @@ export function ActivityGithubNotice({ github }: { github: ActivityGithubState }
         {github.error ?? "GitHub is not reachable, so pull requests and reviews are unavailable."}
       </p>
       <p className="activity-notice-hint">
-        Run <code>gh auth login</code> to bring this card back. Commits, lines and streaks come from your local clones
-        and are unaffected.
+        Run <code>gh auth login</code> to bring this card back. Commits, lines and streaks come from
+        your local clones and are unaffected.
       </p>
     </div>
   );

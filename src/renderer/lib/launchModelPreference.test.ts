@@ -8,7 +8,7 @@ import {
   persistLaunchModel,
   readLaunchModelRecency,
   readStoredDefaultEffort,
-  readStoredLaunchModel
+  readStoredLaunchModel,
 } from "./launchModelPreference.js";
 import { allModelOptions, autoTierSelection } from "./models.js";
 
@@ -27,7 +27,7 @@ describe("launch model preference", () => {
       provider: option.provider,
       label: option.label,
       modelId: option.modelId,
-      reasoningEffort: "high"
+      reasoningEffort: "high",
     });
   });
 
@@ -43,25 +43,34 @@ describe("launch model preference", () => {
   });
 
   it("follows a stored Sonnet 5 pick onto Sonnet 5.5", () => {
-    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "claude", modelId: "claude-sonnet-5" }));
+    window.localStorage.setItem(
+      LAUNCH_MODEL_KEY,
+      JSON.stringify({ provider: "claude", modelId: "claude-sonnet-5" }),
+    );
     expect(readStoredLaunchModel()).toMatchObject({
       provider: "claude",
       label: "Sonnet 5.5",
-      modelId: "claude-sonnet-5-5"
+      modelId: "claude-sonnet-5-5",
     });
   });
 
   it("follows a stored GPT-6 Sol pick onto GPT-6.1 Sol", () => {
-    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "codex", modelId: "gpt-6-sol" }));
+    window.localStorage.setItem(
+      LAUNCH_MODEL_KEY,
+      JSON.stringify({ provider: "codex", modelId: "gpt-6-sol" }),
+    );
     expect(readStoredLaunchModel()).toMatchObject({
       provider: "codex",
       label: "GPT-6.1 Sol",
-      modelId: "gpt-6.1-sol"
+      modelId: "gpt-6.1-sol",
     });
   });
 
   it("returns null for a model that left the catalog", () => {
-    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "codex", modelId: "gpt-2" }));
+    window.localStorage.setItem(
+      LAUNCH_MODEL_KEY,
+      JSON.stringify({ provider: "codex", modelId: "gpt-2" }),
+    );
     expect(readStoredLaunchModel()).toBeNull();
   });
 
@@ -78,7 +87,10 @@ describe("launch model preference", () => {
 
   it("applies the app-wide default effort to whatever model is stored", () => {
     persistDefaultEffort("xhigh");
-    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "claude", modelId: "claude-opus-5-5" }));
+    window.localStorage.setItem(
+      LAUNCH_MODEL_KEY,
+      JSON.stringify({ provider: "claude", modelId: "claude-opus-5-5" }),
+    );
 
     expect(readStoredLaunchModel()?.reasoningEffort).toBe("xhigh");
   });
@@ -87,7 +99,10 @@ describe("launch model preference", () => {
     // Grok Build's CLI rejects anything above Extra High, so an Ultra default
     // lands on Medium rather than being sent through and refused.
     persistDefaultEffort("ultra");
-    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "grok", modelId: "grok-4.7" }));
+    window.localStorage.setItem(
+      LAUNCH_MODEL_KEY,
+      JSON.stringify({ provider: "grok", modelId: "grok-4.7" }),
+    );
 
     expect(readStoredLaunchModel()?.reasoningEffort).toBe("medium");
   });
@@ -97,7 +112,10 @@ describe("launch model preference", () => {
     // Qwen3.8 Flash has only high and max. A default effort must land on a real variant, not
     // ride through to the adapter as-is.
     const stored = (modelId: string): string | undefined => {
-      window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "opencode", modelId }));
+      window.localStorage.setItem(
+        LAUNCH_MODEL_KEY,
+        JSON.stringify({ provider: "opencode", modelId }),
+      );
       return readStoredLaunchModel()?.reasoningEffort;
     };
 
@@ -108,11 +126,21 @@ describe("launch model preference", () => {
   it("keeps the stored default when a model can only offer a fallback", () => {
     persistDefaultEffort("ultra");
     // Grok resolves to Medium — a fallback, not a choice, so Ultra survives.
-    persistLaunchModel({ provider: "grok", label: "Grok 4.7", modelId: "grok-4.7", reasoningEffort: "medium" });
+    persistLaunchModel({
+      provider: "grok",
+      label: "Grok 4.7",
+      modelId: "grok-4.7",
+      reasoningEffort: "medium",
+    });
     expect(readStoredDefaultEffort()).toBe("ultra");
 
     // Picking High on that same model is an explicit choice and moves the default.
-    persistLaunchModel({ provider: "grok", label: "Grok 4.7", modelId: "grok-4.7", reasoningEffort: "high" });
+    persistLaunchModel({
+      provider: "grok",
+      label: "Grok 4.7",
+      modelId: "grok-4.7",
+      reasoningEffort: "high",
+    });
     expect(readStoredDefaultEffort()).toBe("high");
   });
 
@@ -121,13 +149,13 @@ describe("launch model preference", () => {
       provider: "claude",
       label: "Opus 5.5",
       modelId: "claude-opus-5-5",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     });
     persistLaunchModel({
       provider: "codex",
       label: "GPT-5.6 Sol",
       modelId: "gpt-5.6-sol",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     });
 
     expect(readLaunchModelRecency()).toEqual(["codex:gpt-5.6-sol", "claude:claude-opus-5-5"]);

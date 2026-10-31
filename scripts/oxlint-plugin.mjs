@@ -36,7 +36,7 @@ const TIMELINE_PAYLOAD_FIELDS = new Set([
   "name",
   "status",
   "raw",
-  "traceSyntheticLaunch"
+  "traceSyntheticLaunch",
 ]);
 const SESSION_LIKE = new Set([
   "session",
@@ -44,7 +44,7 @@ const SESSION_LIKE = new Set([
   "previousSession",
   "openSession",
   "parentSession",
-  "sourceSession"
+  "sourceSession",
 ]);
 const MODEL_RESOLVERS = new Set(["resolveModelId", "modelLabelFor", "contextWindowForModel"]);
 const DOM_TRAVERSAL = new Set([
@@ -72,7 +72,7 @@ const DOM_TRAVERSAL = new Set([
   "getElementsByTagName",
   "getElementsByTagNameNS",
   "querySelector",
-  "querySelectorAll"
+  "querySelectorAll",
 ]);
 
 function propertyName(member) {
@@ -83,14 +83,20 @@ function propertyName(member) {
 
 function isPayloadObject(object) {
   if (object.type === "Identifier") return object.name === "payload";
-  return object.type === "MemberExpression" && !object.computed && object.property.name === "payload";
+  return (
+    object.type === "MemberExpression" && !object.computed && object.property.name === "payload"
+  );
 }
 
 function isResolverArgument(member) {
   let node = member;
   if (node.parent?.type === "ChainExpression") node = node.parent;
   const call = node.parent;
-  return call?.type === "CallExpression" && call.callee.type === "Identifier" && MODEL_RESOLVERS.has(call.callee.name);
+  return (
+    call?.type === "CallExpression" &&
+    call.callee.type === "Identifier" &&
+    MODEL_RESOLVERS.has(call.callee.name)
+  );
 }
 
 export default {
@@ -100,15 +106,16 @@ export default {
       create(context) {
         return {
           MemberExpression(node) {
-            if (!isPayloadObject(node.object) || !TIMELINE_PAYLOAD_FIELDS.has(propertyName(node))) return;
+            if (!isPayloadObject(node.object) || !TIMELINE_PAYLOAD_FIELDS.has(propertyName(node)))
+              return;
             context.report({
               node,
               message:
-                "Route timeline semantics through decodeTimelineEvent(). Keep raw payload access for lossless debug bodies and large tool input or output only."
+                "Route timeline semantics through decodeTimelineEvent(). Keep raw payload access for lossless debug bodies and large tool input or output only.",
             });
-          }
+          },
         };
-      }
+      },
     },
     "no-raw-model-id": {
       create(context) {
@@ -119,11 +126,11 @@ export default {
             context.report({
               node,
               message:
-                "A stored model id can be retired. Read it through resolveModelId(provider, id) from src/shared/providerModels.ts."
+                "A stored model id can be retired. Read it through resolveModelId(provider, id) from src/shared/providerModels.ts.",
             });
-          }
+          },
         };
-      }
+      },
     },
     "no-container": {
       create(context) {
@@ -132,11 +139,12 @@ export default {
             if (node.object.type !== "Identifier" || node.object.name !== "container") return;
             context.report({
               node,
-              message: "Query by role, label, or title through screen instead of the render container."
+              message:
+                "Query by role, label, or title through screen instead of the render container.",
             });
-          }
+          },
         };
-      }
+      },
     },
     "no-node-access": {
       create(context) {
@@ -145,11 +153,12 @@ export default {
             if (!DOM_TRAVERSAL.has(propertyName(node))) return;
             context.report({
               node,
-              message: "Query by role, label, or title through screen instead of walking DOM nodes."
+              message:
+                "Query by role, label, or title through screen instead of walking DOM nodes.",
             });
-          }
+          },
         };
-      }
-    }
-  }
+      },
+    },
+  },
 };

@@ -13,16 +13,16 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
         mergeCleanup: "off",
         worktreeLocation: "/tmp/worktrees",
         setupCommand: "npm install",
-        checkCommands: ["npm test"]
+        checkCommands: ["npm test"],
       },
       counts: {
         active: 1,
         blocked: 0,
         failed: 0,
-        reviewReady: 1
+        reviewReady: 1,
       },
-      latestActivityAt: "2026-05-08T15:54:00.000Z"
-    }
+      latestActivityAt: "2026-05-08T15:54:00.000Z",
+    },
   ],
   workspaces: [
     {
@@ -48,8 +48,8 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
       prCreatedAt: null,
       prMergedAt: null,
       prCheckState: null,
-      prActivityAt: null
-    }
+      prActivityAt: null,
+    },
   ],
   sessions: [
     {
@@ -74,8 +74,8 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
       tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextTokens: 0,
       imported: false,
-      launchKind: "agent"
-    }
+      launchKind: "agent",
+    },
   ],
   events: [
     {
@@ -84,30 +84,32 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
       type: "message.completed",
       message: "Dashboard ready.",
       payload: {},
-      createdAt: "2026-05-08T15:54:00.000Z"
-    }
+      createdAt: "2026-05-08T15:54:00.000Z",
+    },
   ],
   rawOutputs: [],
   approvals: [],
-  checks: []
+  checks: [],
 };
 
-export function dashboardListSnapshot(data: DashboardSnapshot): Awaited<ReturnType<ArgmaxApi["dashboard"]["list"]>> {
+export function dashboardListSnapshot(
+  data: DashboardSnapshot,
+): Awaited<ReturnType<ArgmaxApi["dashboard"]["list"]>> {
   return {
     projects: data.projects,
     workspaces: data.workspaces,
     sessions: data.sessions,
-    checks: data.checks
+    checks: data.checks,
   };
 }
 
 export function workspaceStatusSnapshot(
-  data: DashboardSnapshot
+  data: DashboardSnapshot,
 ): Awaited<ReturnType<ArgmaxApi["workspaces"]["status"]>> {
   return {
     workspaces: data.workspaces,
     sessions: data.sessions,
-    checks: data.checks
+    checks: data.checks,
   };
 }
 
@@ -130,15 +132,15 @@ export function secondProject(): DashboardSnapshot["projects"][number] {
       mergeCleanup: "off",
       worktreeLocation: "/tmp/dotfiles-worktrees",
       setupCommand: "",
-      checkCommands: []
+      checkCommands: [],
     },
     counts: {
       active: 0,
       blocked: 0,
       failed: 0,
-      reviewReady: 0
+      reviewReady: 0,
     },
-    latestActivityAt: "2026-05-08T16:30:00.000Z"
+    latestActivityAt: "2026-05-08T16:30:00.000Z",
   };
 }
 
@@ -160,7 +162,7 @@ export function missingCheck(): never {
  * clean, unpinned isolated worktree in the primary project.
  */
 export function workspaceRow(
-  overrides: Partial<DashboardSnapshot["workspaces"][number]> = {}
+  overrides: Partial<DashboardSnapshot["workspaces"][number]> = {},
 ): DashboardSnapshot["workspaces"][number] {
   return {
     id: "workspace-2",
@@ -186,13 +188,13 @@ export function workspaceRow(
     prMergedAt: null,
     prCheckState: null,
     prActivityAt: null,
-    ...overrides
+    ...overrides,
   };
 }
 
 /** The session counterpart of {@link workspaceRow}: a finished Claude turn. */
 export function sessionRow(
-  overrides: Partial<DashboardSnapshot["sessions"][number]> = {}
+  overrides: Partial<DashboardSnapshot["sessions"][number]> = {},
 ): DashboardSnapshot["sessions"][number] {
   return {
     id: "session-2",
@@ -213,6 +215,6 @@ export function sessionRow(
     contextTokens: 0,
     imported: false,
     launchKind: "agent",
-    ...overrides
+    ...overrides,
   };
 }

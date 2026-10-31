@@ -14,7 +14,7 @@ import {
   type GridState,
   type LauncherGridCell,
   type SessionGridCell,
-  type SplitPosition
+  type SplitPosition,
 } from "../lib/gridState.js";
 
 // The live pane grid: which chats and launchers are on screen, and which one
@@ -54,7 +54,7 @@ export function usePaneGrid(): GridState {
 export function openWorkspacePane(
   cell: SessionGridCell,
   modifiers: { ctrlOrMeta: boolean; alt: boolean },
-  layout: { maxColumns: number }
+  layout: { maxColumns: number },
 ): void {
   publish(openWorkspaceInGrid(grid, cell, modifiers, layout));
 }
@@ -62,7 +62,7 @@ export function openWorkspacePane(
 export function dropWorkspacePane(
   cell: SessionGridCell,
   target: GridCoord & { position: SplitPosition },
-  layout: { maxColumns: number }
+  layout: { maxColumns: number },
 ): void {
   publish(dropWorkspaceInGrid(grid, cell, target, layout));
 }
@@ -73,7 +73,10 @@ export function dropWorkspacePane(
  * A full grid otherwise swallows the request silently, which reads as a dead
  * button rather than as a limit — so say which happened.
  */
-export function openLauncherPane(cell: LauncherGridCell, layout: { maxColumns: number }): "opened" | "grid-full" {
+export function openLauncherPane(
+  cell: LauncherGridCell,
+  layout: { maxColumns: number },
+): "opened" | "grid-full" {
   if (grid.rows.length === 0) {
     publish(EMPTY_GRID);
     return "opened";
@@ -114,7 +117,7 @@ export function clearPaneGrid(): void {
 export function restorePaneGrid(snapshot: GridState): void {
   publish({
     rows: snapshot.rows.map((row) => row.map((cell) => ({ ...cell }))),
-    focused: snapshot.focused ? { ...snapshot.focused } : null
+    focused: snapshot.focused ? { ...snapshot.focused } : null,
   });
 }
 
@@ -137,7 +140,7 @@ export function prunePaneGrid(keep: (cell: GridCell) => boolean): void {
         if (keep(cell)) return true;
         dropped = true;
         return false;
-      })
+      }),
     )
     .filter((row) => row.length > 0);
   if (!dropped) return;

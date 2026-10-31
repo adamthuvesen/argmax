@@ -5,7 +5,7 @@ import {
   BACKGROUND_INTENSITY_STORAGE_KEY,
   DEFAULT_BACKGROUND_INTENSITY,
   readStoredBackgroundIntensity,
-  toBackgroundIntensity
+  toBackgroundIntensity,
 } from "./backgroundIntensity.js";
 
 afterEach(() => {

@@ -6,8 +6,12 @@ describe("serverIconFor", () => {
     expect(serverIconFor("Slack")?.title).toBe("Slack");
     expect(serverIconFor("google_drive")?.title).toBe("Google Drive");
     expect(serverIconFor("Google Calendar")?.title).toBe("Google Calendar");
-    expect(serverIconFor("snowflake")?.layers).toEqual([expect.objectContaining({ fill: "#29B5E8" })]);
-    expect(serverIconFor("spotify")?.layers).toEqual([expect.objectContaining({ fill: "#1ED760" })]);
+    expect(serverIconFor("snowflake")?.layers).toEqual([
+      expect.objectContaining({ fill: "#29B5E8" }),
+    ]);
+    expect(serverIconFor("spotify")?.layers).toEqual([
+      expect.objectContaining({ fill: "#1ED760" }),
+    ]);
   });
 
   it("gives black marks no fill so they take the row's text colour", () => {
@@ -23,13 +27,17 @@ describe("serverIconFor", () => {
     expect(fills).toContain("var(--fox-fur)");
     expect(fills).toContain("var(--fox-nose)");
     // The nose sits in the muzzle, inside the head crop.
-    expect(icon?.layers.find((layer) => layer.fill === "var(--fox-nose)")?.path).toMatch(/^M4[0-9] 2[0-9]h/);
+    expect(icon?.layers.find((layer) => layer.fill === "var(--fox-nose)")?.path).toMatch(
+      /^M4[0-9] 2[0-9]h/,
+    );
   });
 
   it("gives every mascot layer a tone so monochrome keeps the head off one ink", () => {
     const layers = serverIconFor("argmax")?.layers ?? [];
     expect(layers.every((layer) => layer.tone !== undefined)).toBe(true);
-    expect(new Set(layers.map((layer) => layer.tone))).toEqual(new Set(["line", "fur", "cream", "eye"]));
+    expect(new Set(layers.map((layer) => layer.tone))).toEqual(
+      new Set(["line", "fur", "cream", "eye"]),
+    );
   });
 
   it("draws Hex as its wordmark on a circular badge", () => {

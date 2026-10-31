@@ -1,5 +1,14 @@
 import { Check, Copy, Maximize2, X } from "lucide-react";
-import { useContext, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type JSX } from "react";
+import {
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type JSX,
+} from "react";
 import { createPortal } from "react-dom";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
@@ -13,7 +22,7 @@ import {
   drawnMermaidDiagram,
   nativeSvgWidth,
   rememberDrawnMermaidDiagram,
-  renderMermaidDiagram
+  renderMermaidDiagram,
 } from "../lib/mermaidRuntime.js";
 import { StreamingCodeContext } from "./streamingCodeContext.js";
 
@@ -22,7 +31,7 @@ function subscribeToAppearance(onChange: () => void): () => void {
   const observer = new MutationObserver(onChange);
   observer.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["data-theme", "data-accent", "data-background-intensity", "data-contrast"]
+    attributeFilter: ["data-theme", "data-accent", "data-background-intensity", "data-contrast"],
   });
   return () => observer.disconnect();
 }
@@ -57,7 +66,9 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
   const [copyFlash, copy] = useCopyToClipboard();
 
   useRestoreFocus(expanded);
-  useDismissOnOutsideOrEscape(dialogRef, expanded, () => setExpanded(false), undefined, { trapFocus: true });
+  useDismissOnOutsideOrEscape(dialogRef, expanded, () => setExpanded(false), undefined, {
+    trapFocus: true,
+  });
 
   useEffect(() => {
     const trimmed = source.trim();
@@ -126,7 +137,9 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
       return;
     }
     const sessionColumn = figure.closest<HTMLElement>(".session-main-column");
-    const transcript = figure.closest<HTMLElement>(".conversation-content, .agent-activity-content");
+    const transcript = figure.closest<HTMLElement>(
+      ".conversation-content, .agent-activity-content",
+    );
     const workspaceCard = sessionColumn?.querySelector<HTMLElement>(".workspace-card");
     const measure = (): void => {
       const proseWidth = mermaidProseWidth(column);
@@ -134,11 +147,15 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
       const sessionBounds = sessionColumn?.getBoundingClientRect();
       const transcriptBounds = transcript?.getBoundingClientRect();
       const sessionStyle = sessionColumn ? window.getComputedStyle(sessionColumn) : null;
-      const cardClearance = Number.parseFloat(sessionStyle?.getPropertyValue("--workspace-card-clearance") ?? "");
-      const visibleCard = workspaceCard && window.getComputedStyle(workspaceCard).display !== "none";
+      const cardClearance = Number.parseFloat(
+        sessionStyle?.getPropertyValue("--workspace-card-clearance") ?? "",
+      );
+      const visibleCard =
+        workspaceCard && window.getComputedStyle(workspaceCard).display !== "none";
       const safeLeft = transcriptBounds?.left ?? sessionBounds?.left ?? columnBounds.left;
       const safeRight = visibleCard
-        ? workspaceCard.getBoundingClientRect().left - (Number.isFinite(cardClearance) ? cardClearance : 0)
+        ? workspaceCard.getBoundingClientRect().left -
+          (Number.isFinite(cardClearance) ? cardClearance : 0)
         : (transcriptBounds?.right ?? sessionBounds?.right ?? columnBounds.right);
       const breakout = mermaidBreakoutWidth(proseWidth, columnBounds.left, safeLeft, safeRight);
       figure.style.setProperty("--diagram-breakout", `${breakout}px`);
@@ -165,7 +182,8 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
 
   const trimmed = source.trim();
   const drawing = Boolean(trimmed) && !svg && !error;
-  const copyTitle = copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy source";
+  const copyTitle =
+    copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy source";
   const showCanvas = Boolean(svg) && !sourceOpen && !error && !expanded;
 
   const handleCopy = (): void => {
@@ -220,7 +238,7 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )
       : null;
 
@@ -252,7 +270,11 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
             title={copyTitle}
             onClick={handleCopy}
           >
-            {copyFlash === "copied" ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
+            {copyFlash === "copied" ? (
+              <Check size={12} aria-hidden="true" />
+            ) : (
+              <Copy size={12} aria-hidden="true" />
+            )}
           </button>
           {svg && !error ? (
             <button

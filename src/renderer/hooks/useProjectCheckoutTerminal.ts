@@ -11,7 +11,7 @@ import type { ProjectTarget } from "../lib/projectTarget.js";
 export function useProjectCheckoutTerminal(
   target: ProjectTarget | null,
   workspaces: readonly WorkspaceSummary[],
-  onWorkspaceCreated: (workspace: WorkspaceSummary) => void
+  onWorkspaceCreated: (workspace: WorkspaceSummary) => void,
 ): {
   terminalWorkspaceId: string | null;
   ensureCheckoutWorkspace: () => Promise<string | null>;
@@ -19,7 +19,7 @@ export function useProjectCheckoutTerminal(
   const project = target?.project ?? null;
   const checkoutWorkspace = useMemo(
     () => (project ? findSharedCheckoutWorkspace(project, workspaces) : null),
-    [project, workspaces]
+    [project, workspaces],
   );
   const [created, setCreated] = useState<{ key: string; id: string } | null>(null);
   const ensuringRef = useRef<{ key: string; promise: Promise<string | null> } | null>(null);
@@ -54,6 +54,6 @@ export function useProjectCheckoutTerminal(
 
   return {
     terminalWorkspaceId: checkoutWorkspace?.id ?? createdWorkspaceId,
-    ensureCheckoutWorkspace
+    ensureCheckoutWorkspace,
   };
 }

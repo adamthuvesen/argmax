@@ -55,7 +55,7 @@ export function ThoughtBlock({
   autoExpandWhileLive = true,
   live = false,
   holdOpen = false,
-  durationMs
+  durationMs,
 }: {
   children: ReactNode;
   previewText: string;
@@ -136,7 +136,11 @@ export function ThoughtBlock({
             {excerpt}
           </span>
         ) : null}
-        <ChevronRight size={12} className={`thought-block-chevron${expanded ? " expanded" : ""}`} aria-hidden="true" />
+        <ChevronRight
+          size={12}
+          className={`thought-block-chevron${expanded ? " expanded" : ""}`}
+          aria-hidden="true"
+        />
       </button>
       {display === "preview" && live && !expanded ? (
         <p className="thought-block-preview" aria-label="Thinking preview">

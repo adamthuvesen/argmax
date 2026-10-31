@@ -7,7 +7,7 @@ import {
   useState,
   type JSX,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode
+  type ReactNode,
 } from "react";
 
 const DISMISS_DISTANCE_PX = 72;
@@ -56,7 +56,7 @@ export function AgentOverlay({
   awaitsFloorChange = false,
   onClose,
   onExited,
-  children
+  children,
 }: {
   label: string;
   /** Whether the sheet should be up. False starts the ride out; the parent
@@ -171,7 +171,12 @@ export function AgentOverlay({
   };
 
   return (
-    <div className="mobile-agent-overlay" ref={hostRef} data-raised={(open && raised) || undefined}>
+    <div
+      className="mobile-agent-overlay"
+      data-testid="mobile-agent-overlay"
+      ref={hostRef}
+      data-raised={(open && raised) || undefined}
+    >
       <div className="mobile-agent-overlay-scrim" role="presentation" onClick={requestClose} />
       <div
         className="mobile-agent-overlay-panel"

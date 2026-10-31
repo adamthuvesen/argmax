@@ -19,7 +19,9 @@ export function ProviderSwitchNotice({ notice }: { notice: Notice }): JSX.Elemen
       <span className="conversation-notice-rule" aria-hidden="true" />
       <span className="conversation-notice-text" aria-hidden="true">
         {label}
-        {notice.modelLabel ? <span className="conversation-notice-detail"> · {notice.modelLabel}</span> : null}
+        {notice.modelLabel ? (
+          <span className="conversation-notice-detail"> · {notice.modelLabel}</span>
+        ) : null}
       </span>
       <span className="conversation-notice-rule" aria-hidden="true" />
     </div>

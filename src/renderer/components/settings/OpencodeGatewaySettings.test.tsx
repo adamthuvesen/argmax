@@ -9,12 +9,16 @@ afterEach(() => {
 
 describe("OpencodeGatewaySettings", () => {
   it("switches the gateway and shows that gateway's key field", async () => {
-    const setOpencodeGateway = vi.fn().mockResolvedValue({ gateway: "vercel", openrouterKeyHint: "…or12" });
+    const setOpencodeGateway = vi
+      .fn()
+      .mockResolvedValue({ gateway: "vercel", openrouterKeyHint: "…or12" });
     vi.stubGlobal("argmax", {
       settings: {
-        opencodeGateway: vi.fn().mockResolvedValue({ gateway: "openrouter", openrouterKeyHint: "…or12" }),
-        setOpencodeGateway
-      }
+        opencodeGateway: vi
+          .fn()
+          .mockResolvedValue({ gateway: "openrouter", openrouterKeyHint: "…or12" }),
+        setOpencodeGateway,
+      },
     });
     render(<OpencodeGatewaySettings />);
 
@@ -22,17 +26,22 @@ describe("OpencodeGatewaySettings", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Vercel AI Gateway" }));
 
     await waitFor(() => expect(setOpencodeGateway).toHaveBeenCalledWith({ gateway: "vercel" }));
-    expect(await screen.findByLabelText("Vercel AI Gateway API key")).toHaveAttribute("type", "password");
+    expect(await screen.findByLabelText("Vercel AI Gateway API key")).toHaveAttribute(
+      "type",
+      "password",
+    );
     expect(screen.getByRole("radio", { name: "Vercel AI Gateway" })).toBeChecked();
   });
 
   it("saves a trimmed key for the selected gateway", async () => {
-    const setOpencodeGatewayKey = vi.fn().mockResolvedValue({ gateway: "vercel", vercelKeyHint: "…cdef" });
+    const setOpencodeGatewayKey = vi
+      .fn()
+      .mockResolvedValue({ gateway: "vercel", vercelKeyHint: "…cdef" });
     vi.stubGlobal("argmax", {
       settings: {
         opencodeGateway: vi.fn().mockResolvedValue({ gateway: "vercel" }),
-        setOpencodeGatewayKey
-      }
+        setOpencodeGatewayKey,
+      },
     });
     render(<OpencodeGatewaySettings />);
 
@@ -42,7 +51,10 @@ describe("OpencodeGatewaySettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
-      expect(setOpencodeGatewayKey).toHaveBeenCalledWith({ gateway: "vercel", apiKey: "vck_0123456789abcdef" })
+      expect(setOpencodeGatewayKey).toHaveBeenCalledWith({
+        gateway: "vercel",
+        apiKey: "vck_0123456789abcdef",
+      }),
     );
     expect(await screen.findByText("Saved in your Keychain · key …cdef")).toBeInTheDocument();
   });
@@ -54,18 +66,20 @@ describe("OpencodeGatewaySettings", () => {
         setOpencodeGatewayKey: vi.fn().mockRejectedValue({
           code: "SERVICE",
           sub_code: "OPENCODE_GATEWAY_KEY_REJECTED",
-          message: "OpenRouter rejected that key, so it was not saved."
-        })
-      }
+          message: "OpenRouter rejected that key, so it was not saved.",
+        }),
+      },
     });
     render(<OpencodeGatewaySettings />);
 
     fireEvent.change(await screen.findByLabelText("OpenRouter API key"), {
-      target: { value: "sk-or-v1-0123456789abcdef" }
+      target: { value: "sk-or-v1-0123456789abcdef" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("OpenRouter rejected that key, so it was not saved.");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "OpenRouter rejected that key, so it was not saved.",
+    );
     expect(screen.getByLabelText("OpenRouter API key")).toHaveAttribute("aria-invalid", "true");
   });
 
@@ -73,15 +87,19 @@ describe("OpencodeGatewaySettings", () => {
     const clearOpencodeGatewayKey = vi.fn().mockResolvedValue({ gateway: "openrouter" });
     vi.stubGlobal("argmax", {
       settings: {
-        opencodeGateway: vi.fn().mockResolvedValue({ gateway: "openrouter", openrouterKeyHint: "…or12" }),
-        clearOpencodeGatewayKey
-      }
+        opencodeGateway: vi
+          .fn()
+          .mockResolvedValue({ gateway: "openrouter", openrouterKeyHint: "…or12" }),
+        clearOpencodeGatewayKey,
+      },
     });
     render(<OpencodeGatewaySettings />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Remove key" }));
 
-    await waitFor(() => expect(clearOpencodeGatewayKey).toHaveBeenCalledWith({ gateway: "openrouter" }));
+    await waitFor(() =>
+      expect(clearOpencodeGatewayKey).toHaveBeenCalledWith({ gateway: "openrouter" }),
+    );
     expect(await screen.findByLabelText("OpenRouter API key")).toBeInTheDocument();
   });
 });

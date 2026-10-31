@@ -28,7 +28,7 @@ export function WindowSnapshotSettings(): JSX.Element | null {
     enabled: api !== undefined,
     read: (bridge) => bridge.windowSnapshot.status(),
     onData: setStatus,
-    onError: (error) => showErrorToast(message(error))
+    onError: (error) => showErrorToast(message(error)),
   });
 
   const configure = useCallback(
@@ -45,7 +45,7 @@ export function WindowSnapshotSettings(): JSX.Element | null {
         setBusy(false);
       }
     },
-    [api]
+    [api],
   );
 
   useEffect(() => {
@@ -103,7 +103,11 @@ export function WindowSnapshotSettings(): JSX.Element | null {
             <button
               type="button"
               className="settings-button"
-              aria-label={recording ? "Press the new shortcut" : `Change shortcut, now ${displayChord(status.chord)}`}
+              aria-label={
+                recording
+                  ? "Press the new shortcut"
+                  : `Change shortcut, now ${displayChord(status.chord)}`
+              }
               aria-pressed={recording}
               disabled={busy}
               onClick={() => setRecording((value) => !value)}
@@ -139,7 +143,9 @@ export function WindowSnapshotSettings(): JSX.Element | null {
               className="settings-button"
               disabled={busy}
               onClick={() =>
-                void api.requestPermission().then(setStatus, (error: unknown) => showErrorToast(message(error)))
+                void api
+                  .requestPermission()
+                  .then(setStatus, (error: unknown) => showErrorToast(message(error)))
               }
             >
               <span>Allow Screen Recording</span>

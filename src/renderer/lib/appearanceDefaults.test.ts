@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { ACTIVITY_MARK_STORAGE_KEY, initActivityMark, resetActivityMarkForTests } from "./activityMark.js";
+import {
+  ACTIVITY_MARK_STORAGE_KEY,
+  initActivityMark,
+  resetActivityMarkForTests,
+} from "./activityMark.js";
 import { readStoredBackgroundIntensity } from "./backgroundIntensity.js";
-import { applyFontHeavinessToDocument, FONT_HEAVINESS_STORAGE_KEY, readStoredFontHeaviness } from "./fontHeaviness.js";
+import {
+  applyFontHeavinessToDocument,
+  FONT_HEAVINESS_STORAGE_KEY,
+  readStoredFontHeaviness,
+} from "./fontHeaviness.js";
 import { readStoredSidebarIntensity } from "./sidebarIntensity.js";
 import { readStoredUserBubbleTint, USER_BUBBLE_TINT_STORAGE_KEY } from "./userBubbleTint.js";
 

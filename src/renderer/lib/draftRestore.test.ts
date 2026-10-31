@@ -5,7 +5,7 @@ import { restoreDraftAttachments, restoreDraftText } from "./draftRestore.js";
 const shot = (filePath: string): ComposerAttachment => ({
   filePath,
   mimeType: "image/png",
-  sizeBytes: 1
+  sizeBytes: 1,
 });
 
 describe("restoring a failed background send", () => {
@@ -25,7 +25,7 @@ describe("restoring a failed background send", () => {
   it("merges attachments, restored first, without repeats", () => {
     expect(restoreDraftAttachments([shot("/b.png"), shot("/a.png")], [shot("/a.png")])).toEqual([
       shot("/a.png"),
-      shot("/b.png")
+      shot("/b.png"),
     ]);
   });
 });

@@ -51,9 +51,13 @@ export function cssColorToHex(color: string): string | null {
     const [r, g, b] = three[1];
     return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
   }
-  const comma = trimmed.match(/^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/i);
+  const comma = trimmed.match(
+    /^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/i,
+  );
   if (comma) return rgbToHex(Number(comma[1]), Number(comma[2]), Number(comma[3]));
-  const space = trimmed.match(/^rgba?\(\s*(\d+(?:\.\d+)?)[,\s]+(\d+(?:\.\d+)?)[,\s]+(\d+(?:\.\d+)?)/i);
+  const space = trimmed.match(
+    /^rgba?\(\s*(\d+(?:\.\d+)?)[,\s]+(\d+(?:\.\d+)?)[,\s]+(\d+(?:\.\d+)?)/i,
+  );
   if (space) return rgbToHex(Number(space[1]), Number(space[2]), Number(space[3]));
   return null;
 }
@@ -64,7 +68,16 @@ function tokenHex(style: CSSStyleDeclaration, name: string): string | null {
   if (literal || !value.trim()) return literal;
   // Only background intensity introduces these surface mixes. Preserve the
   // existing Mermaid defaults for ink and accent tokens it cannot parse.
-  if (!["--tool-block-surface", "--panel", "--panel-soft", "--panel-sunken", "--line-strong", "--line"].includes(name))
+  if (
+    ![
+      "--tool-block-surface",
+      "--panel",
+      "--panel-soft",
+      "--panel-sunken",
+      "--line-strong",
+      "--line",
+    ].includes(name)
+  )
     return null;
   const { r, g, b } = readColorToken(name, document.documentElement);
   return rgbToHex(r, g, b);
@@ -117,7 +130,7 @@ function readMermaidThemeVariables(): Record<string, string | boolean> {
   const vars: Record<string, string | boolean> = {
     darkMode: dark,
     fontFamily,
-    fontSize
+    fontSize,
   };
   if (well) vars.background = well;
   if (nodeFill) {
@@ -205,7 +218,7 @@ function mermaidConfig(): Record<string, unknown> {
       padding: 24,
       wrappingWidth: 200,
       nodeSpacing: 56,
-      rankSpacing: 64
+      rankSpacing: 64,
     },
     sequence: { useMaxWidth: false, actorMargin: 48, boxMargin: 8 },
     gantt: { useMaxWidth: false },
@@ -219,7 +232,7 @@ function mermaidConfig(): Record<string, unknown> {
     mindmap: { useMaxWidth: false },
     sankey: { useMaxWidth: false },
     xyChart: { useMaxWidth: false },
-    kanban: { useMaxWidth: false }
+    kanban: { useMaxWidth: false },
   };
 }
 
@@ -252,7 +265,11 @@ export function resetDrawnMermaidDiagramsForTests(): void {
   drawn.clear();
 }
 
-export function rememberDrawnMermaidDiagram(source: string, themeKey: string, result: MermaidRenderResult): void {
+export function rememberDrawnMermaidDiagram(
+  source: string,
+  themeKey: string,
+  result: MermaidRenderResult,
+): void {
   const key = drawnKey(source, themeKey);
   drawn.delete(key);
   drawn.set(key, result);
@@ -270,11 +287,11 @@ export function rememberDrawnMermaidDiagram(source: string, themeKey: string, re
 export function renderMermaidDiagram(source: string): Promise<MermaidRenderResult> {
   const run = renderChain.then(
     () => renderNow(source),
-    () => renderNow(source)
+    () => renderNow(source),
   );
   renderChain = run.then(
     () => undefined,
-    () => undefined
+    () => undefined,
   );
   return run;
 }
@@ -311,8 +328,12 @@ export function nativeSvgWidth(svg: SVGSVGElement): number {
 export const MERMAID_LAYOUT_SLACK_PX = 8;
 
 export function mermaidProseWidth(column: HTMLElement): number {
-  const configured = Number.parseFloat(window.getComputedStyle(column).getPropertyValue("--markdown-prose-width"));
-  return Number.isFinite(configured) ? Math.min(column.clientWidth, configured) : column.clientWidth;
+  const configured = Number.parseFloat(
+    window.getComputedStyle(column).getPropertyValue("--markdown-prose-width"),
+  );
+  return Number.isFinite(configured)
+    ? Math.min(column.clientWidth, configured)
+    : column.clientWidth;
 }
 
 /** Symmetric room a wide diagram can take around the prose without clipping. */
@@ -320,9 +341,12 @@ export function mermaidBreakoutWidth(
   proseWidth: number,
   proseLeft: number,
   safeLeft: number,
-  safeRight: number
+  safeRight: number,
 ): number {
-  return Math.max(0, Math.min(proseWidth * 0.2, proseLeft - safeLeft, safeRight - (proseLeft + proseWidth)));
+  return Math.max(
+    0,
+    Math.min(proseWidth * 0.2, proseLeft - safeLeft, safeRight - (proseLeft + proseWidth)),
+  );
 }
 
 /**
@@ -333,10 +357,10 @@ export function mermaidBreakoutWidth(
 export function mermaidLayout(
   nativeWidth: number,
   columnWidth: number,
-  boxWidth: number
+  boxWidth: number,
 ): { wide: boolean; overflow: boolean } {
   return {
     wide: nativeWidth > columnWidth + MERMAID_LAYOUT_SLACK_PX,
-    overflow: nativeWidth > boxWidth + MERMAID_LAYOUT_SLACK_PX
+    overflow: nativeWidth > boxWidth + MERMAID_LAYOUT_SLACK_PX,
   };
 }

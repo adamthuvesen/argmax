@@ -4,7 +4,13 @@ import { resolveBrowserInput } from "../lib/browserPanel.js";
 import { ChangesIcon, TerminalIcon } from "./ReviewModeIcons.js";
 import "../styles/review-new-tab.css";
 
-export type ReviewNewTabTool = "changes" | "files" | "agents" | "terminal" | "side-chat" | "artifacts";
+export type ReviewNewTabTool =
+  | "changes"
+  | "files"
+  | "agents"
+  | "terminal"
+  | "side-chat"
+  | "artifacts";
 
 export function ReviewNewTab({
   onOpen,
@@ -13,7 +19,7 @@ export function ReviewNewTab({
   hasTerminal,
   hasSideChat,
   hasBrowser,
-  artifactsEnabled
+  artifactsEnabled,
 }: {
   onOpen: (tool: ReviewNewTabTool) => void;
   onBrowse: (url: string) => void;
@@ -45,8 +51,8 @@ export function ReviewNewTab({
             id: "terminal" as const,
             label: "Terminal",
             hint: "Run commands in this checkout",
-            icon: <TerminalIcon size={16} />
-          }
+            icon: <TerminalIcon size={16} />,
+          },
         ]
       : []),
     ...(hasSideChat
@@ -55,12 +61,19 @@ export function ReviewNewTab({
             id: "side-chat" as const,
             label: "Side chat",
             hint: "Ask a separate question",
-            icon: <MessageSquarePlus size={16} />
-          }
+            icon: <MessageSquarePlus size={16} />,
+          },
         ]
       : []),
     ...(hasAgents
-      ? [{ id: "agents" as const, label: "Agents", hint: "Follow subagent work", icon: <Bot size={16} /> }]
+      ? [
+          {
+            id: "agents" as const,
+            label: "Agents",
+            hint: "Follow subagent work",
+            icon: <Bot size={16} />,
+          },
+        ]
       : []),
     ...(hasBrowser && artifactsEnabled
       ? [
@@ -68,10 +81,10 @@ export function ReviewNewTab({
             id: "artifacts" as const,
             label: "Claude artifacts",
             hint: "Browse your claude.ai artifacts",
-            icon: <Shapes size={16} />
-          }
+            icon: <Shapes size={16} />,
+          },
         ]
-      : [])
+      : []),
   ];
   return (
     <div className="review-new-tab">
@@ -90,7 +103,12 @@ export function ReviewNewTab({
             autoCapitalize="off"
             autoComplete="off"
           />
-          <button type="submit" aria-label="Open address" title="Open address" disabled={!address.trim()}>
+          <button
+            type="submit"
+            aria-label="Open address"
+            title="Open address"
+            disabled={!address.trim()}
+          >
             <ArrowRight size={16} />
           </button>
         </form>

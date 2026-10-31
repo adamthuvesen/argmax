@@ -23,7 +23,14 @@ describe("bridge contract boundaries", () => {
     const row = { provider: "unsupported" } as Routine;
     expect(() => routine(row)).toThrow("routine.provider");
     expect(() =>
-      rawOutput({ id: "r", sessionId: "s", content: "x", stream: "binary", createdAt: "now", rowCursor: null })
+      rawOutput({
+        id: "r",
+        sessionId: "s",
+        content: "x",
+        stream: "binary",
+        createdAt: "now",
+        rowCursor: null,
+      }),
     ).toThrow("output.stream");
   });
   it("keeps a queued follow-up's provider and reads a missing one as the chat's own", () => {
@@ -35,12 +42,14 @@ describe("bridge contract boundaries", () => {
       fastMode: false,
       attachments: [],
       agentReferences: [],
-      queuedAt: "now"
+      queuedAt: "now",
     };
     expect(pendingMessage({ ...row, provider: "codex" }).provider).toBe("codex");
     expect(pendingMessage({ ...row, provider: null }).provider).toBeUndefined();
     expect(pendingMessage(row).provider).toBeUndefined();
-    expect(() => pendingMessage({ ...row, provider: "unsupported" as never })).toThrow("pendingMessage.provider");
+    expect(() => pendingMessage({ ...row, provider: "unsupported" as never })).toThrow(
+      "pendingMessage.provider",
+    );
   });
   it("requires a selected folder to carry a project", () => {
     expect(() => pickedFolder({ cancelled: false })).toThrow("no project");

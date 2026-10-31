@@ -75,7 +75,8 @@ for (const day of ccusage.daily ?? []) {
 const codexbar = JSON.parse(run("codexbar", ["cost", "--provider", "both", "--format", "json"]));
 const codexbarByKey = new Map();
 for (const entry of Array.isArray(codexbar) ? codexbar : [codexbar]) {
-  const provider = entry.provider === "claude" ? "claude" : entry.provider === "codex" ? "codex" : null;
+  const provider =
+    entry.provider === "claude" ? "claude" : entry.provider === "codex" ? "codex" : null;
   if (!provider) continue;
   for (const day of entry.daily ?? []) {
     for (const model of day.modelBreakdowns ?? []) {
@@ -95,7 +96,9 @@ for (const key of [...keys].sort()) {
   if (onlyProvider && provider !== onlyProvider) continue;
   if (!argmax.some((day) => day.date === date)) continue;
   const ours = argmaxByKey.get(key) ?? 0;
-  const theirs = [ccusageByKey.get(key), codexbarByKey.get(key)].filter((value) => value !== undefined);
+  const theirs = [ccusageByKey.get(key), codexbarByKey.get(key)].filter(
+    (value) => value !== undefined,
+  );
   const within = (value) => Math.abs(value - ours) <= tolerance * Math.max(ours, 1);
   const agreeing = theirs.filter(within).length;
   // Matching one oracle while the other differs means the oracles disagree
@@ -118,18 +121,19 @@ for (const key of [...keys].sort()) {
     argmax: ours,
     ccusage: ccusageByKey.get(key) ?? "-",
     codexbar: codexbarByKey.get(key) ?? "-",
-    status
+    status,
   });
 }
 console.table(rows);
 console.log(
-  `${rows.length} day/model rows, ${mismatches} mismatches, ${oraclesDiffer} where the oracles disagree with each other, tolerance ${tolerance}`
+  `${rows.length} day/model rows, ${mismatches} mismatches, ${oraclesDiffer} where the oracles disagree with each other, tolerance ${tolerance}`,
 );
 process.exit(mismatches === 0 ? 0 : 1);
 
 function providerForModel(modelName) {
   if (modelName.startsWith("claude")) return "claude";
-  if (modelName.startsWith("gpt") || modelName.startsWith("codex") || modelName.startsWith("o")) return "codex";
+  if (modelName.startsWith("gpt") || modelName.startsWith("codex") || modelName.startsWith("o"))
+    return "codex";
   return null;
 }
 

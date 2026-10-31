@@ -13,7 +13,9 @@ afterEach(() => {
 });
 
 function hrefOf(markdown: string): string | null {
-  const { container } = render(<ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>);
+  const { container } = render(
+    <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>,
+  );
   return container.querySelector("a")?.getAttribute("href") ?? null;
 }
 

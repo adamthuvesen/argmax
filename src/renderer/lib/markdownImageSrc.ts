@@ -11,14 +11,16 @@ import { workspaceAssetUrl } from "../../shared/assetProtocol.js";
 export function resolveMarkdownImageSrc(
   src: string | undefined,
   rootPath: string | null,
-  markdownRelPath: string | null
+  markdownRelPath: string | null,
 ): string | undefined {
   if (!src) return src;
   if (/^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//")) return src;
   if (!rootPath || !markdownRelPath) return src;
 
   const docDirSegments = markdownRelPath.split("/").slice(0, -1);
-  const segments = src.startsWith("/") ? src.split("/").filter(Boolean) : [...docDirSegments, ...src.split("/")];
+  const segments = src.startsWith("/")
+    ? src.split("/").filter(Boolean)
+    : [...docDirSegments, ...src.split("/")];
 
   const stack: string[] = [];
   for (const segment of segments) {

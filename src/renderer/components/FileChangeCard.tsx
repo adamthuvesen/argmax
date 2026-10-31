@@ -11,16 +11,20 @@ import { showToast } from "../state/toast.js";
 export function FileChangeCard({
   change,
   workspaceCwd,
-  onOpenFile
+  onOpenFile,
 }: {
   change: FileChange;
   workspaceCwd?: string | null;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
 }): JSX.Element {
-  const verb = change.kind === "create" ? "Created" : change.kind === "delete" ? "Deleted" : "Edited";
+  const verb =
+    change.kind === "create" ? "Created" : change.kind === "delete" ? "Deleted" : "Edited";
   const Icon = change.kind === "create" ? FilePlus : change.kind === "delete" ? FileX2 : Pencil;
   const noLineNumbers = change.kind === "edit" && change.noLineNumbers === true;
-  const shortPath = useMemo(() => displayPath(change.path, workspaceCwd), [change.path, workspaceCwd]);
+  const shortPath = useMemo(
+    () => displayPath(change.path, workspaceCwd),
+    [change.path, workspaceCwd],
+  );
 
   const onOpen = (): void => {
     if (onOpenFile) {
@@ -35,7 +39,7 @@ export function FileChangeCard({
     void withToast(
       () => system.openPath({ path: change.path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) }),
       showToast,
-      "Could not open this file."
+      "Could not open this file.",
     );
   };
 
@@ -53,7 +57,12 @@ export function FileChangeCard({
         <code className="file-change-card-path" title={change.path}>
           {shortPath}
         </code>
-        <button className="file-change-card-open" type="button" onClick={onOpen} aria-label={`Open ${change.path}`}>
+        <button
+          className="file-change-card-open"
+          type="button"
+          onClick={onOpen}
+          aria-label={`Open ${change.path}`}
+        >
           <PanelRight size={11} aria-hidden="true" />
           <span>Open</span>
         </button>

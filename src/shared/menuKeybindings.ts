@@ -41,78 +41,78 @@ export const MENU_KEYBINDINGS: readonly MenuKeybinding[] = [
     accelerator: "CmdOrCtrl+K",
     displayAccelerator: "⌘K",
     label: "Open command palette",
-    menuLocation: "view"
+    menuLocation: "view",
   },
   {
     command: "open-settings",
     accelerator: "CmdOrCtrl+,",
     displayAccelerator: "⌘,",
     label: "Open Settings",
-    menuLocation: "app"
+    menuLocation: "app",
   },
   {
     command: "check-for-updates",
     accelerator: "",
     displayAccelerator: "",
     label: "Check for Updates",
-    menuLocation: "app"
+    menuLocation: "app",
   },
   {
     command: "new-session",
     accelerator: "CmdOrCtrl+N",
     displayAccelerator: "⌘N",
     label: "New chat",
-    menuLocation: "file"
+    menuLocation: "file",
   },
   {
     command: "next-chat",
     accelerator: "CmdOrCtrl+Backquote",
     displayAccelerator: "⌘§",
     label: "Cycle chats by recency",
-    menuLocation: "view"
+    menuLocation: "view",
   },
   {
     command: "previous-chat",
     accelerator: "CmdOrCtrl+Shift+Backquote",
     displayAccelerator: "⌘⇧§",
     label: "Cycle chats by recency, back",
-    menuLocation: "view"
+    menuLocation: "view",
   },
   {
     command: "close-surface",
     accelerator: "CmdOrCtrl+W",
     displayAccelerator: "⌘W",
     label: "Close browser tab or chat pane",
-    menuLocation: "file"
+    menuLocation: "file",
   },
   {
     command: "toggle-sidebar",
     accelerator: "CmdOrCtrl+B",
     displayAccelerator: "⌘B",
     label: "Toggle right sidebar",
-    menuLocation: "view"
+    menuLocation: "view",
   },
   {
     command: "toggle-left-sidebar",
     accelerator: "CmdOrCtrl+Shift+B",
     displayAccelerator: "⌘⇧B",
     label: "Toggle left sidebar",
-    menuLocation: "view"
+    menuLocation: "view",
   },
   {
     command: "open-cheat-sheet",
     accelerator: "CmdOrCtrl+/",
     displayAccelerator: "⌘/",
     label: "Show keyboard shortcuts",
-    menuLocation: "help"
+    menuLocation: "help",
   },
   {
     command: "toggle-debug-log",
     accelerator: "CmdOrCtrl+Shift+D",
     displayAccelerator: "⌘⇧D",
     label: "Debug log",
-    menuLocation: "help"
-  }
+    menuLocation: "help",
+  },
 ] as const;
 
 /**
@@ -146,5 +146,8 @@ export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
   { displayAccelerator: "⌘⇧I", label: "Toggle browser panel" },
   { displayAccelerator: "⌘↑", label: "Recall the last sent message into an empty draft" },
   { displayAccelerator: "⌘⇧O", label: "Open the chat reference at the caret" },
-  { displayAccelerator: "Esc", label: "Close the topmost menu or panel, then stop the focused chat if enabled" }
+  {
+    displayAccelerator: "Esc",
+    label: "Close the topmost menu or panel, then stop the focused chat if enabled",
+  },
 ] as const;

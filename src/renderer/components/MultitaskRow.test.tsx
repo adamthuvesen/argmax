@@ -14,7 +14,7 @@ function notice(overrides: Partial<MultitaskNotice> = {}): MultitaskNotice {
     state: null,
     answer: null,
     createdAt: "2026-09-02T10:00:02.000Z",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -40,7 +40,7 @@ describe("MultitaskRow", () => {
         liveState="running"
         liveStartedAt={new Date(Date.now() - 95_000).toISOString()}
         onOpen={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByLabelText("Running for")).toHaveTextContent(/^1m 3[45]s$/);
     expect(screen.queryByText("Running")).toBeNull();
@@ -51,10 +51,19 @@ describe("MultitaskRow", () => {
   });
 
   it("surfaces live attention and keeps the chat reachable", () => {
-    render(<MultitaskRow notice={notice()} liveState="running" liveAttention="question-asked" onOpen={vi.fn()} />);
+    render(
+      <MultitaskRow
+        notice={notice()}
+        liveState="running"
+        liveAttention="question-asked"
+        onOpen={vi.fn()}
+      />,
+    );
 
     expect(screen.getByRole("img", { name: "Needs you" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open multitask: Fix the README typo" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Open multitask: Fix the README typo" }),
+    ).toBeInTheDocument();
     expect(multitaskDisplayStatus("waiting", "approval-needed")).toBe("needs-you");
     expect(multitaskDisplayStatus("blocked", "normal")).toBe("needs-you");
   });
@@ -67,7 +76,7 @@ describe("MultitaskRow", () => {
         liveAttention="approval-needed"
         liveApprovalCommand="rm -rf dist && npm run build"
         onOpen={vi.fn()}
-      />
+      />,
     );
 
     expect(screen.getByText("Wants to run")).toBeInTheDocument();
@@ -84,7 +93,7 @@ describe("MultitaskRow", () => {
         liveAttention="normal"
         liveApprovalCommand="rm -rf dist"
         onOpen={vi.fn()}
-      />
+      />,
     );
 
     expect(screen.queryByText("Wants to run")).toBeNull();
@@ -94,11 +103,14 @@ describe("MultitaskRow", () => {
   it("keeps a completed question in attention, with nothing left to stop", () => {
     render(
       <MultitaskRow
-        notice={notice({ state: "complete", answer: "Should this go under fixes or improvements?" })}
+        notice={notice({
+          state: "complete",
+          answer: "Should this go under fixes or improvements?",
+        })}
         liveAttention="question-asked"
         onOpen={vi.fn()}
         onStop={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByRole("img", { name: "Needs you" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Stop multitask/ })).toBeNull();
@@ -112,7 +124,7 @@ describe("MultitaskRow", () => {
         notice={notice({ state: "complete", answer: "Corrected the 0.4 heading to 2026." })}
         onOpen={vi.fn()}
         onStop={vi.fn()}
-      />
+      />,
     );
 
     expect(screen.getByRole("img", { name: "Finished" })).toBeInTheDocument();
@@ -122,7 +134,13 @@ describe("MultitaskRow", () => {
 
     cleanup();
     const onDismiss = vi.fn();
-    render(<MultitaskRow notice={notice({ state: "complete" })} onOpen={vi.fn()} onDismiss={onDismiss} />);
+    render(
+      <MultitaskRow
+        notice={notice({ state: "complete" })}
+        onOpen={vi.fn()}
+        onDismiss={onDismiss}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Dismiss multitask: Fix the README typo" }));
     expect(onDismiss).toHaveBeenCalledWith("child-1");
   });
@@ -134,11 +152,13 @@ describe("MultitaskRow", () => {
         liveState="running"
         liveLabel="Fix Install Section Typo"
         onOpen={vi.fn()}
-      />
+      />,
     );
 
     expect(screen.getByRole("img", { name: "Running" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open multitask: Fix Install Section Typo" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Open multitask: Fix Install Section Typo" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Old result")).toBeNull();
 
     cleanup();

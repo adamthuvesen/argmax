@@ -20,7 +20,10 @@ describe("App schedule", () => {
 
     expect(await screen.findByRole("heading", { name: "Schedule" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Schedule" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Schedule" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
 
     fireEvent.keyDown(document.body, { key: "Escape" });

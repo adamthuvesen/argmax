@@ -5,7 +5,7 @@ import {
   resetSidebarChatNestingForTests,
   setSidebarChatsNested,
   SIDEBAR_CHAT_NESTING_STORAGE_KEY,
-  useSidebarChatNesting
+  useSidebarChatNesting,
 } from "./sidebarChatNesting.js";
 
 beforeEach(() => {
@@ -42,7 +42,7 @@ describe("sidebar chat nesting", () => {
     act(() => setSidebarChatsNested(false));
     expect(JSON.parse(window.localStorage.getItem(SIDEBAR_CHAT_NESTING_STORAGE_KEY)!)).toEqual({
       nested: false,
-      detachedIds: ["child"]
+      detachedIds: ["child"],
     });
     act(() => resetSidebarChatNestingForTests());
     expect(result.current.nested).toBe(false);
@@ -54,7 +54,7 @@ describe("sidebar chat nesting", () => {
   it("rejects malformed stored preferences without coercing their values", () => {
     window.localStorage.setItem(
       SIDEBAR_CHAT_NESTING_STORAGE_KEY,
-      JSON.stringify({ nested: "false", detachedIds: [42] })
+      JSON.stringify({ nested: "false", detachedIds: [42] }),
     );
     const { result } = renderHook(useSidebarChatNesting);
     expect(result.current.nested).toBe(true);

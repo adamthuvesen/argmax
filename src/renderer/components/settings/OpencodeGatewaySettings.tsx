@@ -2,17 +2,20 @@ import { useState, type JSX } from "react";
 import { settingsActions } from "../../data/bridgeActions.js";
 import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import { errorMessage } from "../../../shared/error.js";
-import type { OpencodeGateway, OpencodeGatewaySettings as GatewaySettings } from "../../../shared/types.js";
+import type {
+  OpencodeGateway,
+  OpencodeGatewaySettings as GatewaySettings,
+} from "../../../shared/types.js";
 import { SegmentedControl, SettingGroup, SettingNote, SettingRow } from "./settingsPrimitives.js";
 
 const GATEWAY_OPTIONS: ReadonlyArray<{ value: OpencodeGateway; label: string }> = [
   { value: "openrouter", label: "OpenRouter" },
-  { value: "vercel", label: "Vercel AI Gateway" }
+  { value: "vercel", label: "Vercel AI Gateway" },
 ];
 
 const GATEWAY_NAMES: Record<OpencodeGateway, string> = {
   openrouter: "OpenRouter",
-  vercel: "Vercel AI Gateway"
+  vercel: "Vercel AI Gateway",
 };
 
 function isGateway(value: string): value is OpencodeGateway {
@@ -38,7 +41,7 @@ export function OpencodeGatewaySettings(): JSX.Element {
     key: ["settings.opencodeGateway"],
     read: (api) => api.settings?.opencodeGateway(),
     onData: setSettings,
-    onError: (loadError) => setError(errorMessage(loadError))
+    onError: (loadError) => setError(errorMessage(loadError)),
   });
 
   const run = async (action: () => Promise<GatewaySettings>): Promise<boolean> => {
@@ -125,7 +128,11 @@ export function OpencodeGatewaySettings(): JSX.Element {
                       aria-invalid={error !== null}
                       disabled={isSaving}
                     />
-                    <button type="submit" className="settings-button" disabled={isSaving || apiKey.trim() === ""}>
+                    <button
+                      type="submit"
+                      className="settings-button"
+                      disabled={isSaving || apiKey.trim() === ""}
+                    >
                       {isSaving ? "Checking…" : "Save"}
                     </button>
                   </>

@@ -24,43 +24,43 @@ function installMemoryStorage(): void {
       configurable: true,
       get(this: Storage) {
         return storeFor(this).size;
-      }
+      },
     },
     clear: {
       configurable: true,
       value(this: Storage) {
         storeFor(this).clear();
-      }
+      },
     },
     getItem: {
       configurable: true,
       value(this: Storage, key: string) {
         return storeFor(this).get(key) ?? null;
-      }
+      },
     },
     key: {
       configurable: true,
       value(this: Storage, index: number) {
         return Array.from(storeFor(this).keys())[index] ?? null;
-      }
+      },
     },
     removeItem: {
       configurable: true,
       value(this: Storage, key: string) {
         storeFor(this).delete(key);
-      }
+      },
     },
     setItem: {
       configurable: true,
       value(this: Storage, key: string, value: string) {
         storeFor(this).set(key, value);
-      }
-    }
+      },
+    },
   });
   const storage = Object.create(Storage.prototype) as Storage;
   Object.defineProperty(window, "localStorage", {
     configurable: true,
-    value: storage
+    value: storage,
   });
 }
 
@@ -100,8 +100,8 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
         removeEventListener: () => {},
         addListener: () => {},
         removeListener: () => {},
-        dispatchEvent: () => false
-      }) as MediaQueryList
+        dispatchEvent: () => false,
+      }) as MediaQueryList,
   });
 }
 
@@ -118,7 +118,7 @@ if (typeof HTMLCanvasElement !== "undefined") {
     writable: true,
     value: function getContext(): null {
       return null;
-    }
+    },
   });
 }
 

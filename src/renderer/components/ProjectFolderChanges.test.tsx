@@ -15,14 +15,26 @@ function stateStub(): ProjectFolderChangesState {
           rootPath: "/repos/context",
           isPrimary: true,
           enabled: true,
-          summary: null
+          summary: null,
         },
         files: [
-          { path: "src/search/index.ts", status: "modified", additions: 1, deletions: 2, staged: false },
-          { path: "src/api/index.ts", status: "modified", additions: 3, deletions: 4, staged: false }
+          {
+            path: "src/search/index.ts",
+            status: "modified",
+            additions: 1,
+            deletions: 2,
+            staged: false,
+          },
+          {
+            path: "src/api/index.ts",
+            status: "modified",
+            additions: 3,
+            deletions: 4,
+            staged: false,
+          },
         ],
-        error: null
-      }
+        error: null,
+      },
     ],
     error: null,
     selection: null,
@@ -33,7 +45,7 @@ function stateStub(): ProjectFolderChangesState {
     selectFile: vi.fn(),
     clearSelection: vi.fn(),
     refresh: vi.fn(),
-    expandContext: vi.fn()
+    expandContext: vi.fn(),
   };
 }
 
@@ -74,7 +86,9 @@ describe("ProjectFolderChangesList", () => {
     render(<ProjectFolderChangesList state={state} />);
 
     expect(screen.getByText("Unavailable")).toBeVisible();
-    expect(screen.getByRole("status")).toHaveTextContent("Could not load changes: Repository unavailable");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Could not load changes: Repository unavailable",
+    );
     expect(screen.queryByText("No changes")).not.toBeInTheDocument();
   });
 });

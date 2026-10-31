@@ -42,14 +42,14 @@ function flowSegments(tokens: UsageTokenTotals): FlowSegment[] {
       part: "uncached",
       label: "Uncached input",
       tokens: tokens.inputUncached,
-      note: "at the full input rate"
+      note: "at the full input rate",
     },
     {
       part: "output",
       label: "Output",
       tokens: tokens.output,
-      note: `${formatTokens(tokens.reasoning)} of it reasoning`
-    }
+      note: `${formatTokens(tokens.reasoning)} of it reasoning`,
+    },
   ];
 }
 
@@ -68,7 +68,9 @@ function round(value: number): number {
 function layoutSegments(segments: readonly FlowSegment[], total: number): DrawnSegment[] {
   const floor = MIN_DRAWN + GAP;
   const shares = segments.map((segment) => (segment.tokens / total) * SPAN);
-  const widths = shares.map((share, index) => (segments[index].tokens > 0 ? Math.max(share, floor) : 0));
+  const widths = shares.map((share, index) =>
+    segments[index].tokens > 0 ? Math.max(share, floor) : 0,
+  );
   const debt = widths.reduce((sum, width, index) => sum + width - shares[index], 0);
   const widest = shares.reduce((best, share, index) => (share > shares[best] ? index : best), 0);
   widths[widest] -= debt;
@@ -154,7 +156,9 @@ export function UsageTokenFlow({ summary }: { summary: UsageSummary }): JSX.Elem
                     {segment.note ? <span className="usage-flow-note">{segment.note}</span> : null}
                   </span>
                   <span className="usage-flow-count">{formatTokens(segment.tokens)}</span>
-                  <span className="usage-flow-share">{formatPercent(shareOfTotal(segment.tokens, processed))}</span>
+                  <span className="usage-flow-share">
+                    {formatPercent(shareOfTotal(segment.tokens, processed))}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -164,7 +168,9 @@ export function UsageTokenFlow({ summary }: { summary: UsageSummary }): JSX.Elem
             <span className="usage-flow-savings-label">Cache savings</span>
             <span className="usage-flow-savings-value">{formatUsd(saved)}</span>
             {savedShare === null ? null : (
-              <span className="usage-flow-savings-note">{formatPercent(savedShare)} off the uncached bill</span>
+              <span className="usage-flow-savings-note">
+                {formatPercent(savedShare)} off the uncached bill
+              </span>
             )}
           </div>
         </div>

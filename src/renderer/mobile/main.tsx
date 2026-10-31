@@ -17,7 +17,7 @@ const root = (
 );
 
 createRoot(document.getElementById("root") as HTMLElement).render(
-  import.meta.env.DEV ? <StrictMode>{root}</StrictMode> : root
+  import.meta.env.DEV ? <StrictMode>{root}</StrictMode> : root,
 );
 
 registerServiceWorker();

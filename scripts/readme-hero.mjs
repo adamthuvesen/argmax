@@ -47,7 +47,8 @@ function parseArgs(argv) {
     else fail(`unknown argument: ${arg}`);
   }
   if (!options.main || !options.side) fail("--main and --side are required");
-  if (!Number.isFinite(options.scale) || options.scale <= 0) fail("--scale must be a positive number");
+  if (!Number.isFinite(options.scale) || options.scale <= 0)
+    fail("--scale must be a positive number");
   return options;
 }
 
@@ -74,11 +75,11 @@ const sideSize = pngSize(side);
 const mainCss = { width: mainSize.width / options.scale, height: mainSize.height / options.scale };
 const sideCss = {
   width: (sideSize.width / options.scale) * SIDE.scale,
-  height: (sideSize.height / options.scale) * SIDE.scale
+  height: (sideSize.height / options.scale) * SIDE.scale,
 };
 const CANVAS = {
   width: MAIN.left + mainCss.width + MAIN.right,
-  height: MAIN.top + mainCss.height + MAIN.bottom
+  height: MAIN.top + mainCss.height + MAIN.bottom,
 };
 
 const html = `<!doctype html>
@@ -130,7 +131,7 @@ const html = `<!doctype html>
     top: SIDE.top,
     width: sideCss.width,
     height: sideCss.height,
-    name: "side"
+    name: "side",
   })}
 </body>`;
 
@@ -152,9 +153,9 @@ const result = spawnSync(
     "--settle",
     "600",
     "--out",
-    path.resolve(options.out)
+    path.resolve(options.out),
   ],
-  { cwd: repoRoot, stdio: "inherit" }
+  { cwd: repoRoot, stdio: "inherit" },
 );
 rmSync(workDir, { recursive: true, force: true });
 process.exit(result.status ?? 1);

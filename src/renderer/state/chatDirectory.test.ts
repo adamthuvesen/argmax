@@ -8,15 +8,19 @@ import {
   registerChatOpener,
   resetChatDirectoryForTests,
   searchChatTitles,
-  type ChatDirectoryEntry
+  type ChatDirectoryEntry,
 } from "./chatDirectory.js";
 
-const entry = (sessionId: string, title: string, lastActivityAt = "2026-10-01T00:00:00Z"): ChatDirectoryEntry => ({
+const entry = (
+  sessionId: string,
+  title: string,
+  lastActivityAt = "2026-10-01T00:00:00Z",
+): ChatDirectoryEntry => ({
   sessionId,
   workspaceId: `w-${sessionId}`,
   title,
   projectName: "Argmax",
-  lastActivityAt
+  lastActivityAt,
 });
 
 afterEach(resetChatDirectoryForTests);
@@ -26,23 +30,35 @@ describe("chatDirectoryFromSnapshot", () => {
     const snapshot = {
       projects: [
         { id: "p1", name: "Argmax" },
-        { id: SCRATCH_PROJECT_ID, name: "Chat" }
+        { id: SCRATCH_PROJECT_ID, name: "Chat" },
       ],
       workspaces: [
         { id: "w1", projectId: "p1", taskLabel: "Fix login" },
-        { id: "w2", projectId: SCRATCH_PROJECT_ID, taskLabel: "" }
+        { id: "w2", projectId: SCRATCH_PROJECT_ID, taskLabel: "" },
       ],
       sessions: [
-        { id: "s1", workspaceId: "w1", prompt: "x", modelLabel: "M", lastActivityAt: "2026-10-01T00:00:00Z" },
+        {
+          id: "s1",
+          workspaceId: "w1",
+          prompt: "x",
+          modelLabel: "M",
+          lastActivityAt: "2026-10-01T00:00:00Z",
+        },
         {
           id: "s2",
           workspaceId: "w2",
           prompt: "Explain rebases",
           modelLabel: "M",
-          lastActivityAt: "2026-10-02T00:00:00Z"
+          lastActivityAt: "2026-10-02T00:00:00Z",
         },
-        { id: "orphan", workspaceId: "gone", prompt: "x", modelLabel: "M", lastActivityAt: "2026-10-03T00:00:00Z" }
-      ]
+        {
+          id: "orphan",
+          workspaceId: "gone",
+          prompt: "x",
+          modelLabel: "M",
+          lastActivityAt: "2026-10-03T00:00:00Z",
+        },
+      ],
     } as unknown as DashboardSnapshot;
 
     expect(chatDirectoryFromSnapshot(snapshot)).toEqual([
@@ -51,15 +67,15 @@ describe("chatDirectoryFromSnapshot", () => {
         workspaceId: "w2",
         title: "Explain rebases",
         projectName: "",
-        lastActivityAt: "2026-10-02T00:00:00Z"
+        lastActivityAt: "2026-10-02T00:00:00Z",
       },
       {
         sessionId: "s1",
         workspaceId: "w1",
         title: "Fix login",
         projectName: "Argmax",
-        lastActivityAt: "2026-10-01T00:00:00Z"
-      }
+        lastActivityAt: "2026-10-01T00:00:00Z",
+      },
     ]);
   });
 });
@@ -69,12 +85,18 @@ describe("searchChatTitles", () => {
     entry("a", "Refactor billing", "2026-10-03T00:00:00Z"),
     entry("b", "Billing export bug", "2026-10-02T00:00:00Z"),
     entry("c", "Fix the invoice billing page", "2026-10-01T00:00:00Z"),
-    entry("d", "Unrelated")
+    entry("d", "Unrelated"),
   ];
 
   it("keeps titles holding every word and ranks a leading match first, then a word start, then the rest", () => {
-    expect(searchChatTitles(directory, "billing", 10).map((chat) => chat.sessionId)).toEqual(["b", "a", "c"]);
-    expect(searchChatTitles(directory, "billing page", 10).map((chat) => chat.sessionId)).toEqual(["c"]);
+    expect(searchChatTitles(directory, "billing", 10).map((chat) => chat.sessionId)).toEqual([
+      "b",
+      "a",
+      "c",
+    ]);
+    expect(searchChatTitles(directory, "billing page", 10).map((chat) => chat.sessionId)).toEqual([
+      "c",
+    ]);
   });
 
   it("is case-insensitive, limited, and empty for an empty query", () => {
@@ -91,7 +113,9 @@ describe("opening a chat", () => {
     publishChatDirectory([entry("s1", "Known")]);
 
     expect(openChat("s1")).toBe(true);
-    expect(open).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "s1", workspaceId: "w-s1" }));
+    expect(open).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "s1", workspaceId: "w-s1" }),
+    );
     expect(openChat("gone")).toBe(false);
     expect(lookUpChat("gone")).toBeNull();
 

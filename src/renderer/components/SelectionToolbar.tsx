@@ -1,5 +1,13 @@
 import { Info, MessagesSquare, TextQuote } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type JSX,
+  type RefObject,
+} from "react";
 
 export interface ChatSelection {
   text: string;
@@ -40,7 +48,7 @@ export function SelectionToolbar({
   containerRef,
   onAddToChat,
   onAskSideChat,
-  onMoreDetails
+  onMoreDetails,
 }: SelectionToolbarProps): JSX.Element | null {
   const [active, setActive] = useState<ActiveSelection | null>(null);
   const toolbarRef = useRef<HTMLUListElement | null>(null);
@@ -53,7 +61,9 @@ export function SelectionToolbar({
   // mousedown/mouseup around them, so the deferral above can't work and the
   // toolbar would fight the OS selection callout. Same gate the composer uses
   // for autofocus.
-  const [isCoarsePointer] = useState(() => window.matchMedia?.("(pointer: coarse)").matches ?? false);
+  const [isCoarsePointer] = useState(
+    () => window.matchMedia?.("(pointer: coarse)").matches ?? false,
+  );
 
   const syncFromSelection = useCallback((): void => {
     const container = containerRef.current;
@@ -78,7 +88,7 @@ export function SelectionToolbar({
     setActive({
       text,
       rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width },
-      startLeft: firstLine ? firstLine.left : rect.left
+      startLeft: firstLine ? firstLine.left : rect.left,
     });
   }, [containerRef]);
 
@@ -125,7 +135,8 @@ export function SelectionToolbar({
   useEffect(() => {
     if (!active) return;
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || event.repeat) return;
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || event.repeat)
+        return;
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       event.preventDefault();
       setActive(null);
@@ -145,7 +156,9 @@ export function SelectionToolbar({
     const size = el.getBoundingClientRect();
     const left = Math.min(Math.max(12, active.startLeft), window.innerWidth - 12 - size.width);
     const fitsAbove = active.rect.top - TOOLBAR_GAP_PX - size.height > 12;
-    const top = fitsAbove ? active.rect.top - TOOLBAR_GAP_PX - size.height : active.rect.bottom + TOOLBAR_GAP_PX;
+    const top = fitsAbove
+      ? active.rect.top - TOOLBAR_GAP_PX - size.height
+      : active.rect.bottom + TOOLBAR_GAP_PX;
     setPosition({ left, top });
   }, [active]);
 
@@ -161,7 +174,7 @@ export function SelectionToolbar({
     label: string,
     title: string,
     Icon: typeof Info,
-    handler: (selection: ChatSelection) => void
+    handler: (selection: ChatSelection) => void,
   ): JSX.Element => (
     <li role="none">
       <button
@@ -183,18 +196,24 @@ export function SelectionToolbar({
       className="project-picker-popover selection-menu"
       role="menu"
       aria-label="Selection actions"
-      style={position ? { left: `${position.left}px`, top: `${position.top}px` } : { visibility: "hidden" }}
+      style={
+        position
+          ? { left: `${position.left}px`, top: `${position.top}px` }
+          : { visibility: "hidden" }
+      }
       // Keep the browser from collapsing the selection before click fires.
       onMouseDown={(event) => event.preventDefault()}
     >
       {item("Add to Chat", "Attach this excerpt to your next message", TextQuote, onAddToChat)}
-      {onMoreDetails ? item("More Details", "Open an explainer popup about this excerpt", Info, onMoreDetails) : null}
+      {onMoreDetails
+        ? item("More Details", "Open an explainer popup about this excerpt", Info, onMoreDetails)
+        : null}
       {onAskSideChat
         ? item(
             "Ask in New Chat",
             "Open a chat without a repository, seeded with this excerpt",
             MessagesSquare,
-            onAskSideChat
+            onAskSideChat,
           )
         : null}
     </ul>

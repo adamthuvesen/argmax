@@ -6,6 +6,8 @@ import type { WorkspaceSummary } from "../../shared/types.js";
  * its normal section, so the person can see what merged. It is read-only like
  * any other archived chat.
  */
-export function isInArchivedSection(workspace: Pick<WorkspaceSummary, "state" | "checkoutRemovedAt">): boolean {
+export function isInArchivedSection(
+  workspace: Pick<WorkspaceSummary, "state" | "checkoutRemovedAt">,
+): boolean {
   return workspace.state === "archived" && !workspace.checkoutRemovedAt;
 }

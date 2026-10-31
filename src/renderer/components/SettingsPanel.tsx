@@ -9,7 +9,7 @@ import type {
   DiscoveredProvider,
   IdeId,
   ProjectSummary,
-  RoutingSettings
+  RoutingSettings,
 } from "../../shared/types.js";
 import type { FontFamilyId, FontSize } from "../lib/fonts.js";
 import type { InkStrength } from "../lib/inkStrength.js";
@@ -134,7 +134,7 @@ export function SettingsPanel({
   projects,
   onProjectUpdated,
   navigationTarget,
-  onOpenUsage
+  onOpenUsage,
 }: {
   activeGroup: SettingsGroupId;
   onGroupChange: (group: SettingsGroupId) => void;
@@ -241,7 +241,7 @@ export function SettingsPanel({
       const force = hasDiscoveredRef.current;
       hasDiscoveredRef.current = true;
       return api.providers.discover(force);
-    }
+    },
   });
   const providers = providersQuery.data;
   const refreshingProviders = providersQuery.isLoading;
@@ -263,7 +263,8 @@ export function SettingsPanel({
     enabled: activeGroup === "advanced",
     read: (api) => api.system.diagnostics(),
     onData: setDiagnostics,
-    onError: (error) => setDiagnosticsStatus(error instanceof Error ? error.message : "Could not load diagnostics.")
+    onError: (error) =>
+      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not load diagnostics."),
   });
 
   const copyDiagnostics = useCallback(async (): Promise<void> => {
@@ -292,7 +293,9 @@ export function SettingsPanel({
     try {
       await system.openPath({ path: diagnostics.archiveRecoveryPath });
     } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : "Could not open archived workspaces.");
+      showErrorToast(
+        error instanceof Error ? error.message : "Could not open archived workspaces.",
+      );
     }
   }, [diagnostics]);
 

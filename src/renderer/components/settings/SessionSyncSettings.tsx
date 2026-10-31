@@ -4,7 +4,13 @@ import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import { errorMessage } from "../../../shared/error.js";
 import type { SyncStatus } from "../../../shared/types.js";
 import { showErrorToast } from "../../state/toast.js";
-import { SegmentedControl, SettingGroup, SettingNote, SettingRow, Toggle } from "./settingsPrimitives.js";
+import {
+  SegmentedControl,
+  SettingGroup,
+  SettingNote,
+  SettingRow,
+  Toggle,
+} from "./settingsPrimitives.js";
 
 const PROVIDERS = ["claude", "codex", "cursor", "opencode", "grok"] as const;
 
@@ -13,7 +19,7 @@ const PROVIDER_LABELS: Record<(typeof PROVIDERS)[number], string> = {
   codex: "Codex",
   cursor: "Cursor",
   opencode: "OpenCode",
-  grok: "Grok Build"
+  grok: "Grok Build",
 };
 
 /**
@@ -29,9 +35,11 @@ export function SessionSyncSettings(): JSX.Element {
   const statusQuery = useBridgeQuery({
     key: ["sync.getStatus"],
     read: (api) => api.sync.getStatus(),
-    onData: setStatus
+    onData: setStatus,
   });
-  const loadError = statusQuery.isAvailable ? statusQuery.error : "Open the Argmax desktop app to configure chat sync.";
+  const loadError = statusQuery.isAvailable
+    ? statusQuery.error
+    : "Open the Argmax desktop app to configure chat sync.";
 
   const save = useCallback(async (next: SyncStatus["config"]): Promise<void> => {
     const sync = syncActions();
@@ -67,7 +75,11 @@ export function SessionSyncSettings(): JSX.Element {
         <SettingRow
           key={provider}
           label={PROVIDER_LABELS[provider]}
-          description={supported.has(provider) ? undefined : "Argmax can't read this agent's transcript format yet."}
+          description={
+            supported.has(provider)
+              ? undefined
+              : "Argmax can't read this agent's transcript format yet."
+          }
           control={
             <Toggle
               ariaLabel={PROVIDER_LABELS[provider]}
@@ -95,14 +107,15 @@ export function SessionSyncSettings(): JSX.Element {
             }}
             options={[
               { value: "24", label: "Last 24 hours" },
-              { value: "168", label: "Last 7 days" }
+              { value: "168", label: "Last 7 days" },
             ]}
           />
         }
       />
       <SettingNote>
-        Turning a provider off — or narrowing the window — removes the synced chats you haven&apos;t continued in
-        Argmax. Nothing is lost: the agent&apos;s own history still has them, and turning sync back on brings them back.
+        Turning a provider off — or narrowing the window — removes the synced chats you haven&apos;t
+        continued in Argmax. Nothing is lost: the agent&apos;s own history still has them, and
+        turning sync back on brings them back.
       </SettingNote>
       {note ? (
         <p className="settings-note settings-form-status" data-status="saved" role="status">

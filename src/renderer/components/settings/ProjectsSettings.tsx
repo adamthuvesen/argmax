@@ -5,7 +5,12 @@ import { showErrorToast } from "../../state/toast.js";
 import { BranchTemplatePanel } from "./BranchTemplatePanel.js";
 import { ProjectFoldersSettings } from "./ProjectFoldersSettings.js";
 import { ProjectSourcesPanel } from "./ProjectSourcesPanel.js";
-import { SegmentedControl, SettingGroup, SettingRow, SettingsListPicker } from "./settingsPrimitives.js";
+import {
+  SegmentedControl,
+  SettingGroup,
+  SettingRow,
+  SettingsListPicker,
+} from "./settingsPrimitives.js";
 
 /**
  * Per-project settings editor (Settings → Projects). Every field here is
@@ -19,14 +24,16 @@ export function ProjectsSettings({
   projects,
   initialProjectId,
   navigationRequestId,
-  onProjectUpdated
+  onProjectUpdated,
 }: {
   projects: ProjectSummary[];
   initialProjectId?: string;
   navigationRequestId?: number;
   onProjectUpdated: (updated: ProjectSummary) => void;
 }): JSX.Element {
-  const [selectedId, setSelectedId] = useState<string | null>(initialProjectId ?? projects[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialProjectId ?? projects[0]?.id ?? null,
+  );
   // Only a navigation that names a project moves the selection. A settings
   // search jump keeps the open project and its unsaved drafts.
   const [handledRequestId, setHandledRequestId] = useState(navigationRequestId);
@@ -55,7 +62,10 @@ export function ProjectsSettings({
                     inputId="settings-project-picker"
                     value={selected.id}
                     onChange={setSelectedId}
-                    options={projects.map((project) => ({ value: project.id, label: project.name }))}
+                    options={projects.map((project) => ({
+                      value: project.id,
+                      label: project.name,
+                    }))}
                   />
                 }
               />
@@ -86,7 +96,7 @@ export function ProjectsSettings({
 const MERGE_CLEANUP_OPTIONS: ReadonlyArray<{ value: MergeCleanup; label: string }> = [
   { value: "off", label: "Keep" },
   { value: "remove-checkout", label: "Remove worktree" },
-  { value: "archive", label: "Archive chat" }
+  { value: "archive", label: "Archive chat" },
 ];
 
 const MERGE_CLEANUP_DESCRIPTIONS: Record<MergeCleanup, string> = {
@@ -94,20 +104,22 @@ const MERGE_CLEANUP_DESCRIPTIONS: Record<MergeCleanup, string> = {
   "remove-checkout":
     "Deletes the chat's worktree, then runs PR cleanup: deletes the local and remote branch and fast-forwards the base branch where it is checked out. The chat stays in the sidebar, read-only. Only chats with their own worktree. One with uncommitted changes or commits after the merge is kept.",
   archive:
-    "Moves the chat to Archived and keeps its worktree for recovery for two days. The branch is kept. Only chats with their own worktree. One with uncommitted changes is kept."
+    "Moves the chat to Archived and keeps its worktree for recovery for two days. The branch is kept. Only chats with their own worktree. One with uncommitted changes is kept.",
 };
 
 /** Keyed by project id, so switching projects remounts with fresh values. */
 function ProjectSettingsForm({
   project,
-  onProjectUpdated
+  onProjectUpdated,
 }: {
   project: ProjectSummary;
   onProjectUpdated: (updated: ProjectSummary) => void;
 }): JSX.Element {
   const [worktreeLocation, setWorktreeLocation] = useState(project.settings.worktreeLocation);
   const [setupCommand, setSetupCommand] = useState(project.settings.setupCommand);
-  const [checkCommandsText, setCheckCommandsText] = useState(project.settings.checkCommands.join("\n"));
+  const [checkCommandsText, setCheckCommandsText] = useState(
+    project.settings.checkCommands.join("\n"),
+  );
   const [mergeCleanup, setMergeCleanup] = useState<MergeCleanup>(project.settings.mergeCleanup);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ kind: "saved" | "error"; message: string } | null>(null);
@@ -118,7 +130,7 @@ function ProjectSettingsForm({
         .split("\n")
         .map((line) => line.trim())
         .filter((line) => line.length > 0),
-    [checkCommandsText]
+    [checkCommandsText],
   );
 
   const dirty =
@@ -149,8 +161,8 @@ function ProjectSettingsForm({
           setupCommand: setupCommand.trim(),
           worktreeLocation: location,
           checkCommands,
-          mergeCleanup
-        }
+          mergeCleanup,
+        },
       });
       onProjectUpdated(updated);
       setStatus({ kind: "saved", message: "Project settings saved." });
@@ -181,7 +193,8 @@ function ProjectSettingsForm({
           spellCheck={false}
         />
         <p className="settings-note">
-          Absolute folder for new worktrees. It can be outside the repository. Existing worktrees stay in place.
+          Absolute folder for new worktrees. It can be outside the repository. Existing worktrees
+          stay in place.
         </p>
       </div>
 
@@ -199,7 +212,8 @@ function ProjectSettingsForm({
           spellCheck={false}
         />
         <p className="settings-note">
-          Run once in each fresh worktree before the agent starts, so dependencies are in place. Leave empty to skip.
+          Run once in each fresh worktree before the agent starts, so dependencies are in place.
+          Leave empty to skip.
         </p>
       </div>
 
@@ -217,7 +231,8 @@ function ProjectSettingsForm({
           spellCheck={false}
         />
         <p className="settings-note">
-          One command per line. Offered on a chat's changed-files card so you can verify a workspace before shipping it.
+          One command per line. Offered on a chat's changed-files card so you can verify a workspace
+          before shipping it.
         </p>
       </div>
 
@@ -236,7 +251,12 @@ function ProjectSettingsForm({
       />
 
       <div className="settings-form-footer">
-        <button type="button" className="settings-button" onClick={() => void save()} disabled={saving || !dirty}>
+        <button
+          type="button"
+          className="settings-button"
+          onClick={() => void save()}
+          disabled={saving || !dirty}
+        >
           {saving ? "Saving…" : "Save project settings"}
         </button>
         {status ? (

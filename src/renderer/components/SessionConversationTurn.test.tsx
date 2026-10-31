@@ -15,7 +15,7 @@ const collectTurnFileChanges = vi.hoisted(() => vi.fn(() => []));
 // rest of the module stays real so the turn keeps summing its own changes.
 vi.mock("../lib/turnFileChanges.js", async (importOriginal) => ({
   ...(await importOriginal<typeof TurnFileChanges>()),
-  collectTurnFileChanges
+  collectTurnFileChanges,
 }));
 
 const { SessionConversationTurn } = await import("./SessionConversationTurn.js");
@@ -38,7 +38,7 @@ const session: SessionSummary = {
   tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextTokens: 0,
   imported: false,
-  launchKind: "agent"
+  launchKind: "agent",
 };
 
 const edit: ToolCall = {
@@ -51,7 +51,7 @@ const edit: ToolCall = {
   status: "done",
   createdAt: "2026-05-12T15:00:02.000Z",
   completedAt: "2026-05-12T15:00:03.000Z",
-  error: null
+  error: null,
 };
 
 const agent: ToolCall = {
@@ -61,14 +61,14 @@ const agent: ToolCall = {
   name: "Agent",
   inputPreview: "Map the design",
   inputFull: { description: "Map the design", prompt: "Inspect the chat timeline" },
-  createdAt: "2026-05-12T15:00:03.000Z"
+  createdAt: "2026-05-12T15:00:03.000Z",
 };
 
 const plan: TodoList = {
   items: [{ id: "step-1", text: "Review the changes", status: "active" }],
   updatedAt: "2026-05-12T15:00:03.500Z",
   doneCount: 0,
-  active: { id: "step-1", text: "Review the changes", status: "active" }
+  active: { id: "step-1", text: "Review the changes", status: "active" },
 };
 
 const turn: Extract<RenderItem, { kind: "turn" }> = {
@@ -83,11 +83,11 @@ const turn: Extract<RenderItem, { kind: "turn" }> = {
       type: "message.completed",
       message: "Done.",
       payload: {},
-      createdAt: "2026-05-12T15:00:04.000Z"
-    }
+      createdAt: "2026-05-12T15:00:04.000Z",
+    },
   ],
   toolItems: [{ kind: "tool", tool: edit }],
-  assistantTimestamps: [Date.parse("2026-05-12T15:00:04.000Z")]
+  assistantTimestamps: [Date.parse("2026-05-12T15:00:04.000Z")],
 };
 
 function renderTurn(
@@ -101,7 +101,7 @@ function renderTurn(
     todo?: TodoList | null;
     follow?: TranscriptFollow;
     onOpenAgent?: (tool: ToolCall) => void;
-  } = {}
+  } = {},
 ): { rerender: () => void; container: HTMLElement } {
   // A fresh `onOpenFile` per render is what SessionConversation itself hands
   // down, so the memo wrapper cannot bail out and the turn body really re-runs.
@@ -133,87 +133,100 @@ afterEach(() => {
 });
 
 describe("SessionConversationTurn", () => {
-  it.each([1, 16])("shows a finished Minimal reply after %i steps without requiring scrolling", (steps) => {
-    vi.useFakeTimers();
-    let detached = false;
-    const follow: TranscriptFollow = {
-      isDetached: () => detached,
-      newBelowCount: () => 0,
-      subscribe: () => () => undefined
-    };
-    const toolItems = Array.from({ length: steps }, (_, index) => ({
-      kind: "tool" as const,
-      tool: {
-        ...edit,
-        id: `edit-${index}`,
-        toolUseId: `edit-${index}`,
-        createdAt: new Date(Date.parse(session.startedAt) + index * 2000 + 1000).toISOString()
-      }
-    }));
-    const narration = toolItems.map((_, index) => ({
-      ...turn.assistantEvents[0],
-      id: `progress-${index}`,
-      message: `Checking file ${index}.`,
-      createdAt: new Date(Date.parse(session.startedAt) + index * 2000).toISOString()
-    }));
-    const options = {
-      item: { ...turn, toolItems, assistantEvents: narration },
-      session: { ...session, state: "running" as SessionSummary["state"] },
-      defaultToolCallsDisplay: "single-line" as const,
-      follow
-    };
-    const { rerender } = renderTurn(options);
-    expect(screen.getAllByRole("button", { name: /Edited/ }).length).toBeGreaterThan(0);
-    detached = true;
-    options.item = {
-      ...options.item,
-      assistantEvents: [
-        ...narration,
-        {
-          ...turn.assistantEvents[0],
-          createdAt: "2026-05-12T15:01:00.000Z",
-          message: "The requested implementation is complete. All focused checks passed."
-        }
-      ]
-    };
-    options.session = session;
-    rerender();
-    act(() => {
-      vi.advanceTimersByTime(600);
-    });
-    expect(screen.queryByRole("button", { name: /Edited/ })).not.toBeInTheDocument();
-    expect(screen.getByText("The requested implementation is complete. All focused checks passed.")).toBeVisible();
-    expect(follow.isDetached()).toBe(true);
-  });
+  it.each([1, 16])(
+    "shows a finished Minimal reply after %i steps without requiring scrolling",
+    (steps) => {
+      vi.useFakeTimers();
+      let detached = false;
+      const follow: TranscriptFollow = {
+        isDetached: () => detached,
+        newBelowCount: () => 0,
+        subscribe: () => () => undefined,
+      };
+      const toolItems = Array.from({ length: steps }, (_, index) => ({
+        kind: "tool" as const,
+        tool: {
+          ...edit,
+          id: `edit-${index}`,
+          toolUseId: `edit-${index}`,
+          createdAt: new Date(Date.parse(session.startedAt) + index * 2000 + 1000).toISOString(),
+        },
+      }));
+      const narration = toolItems.map((_, index) => ({
+        ...turn.assistantEvents[0],
+        id: `progress-${index}`,
+        message: `Checking file ${index}.`,
+        createdAt: new Date(Date.parse(session.startedAt) + index * 2000).toISOString(),
+      }));
+      const options = {
+        item: { ...turn, toolItems, assistantEvents: narration },
+        session: { ...session, state: "running" as SessionSummary["state"] },
+        defaultToolCallsDisplay: "single-line" as const,
+        follow,
+      };
+      const { rerender } = renderTurn(options);
+      expect(screen.getAllByRole("button", { name: /Edited/ }).length).toBeGreaterThan(0);
+      detached = true;
+      options.item = {
+        ...options.item,
+        assistantEvents: [
+          ...narration,
+          {
+            ...turn.assistantEvents[0],
+            createdAt: "2026-05-12T15:01:00.000Z",
+            message: "The requested implementation is complete. All focused checks passed.",
+          },
+        ],
+      };
+      options.session = session;
+      rerender();
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+      expect(screen.queryByRole("button", { name: /Edited/ })).not.toBeInTheDocument();
+      expect(
+        screen.getByText("The requested implementation is complete. All focused checks passed."),
+      ).toBeVisible();
+      expect(follow.isDetached()).toBe(true);
+    },
+  );
 
   it.each([
     { hasPlan: true, hasAgent: false },
     { hasPlan: false, hasAgent: true },
     { hasPlan: false, hasAgent: false },
-    { hasPlan: true, hasAgent: true }
-  ])("renders connected activity in order with plan=$hasPlan and agent=$hasAgent", ({ hasPlan, hasAgent }) => {
-    const item = hasAgent ? { ...turn, toolItems: [...turn.toolItems, { kind: "tool" as const, tool: agent }] } : turn;
-    renderTurn({
-      item,
-      todo: hasPlan ? plan : null,
-      onOpenAgent: () => undefined,
-      defaultToolCallsDisplay: "collapsed",
-      defaultToolCallGroupsExpanded: false
-    });
+    { hasPlan: true, hasAgent: true },
+  ])(
+    "renders connected activity in order with plan=$hasPlan and agent=$hasAgent",
+    ({ hasPlan, hasAgent }) => {
+      const item = hasAgent
+        ? { ...turn, toolItems: [...turn.toolItems, { kind: "tool" as const, tool: agent }] }
+        : turn;
+      renderTurn({
+        item,
+        todo: hasPlan ? plan : null,
+        onOpenAgent: () => undefined,
+        defaultToolCallsDisplay: "collapsed",
+        defaultToolCallGroupsExpanded: false,
+      });
 
-    const activity = screen.getByRole("button", { name: "Edited a file" });
-    const planGroup = screen.queryByRole("group", { name: "Plan" });
-    const agentLaunch = screen.queryByRole("button", { name: /^Started agent / });
-    const reply = screen.getByText("Done.");
-    expect(Boolean(planGroup)).toBe(hasPlan);
-    expect(Boolean(agentLaunch)).toBe(hasAgent);
-    const timeline = [activity, agentLaunch, planGroup, reply].filter((node): node is HTMLElement => node !== null);
-    for (let index = 1; index < timeline.length; index += 1) {
-      expect(
-        timeline[index - 1].compareDocumentPosition(timeline[index]) & Node.DOCUMENT_POSITION_FOLLOWING
-      ).toBeTruthy();
-    }
-  });
+      const activity = screen.getByRole("button", { name: "Edited a file" });
+      const planGroup = screen.queryByRole("group", { name: "Plan" });
+      const agentLaunch = screen.queryByRole("button", { name: /^Started agent / });
+      const reply = screen.getByText("Done.");
+      expect(Boolean(planGroup)).toBe(hasPlan);
+      expect(Boolean(agentLaunch)).toBe(hasAgent);
+      const timeline = [activity, agentLaunch, planGroup, reply].filter(
+        (node): node is HTMLElement => node !== null,
+      );
+      for (let index = 1; index < timeline.length; index += 1) {
+        expect(
+          timeline[index - 1].compareDocumentPosition(timeline[index]) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      }
+    },
+  );
 
   it("preserves the reader's open activity and plan when the plan moves and a reply arrives", () => {
     const options = {
@@ -221,7 +234,7 @@ describe("SessionConversationTurn", () => {
       todo: plan,
       defaultToolCallsDisplay: "collapsed" as const,
       defaultToolCallGroupsExpanded: false,
-      onOpenAgent: () => undefined
+      onOpenAgent: () => undefined,
     };
     const { rerender } = renderTurn(options);
     const activity = screen.getByRole("button", { name: "Edited a file" });
@@ -242,15 +255,17 @@ describe("SessionConversationTurn", () => {
           type: "message.completed" as const,
           message: "The agents finished.",
           payload: {},
-          createdAt: "2026-05-12T15:00:05.000Z"
-        }
-      ]
+          createdAt: "2026-05-12T15:00:05.000Z",
+        },
+      ],
     };
     options.todo = { ...plan, updatedAt: "2026-05-12T15:00:01.000Z" };
     rerender();
 
     expect(screen.getByRole("button", { name: "Edited a file" })).toBe(activity);
-    expect(within(screen.getByRole("group", { name: "Plan" })).getByRole("button")).toBe(planToggle);
+    expect(within(screen.getByRole("group", { name: "Plan" })).getByRole("button")).toBe(
+      planToggle,
+    );
     expect(activity).toHaveAttribute("aria-expanded", "true");
     expect(planToggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: /^Started agent / })).toBeInTheDocument();
@@ -263,7 +278,7 @@ describe("SessionConversationTurn", () => {
       vi.useFakeTimers();
       const options = {
         session: { ...session, state: "waiting" as SessionSummary["state"] },
-        defaultToolCallsDisplay: "single-line" as const
+        defaultToolCallsDisplay: "single-line" as const,
       };
       const { rerender } = renderTurn(options);
       expect(screen.getByRole("button", { name: "Waiting" })).toBeInTheDocument();
@@ -275,7 +290,7 @@ describe("SessionConversationTurn", () => {
       expect(screen.queryByRole("button", { name: "Waiting" })).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: /^Worked/ })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Edited/ })).not.toBeInTheDocument();
-    }
+    },
   );
 
   it.each(["single-line", "collapsed"] as const)(
@@ -285,7 +300,7 @@ describe("SessionConversationTurn", () => {
       const options = {
         session: { ...session, state: "running" as SessionSummary["state"] },
         item: turn,
-        defaultToolCallsDisplay
+        defaultToolCallsDisplay,
       };
       const { rerender } = renderTurn(options);
       const activity = screen.getByRole("button", { name: /Edited/ });
@@ -312,9 +327,9 @@ describe("SessionConversationTurn", () => {
             type: "message.completed",
             message: "The approved operation has now finished.",
             payload: {},
-            createdAt: "2026-05-12T15:00:20.000Z"
-          }
-        ]
+            createdAt: "2026-05-12T15:00:20.000Z",
+          },
+        ],
       };
       rerender();
       expect(screen.getByRole("button", { name: "Working" })).toBeInTheDocument();
@@ -327,7 +342,7 @@ describe("SessionConversationTurn", () => {
       });
       expect(screen.getByRole("button", { name: /^Worked/ })).toBeInTheDocument();
       if (defaultToolCallsDisplay === "single-line") expect(activity).not.toBeInTheDocument();
-    }
+    },
   );
 
   it("does not re-derive the turn's file changes when nothing about the turn changed", () => {
@@ -359,7 +374,7 @@ describe("SessionConversationTurn", () => {
           type: "message.delta",
           message: "The user wants the file edited.",
           payload: { thinking: true },
-          createdAt: "2026-05-12T15:00:01.000Z"
+          createdAt: "2026-05-12T15:00:01.000Z",
         },
         {
           id: "answer",
@@ -367,9 +382,9 @@ describe("SessionConversationTurn", () => {
           type: "message.completed",
           message: "Done.",
           payload: {},
-          createdAt: "2026-05-12T15:00:04.000Z"
-        }
-      ]
+          createdAt: "2026-05-12T15:00:04.000Z",
+        },
+      ],
     };
     renderTurn({ item: thoughtfulTurn });
 
@@ -384,7 +399,7 @@ describe("SessionConversationTurn", () => {
     // "complete" from before the turn began. The card is a coda to a finished
     // turn, and used to appear mid-work with every file written so far.
     collectTurnFileChanges.mockReturnValue([
-      { path: "src/app.ts", kind: "edit", adds: 1, dels: 1, writes: 1 }
+      { path: "src/app.ts", kind: "edit", adds: 1, dels: 1, writes: 1 },
     ] as never);
 
     const { container } = renderTurn({ openRunAt: "2026-05-12T15:00:12.000Z" });
@@ -415,13 +430,13 @@ describe("SessionConversationTurn", () => {
           type: "message.delta",
           message: thinking,
           payload: { thinking: true },
-          createdAt: "2026-05-12T15:00:01.000Z"
-        }
-      ]
+          createdAt: "2026-05-12T15:00:01.000Z",
+        },
+      ],
     };
     const { container } = renderTurn({
       item: liveTurn,
-      session: { ...session, state: "running" }
+      session: { ...session, state: "running" },
     });
 
     expect(container.textContent).toContain(thinking);
@@ -429,14 +444,24 @@ describe("SessionConversationTurn", () => {
   });
 
   it("groups alternating thoughts and tools around readable progress in Compact", () => {
-    const editTwo = { ...edit, id: "edit-2", toolUseId: "edit-2", createdAt: "2026-05-12T15:00:04.000Z" };
-    const editThree = { ...edit, id: "edit-3", toolUseId: "edit-3", createdAt: "2026-05-12T15:00:06.000Z" };
+    const editTwo = {
+      ...edit,
+      id: "edit-2",
+      toolUseId: "edit-2",
+      createdAt: "2026-05-12T15:00:04.000Z",
+    };
+    const editThree = {
+      ...edit,
+      id: "edit-3",
+      toolUseId: "edit-3",
+      createdAt: "2026-05-12T15:00:06.000Z",
+    };
     const compactTurn: Extract<RenderItem, { kind: "turn" }> = {
       ...turn,
       toolItems: [
         { kind: "tool", tool: edit },
         { kind: "tool", tool: editTwo },
-        { kind: "tool", tool: editThree }
+        { kind: "tool", tool: editThree },
       ],
       assistantEvents: [
         {
@@ -445,7 +470,7 @@ describe("SessionConversationTurn", () => {
           type: "message.delta",
           message: "Inspecting the repository.",
           payload: { thinking: true },
-          createdAt: "2026-05-12T15:00:01.000Z"
+          createdAt: "2026-05-12T15:00:01.000Z",
         },
         {
           id: "thought-2",
@@ -453,7 +478,7 @@ describe("SessionConversationTurn", () => {
           type: "message.delta",
           message: "Checking the relevant files.",
           payload: { thinking: true },
-          createdAt: "2026-05-12T15:00:03.000Z"
+          createdAt: "2026-05-12T15:00:03.000Z",
         },
         {
           id: "progress",
@@ -461,7 +486,7 @@ describe("SessionConversationTurn", () => {
           type: "message.completed",
           message: "I found the mismatch.",
           payload: {},
-          createdAt: "2026-05-12T15:00:05.000Z"
+          createdAt: "2026-05-12T15:00:05.000Z",
         },
         {
           id: "thought-3",
@@ -469,22 +494,22 @@ describe("SessionConversationTurn", () => {
           type: "message.delta",
           message: "Planning the smallest fix.",
           payload: { thinking: true },
-          createdAt: "2026-05-12T15:00:07.000Z"
-        }
+          createdAt: "2026-05-12T15:00:07.000Z",
+        },
       ],
       assistantTimestamps: [
         Date.parse("2026-05-12T15:00:01.000Z"),
         Date.parse("2026-05-12T15:00:03.000Z"),
         Date.parse("2026-05-12T15:00:05.000Z"),
-        Date.parse("2026-05-12T15:00:07.000Z")
-      ]
+        Date.parse("2026-05-12T15:00:07.000Z"),
+      ],
     };
 
     renderTurn({
       item: compactTurn,
       defaultToolCallsDisplay: "collapsed",
       defaultToolCallGroupsExpanded: false,
-      thinkingDisplay: "collapsed"
+      thinkingDisplay: "collapsed",
     });
 
     expect(screen.getByText("I found the mismatch.")).toBeInTheDocument();
@@ -508,17 +533,17 @@ describe("SessionConversationTurn", () => {
           type: "message.delta",
           message: "Reviewing the request.",
           payload: { thinking: true },
-          createdAt: "2026-05-12T15:00:01.000Z"
-        }
+          createdAt: "2026-05-12T15:00:01.000Z",
+        },
       ],
-      assistantTimestamps: [Date.parse("2026-05-12T15:00:01.000Z")]
+      assistantTimestamps: [Date.parse("2026-05-12T15:00:01.000Z")],
     };
 
     renderTurn({
       item: thoughtOnlyTurn,
       defaultToolCallsDisplay: "collapsed",
       defaultToolCallGroupsExpanded: false,
-      thinkingDisplay: "collapsed"
+      thinkingDisplay: "collapsed",
     });
 
     const chip = screen.getByRole("button", { name: /^Worked/ });
@@ -541,9 +566,9 @@ describe("SessionConversationTurn", () => {
           type: "message.delta",
           message: "Reviewing the first request.",
           payload: { thinking: true },
-          createdAt: "2026-05-12T15:00:01.000Z"
-        }
-      ]
+          createdAt: "2026-05-12T15:00:01.000Z",
+        },
+      ],
     };
     const secondTurn: Extract<RenderItem, { kind: "turn" }> = {
       ...firstTurn,
@@ -552,22 +577,22 @@ describe("SessionConversationTurn", () => {
         {
           ...firstTurn.assistantEvents[0],
           id: "thought-2",
-          message: "Reviewing the second request."
-        }
-      ]
+          message: "Reviewing the second request.",
+        },
+      ],
     };
 
     renderTurn({
       item: firstTurn,
       defaultToolCallsDisplay: "collapsed",
       defaultToolCallGroupsExpanded: false,
-      thinkingDisplay: "collapsed"
+      thinkingDisplay: "collapsed",
     });
     renderTurn({
       item: secondTurn,
       defaultToolCallsDisplay: "collapsed",
       defaultToolCallGroupsExpanded: false,
-      thinkingDisplay: "collapsed"
+      thinkingDisplay: "collapsed",
     });
 
     const disclosures = screen.getAllByRole("button", { name: "Thought" });

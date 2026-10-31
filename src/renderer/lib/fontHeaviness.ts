@@ -15,11 +15,12 @@ export const FONT_HEAVINESS_HINTS: Readonly<Record<FontHeaviness, string>> = {
   7: "Heavier.",
   8: "Strong.",
   9: "Very strong.",
-  10: "Heaviest."
+  10: "Heaviest.",
 };
 
 export function toFontHeaviness(raw: string | number | null | undefined): FontHeaviness | null {
-  if (raw === null || raw === undefined || (typeof raw === "string" && raw.trim() === "")) return null;
+  if (raw === null || raw === undefined || (typeof raw === "string" && raw.trim() === ""))
+    return null;
   const parsed = Number(raw);
   return Number.isInteger(parsed) && parsed >= FONT_HEAVINESS_MIN && parsed <= FONT_HEAVINESS_MAX
     ? (parsed as FontHeaviness)
@@ -28,7 +29,10 @@ export function toFontHeaviness(raw: string | number | null | undefined): FontHe
 
 export function readStoredFontHeaviness(): FontHeaviness {
   if (typeof window === "undefined") return DEFAULT_FONT_HEAVINESS;
-  return toFontHeaviness(window.localStorage.getItem(FONT_HEAVINESS_STORAGE_KEY)) ?? DEFAULT_FONT_HEAVINESS;
+  return (
+    toFontHeaviness(window.localStorage.getItem(FONT_HEAVINESS_STORAGE_KEY)) ??
+    DEFAULT_FONT_HEAVINESS
+  );
 }
 
 /** Shift every designed weight together, preserving hierarchy and theme differences. */

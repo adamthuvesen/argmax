@@ -8,7 +8,7 @@ import type { ChatDirectoryEntry } from "../state/chatDirectory.js";
  */
 export function chatChipEnvironmentFor(
   directory: readonly ChatDirectoryEntry[],
-  open: (sessionId: string) => boolean
+  open: (sessionId: string) => boolean,
 ): ChatChipEnvironment {
   const bySession = new Map(directory.map((entry) => [entry.sessionId, entry]));
   return {
@@ -18,6 +18,6 @@ export function chatChipEnvironmentFor(
     },
     open: (sessionId) => {
       open(sessionId);
-    }
+    },
   };
 }

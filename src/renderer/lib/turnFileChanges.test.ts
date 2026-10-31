@@ -13,7 +13,7 @@ function tool(name: string, input: Record<string, unknown>, id = name): ToolCall
     status: "done",
     createdAt: "2026-08-31T10:00:00.000Z",
     completedAt: "2026-08-31T10:00:01.000Z",
-    error: null
+    error: null,
   };
 }
 
@@ -26,8 +26,8 @@ describe("collectTurnFileChanges", () => {
     const changes = collectTurnFileChanges(
       turnOf([
         tool("Edit", { file_path: "/repo/src/a.ts", old_string: "one", new_string: "uno" }, "t1"),
-        tool("Edit", { file_path: "/repo/src/a.ts", old_string: "two", new_string: "dos" }, "t2")
-      ])
+        tool("Edit", { file_path: "/repo/src/a.ts", old_string: "two", new_string: "dos" }, "t2"),
+      ]),
     );
     expect(changes).toHaveLength(1);
     expect(changes[0]?.path).toBe("/repo/src/a.ts");
@@ -40,8 +40,8 @@ describe("collectTurnFileChanges", () => {
     const changes = collectTurnFileChanges(
       turnOf([
         tool("Write", { file_path: "/repo/src/new.ts", content: "a\nb" }, "t1"),
-        tool("Edit", { file_path: "/repo/src/new.ts", old_string: "a", new_string: "c" }, "t2")
-      ])
+        tool("Edit", { file_path: "/repo/src/new.ts", old_string: "a", new_string: "c" }, "t2"),
+      ]),
     );
     expect(changes[0]?.kind).toBe("create");
   });
@@ -50,8 +50,8 @@ describe("collectTurnFileChanges", () => {
     const changes = collectTurnFileChanges(
       turnOf([
         tool("Edit", { file_path: "/repo/src/gone.ts", old_string: "a", new_string: "b" }, "t1"),
-        tool("delete_file", { file_path: "/repo/src/gone.ts" }, "t2")
-      ])
+        tool("delete_file", { file_path: "/repo/src/gone.ts" }, "t2"),
+      ]),
     );
     expect(changes[0]?.kind).toBe("delete");
   });
@@ -61,8 +61,8 @@ describe("collectTurnFileChanges", () => {
       turnOf([
         tool("Bash", { command: "ls" }, "t0"),
         tool("Write", { file_path: "/repo/b.md", content: "x" }, "t1"),
-        tool("Write", { file_path: "/repo/a.md", content: "y" }, "t2")
-      ])
+        tool("Write", { file_path: "/repo/a.md", content: "y" }, "t2"),
+      ]),
     );
     expect(changes.map((change) => change.path)).toEqual(["/repo/b.md", "/repo/a.md"]);
   });
@@ -78,18 +78,20 @@ describe("collectTurnFileChanges", () => {
         tool(
           "file_change",
           {
-            changes: [{ kind: "update", path: "/repo/model.sql", unified_diff: hunk("two CHANGED") }]
+            changes: [
+              { kind: "update", path: "/repo/model.sql", unified_diff: hunk("two CHANGED") },
+            ],
           },
-          "t1"
+          "t1",
         ),
         tool(
           "file_change",
           {
-            changes: [{ kind: "update", path: "/repo/model.sql", unified_diff: hunk("two AGAIN") }]
+            changes: [{ kind: "update", path: "/repo/model.sql", unified_diff: hunk("two AGAIN") }],
           },
-          "t2"
-        )
-      ])
+          "t2",
+        ),
+      ]),
     );
     expect(changes).toHaveLength(1);
     expect(changes[0]?.writes).toBe(2);
@@ -99,7 +101,9 @@ describe("collectTurnFileChanges", () => {
 
   it("leaves a Codex file change with no measured diff without a stat", () => {
     const changes = collectTurnFileChanges(
-      turnOf([tool("file_change", { changes: [{ kind: "update", path: "/repo/model.sql" }] }, "t1")])
+      turnOf([
+        tool("file_change", { changes: [{ kind: "update", path: "/repo/model.sql" }] }, "t1"),
+      ]),
     );
     expect(changes).toHaveLength(1);
     expect(changes[0]?.adds).toBe(0);
@@ -114,9 +118,9 @@ describe("collectTurnFileChanges", () => {
           {
             file_path: "/repo/grok.ts",
             old_string: "old",
-            new_string: "new"
+            new_string: "new",
           },
-          "grok"
+          "grok",
         ),
         tool(
           "file_change",
@@ -125,18 +129,18 @@ describe("collectTurnFileChanges", () => {
               {
                 path: "/repo/codex.ts",
                 kind: { type: "add", move_path: null },
-                diff: "export const codex = true;\n"
-              }
-            ]
+                diff: "export const codex = true;\n",
+              },
+            ],
           },
-          "codex"
-        )
-      ])
+          "codex",
+        ),
+      ]),
     );
 
     expect(changes).toEqual([
       { path: "/repo/grok.ts", kind: "edit", adds: 1, dels: 1, writes: 1 },
-      { path: "/repo/codex.ts", kind: "create", adds: 1, dels: 0, writes: 1 }
+      { path: "/repo/codex.ts", kind: "create", adds: 1, dels: 0, writes: 1 },
     ]);
   });
 
@@ -144,7 +148,7 @@ describe("collectTurnFileChanges", () => {
     const agent: TurnToolItem = {
       kind: "tool",
       tool: tool("Task", {}, "agent"),
-      children: [tool("Write", { file_path: "/repo/a.ts", content: "x\ny" }, "t1")]
+      children: [tool("Write", { file_path: "/repo/a.ts", content: "x\ny" }, "t1")],
     };
     expect(collectTurnFileChanges([agent])).toHaveLength(1);
   });
@@ -154,7 +158,7 @@ describe("summarizeTurnFileChanges", () => {
   it("counts a deleted file without inventing a line stat for it", () => {
     const totals = summarizeTurnFileChanges([
       { path: "a.ts", kind: "edit", adds: 4, dels: 2, writes: 1 },
-      { path: "b.ts", kind: "delete", adds: 0, dels: 0, writes: 1 }
+      { path: "b.ts", kind: "delete", adds: 0, dels: 0, writes: 1 },
     ]);
     expect(totals).toEqual({ files: 2, adds: 4, dels: 2 });
   });

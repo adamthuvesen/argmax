@@ -9,7 +9,7 @@ import {
   getBrowserTabs,
   requestBrowserTabFocus,
   resetBrowserSurfaceForTests,
-  resetBrowserTabsForTests
+  resetBrowserTabsForTests,
 } from "../lib/browserPanel.js";
 import { BrowserPanel } from "./BrowserPanel.js";
 import { useReviewState } from "../hooks/useReviewState.js";
@@ -45,7 +45,7 @@ const browser = {
     return () => {
       pageCommandListeners.delete(listener);
     };
-  })
+  }),
 };
 
 beforeEach(() => {
@@ -56,11 +56,26 @@ beforeEach(() => {
   newTabListeners.clear();
   pageCommandListeners.clear();
   stateListeners.clear();
-  setBrowserHistoryStorageForTests({ load: () => Promise.resolve([]), save: () => Promise.resolve() });
+  setBrowserHistoryStorageForTests({
+    load: () => Promise.resolve([]),
+    save: () => Promise.resolve(),
+  });
   window.argmax = { browser } as unknown as ArgmaxApi;
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+    this: HTMLElement,
+  ) {
     const x = this.closest('[aria-label="Second browser"]') ? 400 : 0;
-    return { x, y: 20, width: 400, height: 300, top: 20, left: x, right: x + 400, bottom: 320, toJSON: () => ({}) };
+    return {
+      x,
+      y: 20,
+      width: 400,
+      height: 300,
+      top: 20,
+      left: x,
+      right: x + 400,
+      bottom: 320,
+      toJSON: () => ({}),
+    };
   });
 });
 
@@ -95,27 +110,37 @@ describe("controlled browser pages", () => {
           />
         </section>
         <section aria-label="Second browser">
-          <BrowserPanel scopeId="chat" url="" controlledTabId={second.id} hideTabStrip onClose={() => undefined} />
+          <BrowserPanel
+            scopeId="chat"
+            url=""
+            controlledTabId={second.id}
+            hideTabStrip
+            onClose={() => undefined}
+          />
         </section>
-      </>
+      </>,
     );
     await waitFor(() => expect(browser.open).toHaveBeenCalledTimes(2));
     expect(
-      within(screen.getByRole("region", { name: "First browser" })).getByRole("textbox", { name: "Address" })
+      within(screen.getByRole("region", { name: "First browser" })).getByRole("textbox", {
+        name: "Address",
+      }),
     ).toHaveValue(first.url);
     expect(
-      within(screen.getByRole("region", { name: "Second browser" })).getByRole("textbox", { name: "Address" })
+      within(screen.getByRole("region", { name: "Second browser" })).getByRole("textbox", {
+        name: "Address",
+      }),
     ).toHaveValue(second.url);
     expect(screen.queryByRole("tablist", { name: "Browser tabs" })).toBeNull();
     expect(browser.setBounds).toHaveBeenCalledWith({
       tabId: first.id,
       bounds: { x: 0, y: 20, width: 400, height: 300 },
-      visible: true
+      visible: true,
     });
     expect(browser.setBounds).toHaveBeenCalledWith({
       tabId: second.id,
       bounds: { x: 400, y: 20, width: 400, height: 300 },
-      visible: true
+      visible: true,
     });
     expect(browser.focus).not.toHaveBeenCalled();
     browser.setBounds.mockClear();
@@ -123,12 +148,22 @@ describe("controlled browser pages", () => {
       <>
         <section aria-label="First browser" />
         <section aria-label="Second browser">
-          <BrowserPanel scopeId="chat" url="" controlledTabId={second.id} hideTabStrip onClose={() => undefined} />
+          <BrowserPanel
+            scopeId="chat"
+            url=""
+            controlledTabId={second.id}
+            hideTabStrip
+            onClose={() => undefined}
+          />
         </section>
-      </>
+      </>,
     );
-    expect(browser.setBounds).toHaveBeenCalledWith(expect.objectContaining({ tabId: first.id, visible: false }));
-    expect(browser.setBounds).not.toHaveBeenCalledWith(expect.objectContaining({ tabId: second.id, visible: false }));
+    expect(browser.setBounds).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: first.id, visible: false }),
+    );
+    expect(browser.setBounds).not.toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: second.id, visible: false }),
+    );
     expect(browser.close).not.toHaveBeenCalled();
     expect(getBrowserTabs("chat")).toHaveLength(2);
   });
@@ -139,11 +174,17 @@ describe("controlled browser pages", () => {
       () =>
         new Promise((resolve) => {
           finishOpen = () => resolve({ ok: true });
-        })
+        }),
     );
     const tab = createBrowserTab("chat", "https://first.example");
     const view = render(
-      <BrowserPanel scopeId="chat" url="" controlledTabId={tab.id} hideTabStrip onClose={() => undefined} />
+      <BrowserPanel
+        scopeId="chat"
+        url=""
+        controlledTabId={tab.id}
+        hideTabStrip
+        onClose={() => undefined}
+      />,
     );
     await waitFor(() => expect(browser.open).toHaveBeenCalledTimes(1));
     view.unmount();
@@ -152,7 +193,9 @@ describe("controlled browser pages", () => {
       finishOpen?.();
       await Promise.resolve();
     });
-    expect(browser.setBounds).toHaveBeenLastCalledWith(expect.objectContaining({ tabId: tab.id, visible: false }));
+    expect(browser.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ tabId: tab.id, visible: false }),
+    );
     expect(browser.focus).not.toHaveBeenCalled();
     expect(browser.close).not.toHaveBeenCalled();
   });
@@ -163,23 +206,37 @@ describe("controlled browser pages", () => {
       () =>
         new Promise((resolve) => {
           finishOpen = () => resolve({ ok: true });
-        })
+        }),
     );
     const tab = createBrowserTab("chat", "https://first.example");
     const first = render(
       <section aria-label="First browser">
-        <BrowserPanel scopeId="chat" url="" controlledTabId={tab.id} hideTabStrip onClose={() => undefined} />
-      </section>
+        <BrowserPanel
+          scopeId="chat"
+          url=""
+          controlledTabId={tab.id}
+          hideTabStrip
+          onClose={() => undefined}
+        />
+      </section>,
     );
     await waitFor(() => expect(browser.open).toHaveBeenCalledTimes(1));
     render(
       <section aria-label="Second browser">
-        <BrowserPanel scopeId="chat" url="" controlledTabId={tab.id} hideTabStrip onClose={() => undefined} />
-      </section>
+        <BrowserPanel
+          scopeId="chat"
+          url=""
+          controlledTabId={tab.id}
+          hideTabStrip
+          onClose={() => undefined}
+        />
+      </section>,
     );
     browser.setBounds.mockClear();
     first.unmount();
-    expect(browser.setBounds).not.toHaveBeenCalledWith(expect.objectContaining({ tabId: tab.id, visible: false }));
+    expect(browser.setBounds).not.toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: tab.id, visible: false }),
+    );
     await act(async () => {
       finishOpen?.();
       await Promise.resolve();
@@ -187,7 +244,7 @@ describe("controlled browser pages", () => {
     expect(browser.setBounds).toHaveBeenLastCalledWith({
       tabId: tab.id,
       bounds: { x: 400, y: 20, width: 400, height: 300 },
-      visible: true
+      visible: true,
     });
   });
 
@@ -223,7 +280,7 @@ describe("controlled browser pages", () => {
           onCycleTab={cycle}
           onClose={() => undefined}
         />
-      </>
+      </>,
     );
     await waitFor(() => expect(browser.open).toHaveBeenCalledTimes(2));
     emitPageCommand(second.id, "new-tab");
@@ -247,16 +304,19 @@ describe("controlled browser pages", () => {
     });
     expect(browser.evaluate).toHaveBeenCalledWith(expect.objectContaining({ tabId: first.id }));
     act(() => {
-      for (const listener of newTabListeners) listener({ tabId: first.id, url: "https://popup.example" });
+      for (const listener of newTabListeners)
+        listener({ tabId: first.id, url: "https://popup.example" });
     });
     expect(openFirst).not.toHaveBeenCalled();
     expect(openSecond).toHaveBeenCalledTimes(1);
     expect(getBrowserTabs("chat")).toHaveLength(4);
     const firstPanel = screen.getAllByRole("group", { name: "Browser" })[0];
     fireEvent.change(within(firstPanel).getByRole("textbox", { name: "Address" }), {
-      target: { value: "https://navigated.example" }
+      target: { value: "https://navigated.example" },
     });
-    fireEvent.keyDown(within(firstPanel).getByRole("textbox", { name: "Address" }), { key: "Enter" });
+    fireEvent.keyDown(within(firstPanel).getByRole("textbox", { name: "Address" }), {
+      key: "Enter",
+    });
     expect(browser.navigate).toHaveBeenCalledWith("https://navigated.example", first.id);
   });
 
@@ -265,15 +325,32 @@ describe("controlled browser pages", () => {
     const second = createBrowserTab("chat", "https://second.example");
     const view = render(
       <>
-        <BrowserPanel scopeId="chat" url="" controlledTabId={first.id} hideTabStrip onClose={() => undefined} />
-        <BrowserPanel scopeId="chat" url="" controlledTabId={second.id} hideTabStrip onClose={() => undefined} />
-      </>
+        <BrowserPanel
+          scopeId="chat"
+          url=""
+          controlledTabId={first.id}
+          hideTabStrip
+          onClose={() => undefined}
+        />
+        <BrowserPanel
+          scopeId="chat"
+          url=""
+          controlledTabId={second.id}
+          hideTabStrip
+          onClose={() => undefined}
+        />
+      </>,
     );
     view.unmount();
     act(() => {
-      for (const listener of newTabListeners) listener({ tabId: first.id, url: "https://background.example" });
+      for (const listener of newTabListeners)
+        listener({ tabId: first.id, url: "https://background.example" });
     });
-    expect(getBrowserTabs("chat").map((tab) => tab.url)).toEqual([first.url, second.url, "https://background.example"]);
+    expect(getBrowserTabs("chat").map((tab) => tab.url)).toEqual([
+      first.url,
+      second.url,
+      "https://background.example",
+    ]);
   });
 
   it("focuses an explicitly selected page after its native view opens", async () => {
@@ -282,10 +359,18 @@ describe("controlled browser pages", () => {
       () =>
         new Promise((resolve) => {
           finishOpen = () => resolve({ ok: true });
-        })
+        }),
     );
     const tab = createBrowserTab("chat", "https://first.example");
-    render(<BrowserPanel scopeId="chat" url="" controlledTabId={tab.id} hideTabStrip onClose={() => undefined} />);
+    render(
+      <BrowserPanel
+        scopeId="chat"
+        url=""
+        controlledTabId={tab.id}
+        hideTabStrip
+        onClose={() => undefined}
+      />,
+    );
     act(() => requestBrowserTabFocus(tab.id));
     expect(browser.focus).not.toHaveBeenCalled();
     await act(async () => {
@@ -317,7 +402,7 @@ describe("controlled browser pages", () => {
           onRequestHandled={handled}
           onClose={() => undefined}
         />
-      </>
+      </>,
     );
     const address = screen.getByRole("textbox", { name: "Address" });
     await waitFor(() => expect(handled).toHaveBeenCalledWith(7));
@@ -341,7 +426,7 @@ describe("controlled browser pages", () => {
           panePosition="bottom"
           onClose={() => undefined}
         />
-      </>
+      </>,
     );
     expect(screen.getByRole("textbox", { name: "Chat composer" })).toHaveFocus();
     expect(browser.focus).not.toHaveBeenCalled();
@@ -353,7 +438,7 @@ describe("controlled browser pages", () => {
       const url = "https://claude.ai/artifacts";
       setBrowserHistoryStorageForTests({
         load: () => Promise.resolve([{ url, title: "Claude", visitedAt: Date.now() }]),
-        save: () => Promise.resolve()
+        save: () => Promise.resolve(),
       });
       function Artifacts() {
         const review = useReviewState(null, { sessionId: "chat" });
@@ -396,7 +481,7 @@ describe("controlled browser pages", () => {
       await waitFor(() => expect(browser.focus).toHaveBeenCalledWith(tab.id));
       expect(getBrowserTabs("chat")).toHaveLength(1);
       expect(screen.getByRole("textbox", { name: "Address" })).not.toHaveFocus();
-    }
+    },
   );
 
   it("routes native new-tab commands to the workspace chooser when provided", async () => {
@@ -412,7 +497,7 @@ describe("controlled browser pages", () => {
         onNewTab={onNewTab}
         onOpenTab={onOpenTab}
         onClose={() => undefined}
-      />
+      />,
     );
     await act(async () => {
       emitPageCommand(tab.id, "new-tab");
@@ -461,7 +546,7 @@ describe("controlled browser pages", () => {
         requestNewTab
         hideTabStrip
         onClose={() => undefined}
-      />
+      />,
     );
     expect(browser.open).not.toHaveBeenCalled();
     expect(getBrowserTabs("chat")).toHaveLength(0);
@@ -473,16 +558,20 @@ describe("controlled browser pages", () => {
           url: "https://requested.example",
           title: "Requested",
           loading: false,
-          group: null
-        }
-      ])
+          group: null,
+        },
+      ]),
     );
     await waitFor(() =>
-      expect(browser.setBounds).toHaveBeenCalledWith(expect.objectContaining({ tabId: "pending-agent", visible: true }))
+      expect(browser.setBounds).toHaveBeenCalledWith(
+        expect.objectContaining({ tabId: "pending-agent", visible: true }),
+      ),
     );
     expect(getBrowserTabs("chat")).toHaveLength(1);
     expect(browser.open).not.toHaveBeenCalled();
-    expect(screen.getByRole("textbox", { name: "Address" })).toHaveValue("https://requested.example");
+    expect(screen.getByRole("textbox", { name: "Address" })).toHaveValue(
+      "https://requested.example",
+    );
     expect(browser.focus).not.toHaveBeenCalled();
   });
 });

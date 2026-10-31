@@ -7,10 +7,16 @@ import {
   useRef,
   useState,
   type JSX,
-  type KeyboardEvent as ReactKeyboardEvent
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import type { ProviderId, UsageResolution, UsageSeriesPoint } from "../../../shared/types.js";
-import { formatBucketLabel, formatBucketTitle, formatMetric, formatUsdCompact, formatTokens } from "./usageFormat.js";
+import {
+  formatBucketLabel,
+  formatBucketTitle,
+  formatMetric,
+  formatUsdCompact,
+  formatTokens,
+} from "./usageFormat.js";
 import { providerLabel, type UsageMetric } from "./usagePresentation.js";
 
 /**
@@ -127,7 +133,7 @@ export function UsageAreaChart({
   metric,
   resolution,
   timeZone,
-  title
+  title,
 }: {
   points: readonly UsageSeriesPoint[];
   providers: readonly ProviderId[];
@@ -153,8 +159,12 @@ export function UsageAreaChart({
       if (!rect || rect.width <= 0) return;
       setSize((current) => {
         const height =
-          rect.height > 0 ? Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, rect.height))) : current.height;
-        return current.width === rect.width && current.height === height ? current : { width: rect.width, height };
+          rect.height > 0
+            ? Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, rect.height)))
+            : current.height;
+        return current.width === rect.width && current.height === height
+          ? current
+          : { width: rect.width, height };
       });
     });
     observer.observe(frame);
@@ -169,12 +179,15 @@ export function UsageAreaChart({
           const entry = point.values.find((value) => value.provider === provider);
           if (!entry) return 0;
           return metric === "cost" ? entry.costUsd : entry.tokens;
-        })
+        }),
       })),
-    [providers, points, metric]
+    [providers, points, metric],
   );
 
-  const maxValue = series.reduce((max, entry) => entry.values.reduce((inner, value) => Math.max(inner, value), max), 0);
+  const maxValue = series.reduce(
+    (max, entry) => entry.values.reduce((inner, value) => Math.max(inner, value), max),
+    0,
+  );
   const { top, ticks } = niceTicks(maxValue);
 
   const { width, height } = size;
@@ -183,12 +196,14 @@ export function UsageAreaChart({
   const plotTop = PAD_TOP;
   const xAt = useCallback(
     (index: number): number =>
-      points.length <= 1 ? PAD_LEFT + plotWidth / 2 : PAD_LEFT + (plotWidth * index) / (points.length - 1),
-    [points.length, plotWidth]
+      points.length <= 1
+        ? PAD_LEFT + plotWidth / 2
+        : PAD_LEFT + (plotWidth * index) / (points.length - 1),
+    [points.length, plotWidth],
   );
   const yAt = useCallback(
     (value: number): number => plotBottom - (plotBottom - plotTop) * (top === 0 ? 0 : value / top),
-    [plotBottom, plotTop, top]
+    [plotBottom, plotTop, top],
   );
 
   const xs = points.map((_, index) => xAt(index));
@@ -196,19 +211,19 @@ export function UsageAreaChart({
   const formatValue = useCallback((value: number): string => formatMetric(value, metric), [metric]);
   const formatTick = useCallback(
     (value: number): string => (metric === "cost" ? formatUsdCompact(value) : formatTokens(value)),
-    [metric]
+    [metric],
   );
 
   const totals = series.map((entry) => ({
     provider: entry.provider,
-    total: entry.values.reduce((sum, value) => sum + value, 0)
+    total: entry.values.reduce((sum, value) => sum + value, 0),
   }));
   const peak = points.reduce(
     (best, point, index) => {
       const sum = series.reduce((inner, entry) => inner + entry.values[index], 0);
       return sum > best.sum ? { sum, index } : best;
     },
-    { sum: -1, index: -1 }
+    { sum: -1, index: -1 },
   );
 
   const ariaLabel = [
@@ -216,7 +231,7 @@ export function UsageAreaChart({
     ...totals.map((entry) => `${providerLabel(entry.provider)} ${formatValue(entry.total)}.`),
     peak.index >= 0
       ? `Busiest ${resolution === "hour" ? "hour" : "day"} ${formatBucketTitle(points[peak.index].bucketStart, resolution, timeZone)} at ${formatValue(peak.sum)}.`
-      : ""
+      : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -232,7 +247,7 @@ export function UsageAreaChart({
       const ratio = local / plotWidth;
       return Math.min(points.length - 1, Math.max(0, Math.round(ratio * (points.length - 1))));
     },
-    [plotWidth, points.length]
+    [plotWidth, points.length],
   );
 
   const onKeyDown = useCallback(
@@ -256,7 +271,7 @@ export function UsageAreaChart({
       }
       event.preventDefault();
     },
-    [activeIndex, points.length]
+    [activeIndex, points.length],
   );
 
   // A window change can shorten the series under a held crosshair.
@@ -278,8 +293,8 @@ export function UsageAreaChart({
         ? [0]
         : points.length === 2
           ? [0, points.length - 1]
-          : [0, Math.floor((points.length - 1) / 2), points.length - 1]
-    )
+          : [0, Math.floor((points.length - 1) / 2), points.length - 1],
+    ),
   );
 
   const cursorIndex = activeIndex;
@@ -295,7 +310,8 @@ export function UsageAreaChart({
   // four figures in your head is not an answer.
   const activeTotal = activeRows.reduce((sum, row) => sum + row.value, 0);
   const showTotal = activeRows.length > 1;
-  const tooltipHeight = 26 + (Math.max(1, activeRows.length) + (showTotal ? 1 : 0)) * TOOLTIP_ROW + (showTotal ? 6 : 0);
+  const tooltipHeight =
+    26 + (Math.max(1, activeRows.length) + (showTotal ? 1 : 0)) * TOOLTIP_ROW + (showTotal ? 6 : 0);
   const anchorX = cursorIndex === null ? 0 : xAt(cursorIndex);
   const flip = anchorX + 12 + TOOLTIP_WIDTH > PAD_LEFT + plotWidth;
   const tooltipX = flip ? anchorX - 12 - TOOLTIP_WIDTH : anchorX + 12;
@@ -328,7 +344,12 @@ export function UsageAreaChart({
                 y2={round(yAt(tick))}
                 data-baseline={tick === 0 ? "true" : undefined}
               />
-              <text className="usage-chart-tick" x={PAD_LEFT - 10} y={round(yAt(tick)) + 3.5} textAnchor="end">
+              <text
+                className="usage-chart-tick"
+                x={PAD_LEFT - 10}
+                y={round(yAt(tick)) + 3.5}
+                textAnchor="end"
+              >
                 {formatTick(tick)}
               </text>
             </g>
@@ -354,7 +375,9 @@ export function UsageAreaChart({
               fill={`url(#${gradientId}-partial)`}
               x={round((xAt(points.length - 2) + xAt(points.length - 1)) / 2)}
               y={plotTop}
-              width={round(xAt(points.length - 1) - (xAt(points.length - 2) + xAt(points.length - 1)) / 2)}
+              width={round(
+                xAt(points.length - 1) - (xAt(points.length - 2) + xAt(points.length - 1)) / 2,
+              )}
               height={round(plotBottom - plotTop)}
             />
           </>
@@ -369,7 +392,11 @@ export function UsageAreaChart({
               : `${line} L ${round(xs[xs.length - 1])} ${round(plotBottom)} L ${round(xs[0])} ${round(plotBottom)} Z`;
           const fillId = `${gradientId}-${entry.provider}`;
           return (
-            <g className="usage-chart-series usage-series" key={entry.provider} data-provider={entry.provider}>
+            <g
+              className="usage-chart-series usage-series"
+              key={entry.provider}
+              data-provider={entry.provider}
+            >
               {/* The gradient sits inside the series group so its stops
                   inherit that group's `--usage-series`; one shared <defs>
                   block would resolve every provider to the same colour. */}
@@ -381,7 +408,9 @@ export function UsageAreaChart({
                   </linearGradient>
                 </defs>
               ) : null}
-              {area ? <path className="usage-chart-area" d={area} fill={`url(#${fillId})`} /> : null}
+              {area ? (
+                <path className="usage-chart-area" d={area} fill={`url(#${fillId})`} />
+              ) : null}
               <path className="usage-chart-line" d={line} />
               {points.length === 1 ? (
                 <circle className="usage-chart-point" cx={round(xs[0])} cy={round(ys[0])} r="3.5" />
@@ -425,7 +454,10 @@ export function UsageAreaChart({
                 r="3"
               />
             ))}
-            <g className="usage-chart-tooltip" transform={`translate(${round(tooltipX)} ${round(tooltipY)})`}>
+            <g
+              className="usage-chart-tooltip"
+              transform={`translate(${round(tooltipX)} ${round(tooltipY)})`}
+            >
               <rect
                 className="usage-chart-tooltip-box"
                 x="0"
@@ -453,7 +485,12 @@ export function UsageAreaChart({
                     <text className="usage-chart-tooltip-name" x="26" y="11">
                       {providerLabel(row.provider)}
                     </text>
-                    <text className="usage-chart-tooltip-value" x={TOOLTIP_WIDTH - 12} y="11" textAnchor="end">
+                    <text
+                      className="usage-chart-tooltip-value"
+                      x={TOOLTIP_WIDTH - 12}
+                      y="11"
+                      textAnchor="end"
+                    >
                       {formatValue(row.value)}
                     </text>
                   </g>
@@ -461,11 +498,22 @@ export function UsageAreaChart({
               )}
               {showTotal ? (
                 <g transform={`translate(0 ${20 + activeRows.length * TOOLTIP_ROW + 6})`}>
-                  <line className="usage-chart-tooltip-rule" x1="12" x2={TOOLTIP_WIDTH - 12} y1="0" y2="0" />
+                  <line
+                    className="usage-chart-tooltip-rule"
+                    x1="12"
+                    x2={TOOLTIP_WIDTH - 12}
+                    y1="0"
+                    y2="0"
+                  />
                   <text className="usage-chart-tooltip-name" x="12" y="13">
                     Total
                   </text>
-                  <text className="usage-chart-tooltip-value" x={TOOLTIP_WIDTH - 12} y="13" textAnchor="end">
+                  <text
+                    className="usage-chart-tooltip-value"
+                    x={TOOLTIP_WIDTH - 12}
+                    y="13"
+                    textAnchor="end"
+                  >
                     {formatValue(activeTotal)}
                   </text>
                 </g>

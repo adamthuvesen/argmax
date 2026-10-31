@@ -10,17 +10,19 @@ const NO_SESSION_KEY = "__argmax_no_session__";
 
 const EMPTY_SESSION_TIMELINE: SessionTimelineSnapshot = {
   events: [],
-  rawOutputs: []
+  rawOutputs: [],
 };
 
 export function SessionTimelineProvider({
   store,
-  children
+  children,
 }: {
   store: SessionTimelines;
   children: ReactNode;
 }): ReactElement {
-  return <SessionTimelineContext.Provider value={store}>{children}</SessionTimelineContext.Provider>;
+  return (
+    <SessionTimelineContext.Provider value={store}>{children}</SessionTimelineContext.Provider>
+  );
 }
 
 function useSessionTimelineStore(): SessionTimelines | null {
@@ -31,7 +33,7 @@ export function useSessionTimeline(
   sessionId: string | null,
   fallbackEvents: TimelineEvent[] = [],
   fallbackRawOutputs: RawProviderOutput[] = [],
-  explicitStore?: SessionTimelines | null
+  explicitStore?: SessionTimelines | null,
 ): SessionTimelineSnapshot {
   const contextStore = useSessionTimelineStore();
   const store = explicitStore === undefined ? contextStore : explicitStore;
@@ -39,12 +41,12 @@ export function useSessionTimeline(
   const events = useStableFilter(
     store ? EMPTY_SESSION_TIMELINE.events : fallbackEvents,
     filterKey,
-    (event) => sessionId !== null && event.sessionId === sessionId
+    (event) => sessionId !== null && event.sessionId === sessionId,
   );
   const rawOutputs = useStableFilter(
     store ? EMPTY_SESSION_TIMELINE.rawOutputs : fallbackRawOutputs,
     filterKey,
-    (output) => sessionId !== null && output.sessionId === sessionId
+    (output) => sessionId !== null && output.sessionId === sessionId,
   );
   const fallback = useMemo<SessionTimelineSnapshot>(
     () =>
@@ -52,18 +54,19 @@ export function useSessionTimeline(
         ? EMPTY_SESSION_TIMELINE
         : {
             events,
-            rawOutputs
+            rawOutputs,
           },
-    [events, rawOutputs, sessionId]
+    [events, rawOutputs, sessionId],
   );
   const subscribe = useCallback(
     (listener: () => void): (() => void) =>
       store && sessionId !== null ? store.subscribe(sessionId, listener) : () => undefined,
-    [sessionId, store]
+    [sessionId, store],
   );
   const getSnapshot = useCallback(
-    (): SessionTimelineSnapshot => (store && sessionId !== null ? store.getSnapshot(sessionId) : fallback),
-    [fallback, sessionId, store]
+    (): SessionTimelineSnapshot =>
+      store && sessionId !== null ? store.getSnapshot(sessionId) : fallback,
+    [fallback, sessionId, store],
   );
 
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);

@@ -74,7 +74,7 @@ function statusLabel(approval: ApprovalRequest, resolution: ResolutionState | un
 export function ApprovalSurface({
   approvals,
   events,
-  onResolveApproval
+  onResolveApproval,
 }: {
   approvals: ApprovalRequest[];
   events: TimelineEvent[];
@@ -84,25 +84,28 @@ export function ApprovalSurface({
 
   if (approvals.length === 0) return null;
 
-  const resolve = async (approval: ApprovalRequest, resolution: ApprovalResolution): Promise<void> => {
+  const resolve = async (
+    approval: ApprovalRequest,
+    resolution: ApprovalResolution,
+  ): Promise<void> => {
     setResolutionById((current) => ({
       ...current,
-      [approval.id]: { phase: "submitting", resolution }
+      [approval.id]: { phase: "submitting", resolution },
     }));
     try {
       await onResolveApproval(approval.id, resolution);
       setResolutionById((current) => ({
         ...current,
-        [approval.id]: { phase: "submitted", resolution }
+        [approval.id]: { phase: "submitted", resolution },
       }));
     } catch (error) {
       const detail = errorMessage(error);
       showErrorToast(
-        `Could not send your response. ${detail || "The provider did not accept the response. Try again."}`
+        `Could not send your response. ${detail || "The provider did not accept the response. Try again."}`,
       );
       setResolutionById((current) => ({
         ...current,
-        [approval.id]: { phase: "failed" }
+        [approval.id]: { phase: "failed" },
       }));
     }
   };
@@ -163,7 +166,9 @@ export function ApprovalSurface({
                     aria-label={`Approve action: ${action.title}`}
                     onClick={() => void resolve(approval, "approved")}
                   >
-                    {isSubmitting && resolution.resolution === "approved" ? "Approving…" : "Approve"}
+                    {isSubmitting && resolution.resolution === "approved"
+                      ? "Approving…"
+                      : "Approve"}
                   </button>
                 </>
               ) : null}

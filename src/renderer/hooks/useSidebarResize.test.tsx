@@ -6,7 +6,7 @@ function setViewportWidth(width: number): void {
   Object.defineProperty(window, "innerWidth", {
     configurable: true,
     writable: true,
-    value: width
+    value: width,
   });
 }
 
@@ -36,7 +36,7 @@ describe("useSidebarResize", () => {
     act(() => {
       result.current.onResizeMouseDown({
         preventDefault: () => undefined,
-        clientX: 180
+        clientX: 180,
       } as React.MouseEvent);
     });
     act(() => {
@@ -102,7 +102,7 @@ describe("useSidebarResize", () => {
     window.localStorage.setItem("argmax.sidebar.width", "500");
 
     const { result, rerender } = renderHook(({ workspaceMin }) => useSidebarResize(workspaceMin), {
-      initialProps: { workspaceMin: 320 }
+      initialProps: { workspaceMin: 320 },
     });
 
     expect(result.current.sidebarWidth).toBe(500);

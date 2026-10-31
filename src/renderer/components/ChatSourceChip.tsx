@@ -11,7 +11,7 @@ import { lookUpChat, openChat, useChatDirectory } from "../state/chatDirectory.j
  */
 export function ChatSourceChip({
   sessionId,
-  title
+  title,
 }: {
   sessionId: string;
   /** The title the link carried: the chat's name when it was attached. */
@@ -22,7 +22,11 @@ export function ChatSourceChip({
   const entry = lookUpChat(sessionId);
   if (!entry) {
     return (
-      <span className="chat-source-chip" data-status="unresolved" title="This chat is no longer available">
+      <span
+        className="chat-source-chip"
+        data-status="unresolved"
+        title="This chat is no longer available"
+      >
         <MessageSquare size={12} aria-hidden="true" />
         <span className="chat-source-chip-label">{title} (unavailable)</span>
       </span>

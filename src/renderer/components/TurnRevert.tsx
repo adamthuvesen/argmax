@@ -23,7 +23,7 @@ export function TurnRevert({
   checkpointId,
   unavailableReason,
   disabled,
-  onReverted
+  onReverted,
 }: {
   workspaceId: string;
   checkpointId?: string;
@@ -49,7 +49,8 @@ export function TurnRevert({
   };
 
   const paths = preview
-    ? preview.changedPaths.length + preview.deletedPaths.filter((path) => !preview.changedPaths.includes(path)).length
+    ? preview.changedPaths.length +
+      preview.deletedPaths.filter((path) => !preview.changedPaths.includes(path)).length
     : 0;
 
   return (
@@ -84,7 +85,12 @@ export function TurnRevert({
               : `Restores ${paths} ${paths === 1 ? "file" : "files"} to before this turn. The conversation stays.`}
           </p>
           <div className="turn-revert-actions">
-            <button type="button" className="turn-revert-button" disabled={pending} onClick={() => setPreview(null)}>
+            <button
+              type="button"
+              className="turn-revert-button"
+              disabled={pending}
+              onClick={() => setPreview(null)}
+            >
               Cancel
             </button>
             {preview && (
@@ -97,7 +103,7 @@ export function TurnRevert({
                     await checkpointActions()!.rewindFiles({
                       workspaceId,
                       checkpointId: preview.checkpoint.id,
-                      expectedFingerprint: preview.currentFingerprint
+                      expectedFingerprint: preview.currentFingerprint,
                     });
                     setPreview(null);
                     onReverted();

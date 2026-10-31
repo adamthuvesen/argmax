@@ -11,7 +11,7 @@ export function MarkdownImage({
   src,
   alt,
   workspace,
-  onOpenFile
+  onOpenFile,
 }: {
   src: string | undefined;
   alt: string | undefined;
@@ -65,9 +65,18 @@ export function MarkdownImage({
         title="View larger"
         onClick={() => setExpanded(true)}
       >
-        <img className="markdown-image" src={resolved} alt={label} onError={() => setFailed(true)} />
+        <img
+          className="markdown-image"
+          src={resolved}
+          alt={label}
+          onError={() => setFailed(true)}
+        />
       </button>
-      <ImageLightbox src={expanded ? resolved : null} alt={label} onClose={() => setExpanded(false)} />
+      <ImageLightbox
+        src={expanded ? resolved : null}
+        alt={label}
+        onClose={() => setExpanded(false)}
+      />
     </>
   );
 }

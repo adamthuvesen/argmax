@@ -19,18 +19,24 @@ export interface CompactionNotice {
 
 function isCompactionEvent(event: TimelineEvent): boolean {
   const canonical = decodeTimelineEvent(event);
-  return canonical.kind === "lifecycle" && (canonical.name === "compacting" || canonical.name === "compacted");
+  return (
+    canonical.kind === "lifecycle" &&
+    (canonical.name === "compacting" || canonical.name === "compacted")
+  );
 }
 
 export function compactionNoticeFor(event: TimelineEvent): CompactionNotice {
   const canonical = decodeTimelineEvent(event);
-  if (canonical.kind !== "lifecycle" || (canonical.name !== "compacting" && canonical.name !== "compacted")) {
+  if (
+    canonical.kind !== "lifecycle" ||
+    (canonical.name !== "compacting" && canonical.name !== "compacted")
+  ) {
     return { running: false, preTokens: null, postTokens: null };
   }
   return {
     running: canonical.name === "compacting",
     preTokens: canonical.preTokens,
-    postTokens: canonical.postTokens
+    postTokens: canonical.postTokens,
   };
 }
 

@@ -92,6 +92,6 @@ export function useWorkspaceFileList(args: {
     entries,
     listState,
     listError,
-    refresh
+    refresh,
   };
 }

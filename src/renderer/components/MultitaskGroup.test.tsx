@@ -11,8 +11,8 @@ const notices: MultitaskNotice[] = [
     worktree: false,
     state: "running",
     answer: null,
-    createdAt: "2026-09-26T10:00:00Z"
-  }
+    createdAt: "2026-09-26T10:00:00Z",
+  },
 ];
 
 describe("MultitaskGroup", () => {
@@ -27,9 +27,9 @@ describe("MultitaskGroup", () => {
           taskLabel: "Fix label",
           attention: "normal",
           approvalCommand: null,
-          startedAt: null
-        }
-      ]
+          startedAt: null,
+        },
+      ],
     ]);
     const { rerender } = render(<MultitaskGroup notices={notices} live={live} onOpen={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Multitasks 1 running" }));
@@ -38,20 +38,26 @@ describe("MultitaskGroup", () => {
       taskLabel: "Fix label",
       attention: "question-asked",
       approvalCommand: null,
-      startedAt: null
+      startedAt: null,
     });
     rerender(<MultitaskGroup notices={notices} live={live} onOpen={vi.fn()} />);
-    expect(screen.getByRole("button", { name: "Multitasks 1 needs you" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Multitasks 1 needs you" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     expect(screen.queryByRole("button", { name: "Open multitask: Fix label" })).toBeNull();
     live.set("child", {
       state: "complete",
       taskLabel: "Fix label",
       attention: "normal",
       approvalCommand: null,
-      startedAt: null
+      startedAt: null,
     });
     rerender(<MultitaskGroup notices={notices} live={live} onOpen={vi.fn()} />);
-    expect(screen.getByRole("button", { name: "Multitasks 1 finished" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Multitasks 1 finished" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Multitasks 1 finished" }));
     expect(screen.getByRole("button", { name: "Open multitask: Fix label" })).toBeVisible();
   });
@@ -62,13 +68,19 @@ describe("MultitaskGroup", () => {
         ...notices[0],
         childSessionId: `child-${index}`,
         taskLabel: `Task ${index}`,
-        state: "complete"
+        state: "complete",
       }));
     render(<MultitaskGroup notices={many(3)} onOpen={vi.fn()} />);
-    expect(screen.getByRole("button", { name: "Multitasks 3 finished" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Multitasks 3 finished" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     cleanup();
     render(<MultitaskGroup notices={many(4)} onOpen={vi.fn()} />);
-    expect(screen.getByRole("button", { name: "Multitasks 4 finished" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Multitasks 4 finished" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 
   it("preserves unavailable task history without offering a broken chat action", () => {

@@ -32,7 +32,7 @@ const NAMED_KEYS: Record<string, string> = {
   Home: "Home",
   End: "End",
   PageUp: "PageUp",
-  PageDown: "PageDown"
+  PageDown: "PageDown",
 };
 
 /**
@@ -55,7 +55,7 @@ const GLYPHS: Record<string, string> = {
   Backspace: "⌫",
   Delete: "⌦",
   Backquote: "`",
-  IntlBackslash: "§"
+  IntlBackslash: "§",
 };
 
 const MODIFIER_KEYS = new Set(["Meta", "Control", "Alt", "Shift", "AltGraph", "OS"]);
@@ -79,7 +79,12 @@ export function parseChord(accelerator: string): Chord | null {
   const parts = accelerator.split("+");
   const key = parts.pop();
   if (!key || (key.length > 1 && !isNamedKey(key))) return null;
-  const chord: Chord = { mod: false, alt: false, shift: false, key: key.length === 1 ? key.toUpperCase() : key };
+  const chord: Chord = {
+    mod: false,
+    alt: false,
+    shift: false,
+    key: key.length === 1 ? key.toUpperCase() : key,
+  };
   for (const part of parts) {
     switch (part) {
       case "CmdOrCtrl":
@@ -101,12 +106,16 @@ export function parseChord(accelerator: string): Chord | null {
 }
 
 function isNamedKey(key: string): boolean {
-  return Object.values(NAMED_KEYS).includes(key) || POSITIONAL_KEYS.has(key) || /^F([1-9]|1[0-2])$/.test(key);
+  return (
+    Object.values(NAMED_KEYS).includes(key) ||
+    POSITIONAL_KEYS.has(key) ||
+    /^F([1-9]|1[0-2])$/.test(key)
+  );
 }
 
 /** A canonical accelerator for the chord a key event makes, or null if it is not a valid chord. */
 export function chordFromEvent(
-  event: Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">
+  event: Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">,
 ): string | null {
   const key = keyName(event);
   if (!key) return null;
@@ -120,7 +129,7 @@ export function chordFromEvent(
 
 export function matchesChord(
   event: Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">,
-  accelerator: string
+  accelerator: string,
 ): boolean {
   const chord = parseChord(accelerator);
   if (!chord) return false;
@@ -136,7 +145,12 @@ export function matchesChord(
 export function canonicalChord(accelerator: string): string | null {
   const chord = parseChord(accelerator);
   if (!chord) return null;
-  return [chord.mod ? "CmdOrCtrl" : "", chord.alt ? "Alt" : "", chord.shift ? "Shift" : "", chord.key]
+  return [
+    chord.mod ? "CmdOrCtrl" : "",
+    chord.alt ? "Alt" : "",
+    chord.shift ? "Shift" : "",
+    chord.key,
+  ]
     .filter(Boolean)
     .join("+");
 }

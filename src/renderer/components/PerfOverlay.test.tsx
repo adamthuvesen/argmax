@@ -1,6 +1,11 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ArgmaxApi, DebugSnapshot, IpcChannelStats, PerformanceStatus } from "../../shared/types.js";
+import type {
+  ArgmaxApi,
+  DebugSnapshot,
+  IpcChannelStats,
+  PerformanceStatus,
+} from "../../shared/types.js";
 import { PERF_OVERLAY_KEY, PerfOverlay } from "./PerfOverlay.js";
 
 function snapshotWith(stats: IpcChannelStats[]): DebugSnapshot {
@@ -20,7 +25,7 @@ describe("PerfOverlay", () => {
   it("does not mount when the localStorage flag is absent", () => {
     const debugSnapshot = vi.fn().mockResolvedValue(snapshotWith([]));
     (window as unknown as { argmax: Partial<ArgmaxApi> }).argmax = {
-      system: { debugSnapshot } as unknown as ArgmaxApi["system"]
+      system: { debugSnapshot } as unknown as ArgmaxApi["system"],
     };
 
     render(<PerfOverlay />);
@@ -35,11 +40,11 @@ describe("PerfOverlay", () => {
       snapshotWith([
         { channel: "dashboard:list", count: 12, totalRecorded: 12, p50: 1.2, p99: 4.8 },
         { channel: "session:events-since", count: 30, totalRecorded: 30, p50: 0.8, p99: 3.4 },
-        { channel: "providers:launch", count: 1, totalRecorded: 1, p50: 18.5, p99: 32.1 }
-      ])
+        { channel: "providers:launch", count: 1, totalRecorded: 1, p50: 18.5, p99: 32.1 },
+      ]),
     );
     (window as unknown as { argmax: Partial<ArgmaxApi> }).argmax = {
-      system: { debugSnapshot } as unknown as ArgmaxApi["system"]
+      system: { debugSnapshot } as unknown as ArgmaxApi["system"],
     };
 
     render(<PerfOverlay />);
@@ -50,13 +55,13 @@ describe("PerfOverlay", () => {
     await waitFor(() => expect(debugSnapshot).toHaveBeenCalled());
 
     // Tracked channels render in the SPEC's canonical order.
-    const rows = Array.from(hud.querySelectorAll("tr[data-channel]"));
+    const rows = within(hud).getAllByRole("row");
     expect(rows.map((row) => row.getAttribute("data-channel"))).toEqual([
       "dashboard:list",
       "session:events-since",
       "workspace:status",
       "approvals:pending",
-      "review:load-diff"
+      "review:load-diff",
     ]);
 
     // Sampled channel surfaces its numbers; unsampled tracked channels show "—".
@@ -76,7 +81,7 @@ describe("PerfOverlay", () => {
       startedAt: null,
       sampleCount: 0,
       droppedSamples: 0,
-      latest: null
+      latest: null,
     };
     const active: PerformanceStatus = {
       recording: true,
@@ -91,7 +96,7 @@ describe("PerfOverlay", () => {
           total: { cpuPercent: 12.5, rssBytes: 128 * 1024 * 1024, processCount: 3 },
           host: { cpuPercent: 2.5, rssBytes: 32 * 1024 * 1024, processCount: 1 },
           webview: { cpuPercent: 5, rssBytes: 64 * 1024 * 1024, processCount: 1 },
-          agents: { cpuPercent: 5, rssBytes: 32 * 1024 * 1024, processCount: 1 }
+          agents: { cpuPercent: 5, rssBytes: 32 * 1024 * 1024, processCount: 1 },
         },
         runningChats: 2,
         runningChatsByProvider: { codex: 2 },
@@ -101,8 +106,8 @@ describe("PerfOverlay", () => {
         ipcCallsPerSecond: 2,
         pendingProviderItems: 0,
         sqlite: { activeReaders: 0, waitingReads: 0, waitMs: 0 },
-        rendererStalls: { count: 1, totalMs: 75, longestMs: 75 }
-      }
+        rendererStalls: { count: 1, totalMs: 75, longestMs: 75 },
+      },
     };
     const debugSnapshot = vi.fn().mockResolvedValue(snapshotWith([]));
     const performanceStatus = vi.fn().mockResolvedValueOnce(inactive).mockResolvedValue(active);
@@ -113,8 +118,8 @@ describe("PerfOverlay", () => {
         debugSnapshot,
         performanceStatus,
         performanceStart,
-        performanceStop
-      } as unknown as ArgmaxApi["system"]
+        performanceStop,
+      } as unknown as ArgmaxApi["system"],
     };
 
     const { unmount } = render(<PerfOverlay />);

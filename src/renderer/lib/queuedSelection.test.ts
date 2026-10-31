@@ -5,20 +5,28 @@ describe("selectionOfQueuedMessage", () => {
   it("brings back the provider, model and effort a row was queued under", () => {
     expect(
       selectionOfQueuedMessage(
-        { provider: "claude", modelLabel: "Sonnet 5.5", modelId: "claude-sonnet-5-5", reasoningEffort: "high" },
-        { provider: "codex" }
-      )
+        {
+          provider: "claude",
+          modelLabel: "Sonnet 5.5",
+          modelId: "claude-sonnet-5-5",
+          reasoningEffort: "high",
+        },
+        { provider: "codex" },
+      ),
     ).toEqual({
       provider: "claude",
       label: "Sonnet 5.5",
       modelId: "claude-sonnet-5-5",
-      reasoningEffort: "high"
+      reasoningEffort: "high",
     });
   });
 
   it("gives a legacy row, with no provider, the chat's own", () => {
     expect(
-      selectionOfQueuedMessage({ modelLabel: "GPT-6 Luna", modelId: "gpt-6-luna" }, { provider: "codex" })
+      selectionOfQueuedMessage(
+        { modelLabel: "GPT-6 Luna", modelId: "gpt-6-luna" },
+        { provider: "codex" },
+      ),
     ).toEqual({ provider: "codex", label: "GPT-6 Luna", modelId: "gpt-6-luna" });
   });
 

@@ -3,7 +3,7 @@ import {
   effortForModel,
   REASONING_EFFORTS,
   resolveModelId,
-  type ReasoningEffort
+  type ReasoningEffort,
 } from "../../shared/providerModels.js";
 import type { ProviderId } from "../../shared/types.js";
 import {
@@ -12,7 +12,7 @@ import {
   autoTierSelection,
   isAutoTier,
   providerModelKey,
-  type ModelPickerSelection
+  type ModelPickerSelection,
 } from "./models.js";
 import { readIdRecency, touchIdRecency } from "./recencyList.js";
 
@@ -42,7 +42,9 @@ export const DEFAULT_EFFORT_KEY = "argmax.launch.effort";
 export function readStoredDefaultEffort(): ReasoningEffort {
   if (typeof window === "undefined") return DEFAULT_REASONING_EFFORT;
   const raw = window.localStorage.getItem(DEFAULT_EFFORT_KEY);
-  return REASONING_EFFORTS.includes(raw as ReasoningEffort) ? (raw as ReasoningEffort) : DEFAULT_REASONING_EFFORT;
+  return REASONING_EFFORTS.includes(raw as ReasoningEffort)
+    ? (raw as ReasoningEffort)
+    : DEFAULT_REASONING_EFFORT;
 }
 
 export function persistDefaultEffort(effort: ReasoningEffort): void {
@@ -68,16 +70,20 @@ export function readStoredLaunchModel(): ModelPickerSelection | null {
       ? resolveModelId(provider as ProviderId, modelId)
       : modelId;
   const option = allModelOptions.find(
-    (candidate) => candidate.provider === provider && candidate.modelId === resolvedId
+    (candidate) => candidate.provider === provider && candidate.modelId === resolvedId,
   );
   if (!option) return null;
   const selection: ModelPickerSelection = {
     provider: option.provider,
     label: option.label,
-    modelId: option.modelId
+    modelId: option.modelId,
   };
   if (option.supportsReasoningEffort) {
-    selection.reasoningEffort = effortForModel(option.provider, option.modelId, readStoredDefaultEffort());
+    selection.reasoningEffort = effortForModel(
+      option.provider,
+      option.modelId,
+      readStoredDefaultEffort(),
+    );
   }
   return selection;
 }
@@ -96,8 +102,8 @@ export function persistLaunchModel(model: ModelPickerSelection): void {
     JSON.stringify({
       provider: model.provider,
       modelId: model.modelId,
-      ...(model.autoTier ? { autoTier: model.autoTier } : {})
-    })
+      ...(model.autoTier ? { autoTier: model.autoTier } : {}),
+    }),
   );
   persistLaunchModelRecency(model);
   // An Auto row's effort is the router's fallback, not a choice.
@@ -108,14 +114,20 @@ export function persistLaunchModel(model: ModelPickerSelection): void {
   // fallback, and must not overwrite the preference.
   if (
     model.reasoningEffort &&
-    model.reasoningEffort !== effortForModel(model.provider, model.modelId, readStoredDefaultEffort())
+    model.reasoningEffort !==
+      effortForModel(model.provider, model.modelId, readStoredDefaultEffort())
   ) {
     persistDefaultEffort(model.reasoningEffort);
   }
 }
 
-function persistLaunchModelRecency(model: Pick<ModelPickerSelection, "provider" | "modelId" | "autoTier">): void {
-  touchIdRecency(LAUNCH_MODEL_RECENCY_KEY, model.autoTier ? autoTierKey(model.autoTier) : providerModelKey(model));
+function persistLaunchModelRecency(
+  model: Pick<ModelPickerSelection, "provider" | "modelId" | "autoTier">,
+): void {
+  touchIdRecency(
+    LAUNCH_MODEL_RECENCY_KEY,
+    model.autoTier ? autoTierKey(model.autoTier) : providerModelKey(model),
+  );
 }
 
 export function readLaunchModelRecency(): string[] {

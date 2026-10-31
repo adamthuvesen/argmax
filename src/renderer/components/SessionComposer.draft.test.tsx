@@ -4,7 +4,7 @@ import {
   baseSession,
   renderConversation,
   rerenderConversation,
-  STARTED_TURN
+  STARTED_TURN,
 } from "../../test/sessionConversationTestHarness.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { ArgmaxApi } from "../../shared/types.js";
@@ -29,8 +29,8 @@ function pasteScreenshot(): void {
   const file = new File([new Uint8Array([137, 80, 78, 71])], "shot.png", { type: "image/png" });
   fireEvent.paste(prompt(), {
     clipboardData: {
-      items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
-    }
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
+    },
   });
 }
 
@@ -46,11 +46,11 @@ describe("SessionComposer unsent drafts", () => {
     // Only the calls this surface makes on mount plus the one the paste needs.
     window.argmax = {
       attachments: {
-        saveImage: vi.fn().mockResolvedValue({ filePath: SCREENSHOT_PATH, sizeBytes: 4 })
+        saveImage: vi.fn().mockResolvedValue({ filePath: SCREENSHOT_PATH, sizeBytes: 4 }),
       },
       // Never settles: these tests are about the composer, and a PR list
       // landing mid-assertion is only an unwrapped state update.
-      prs: { listForSession: vi.fn(() => new Promise(() => {})) }
+      prs: { listForSession: vi.fn(() => new Promise(() => {})) },
     } as unknown as ArgmaxApi;
   });
 
@@ -108,7 +108,7 @@ describe("SessionComposer unsent drafts", () => {
       () =>
         new Promise<typeof STARTED_TURN>((_resolve, reject) => {
           rejectSend = reject;
-        })
+        }),
     );
     renderConversation(baseSession(), [], { onSendSessionInput });
     fireEvent.change(prompt(), { target: { value: "retry me" } });
@@ -130,7 +130,7 @@ describe("SessionComposer unsent drafts", () => {
       () =>
         new Promise<typeof STARTED_TURN>((_resolve, reject) => {
           rejectSend = reject;
-        })
+        }),
     );
     const { rerender } = renderConversation(baseSession(), [], { onSendSessionInput });
     pasteScreenshot();
@@ -151,7 +151,9 @@ describe("SessionComposer unsent drafts", () => {
     fireEvent.keyDown(prompt(), { key: "Enter" });
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalledTimes(2));
     const retry = onSendSessionInput.mock.calls[1] as unknown as unknown[] | undefined;
-    expect(retry?.[4]).toEqual([{ filePath: SCREENSHOT_PATH, mimeType: "image/png", sizeBytes: 4 }]);
+    expect(retry?.[4]).toEqual([
+      { filePath: SCREENSHOT_PATH, mimeType: "image/png", sizeBytes: 4 },
+    ]);
 
     cleanup();
     renderConversation(baseSession());
@@ -171,7 +173,9 @@ describe("SessionComposer unsent drafts", () => {
     renderConversation(baseSession());
     pasteScreenshot();
 
-    await waitFor(() => expect(attachedScreenshots()).toEqual([attachmentProtocolUrl(SCREENSHOT_PATH)]));
+    await waitFor(() =>
+      expect(attachedScreenshots()).toEqual([attachmentProtocolUrl(SCREENSHOT_PATH)]),
+    );
     cleanup();
 
     renderConversation(baseSession());
@@ -189,30 +193,35 @@ describe("SessionComposer unsent drafts", () => {
     expect(attachedScreenshots()).toEqual([]);
   });
 
-  it.each(["click", "Enter", "queue"])("sends only a screenshot via %s and clears the draft", async (method) => {
-    const onSendSessionInput = vi.fn().mockResolvedValue(STARTED_TURN);
-    renderConversation(baseSession({ state: method === "queue" ? "running" : "complete" }), [], { onSendSessionInput });
-    pasteScreenshot();
-    await waitFor(() => expect(attachedScreenshots()).toHaveLength(1));
+  it.each(["click", "Enter", "queue"])(
+    "sends only a screenshot via %s and clears the draft",
+    async (method) => {
+      const onSendSessionInput = vi.fn().mockResolvedValue(STARTED_TURN);
+      renderConversation(baseSession({ state: method === "queue" ? "running" : "complete" }), [], {
+        onSendSessionInput,
+      });
+      pasteScreenshot();
+      await waitFor(() => expect(attachedScreenshots()).toHaveLength(1));
 
-    expect(prompt()).toHaveValue("");
-    if (method === "click") {
-      const send = screen.getByRole("button", { name: "Send follow-up" });
-      expect(send).toBeEnabled();
-      fireEvent.click(send);
-    } else {
-      fireEvent.keyDown(prompt(), { key: "Enter" });
-    }
+      expect(prompt()).toHaveValue("");
+      if (method === "click") {
+        const send = screen.getByRole("button", { name: "Send follow-up" });
+        expect(send).toBeEnabled();
+        fireEvent.click(send);
+      } else {
+        fireEvent.keyDown(prompt(), { key: "Enter" });
+      }
 
-    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
-    expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(`@${SCREENSHOT_PATH}`);
-    expect(onSendSessionInput.mock.calls[0]?.[4]).toEqual([
-      { filePath: SCREENSHOT_PATH, mimeType: "image/png", sizeBytes: 4 }
-    ]);
-    await waitFor(() => expect(attachedScreenshots()).toEqual([]));
-    cleanup();
+      await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
+      expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(`@${SCREENSHOT_PATH}`);
+      expect(onSendSessionInput.mock.calls[0]?.[4]).toEqual([
+        { filePath: SCREENSHOT_PATH, mimeType: "image/png", sizeBytes: 4 },
+      ]);
+      await waitFor(() => expect(attachedScreenshots()).toEqual([]));
+      cleanup();
 
-    renderConversation(baseSession());
-    expect(attachedScreenshots()).toEqual([]);
-  });
+      renderConversation(baseSession());
+      expect(attachedScreenshots()).toEqual([]);
+    },
+  );
 });

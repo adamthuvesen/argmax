@@ -50,8 +50,14 @@ export function noteChatVisited(workspaceId: string): void {
  * `step` is +1 for ⌘§ and -1 for ⌘⇧§. From the launcher, where no chat is
  * current, +1 opens the most recently used chat and -1 the least.
  */
-export function stepChatCycle(step: 1 | -1, visibleIds: readonly string[], currentId: string | null): string | null {
-  const order = hold ? hold.order.filter((id) => visibleIds.includes(id)) : buildCycleOrder(visibleIds, currentId);
+export function stepChatCycle(
+  step: 1 | -1,
+  visibleIds: readonly string[],
+  currentId: string | null,
+): string | null {
+  const order = hold
+    ? hold.order.filter((id) => visibleIds.includes(id))
+    : buildCycleOrder(visibleIds, currentId);
   if (order.length === 0) {
     hold = null;
     return null;
@@ -95,7 +101,7 @@ export function commitChatCycle(): void {
 export function jumpToAdjacentChat(
   step: 1 | -1,
   visibleIds: readonly string[],
-  currentId: string | null
+  currentId: string | null,
 ): string | null {
   commitChatCycle();
   const landedId = stepChatCycle(step, visibleIds, currentId);

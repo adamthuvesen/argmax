@@ -33,7 +33,10 @@ function entryFor(lines: readonly ParsedDiffLine[]): HunkTokens {
   return entry;
 }
 
-export function subscribeHunkTokens(lines: readonly ParsedDiffLine[], listener: () => void): () => void {
+export function subscribeHunkTokens(
+  lines: readonly ParsedDiffLine[],
+  listener: () => void,
+): () => void {
   const entry = entryFor(lines);
   entry.listeners.add(listener);
   return () => entry.listeners.delete(listener);
@@ -48,7 +51,7 @@ export function hunkTokensVersion(lines: readonly ParsedDiffLine[]): number {
 export function hunkLineTokens(
   lines: readonly ParsedDiffLine[],
   key: string,
-  index: number
+  index: number,
 ): HighlightToken[] | undefined {
   const entry = hunks.get(lines);
   return entry && entry.key === key ? entry.tokens[index] : undefined;
@@ -58,17 +61,22 @@ function* tokenizeHunk(
   lines: readonly ParsedDiffLine[],
   lang: string,
   appearance: HighlightAppearance,
-  key: string
+  key: string,
 ): Generator<void, void, void> {
   const entry = entryFor(lines);
-  if (entry.key === key && entry.tokens.length === lines.length && !entry.tokens.includes(undefined)) return;
+  if (
+    entry.key === key &&
+    entry.tokens.length === lines.length &&
+    !entry.tokens.includes(undefined)
+  )
+    return;
   entry.key = key;
   entry.tokens = new Array<HighlightToken[] | undefined>(lines.length);
   // Context lines take their colors from the new side; the old side runs
   // through them only to keep its grammar state honest.
   const sides: { indices: number[]; owns: (line: ParsedDiffLine) => boolean }[] = [
     { indices: [], owns: (line) => line.kind !== "deletion" },
-    { indices: [], owns: (line) => line.kind === "deletion" }
+    { indices: [], owns: (line) => line.kind === "deletion" },
   ];
   lines.forEach((line, index) => {
     if (line.kind !== "deletion") sides[0].indices.push(index);
@@ -79,11 +87,17 @@ function* tokenizeHunk(
     let state: GrammarState | undefined;
     for (let start = 0; start < side.indices.length; start += CHUNK_LINES) {
       const chunk = side.indices.slice(start, start + CHUNK_LINES);
-      const result = tokenizeLines(chunk.map((index) => lines[index].content).join("\n"), lang, appearance, state);
+      const result = tokenizeLines(
+        chunk.map((index) => lines[index].content).join("\n"),
+        lang,
+        appearance,
+        state,
+      );
       if (!result || entry.key !== key) return;
       state = result.grammarState;
       chunk.forEach((index, offset) => {
-        if (side.owns(lines[index])) entry.tokens[index] = result.lines[offset] ?? [{ content: lines[index].content }];
+        if (side.owns(lines[index]))
+          entry.tokens[index] = result.lines[offset] ?? [{ content: lines[index].content }];
       });
       entry.version += 1;
       for (const listener of entry.listeners) listener();
@@ -99,7 +113,7 @@ function* tokenizeHunk(
 export function highlightHunksInSlices(
   hunkLines: readonly (readonly ParsedDiffLine[])[],
   lang: string,
-  appearance: HighlightAppearance
+  appearance: HighlightAppearance,
 ): () => void {
   const key = `${lang}:${appearance}`;
   let cancelled = false;

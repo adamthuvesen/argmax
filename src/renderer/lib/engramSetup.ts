@@ -44,19 +44,19 @@ export function engramSetup(provider: ProviderId, directory: string): EngramSetu
       return {
         kind: "command",
         content: `claude mcp add --scope user engram -- ${command}`,
-        instructions: COMMAND_INSTRUCTIONS
+        instructions: COMMAND_INSTRUCTIONS,
       };
     case "codex":
       return {
         kind: "command",
         content: `codex mcp add engram -- ${command}`,
-        instructions: COMMAND_INSTRUCTIONS
+        instructions: COMMAND_INSTRUCTIONS,
       };
     case "grok":
       return {
         kind: "command",
         content: `grok mcp add --scope user engram -- ${command}`,
-        instructions: COMMAND_INSTRUCTIONS
+        instructions: COMMAND_INSTRUCTIONS,
       };
     case "cursor":
       return {
@@ -66,15 +66,15 @@ export function engramSetup(provider: ProviderId, directory: string): EngramSetu
             mcpServers: {
               engram: {
                 command: "uv",
-                args: ["run", "--directory", directory, "engram"]
-              }
-            }
+                args: ["run", "--directory", directory, "engram"],
+              },
+            },
           },
           null,
-          2
+          2,
         ),
         instructions:
-          "Merge the engram entry into ~/.cursor/mcp.json, preserving the other mcpServers entries. Then refresh Connections below and start a new chat."
+          "Merge the engram entry into ~/.cursor/mcp.json, preserving the other mcpServers entries. Then refresh Connections below and start a new chat.",
       };
     case "opencode":
       return {
@@ -85,15 +85,15 @@ export function engramSetup(provider: ProviderId, directory: string): EngramSetu
               engram: {
                 type: "local",
                 command: ["uv", "run", "--directory", directory, "engram"],
-                enabled: true
-              }
-            }
+                enabled: true,
+              },
+            },
           },
           null,
-          2
+          2,
         ),
         instructions:
-          "Merge the engram entry into ~/.config/opencode/opencode.json, preserving the other mcp entries. Then refresh Connections below and start a new chat."
+          "Merge the engram entry into ~/.config/opencode/opencode.json, preserving the other mcp entries. Then refresh Connections below and start a new chat.",
       };
   }
 }

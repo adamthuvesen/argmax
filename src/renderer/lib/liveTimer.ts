@@ -76,7 +76,11 @@ document.addEventListener("visibilitychange", () => {
   start();
 });
 
-export function registerLiveTimer(node: HTMLElement, getMs: () => number, format: (ms: number) => string): () => void {
+export function registerLiveTimer(
+  node: HTMLElement,
+  getMs: () => number,
+  format: (ms: number) => string,
+): () => void {
   const initial = format(getMs());
   node.textContent = initial;
   const entry: Entry = { node, getMs, format, last: initial };

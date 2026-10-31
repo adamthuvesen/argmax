@@ -12,7 +12,12 @@ function scroller(): HTMLDivElement {
 }
 
 /** Dispatches at a given event time and reports whether smoothing took it. */
-function wheel(target: HTMLElement, deltaY: number, timeStamp: number, init: WheelEventInit = {}): boolean {
+function wheel(
+  target: HTMLElement,
+  deltaY: number,
+  timeStamp: number,
+  init: WheelEventInit = {},
+): boolean {
   const event = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY, ...init });
   Object.defineProperty(event, "timeStamp", { value: timeStamp });
   target.dispatchEvent(event);

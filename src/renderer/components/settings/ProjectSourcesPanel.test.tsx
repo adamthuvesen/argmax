@@ -23,13 +23,13 @@ function projectSource(overrides: Partial<ProjectSource> = {}): ProjectSource {
     addedBySessionId: null,
     createdAt: timestamp,
     updatedAt: timestamp,
-    ...overrides
+    ...overrides,
   };
 }
 
 function installSourcesStub(sources: Partial<NonNullable<ArgmaxApi["sources"]>>): void {
   (window as unknown as { argmax: ArgmaxApi }).argmax = {
-    sources
+    sources,
   } as unknown as ArgmaxApi;
 }
 
@@ -43,7 +43,9 @@ describe("ProjectSourcesPanel", () => {
     render(<ProjectSourcesPanel projectId="project-1" />);
     await screen.findByText("README");
     fireEvent.click(screen.getByRole("button", { name: "Refresh sources" }));
-    await waitFor(() => expect(toastSnapshot()).toEqual({ kind: "error", message: "Sources unavailable" }));
+    await waitFor(() =>
+      expect(toastSnapshot()).toEqual({ kind: "error", message: "Sources unavailable" }),
+    );
     expect(screen.getByText("README")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -53,7 +55,7 @@ describe("ProjectSourcesPanel", () => {
     const updated = projectSource({
       title: "Architecture notes",
       location: "docs/architecture.md",
-      guidance: "Prefer this for system design questions"
+      guidance: "Prefer this for system design questions",
     });
 
     const list = vi
@@ -74,30 +76,30 @@ describe("ProjectSourcesPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add source" }));
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "README" } });
     fireEvent.change(screen.getByLabelText("Repository path or URL"), {
-      target: { value: "README.md" }
+      target: { value: "README.md" },
     });
     fireEvent.change(screen.getByLabelText("When to consult"), {
-      target: { value: "Use for onboarding context" }
+      target: { value: "Use for onboarding context" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save source" }));
 
     await waitFor(() => expect(add).toHaveBeenCalledTimes(1));
     expect(add).toHaveBeenCalledWith({
       projectId: "project-1",
-      source: { title: "README", location: "README.md", guidance: "Use for onboarding context" }
+      source: { title: "README", location: "README.md", guidance: "Use for onboarding context" },
     });
 
     await waitFor(() => expect(screen.getByText("README")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Edit source: README" }));
     fireEvent.change(screen.getByLabelText("Title"), {
-      target: { value: "Architecture notes" }
+      target: { value: "Architecture notes" },
     });
     fireEvent.change(screen.getByLabelText("Repository path or URL"), {
-      target: { value: "docs/architecture.md" }
+      target: { value: "docs/architecture.md" },
     });
     fireEvent.change(screen.getByLabelText("When to consult"), {
-      target: { value: "Prefer this for system design questions" }
+      target: { value: "Prefer this for system design questions" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save source" }));
 
@@ -108,8 +110,8 @@ describe("ProjectSourcesPanel", () => {
       source: {
         title: "Architecture notes",
         location: "docs/architecture.md",
-        guidance: "Prefer this for system design questions"
-      }
+        guidance: "Prefer this for system design questions",
+      },
     });
 
     await waitFor(() => expect(screen.getByText("Architecture notes")).toBeInTheDocument());
@@ -119,7 +121,7 @@ describe("ProjectSourcesPanel", () => {
     await waitFor(() => expect(deleteSource).toHaveBeenCalledTimes(1));
     expect(deleteSource).toHaveBeenCalledWith({
       projectId: "project-1",
-      id: "source-1"
+      id: "source-1",
     });
   });
 
@@ -148,8 +150,8 @@ describe("ProjectSourcesPanel", () => {
             id: "source-p2",
             projectId: "p2",
             title: "P2 reference",
-            location: "README.md"
-          })
+            location: "README.md",
+          }),
         ]);
       }
       return Promise.resolve([]);
@@ -167,8 +169,8 @@ describe("ProjectSourcesPanel", () => {
         id: "source-p1",
         projectId: "p1",
         title: "P1 stale reference",
-        location: "README.md"
-      })
+        location: "README.md",
+      }),
     ]);
 
     await waitFor(() => {

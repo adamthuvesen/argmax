@@ -6,7 +6,7 @@ import type {
   WorkspaceFilePreview,
   WorkspaceFileStat,
   WorkspaceFileWriteResult,
-  WorkspaceTarget
+  WorkspaceTarget,
 } from "../../shared/types.js";
 
 type ReviewTarget = WorkspaceTarget;
@@ -14,13 +14,32 @@ export type ReviewSourceKind = WorkspaceTarget["kind"];
 
 export interface ReviewIpcDispatch {
   listChangedFiles: (comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
-  loadDiff: (filePath: string, comparison?: ReviewComparison, contextLines?: number) => Promise<WorkspaceDiff>;
+  loadDiff: (
+    filePath: string,
+    comparison?: ReviewComparison,
+    contextLines?: number,
+  ) => Promise<WorkspaceDiff>;
   stageFile: (filePath: string, revision: string) => Promise<void>;
   unstageFile: (filePath: string, revision: string) => Promise<void>;
   revertFile: (filePath: string, revision: string) => Promise<void>;
-  stageHunk: (filePath: string, revision: string, hunkIndex: number, contextLines?: number | null) => Promise<void>;
-  unstageHunk: (filePath: string, revision: string, hunkIndex: number, contextLines?: number | null) => Promise<void>;
-  revertHunk: (filePath: string, revision: string, hunkIndex: number, contextLines?: number | null) => Promise<void>;
+  stageHunk: (
+    filePath: string,
+    revision: string,
+    hunkIndex: number,
+    contextLines?: number | null,
+  ) => Promise<void>;
+  unstageHunk: (
+    filePath: string,
+    revision: string,
+    hunkIndex: number,
+    contextLines?: number | null,
+  ) => Promise<void>;
+  revertHunk: (
+    filePath: string,
+    revision: string,
+    hunkIndex: number,
+    contextLines?: number | null,
+  ) => Promise<void>;
   listFiles: () => Promise<WorkspaceFileEntry[]>;
   readFile: (filePath: string) => Promise<WorkspaceFilePreview>;
   /** Returns null when the IPC bridge is unavailable (e.g. vitest). */
@@ -29,7 +48,7 @@ export interface ReviewIpcDispatch {
   writeFile: (
     filePath: string,
     content: string,
-    expectedMtimeMs: number | null
+    expectedMtimeMs: number | null,
   ) => Promise<WorkspaceFileWriteResult> | null;
 }
 
@@ -81,7 +100,7 @@ export function reviewIpcDispatch(target: ReviewTarget): ReviewIpcDispatch {
         filePath,
         revision,
         hunkIndex,
-        contextLines: contextLines ?? null
+        contextLines: contextLines ?? null,
       });
     },
     unstageHunk: (filePath, revision, hunkIndex, contextLines) => {
@@ -92,7 +111,7 @@ export function reviewIpcDispatch(target: ReviewTarget): ReviewIpcDispatch {
         filePath,
         revision,
         hunkIndex,
-        contextLines: contextLines ?? null
+        contextLines: contextLines ?? null,
       });
     },
     revertHunk: (filePath, revision, hunkIndex, contextLines) => {
@@ -103,7 +122,7 @@ export function reviewIpcDispatch(target: ReviewTarget): ReviewIpcDispatch {
         filePath,
         revision,
         hunkIndex,
-        contextLines: contextLines ?? null
+        contextLines: contextLines ?? null,
       });
     },
     listFiles: () => {
@@ -124,6 +143,6 @@ export function reviewIpcDispatch(target: ReviewTarget): ReviewIpcDispatch {
       // External files are read-only; the editor treats null as "cannot save".
       if (!window.argmax || isExternalFilePath(filePath)) return null;
       return window.argmax.workspace.writeFile({ kind, id }, filePath, content, expectedMtimeMs);
-    }
+    },
   };
 }

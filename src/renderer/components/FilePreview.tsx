@@ -8,7 +8,12 @@ import { python } from "@codemirror/lang-python";
 import { rust } from "@codemirror/lang-rust";
 import { sql } from "@codemirror/lang-sql";
 import { yaml } from "@codemirror/lang-yaml";
-import { HighlightStyle, StreamLanguage, syntaxHighlighting, syntaxTree } from "@codemirror/language";
+import {
+  HighlightStyle,
+  StreamLanguage,
+  syntaxHighlighting,
+  syntaxTree,
+} from "@codemirror/language";
 import { search } from "@codemirror/search";
 import { tags as t } from "@lezer/highlight";
 import type { SyntaxNode } from "@lezer/common";
@@ -21,12 +26,21 @@ import {
   MatchDecorator,
   ViewPlugin,
   type DecorationSet,
-  type ViewUpdate
+  type ViewUpdate,
 } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import CodeMirror from "@uiw/react-codemirror";
 import { ChevronRight, Code, Eye, FileText, Image as ImageIcon, RotateCcw } from "lucide-react";
-import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useState, type JSX } from "react";
+import {
+  Fragment,
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type JSX,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -45,8 +59,8 @@ import { isRemoteBridge } from "../lib/tauriBridge.js";
 
 const MermaidDiagram = lazy(() =>
   importChunk(async () => ({
-    default: (await import("./MermaidDiagram.js")).MermaidDiagram
-  }))
+    default: (await import("./MermaidDiagram.js")).MermaidDiagram,
+  })),
 );
 
 function isMarkdownPath(path: string | null): boolean {
@@ -60,7 +74,16 @@ function isMarkdownPath(path: string | null): boolean {
  *  else, so a wider list here would only ever paint a broken image. SVG is not
  *  in it because an SVG reads back as text: it gets the same rendered/source
  *  toggle markdown does, rather than replacing the editor. */
-const RASTER_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "ico"]);
+const RASTER_IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "avif",
+  "bmp",
+  "ico",
+]);
 
 function isRasterImagePath(path: string | null): boolean {
   if (!path) return false;
@@ -144,12 +167,12 @@ const BLANK_SHORTCUTS: ReadonlyArray<{ keys: string[]; label: string }> = [
   { keys: ["⌘", "P"], label: "Find a file" },
   { keys: ["⌘", "⇧", "F"], label: "Search file contents" },
   { keys: ["⌘", "S"], label: "Save changes" },
-  { keys: ["⌘", "W"], label: "Close file" }
+  { keys: ["⌘", "W"], label: "Close file" },
 ];
 
 export function FilePreview({
   state,
-  onCursorChange
+  onCursorChange,
 }: {
   state: WorkspaceFilesState;
   /** Reports the caret position up to the panel status bar. Null when no
@@ -174,7 +197,12 @@ export function FilePreview({
     return (
       <div className="file-preview-blank" aria-label="No file selected">
         <div className="file-preview-blank-inner">
-          <FileText className="file-preview-blank-mark" size={40} strokeWidth={1} aria-hidden="true" />
+          <FileText
+            className="file-preview-blank-mark"
+            size={40}
+            strokeWidth={1}
+            aria-hidden="true"
+          />
           <p className="file-preview-blank-title">Select a file to preview</p>
           <dl className="file-preview-blank-keys">
             {BLANK_SHORTCUTS.map((shortcut) => (
@@ -206,7 +234,8 @@ export function FilePreview({
   // A raster image never has a text side to fall back to, so it replaces the
   // editor outright; an SVG is text and only becomes a picture when rendered.
   const showImage =
-    (rasterImageFile && preview.kind === "skipped" && preview.reason !== "not-a-file") || (svgFile && showRendered);
+    (rasterImageFile && preview.kind === "skipped" && preview.reason !== "not-a-file") ||
+    (svgFile && showRendered);
 
   if (preview.kind === "skipped" && !showImage) {
     const message =
@@ -244,14 +273,26 @@ export function FilePreview({
             .filter(Boolean)
             .map((segment, index, segments) => (
               <Fragment key={`${index}-${segment}`}>
-                {index > 0 ? <ChevronRight size={11} className="file-preview-path-sep" aria-hidden="true" /> : null}
-                <span className={index === segments.length - 1 ? "file-preview-path-leaf" : "file-preview-path-dir"}>
+                {index > 0 ? (
+                  <ChevronRight size={11} className="file-preview-path-sep" aria-hidden="true" />
+                ) : null}
+                <span
+                  className={
+                    index === segments.length - 1
+                      ? "file-preview-path-leaf"
+                      : "file-preview-path-dir"
+                  }
+                >
                   {segment}
                 </span>
               </Fragment>
             ))}
           {dirtyMarker ? (
-            <span className="file-preview-dirty" aria-label="Unsaved changes" title="Unsaved changes">
+            <span
+              className="file-preview-dirty"
+              aria-label="Unsaved changes"
+              title="Unsaved changes"
+            >
               {" "}
               {dirtyMarker}
             </span>
@@ -267,16 +308,30 @@ export function FilePreview({
               title={toggleLabel}
               onClick={() => setMode((m) => (m === "rendered" ? "source" : "rendered"))}
             >
-              {showRendered ? <Code size={14} /> : svgFile ? <ImageIcon size={14} /> : <Eye size={14} />}
+              {showRendered ? (
+                <Code size={14} />
+              ) : svgFile ? (
+                <ImageIcon size={14} />
+              ) : (
+                <Eye size={14} />
+              )}
             </button>
           ) : null}
         </div>
       </div>
       {state.externalChange ? (
-        <StaleBanner isDirty={state.isDirty} onReload={state.reloadFile} onKeepMine={state.dismissExternalChange} />
+        <StaleBanner
+          isDirty={state.isDirty}
+          onReload={state.reloadFile}
+          onKeepMine={state.dismissExternalChange}
+        />
       ) : null}
       {showImage && assetPath ? (
-        <ImageFilePreview absolutePath={assetPath} label={state.selectedPath} sizeBytes={preview.size ?? null} />
+        <ImageFilePreview
+          absolutePath={assetPath}
+          label={state.selectedPath}
+          sizeBytes={preview.size ?? null}
+        />
       ) : showRendered ? (
         <div className="file-preview-markdown markdown">
           <ReactMarkdown
@@ -301,7 +356,11 @@ export function FilePreview({
                   first?.type === "element" && Array.isArray(first.properties.className)
                     ? first.properties.className.join(" ")
                     : undefined;
-                return isMermaidFenceClass(classes) ? <>{children}</> : <pre {...rest}>{children}</pre>;
+                return isMermaidFenceClass(classes) ? (
+                  <>{children}</>
+                ) : (
+                  <pre {...rest}>{children}</pre>
+                );
               },
               code: ({ className, children, ...rest }) => {
                 if (!isMermaidFenceClass(className)) {
@@ -322,13 +381,13 @@ export function FilePreview({
                 const resolved = resolveMarkdownImageSrc(
                   typeof src === "string" ? src : undefined,
                   state.rootPath,
-                  state.selectedPath
+                  state.selectedPath,
                 );
                 if (!resolved) {
                   return <span className="file-preview-broken-image">{alt ?? "image"}</span>;
                 }
                 return <img src={resolved} alt={alt ?? ""} {...rest} />;
-              }
+              },
             }}
           >
             {normalizeMathDelimiters(buffer)}
@@ -352,7 +411,7 @@ export function FilePreview({
 function StaleBanner({
   isDirty,
   onReload,
-  onKeepMine
+  onKeepMine,
 }: {
   isDirty: boolean;
   onReload: () => void;
@@ -361,7 +420,9 @@ function StaleBanner({
   // When the buffer isn't dirty, there's nothing to lose by reloading — but we
   // still surface the banner so the user notices the external edit instead of
   // having content silently shift under them.
-  const headline = isDirty ? "This file changed on disk while you were editing." : "This file changed on disk.";
+  const headline = isDirty
+    ? "This file changed on disk while you were editing."
+    : "This file changed on disk.";
   return (
     <div className="file-preview-stale" role="alert" aria-label="File changed on disk">
       <span className="file-preview-stale-text">{headline}</span>
@@ -401,57 +462,57 @@ const editorTheme = EditorView.theme({
     fontSize: "var(--text-sm)",
     backgroundColor: "transparent",
     height: "100%",
-    color: "var(--text)"
+    color: "var(--text)",
   },
   ".cm-scroller": {
     fontFamily: "var(--font-code)",
-    lineHeight: "1.65"
+    lineHeight: "1.65",
   },
   ".cm-content": {
     caretColor: "var(--text)",
-    color: "var(--text)"
+    color: "var(--text)",
   },
   ".cm-gutters": {
     backgroundColor: "transparent",
     border: "none",
-    color: "var(--muted)"
+    color: "var(--muted)",
   },
   ".cm-activeLine": {
-    backgroundColor: "transparent"
+    backgroundColor: "transparent",
   },
   ".cm-activeLineGutter": {
     backgroundColor: "transparent",
-    color: "var(--muted-strong)"
+    color: "var(--muted-strong)",
   },
   ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": {
-    background: "var(--selection-bg) !important"
+    background: "var(--selection-bg) !important",
   },
   ".cm-searchMatch": {
     backgroundColor: "color-mix(in oklab, var(--amber) 34%, transparent)",
-    outline: "1px solid color-mix(in oklab, var(--amber) 48%, transparent)"
+    outline: "1px solid color-mix(in oklab, var(--amber) 48%, transparent)",
   },
   ".cm-searchMatch-selected": {
     backgroundColor: "color-mix(in oklab, var(--accent) 36%, transparent)",
-    outline: "1px solid color-mix(in oklab, var(--accent) 58%, transparent)"
+    outline: "1px solid color-mix(in oklab, var(--accent) 58%, transparent)",
   },
   ".cm-codex-definition": {
-    color: "var(--syntax-definition)"
+    color: "var(--syntax-definition)",
   },
   ".cm-codex-type": {
-    color: "var(--syntax-type)"
+    color: "var(--syntax-type)",
   },
   ".cm-codex-constant": {
-    color: "var(--syntax-constant)"
+    color: "var(--syntax-constant)",
   },
   ".cm-codex-variable": {
-    color: "var(--syntax-variable)"
+    color: "var(--syntax-variable)",
   },
   ".cm-codex-keyword": {
-    color: "var(--syntax-keyword)"
+    color: "var(--syntax-keyword)",
   },
   "&.cm-focused": {
-    outline: "none"
-  }
+    outline: "none",
+  },
 });
 
 /**
@@ -462,16 +523,30 @@ const editorTheme = EditorView.theme({
 const editorHighlightStyle = HighlightStyle.define([
   {
     tag: [t.moduleKeyword, t.controlKeyword, t.operatorKeyword, t.keyword],
-    color: "var(--syntax-keyword)"
+    color: "var(--syntax-keyword)",
   },
   {
-    tag: [t.definitionKeyword, t.definition(t.name), t.definition(t.variableName), t.function(t.variableName)],
-    color: "var(--syntax-definition)"
+    tag: [
+      t.definitionKeyword,
+      t.definition(t.name),
+      t.definition(t.variableName),
+      t.function(t.variableName),
+    ],
+    color: "var(--syntax-definition)",
   },
   { tag: [t.className, t.labelName, t.annotation], color: "var(--syntax-definition)" },
-  { tag: [t.typeName, t.standard(t.name), t.standard(t.variableName)], color: "var(--syntax-type)" },
-  { tag: [t.number, t.integer, t.float, t.bool, t.null, t.atom, t.unit], color: "var(--syntax-type)" },
-  { tag: [t.self, t.constant(t.name), t.constant(t.variableName)], color: "var(--syntax-variable)" },
+  {
+    tag: [t.typeName, t.standard(t.name), t.standard(t.variableName)],
+    color: "var(--syntax-type)",
+  },
+  {
+    tag: [t.number, t.integer, t.float, t.bool, t.null, t.atom, t.unit],
+    color: "var(--syntax-type)",
+  },
+  {
+    tag: [t.self, t.constant(t.name), t.constant(t.variableName)],
+    color: "var(--syntax-variable)",
+  },
   { tag: [t.color, t.changed, t.modifier, t.macroName], color: "var(--syntax-constant)" },
   { tag: [t.attributeName, t.special(t.variableName)], color: "var(--syntax-constant)" },
   { tag: [t.attributeValue, t.string, t.docString, t.character], color: "var(--syntax-string)" },
@@ -479,7 +554,7 @@ const editorHighlightStyle = HighlightStyle.define([
   {
     tag: [t.comment, t.lineComment, t.blockComment, t.docComment],
     color: "var(--syntax-comment)",
-    fontStyle: "italic"
+    fontStyle: "italic",
   },
   { tag: [t.meta, t.processingInstruction], color: "var(--syntax-comment)" },
   { tag: [t.name, t.variableName, t.deleted, t.propertyName, t.namespace], color: "var(--text)" },
@@ -489,7 +564,7 @@ const editorHighlightStyle = HighlightStyle.define([
   { tag: t.invalid, color: "var(--syntax-keyword)" },
   { tag: t.strong, fontWeight: "calc(600 + var(--font-weight-offset))" },
   { tag: t.emphasis, fontStyle: "italic" },
-  { tag: t.strikethrough, textDecoration: "line-through" }
+  { tag: t.strikethrough, textDecoration: "line-through" },
 ]);
 
 const editorSyntaxHighlighting = syntaxHighlighting(editorHighlightStyle);
@@ -503,7 +578,11 @@ const pythonSemanticPattern =
   /@[A-Za-z_]\w*|\b[A-Z][A-Z0-9_]{2,}\b|\b(?:from|str|int|bool|dict|list|tuple|set|float|bytes|object|type|None|True|False|self)\b/g;
 
 function isInsideStringOrComment(view: EditorView, from: number): boolean {
-  for (let node: SyntaxNode | null = syntaxTree(view.state).resolveInner(from, 1); node; node = node.parent) {
+  for (
+    let node: SyntaxNode | null = syntaxTree(view.state).resolveInner(from, 1);
+    node;
+    node = node.parent
+  ) {
     if (/String|Comment/.test(node.name)) return true;
   }
   return false;
@@ -526,7 +605,7 @@ const pythonSemanticDecorator = new MatchDecorator({
       add(from, to, pythonTypeDecoration);
     }
   },
-  boundary: /[^@\w]/
+  boundary: /[^@\w]/,
 });
 
 const pythonSemanticHighlighting = ViewPlugin.fromClass(
@@ -542,8 +621,8 @@ const pythonSemanticHighlighting = ViewPlugin.fromClass(
     }
   },
   {
-    decorations: (plugin) => plugin.decorations
-  }
+    decorations: (plugin) => plugin.decorations,
+  },
 );
 
 function semanticHighlightingFor(path: string): Extension[] {
@@ -557,7 +636,7 @@ function SourceEditor({
   onSave,
   onCursorChange,
   saving,
-  editable
+  editable,
 }: {
   path: string;
   value: string;
@@ -586,7 +665,7 @@ function SourceEditor({
         const line = update.state.doc.lineAt(head);
         onCursorChange({ line: line.number, column: head - line.from + 1 });
       }),
-    [onCursorChange]
+    [onCursorChange],
   );
 
   // Leaving the editor (file closed, markdown flipped to rendered) clears the
@@ -602,9 +681,9 @@ function SourceEditor({
       editorTheme,
       editorSyntaxHighlighting,
       cursorReporter,
-      EditorView.lineWrapping
+      EditorView.lineWrapping,
     ],
-    [path, handleSave, editable, cursorReporter]
+    [path, handleSave, editable, cursorReporter],
   );
 
   return (
@@ -621,7 +700,7 @@ function SourceEditor({
           highlightActiveLine: false,
           highlightSelectionMatches: false,
           syntaxHighlighting: false,
-          autocompletion: false
+          autocompletion: false,
         }}
         aria-label={`Editor for ${path}`}
       />

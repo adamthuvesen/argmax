@@ -22,24 +22,30 @@ function project(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
       mergeCleanup: "off",
       worktreeLocation: "/Users/dev/argmax/.argmax/worktrees",
       setupCommand: "npm install",
-      checkCommands: ["npm run lint"]
+      checkCommands: ["npm run lint"],
     },
     counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
     latestActivityAt: null,
-    ...overrides
+    ...overrides,
   };
 }
 
 function installUpdateStub(updateSettings: ReturnType<typeof vi.fn>): void {
   (window as unknown as { argmax: ArgmaxApi }).argmax = {
-    projects: { updateSettings, getFolders: vi.fn().mockResolvedValue([]) }
+    projects: { updateSettings, getFolders: vi.fn().mockResolvedValue([]) },
   } as unknown as ArgmaxApi;
 }
 
 describe("ProjectsSettings", () => {
   it("opens the requested project instead of the first project", () => {
     const second = project({ id: "project-2", name: "Research", repoPath: "/Users/dev/research" });
-    render(<ProjectsSettings projects={[project(), second]} initialProjectId="project-2" onProjectUpdated={vi.fn()} />);
+    render(
+      <ProjectsSettings
+        projects={[project(), second]}
+        initialProjectId="project-2"
+        onProjectUpdated={vi.fn()}
+      />,
+    );
 
     expect(screen.getByText("/Users/dev/research")).toBeInTheDocument();
     expect(screen.queryByText("/Users/dev/argmax")).not.toBeInTheDocument();
@@ -49,7 +55,9 @@ describe("ProjectsSettings", () => {
     render(<ProjectsSettings projects={[project()]} onProjectUpdated={vi.fn()} />);
 
     expect(screen.getByText("/Users/dev/argmax")).toBeInTheDocument();
-    expect(screen.getByLabelText("Worktree location")).toHaveValue("/Users/dev/argmax/.argmax/worktrees");
+    expect(screen.getByLabelText("Worktree location")).toHaveValue(
+      "/Users/dev/argmax/.argmax/worktrees",
+    );
     expect(screen.getByLabelText("Setup command")).toHaveValue("npm install");
     expect(screen.getByLabelText("Check commands")).toHaveValue("npm run lint");
     expect(screen.getByRole("button", { name: "Save project settings" })).toBeDisabled();
@@ -64,7 +72,7 @@ describe("ProjectsSettings", () => {
         rootPath: "/Users/dev/argmax",
         isPrimary: true,
         enabled: true,
-        summary: null
+        summary: null,
       },
       {
         id: "docs",
@@ -73,21 +81,25 @@ describe("ProjectsSettings", () => {
         rootPath: "/Users/dev/docs",
         isPrimary: false,
         enabled: true,
-        summary: "API notes."
-      }
+        summary: "API notes.",
+      },
     ];
-    const configure = vi.fn().mockResolvedValue(project({ name: "Agent tools", repoPath: "/Users/dev/docs" }));
+    const configure = vi
+      .fn()
+      .mockResolvedValue(project({ name: "Agent tools", repoPath: "/Users/dev/docs" }));
     const getFolders = vi.fn().mockResolvedValue(folders);
     window.argmax = {
       projects: {
         configure,
         getFolders,
-        pickDirectory: vi.fn().mockResolvedValue({ cancelled: false, path: "/Users/dev/research" })
-      }
+        pickDirectory: vi.fn().mockResolvedValue({ cancelled: false, path: "/Users/dev/research" }),
+      },
     } as unknown as ArgmaxApi;
     const onProjectUpdated = vi.fn();
     render(<ProjectsSettings projects={[project()]} onProjectUpdated={onProjectUpdated} />);
-    fireEvent.change(await screen.findByLabelText("Project name"), { target: { value: "Agent tools" } });
+    fireEvent.change(await screen.findByLabelText("Project name"), {
+      target: { value: "Agent tools" },
+    });
     fireEvent.click(screen.getByRole("radio", { name: "Make docs primary" }));
     fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
     await screen.findByText("research");
@@ -98,13 +110,13 @@ describe("ProjectsSettings", () => {
         projectId: "project-1",
         name: "Agent tools",
         folders: ["/Users/dev/docs", "/Users/dev/research"],
-        primaryPath: "/Users/dev/docs"
-      })
+        primaryPath: "/Users/dev/docs",
+      }),
     );
     await waitFor(() =>
       expect(onProjectUpdated).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "Agent tools", repoPath: "/Users/dev/docs" })
-      )
+        expect.objectContaining({ name: "Agent tools", repoPath: "/Users/dev/docs" }),
+      ),
     );
   });
 
@@ -116,7 +128,7 @@ describe("ProjectsSettings", () => {
       rootPath,
       isPrimary,
       enabled: true,
-      summary: null
+      summary: null,
     });
     const getFolders = vi
       .fn()
@@ -127,15 +139,17 @@ describe("ProjectsSettings", () => {
       projects: {
         configure,
         getFolders,
-        pickDirectory: vi.fn().mockResolvedValue({ cancelled: false, path: "/Users/dev/research" })
-      }
+        pickDirectory: vi.fn().mockResolvedValue({ cancelled: false, path: "/Users/dev/research" }),
+      },
     } as unknown as ArgmaxApi;
     function Harness(): JSX.Element {
       const [current, setCurrent] = useState(project());
       return <ProjectsSettings projects={[current]} onProjectUpdated={setCurrent} />;
     }
     render(<Harness />);
-    fireEvent.change(await screen.findByLabelText("Project name"), { target: { value: "Agent tools" } });
+    fireEvent.change(await screen.findByLabelText("Project name"), {
+      target: { value: "Agent tools" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
     await screen.findByText("research");
     fireEvent.click(screen.getByRole("button", { name: "Save project" }));
@@ -154,9 +168,15 @@ describe("ProjectsSettings", () => {
         initialProjectId="project-2"
         navigationRequestId={1}
         onProjectUpdated={vi.fn()}
-      />
+      />,
     );
-    rerender(<ProjectsSettings projects={[project(), second]} navigationRequestId={2} onProjectUpdated={vi.fn()} />);
+    rerender(
+      <ProjectsSettings
+        projects={[project(), second]}
+        navigationRequestId={2}
+        onProjectUpdated={vi.fn()}
+      />,
+    );
     expect(screen.getByText("/Users/dev/research")).toBeInTheDocument();
     rerender(
       <ProjectsSettings
@@ -164,13 +184,15 @@ describe("ProjectsSettings", () => {
         initialProjectId="project-1"
         navigationRequestId={3}
         onProjectUpdated={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByText("/Users/dev/argmax")).toBeInTheDocument();
   });
 
   it("loads the new primary repository defaults after the primary folder changes", () => {
-    const { rerender } = render(<ProjectsSettings projects={[project()]} onProjectUpdated={vi.fn()} />);
+    const { rerender } = render(
+      <ProjectsSettings projects={[project()]} onProjectUpdated={vi.fn()} />,
+    );
     expect(screen.getByLabelText("Setup command")).toHaveValue("npm install");
     rerender(
       <ProjectsSettings
@@ -181,16 +203,18 @@ describe("ProjectsSettings", () => {
               mergeCleanup: "off",
               worktreeLocation: "/Users/dev/dbt/.argmax/worktrees",
               setupCommand: "uv sync",
-              checkCommands: ["uv run pytest"]
-            }
-          })
+              checkCommands: ["uv run pytest"],
+            },
+          }),
         ]}
         onProjectUpdated={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByLabelText("Setup command")).toHaveValue("uv sync");
     expect(screen.getByLabelText("Check commands")).toHaveValue("uv run pytest");
-    expect(screen.getByLabelText("Worktree location")).toHaveValue("/Users/dev/dbt/.argmax/worktrees");
+    expect(screen.getByLabelText("Worktree location")).toHaveValue(
+      "/Users/dev/dbt/.argmax/worktrees",
+    );
   });
 
   it("saves edited settings", async () => {
@@ -203,7 +227,7 @@ describe("ProjectsSettings", () => {
 
     fireEvent.change(screen.getByLabelText("Setup command"), { target: { value: "  npm ci  " } });
     fireEvent.change(screen.getByLabelText("Check commands"), {
-      target: { value: "npm run lint\nnpm test\n\n" }
+      target: { value: "npm run lint\nnpm test\n\n" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save project settings" }));
 
@@ -214,8 +238,8 @@ describe("ProjectsSettings", () => {
         setupCommand: "npm ci",
         mergeCleanup: "off",
         worktreeLocation: "/Users/dev/argmax/.argmax/worktrees",
-        checkCommands: ["npm run lint", "npm test"]
-      }
+        checkCommands: ["npm run lint", "npm test"],
+      },
     });
     await waitFor(() => expect(onProjectUpdated).toHaveBeenCalledWith(saved));
     expect(screen.getByRole("status")).toHaveTextContent("Project settings saved.");
@@ -239,8 +263,8 @@ describe("ProjectsSettings", () => {
         setupCommand: "npm install",
         worktreeLocation: "/Users/dev/argmax/.argmax/worktrees",
         checkCommands: ["npm run lint"],
-        mergeCleanup: "remove-checkout"
-      }
+        mergeCleanup: "remove-checkout",
+      },
     });
   });
 
@@ -251,7 +275,7 @@ describe("ProjectsSettings", () => {
     render(<ProjectsSettings projects={[project()]} onProjectUpdated={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText("Worktree location"), {
-      target: { value: "worktrees" }
+      target: { value: "worktrees" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save project settings" }));
 
@@ -280,8 +304,8 @@ describe("ProjectsSettings", () => {
         mergeCleanup: "off",
         worktreeLocation: "/Users/dev/other/.argmax/worktrees",
         setupCommand: "",
-        checkCommands: []
-      }
+        checkCommands: [],
+      },
     });
     render(<ProjectsSettings projects={[project(), other]} onProjectUpdated={vi.fn()} />);
 
@@ -289,6 +313,8 @@ describe("ProjectsSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Other" }));
 
     expect(screen.getByText("/Users/dev/other")).toBeInTheDocument();
-    expect(screen.getByLabelText("Worktree location")).toHaveValue("/Users/dev/other/.argmax/worktrees");
+    expect(screen.getByLabelText("Worktree location")).toHaveValue(
+      "/Users/dev/other/.argmax/worktrees",
+    );
   });
 });

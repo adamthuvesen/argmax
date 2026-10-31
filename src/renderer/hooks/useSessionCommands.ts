@@ -6,7 +6,7 @@ import type {
   AgentReference,
   ComposerAttachment,
   ProviderId,
-  QueuedMessageDelivery
+  QueuedMessageDelivery,
 } from "../../shared/types.js";
 import type { SendInputResult } from "../../shared/bindings.js";
 import type { FollowUpDelivery } from "../lib/uiPreferences.js";
@@ -38,10 +38,14 @@ interface SessionCommands {
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
     agentReferences?: AgentReference[],
-    delivery?: FollowUpDelivery
+    delivery?: FollowUpDelivery,
   ) => Promise<SendInputResult>;
   cancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
-  sendQueuedMessageNow: (sessionId: string, messageId: string, delivery?: QueuedMessageDelivery) => Promise<void>;
+  sendQueuedMessageNow: (
+    sessionId: string,
+    messageId: string,
+    delivery?: QueuedMessageDelivery,
+  ) => Promise<void>;
   /** Dispatch a prompt as a sibling chat that runs alongside this session's
    *  turn, in the same checkout. `provider` is this session's, which the
    *  sibling inherits: it picks the cheap model that names the new chat. */
@@ -56,7 +60,7 @@ export function useSessionCommands({
   loadSessionEvents,
   setToast,
   fastMode,
-  onEarlyStop
+  onEarlyStop,
 }: UseSessionCommandsOptions): SessionCommands {
   const sendSessionInput = useCallback(
     async (
@@ -66,13 +70,16 @@ export function useSessionCommands({
       agentMode: AgentMode,
       attachments?: ComposerAttachment[],
       agentReferences?: AgentReference[],
-      delivery: FollowUpDelivery = "queue"
+      delivery: FollowUpDelivery = "queue",
     ): Promise<SendInputResult> => {
       if (!window.argmax) {
         throw new Error("Open Argmax on your Mac to send input to a live chat.");
       }
 
-      const sendInput = delivery === "steer" ? window.argmax.providers.steerInput : window.argmax.providers.sendInput;
+      const sendInput =
+        delivery === "steer"
+          ? window.argmax.providers.steerInput
+          : window.argmax.providers.sendInput;
       const result = await sendInput({
         sessionId,
         input,
@@ -84,12 +91,12 @@ export function useSessionCommands({
               provider: model.provider,
               modelLabel: model.label,
               modelId: model.modelId,
-              reasoningEffort: model.reasoningEffort ?? null
+              reasoningEffort: model.reasoningEffort ?? null,
             }),
         fastMode: !model.autoTier && fastMode && modelSupportsFastMode(model),
         agentMode,
         attachments: attachments?.length ? attachments : null,
-        ...(agentReferences?.length ? { agentReferences } : {})
+        ...(agentReferences?.length ? { agentReferences } : {}),
       });
       // The send already succeeded. Dashboard catch-up is best-effort and can
       // take a 100 ms metadata coalesce plus a transcript pull; awaiting it
@@ -105,16 +112,23 @@ export function useSessionCommands({
       void Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
       return result;
     },
-    [refreshDashboardStatus, loadSessionEvents, fastMode]
+    [refreshDashboardStatus, loadSessionEvents, fastMode],
   );
 
-  const cancelQueuedMessage = useCallback(async (sessionId: string, messageId: string): Promise<void> => {
-    if (!window.argmax) return;
-    await window.argmax.providers.cancelQueuedMessage({ sessionId, messageId });
-  }, []);
+  const cancelQueuedMessage = useCallback(
+    async (sessionId: string, messageId: string): Promise<void> => {
+      if (!window.argmax) return;
+      await window.argmax.providers.cancelQueuedMessage({ sessionId, messageId });
+    },
+    [],
+  );
 
   const sendQueuedMessageNow = useCallback(
-    async (sessionId: string, messageId: string, delivery: QueuedMessageDelivery = "interrupt"): Promise<void> => {
+    async (
+      sessionId: string,
+      messageId: string,
+      delivery: QueuedMessageDelivery = "interrupt",
+    ): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open Argmax on your Mac to send a queued follow-up.");
       }
@@ -127,21 +141,26 @@ export function useSessionCommands({
         await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
       }
     },
-    [refreshDashboardStatus, loadSessionEvents]
+    [refreshDashboardStatus, loadSessionEvents],
   );
 
   // Dispatching never waits on the running turn: the sibling chat is launched
   // and this session's own turn is untouched. The dashboard refresh is what
   // brings its sidebar row and the parent's card in.
   const multitask = useCallback(
-    async (sessionId: string, prompt: string, provider: ProviderId, pendingMessageId?: string): Promise<void> => {
+    async (
+      sessionId: string,
+      prompt: string,
+      provider: ProviderId,
+      pendingMessageId?: string,
+    ): Promise<void> => {
       if (!window.argmax) {
         throw new Error("Open Argmax on your Mac to run a multitask.");
       }
       const launched = await window.argmax.session.multitask({
         sessionId,
         prompt,
-        ...(pendingMessageId ? { pendingMessageId } : {})
+        ...(pendingMessageId ? { pendingMessageId } : {}),
       });
       // A multitask is named in as many places as a session is: the inline row,
       // the dock tab, the workspace card, and the finish notice,
@@ -153,12 +172,12 @@ export function useSessionCommands({
           workspaceId: launched.workspaceId,
           provider,
           modelId: PROVIDER_TITLE_MODEL[provider],
-          prompt
+          prompt,
         })
         .catch(() => undefined);
       await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
     },
-    [refreshDashboardStatus, loadSessionEvents]
+    [refreshDashboardStatus, loadSessionEvents],
   );
 
   const runCheck = useCallback(
@@ -170,11 +189,11 @@ export function useSessionCommands({
       const ok = await withToast(
         () => window.argmax!.checks.run({ workspaceId, command }),
         setToast,
-        "Could not run check."
+        "Could not run check.",
       );
       if (ok) await refreshDashboardStatus();
     },
-    [refreshDashboardStatus, setToast]
+    [refreshDashboardStatus, setToast],
   );
 
   const terminateSession = useCallback(
@@ -186,7 +205,11 @@ export function useSessionCommands({
       if (options?.restoreLauncherOnEarlyStop !== false) {
         workspaceToArchive = onEarlyStop?.(sessionId);
       }
-      const ok = await withToast(() => window.argmax!.providers.terminate(sessionId), setToast, "Could not stop chat.");
+      const ok = await withToast(
+        () => window.argmax!.providers.terminate(sessionId),
+        setToast,
+        "Could not stop chat.",
+      );
       if (ok) {
         // Archive only after a successful stop: the 10s window is an undo of
         // a mistaken launch, and force-archive would otherwise discard a chat
@@ -202,7 +225,7 @@ export function useSessionCommands({
         await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
       }
     },
-    [onEarlyStop, refreshDashboardStatus, loadSessionEvents, setToast]
+    [onEarlyStop, refreshDashboardStatus, loadSessionEvents, setToast],
   );
 
   const clearSession = useCallback(
@@ -214,7 +237,7 @@ export function useSessionCommands({
       await window.argmax.session.clear({ sessionId });
       await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
     },
-    [refreshDashboardStatus, loadSessionEvents]
+    [refreshDashboardStatus, loadSessionEvents],
   );
 
   return {
@@ -224,6 +247,6 @@ export function useSessionCommands({
     multitask,
     runCheck,
     terminateSession,
-    clearSession
+    clearSession,
   };
 }

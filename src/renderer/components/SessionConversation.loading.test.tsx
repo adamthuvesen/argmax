@@ -4,7 +4,7 @@ import {
   baseSession,
   event,
   renderConversation,
-  rerenderConversation
+  rerenderConversation,
 } from "../../test/sessionConversationTestHarness.js";
 
 describe("SessionConversation — backfill", () => {
@@ -28,19 +28,25 @@ describe("SessionConversation — backfill", () => {
 
   it("keeps available and newly arriving replies visible after history retries fail", () => {
     const session = baseSession({ state: "running" });
-    const events = [event("reply", "message.completed", "Already received", "2026-05-12T15:00:00.000Z")];
+    const events = [
+      event("reply", "message.completed", "Already received", "2026-05-12T15:00:00.000Z"),
+    ];
     const options = { eventsBackfilled: false, historyLoadFailed: true };
     const { rerender } = renderConversation(session, events, options);
     expect(screen.getByRole("status", { name: "Chat history unavailable" })).toBeInTheDocument();
     expect(screen.getByText("Already received")).toBeInTheDocument();
-    expect(screen.getByLabelText("Conversation messages").parentElement).not.toHaveAttribute("data-loading");
+    expect(screen.getByLabelText("Conversation messages").parentElement).not.toHaveAttribute(
+      "data-loading",
+    );
     rerenderConversation(
       rerender,
       session,
       [event("new", "message.completed", "Still working", "2026-05-12T15:00:01.000Z"), ...events],
-      options
+      options,
     );
     expect(screen.getByText("Still working")).toBeInTheDocument();
-    expect(screen.getByLabelText("Conversation messages").parentElement).not.toHaveAttribute("data-loading");
+    expect(screen.getByLabelText("Conversation messages").parentElement).not.toHaveAttribute(
+      "data-loading",
+    );
   });
 });

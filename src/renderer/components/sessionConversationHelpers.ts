@@ -17,7 +17,7 @@ export async function sendAfterTerminate(
   isRunning: boolean,
   onTerminateSession: (id: string, options?: TerminateSessionOptions) => Promise<void>,
   send: () => Promise<void>,
-  onError: (message: string) => void
+  onError: (message: string) => void,
 ): Promise<boolean> {
   if (isRunning) {
     try {
@@ -37,7 +37,7 @@ export async function sendAfterTerminate(
 }
 
 export function parseUserMessageAttachments(
-  item: Extract<RenderItem, { kind: "user-message" }>
+  item: Extract<RenderItem, { kind: "user-message" }>,
 ): UserMessageAttachment[] {
   const rawAttachments = arrayValue(item.event.payload.attachments) ?? [];
   return rawAttachments

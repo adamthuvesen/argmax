@@ -75,7 +75,7 @@ export function useGlobalKeybindings({
   onToggleTerminal,
   onSelectWorkspace,
   onCloseSettings,
-  onCloseFocusedPane
+  onCloseFocusedPane,
 }: GlobalKeybindingArgs): void {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -85,7 +85,13 @@ export function useGlobalKeybindings({
       // pages receive the chord in their own webview and never reach this
       // renderer listener.
       if (event.key.toLowerCase() === "a" && !event.shiftKey && !event.altKey) {
-        if (event.defaultPrevented || event.isComposing || event.repeat || isTypingTarget(event.target)) return;
+        if (
+          event.defaultPrevented ||
+          event.isComposing ||
+          event.repeat ||
+          isTypingTarget(event.target)
+        )
+          return;
         event.preventDefault();
         onOpenActionPalette();
         return;
@@ -149,7 +155,7 @@ export function useGlobalKeybindings({
         const targetWorkspaceId = stepChatCycle(
           event.shiftKey ? -1 : 1,
           listVisibleSidebarWorkspaceIds(),
-          selectedSidebarWorkspaceId()
+          selectedSidebarWorkspaceId(),
         );
         if (!targetWorkspaceId) return;
         event.preventDefault();
@@ -194,7 +200,7 @@ export function useGlobalKeybindings({
     onToggleTerminal,
     onSelectWorkspace,
     onCloseSettings,
-    onCloseFocusedPane
+    onCloseFocusedPane,
   ]);
 
   // ⌘ coming back up ends a ⌘§ traversal and promotes the chat it landed on.

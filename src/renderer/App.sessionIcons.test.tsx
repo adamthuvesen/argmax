@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import type { WorkspaceSummary } from "../shared/types.js";
 import { RANDOM_SESSION_ICON_KEY } from "./lib/uiPreferences.js";
-import { dashboardDeltaListener, setWorkspaceIcon, setupAppTestMocks, snapshot } from "../test/appTestHarness.js";
+import {
+  dashboardDeltaListener,
+  setWorkspaceIcon,
+  setupAppTestMocks,
+  snapshot,
+} from "../test/appTestHarness.js";
 
 function externalWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {
   return {
@@ -12,7 +17,7 @@ function externalWorkspace(overrides: Partial<WorkspaceSummary> = {}): Workspace
     taskLabel: "Explore this repository",
     icon: null,
     iconColor: null,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -55,8 +60,8 @@ describe("App random icons for externally launched sessions", () => {
           // Already in the boot snapshot: not newly launched.
           { ...snapshot.workspaces[0], taskLabel: "Renamed" },
           externalWorkspace({ id: "workspace-picked", icon: "Bird", iconColor: "blue" }),
-          externalWorkspace({ id: "workspace-popup", kind: "popup", sharedWorkspace: true })
-        ]
+          externalWorkspace({ id: "workspace-popup", kind: "popup", sharedWorkspace: true }),
+        ],
       });
     });
 

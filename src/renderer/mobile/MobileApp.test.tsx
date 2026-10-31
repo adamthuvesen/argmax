@@ -21,7 +21,7 @@ import {
   setPriorityDismissed,
   setupAppTestMocks,
   snapshot,
-  terminateProvider
+  terminateProvider,
 } from "../../test/appTestHarness.js";
 import { startedAgentName } from "../../test/agentRowName.js";
 import { MobileApp } from "./MobileApp.js";
@@ -48,14 +48,14 @@ const remote = vi.hoisted(() => {
       listeners.add(listener);
       listener(state);
       return () => listeners.delete(listener);
-    }
+    },
   };
 });
 
 vi.mock("../lib/wsTransport.js", () => ({
   REMOTE_CONNECTION_LOST_MESSAGE: "Argmax remote connection lost",
   createWsTransport: vi.fn(),
-  subscribeRemoteConnection: remote.subscribe
+  subscribeRemoteConnection: remote.subscribe,
 }));
 
 // A repo-less side chat: the hidden scratch project ("Chat"), a scratch workspace
@@ -69,8 +69,8 @@ function sideChatSnapshot(): DashboardSnapshot {
         ...snapshot.projects[0],
         id: SCRATCH_PROJECT_ID,
         name: "Chat",
-        repoPath: "/tmp/argmax-data/side-chats"
-      }
+        repoPath: "/tmp/argmax-data/side-chats",
+      },
     ],
     workspaces: [
       {
@@ -82,8 +82,8 @@ function sideChatSnapshot(): DashboardSnapshot {
         sharedWorkspace: true,
         state: "complete",
         dirty: false,
-        changedFiles: 0
-      }
+        changedFiles: 0,
+      },
     ],
     sessions: [
       {
@@ -91,9 +91,9 @@ function sideChatSnapshot(): DashboardSnapshot {
         id: "session-chat",
         workspaceId: "workspace-chat",
         state: "complete",
-        attention: "normal"
-      }
-    ]
+        attention: "normal",
+      },
+    ],
   };
 }
 
@@ -102,11 +102,11 @@ function installObjectUrl(url: string): () => void {
   const revokeDescriptor = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
   Object.defineProperty(URL, "createObjectURL", {
     configurable: true,
-    value: vi.fn(() => url)
+    value: vi.fn(() => url),
   });
   Object.defineProperty(URL, "revokeObjectURL", {
     configurable: true,
-    value: vi.fn()
+    value: vi.fn(),
   });
   return () => {
     if (createDescriptor) Object.defineProperty(URL, "createObjectURL", createDescriptor);
@@ -114,6 +114,20 @@ function installObjectUrl(url: string): () => void {
     if (revokeDescriptor) Object.defineProperty(URL, "revokeObjectURL", revokeDescriptor);
     else Reflect.deleteProperty(URL, "revokeObjectURL");
   };
+}
+
+/** The chat list row an element sits in: the innermost list item around it. */
+function chatRowFor(element: HTMLElement): HTMLElement {
+  const row = screen
+    .getAllByRole("listitem")
+    .filter((item) => item.contains(element))
+    .at(-1);
+  if (!row) throw new Error("no chat row");
+  return row;
+}
+
+function newRowFor(element: HTMLElement): HTMLElement | undefined {
+  return screen.getAllByTestId("mobile-new-row").find((row) => row.contains(element));
 }
 
 describe("MobileApp", () => {
@@ -130,24 +144,32 @@ describe("MobileApp", () => {
   });
 
   it("launches an attachment-only provider-switch seed without the launcher's old image", async () => {
-    const screenshot = { filePath: "/attachments/current.png", mimeType: "image/png" as const, sizeBytes: 4 };
-    const unrelated = { filePath: "/attachments/old-launcher.png", mimeType: "image/png" as const, sizeBytes: 4 };
+    const screenshot = {
+      filePath: "/attachments/current.png",
+      mimeType: "image/png" as const,
+      sizeBytes: 4,
+    };
+    const unrelated = {
+      filePath: "/attachments/old-launcher.png",
+      mimeType: "image/png" as const,
+      sizeBytes: 4,
+    };
     window.localStorage.setItem(
       "argmax.composer.drafts",
       JSON.stringify({
         "launch-project-1": { text: "Old launcher thought", attachments: [unrelated] },
-        "launch-project-2": { text: "Another project's draft", attachments: [unrelated] }
-      })
+        "launch-project-2": { text: "Another project's draft", attachments: [unrelated] },
+      }),
     );
     const seed = {
       model: {
         provider: "claude" as const,
         label: "Sonnet 5.5",
         modelId: "claude-sonnet-5-5",
-        reasoningEffort: "medium" as const
+        reasoningEffort: "medium" as const,
       },
       prompt: "",
-      attachments: [screenshot]
+      attachments: [screenshot],
     };
     function SeededNewSession() {
       const [openSheet, setOpenSheet] = useState<PickerKind | null>(null);
@@ -167,13 +189,19 @@ describe("MobileApp", () => {
     render(<SeededNewSession />);
 
     await waitFor(() => expect(screen.getByLabelText("Task")).toHaveValue(""));
-    expect(screen.getByLabelText("Attached images").children).toHaveLength(1);
+    expect(
+      within(screen.getByLabelText("Attached images")).getAllByTestId("composer-attachment-chip"),
+    ).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Project" }));
     fireEvent.click(
-      within(screen.getByRole("dialog", { name: "Choose project" })).getByRole("button", { name: "Dotfiles" })
+      within(screen.getByRole("dialog", { name: "Choose project" })).getByRole("button", {
+        name: "Dotfiles",
+      }),
     );
     expect(screen.getByLabelText("Task")).toHaveValue("");
-    expect(screen.getByLabelText("Attached images").children).toHaveLength(1);
+    expect(
+      within(screen.getByLabelText("Attached images")).getAllByTestId("composer-attachment-chip"),
+    ).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Start chat" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
 
@@ -181,9 +209,9 @@ describe("MobileApp", () => {
       expect(launchProvider).toHaveBeenCalledWith(
         expect.objectContaining({
           prompt: "@/attachments/current.png",
-          attachments: [screenshot]
-        })
-      )
+          attachments: [screenshot],
+        }),
+      ),
     );
   });
 
@@ -241,8 +269,8 @@ describe("MobileApp", () => {
           id: "workspace-multitask",
           taskLabel: "Fix the changelog date",
           state: "running",
-          sharedWorkspace: true
-        }
+          sharedWorkspace: true,
+        },
       ],
       sessions: [
         { ...snapshot.sessions[0], state: "complete" },
@@ -253,9 +281,9 @@ describe("MobileApp", () => {
           state: "running",
           launchedBySessionId: snapshot.sessions[0].id,
           launchKind: "multitask",
-          prompt: "The changelog says 2025 for the 0.4 entry."
-        }
-      ]
+          prompt: "The changelog says 2025 for the 0.4 entry.",
+        },
+      ],
     });
 
     render(<MobileApp />);
@@ -265,7 +293,9 @@ describe("MobileApp", () => {
     // The parent's own turn is over; the sibling's is not, so this row still
     // carries the nest — a multitask has no list row of its own.
     expect(within(row).getByLabelText("running")).toBeInTheDocument();
-    expect(within(section).queryByRole("button", { name: /Fix the changelog date/ })).not.toBeInTheDocument();
+    expect(
+      within(section).queryByRole("button", { name: /Fix the changelog date/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("marks a chat unread once its reply lands after the last time it was read", async () => {
@@ -273,12 +303,12 @@ describe("MobileApp", () => {
     // seen by the phone is stamped to its current activity and must stay
     // quiet, and only activity past that stamp earns the dot.
     const workspace = snapshot.workspaces.find((candidate) =>
-      snapshot.sessions.some((session) => session.workspaceId === candidate.id)
+      snapshot.sessions.some((session) => session.workspaceId === candidate.id),
     );
     if (!workspace) throw new Error("fixture has no chat to mark unread");
     window.localStorage.setItem(
       SESSION_VIEWED_STORAGE_KEY,
-      JSON.stringify({ [workspace.id]: "2020-01-01T00:00:00.000Z" })
+      JSON.stringify({ [workspace.id]: "2020-01-01T00:00:00.000Z" }),
     );
     resetSessionUnreadForTests();
     mockDashboardSnapshot({
@@ -286,14 +316,16 @@ describe("MobileApp", () => {
       workspaces: snapshot.workspaces.map((candidate) =>
         candidate.id === workspace.id
           ? { ...candidate, state: "complete" as const, lastActivityAt: new Date().toISOString() }
-          : candidate
+          : candidate,
       ),
       // The nest follows session state now (plus any running multitask), not
       // the workspace row. A completed reply with a still-running session
       // would keep the nest and hide the unread dot.
       sessions: snapshot.sessions.map((candidate) =>
-        candidate.workspaceId === workspace.id ? { ...candidate, state: "complete" as const } : candidate
-      )
+        candidate.workspaceId === workspace.id
+          ? { ...candidate, state: "complete" as const }
+          : candidate,
+      ),
     });
 
     render(<MobileApp />);
@@ -312,9 +344,13 @@ describe("MobileApp", () => {
     const search = screen.getByRole("searchbox", { name: "Search chats" });
     fireEvent.change(search, { target: { value: "dashboard" } });
 
-    expect(await within(section).findByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
+    expect(
+      await within(section).findByRole("button", { name: /Build dashboard/ }),
+    ).toBeInTheDocument();
     fireEvent.change(search, { target: { value: "argmax" } });
-    expect(await within(section).findByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
+    expect(
+      await within(section).findByRole("button", { name: /Build dashboard/ }),
+    ).toBeInTheDocument();
   });
 
   it("floats working and attention rows into Priority, with pinned rows above it", async () => {
@@ -326,15 +362,15 @@ describe("MobileApp", () => {
           ...snapshot.workspaces[0],
           id: "workspace-2",
           taskLabel: "Fix flaky tests",
-          state: "running"
+          state: "running",
         },
         {
           ...snapshot.workspaces[0],
           id: "workspace-3",
           taskLabel: "Keep this handy",
           state: "running",
-          pinned: true
-        }
+          pinned: true,
+        },
       ],
       sessions: [
         ...snapshot.sessions,
@@ -345,7 +381,7 @@ describe("MobileApp", () => {
           state: "blocked",
           attention: "approval-needed",
           attentionChangedAt: new Date().toISOString(),
-          lastActivityAt: new Date().toISOString()
+          lastActivityAt: new Date().toISOString(),
         },
         {
           ...snapshot.sessions[0],
@@ -354,9 +390,9 @@ describe("MobileApp", () => {
           state: "blocked",
           attention: "approval-needed",
           attentionChangedAt: new Date().toISOString(),
-          lastActivityAt: new Date().toISOString()
-        }
-      ]
+          lastActivityAt: new Date().toISOString(),
+        },
+      ],
     };
     mockDashboardSnapshot(withApproval);
 
@@ -371,9 +407,13 @@ describe("MobileApp", () => {
     // chip on a row in the flat list.
     const priority = screen.getByRole("region", { name: "Priority" });
     expect(
-      within(within(priority).getByRole("button", { name: /Fix flaky tests/ })).getByLabelText("needs approval")
+      within(within(priority).getByRole("button", { name: /Fix flaky tests/ })).getByLabelText(
+        "needs approval",
+      ),
     ).toBeInTheDocument();
-    expect(await within(priority).findByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
+    expect(
+      await within(priority).findByRole("button", { name: /Build dashboard/ }),
+    ).toBeInTheDocument();
     // The marker carries it now; nothing spells the attention out in text.
     expect(priority).not.toHaveTextContent("needs approval");
   });
@@ -391,15 +431,17 @@ describe("MobileApp", () => {
           ...snapshot.workspaces[0],
           id: "workspace-stranded",
           taskLabel: "Stranded launch",
-          state: "created"
-        }
-      ]
+          state: "created",
+        },
+      ],
     });
 
     render(<MobileApp />);
 
     const section = await screen.findByRole("region", { name: "Chat list" });
-    expect(await within(section).findByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
+    expect(
+      await within(section).findByRole("button", { name: /Build dashboard/ }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Stranded launch/ })).not.toBeInTheDocument();
   });
 
@@ -419,9 +461,9 @@ describe("MobileApp", () => {
           payload: {
             id: "tu_agent",
             name: "Task",
-            input: { description: "Audit the dashboard query", prompt: "Read it and report back." }
+            input: { description: "Audit the dashboard query", prompt: "Read it and report back." },
           },
-          createdAt: "2026-05-08T15:54:01.000Z"
+          createdAt: "2026-05-08T15:54:01.000Z",
         },
         {
           id: "event-agent-done",
@@ -429,9 +471,9 @@ describe("MobileApp", () => {
           type: "command.completed",
           message: "tool_result",
           payload: { tool_use_id: "tu_agent", content: "No issues found." },
-          createdAt: "2026-05-08T15:54:02.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:02.000Z",
+        },
+      ],
     });
     render(<MobileApp />);
 
@@ -440,7 +482,7 @@ describe("MobileApp", () => {
     await screen.findByRole("region", { name: "Conversation" });
 
     const row = await screen.findByRole("button", {
-      name: startedAgentName("Audit the dashboard query")
+      name: startedAgentName("Audit the dashboard query"),
     });
     fireEvent.click(row);
 
@@ -448,7 +490,9 @@ describe("MobileApp", () => {
     expect(within(overlay).getByText("No issues found.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Close Delegated work" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument(),
+    );
   });
 
   it("brings the peek up over the parent's composer and multitask lane", async () => {
@@ -467,8 +511,8 @@ describe("MobileApp", () => {
           id: "workspace-multitask",
           taskLabel: "Fix the changelog date",
           state: "complete",
-          sharedWorkspace: true
-        }
+          sharedWorkspace: true,
+        },
       ],
       sessions: [
         ...snapshot.sessions,
@@ -479,8 +523,8 @@ describe("MobileApp", () => {
           state: "complete",
           launchedBySessionId: parent.id,
           launchKind: "multitask",
-          prompt: "The changelog says 2025 for the 0.4 entry."
-        }
+          prompt: "The changelog says 2025 for the 0.4 entry.",
+        },
       ],
       events: [
         ...snapshot.events,
@@ -494,19 +538,28 @@ describe("MobileApp", () => {
             childWorkspaceId: "workspace-multitask",
             taskLabel: "Fix the changelog date",
             prompt: "The changelog says 2025 for the 0.4 entry.",
-            worktree: false
+            worktree: false,
           },
-          createdAt: "2026-05-08T15:54:01.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:01.000Z",
+        },
+      ],
     });
 
     // jsdom measures everything as a zero box, so the untouched branch below
     // is what it would have returned anyway.
     const box = (top: number, bottom: number): DOMRect =>
-      ({ top, bottom, left: 0, right: 390, width: 390, height: bottom - top, x: 0, y: top }) as DOMRect;
+      ({
+        top,
+        bottom,
+        left: 0,
+        right: 390,
+        width: 390,
+        height: bottom - top,
+        x: 0,
+        y: top,
+      }) as DOMRect;
     const rects = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
-      this: Element
+      this: Element,
     ): DOMRect {
       if (this.classList.contains("session-main-column")) return box(0, 800);
       if (this.classList.contains("session-composer-stack")) return box(620, 800);
@@ -520,14 +573,22 @@ describe("MobileApp", () => {
       fireEvent.click(await within(list).findByRole("button", { name: /Build dashboard/ }));
       await screen.findByRole("region", { name: "Conversation" });
 
-      fireEvent.click(await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" }),
+      );
 
       const overlay = await screen.findByRole("dialog", { name: "Delegated work" });
       // No inline floor at all: the sheet's bottom is the screen's, in CSS.
-      expect(overlay.closest(".mobile-agent-overlay")).not.toHaveAttribute("style");
+      const overlayHost = screen
+        .getAllByTestId("mobile-agent-overlay")
+        .find((host) => host.contains(overlay));
+      expect(overlayHost).toBeDefined();
+      expect(overlayHost).not.toHaveAttribute("style");
 
       fireEvent.click(screen.getByRole("button", { name: "Close Delegated work" }));
-      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument(),
+      );
       // The parent's composer is answerable again the moment the sheet goes.
       expect(screen.getByRole("textbox", { name: "Chat prompt" })).toBeInTheDocument();
     } finally {
@@ -552,8 +613,8 @@ describe("MobileApp", () => {
           id: "workspace-multitask",
           taskLabel: "Fix the changelog date",
           state: "complete",
-          sharedWorkspace: true
-        }
+          sharedWorkspace: true,
+        },
       ],
       sessions: [
         ...snapshot.sessions,
@@ -564,8 +625,8 @@ describe("MobileApp", () => {
           state: "complete",
           launchedBySessionId: parent.id,
           launchKind: "multitask",
-          prompt: "The changelog says 2025 for the 0.4 entry."
-        }
+          prompt: "The changelog says 2025 for the 0.4 entry.",
+        },
       ],
       events: [
         ...snapshot.events,
@@ -579,9 +640,9 @@ describe("MobileApp", () => {
             childWorkspaceId: "workspace-multitask",
             taskLabel: "Fix the changelog date",
             prompt: "The changelog says 2025 for the 0.4 entry.",
-            worktree: false
+            worktree: false,
           },
-          createdAt: "2026-05-08T15:54:01.000Z"
+          createdAt: "2026-05-08T15:54:01.000Z",
         },
         {
           id: "event-multitask-user",
@@ -589,7 +650,7 @@ describe("MobileApp", () => {
           type: "user.message",
           message: "The changelog says 2025 for the 0.4 entry.",
           payload: { source: "multitask" },
-          createdAt: "2026-05-08T15:54:01.000Z"
+          createdAt: "2026-05-08T15:54:01.000Z",
         },
         {
           id: "event-multitask-edit-start",
@@ -602,10 +663,10 @@ describe("MobileApp", () => {
             input: {
               file_path: "/tmp/worktrees/dashboard/CHANGELOG.md",
               old_string: "2025",
-              new_string: "2026"
-            }
+              new_string: "2026",
+            },
           },
-          createdAt: "2026-05-08T15:54:02.000Z"
+          createdAt: "2026-05-08T15:54:02.000Z",
         },
         {
           id: "event-multitask-edit-done",
@@ -613,7 +674,7 @@ describe("MobileApp", () => {
           type: "command.completed",
           message: "Edit",
           payload: { id: "edit-1", name: "Edit", output: "ok" },
-          createdAt: "2026-05-08T15:54:03.000Z"
+          createdAt: "2026-05-08T15:54:03.000Z",
         },
         {
           id: "event-multitask-answer",
@@ -621,16 +682,18 @@ describe("MobileApp", () => {
           type: "message.completed",
           message: "Corrected the 0.4 heading to 2026.",
           payload: {},
-          createdAt: "2026-05-08T15:54:04.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:04.000Z",
+        },
+      ],
     });
 
     render(<MobileApp />);
     const list = await screen.findByRole("region", { name: "Chat list" });
     fireEvent.click(await within(list).findByRole("button", { name: /Build dashboard/ }));
     await screen.findByRole("region", { name: "Conversation" });
-    fireEvent.click(await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" }),
+    );
     await screen.findByRole("dialog", { name: "Delegated work" });
   }
 
@@ -640,7 +703,7 @@ describe("MobileApp", () => {
       kind: "text",
       content: "## 0.4 — 2026",
       size: 13,
-      mtimeMs: 1
+      mtimeMs: 1,
     });
 
     await openMultitaskPeekWithChanges();
@@ -648,8 +711,8 @@ describe("MobileApp", () => {
     // The turn's activity rows name the same file, so reach the row through
     // the changes card's own header rather than by label alone.
     const header = await screen.findByRole("button", { name: "Hide 1 file changed" });
-    const card = header.closest("section");
-    if (!card) throw new Error("turn changes card is not a section");
+    const card = screen.getAllByTestId("turn-changes").find((section) => section.contains(header));
+    if (!card) throw new Error("turn changes card not found");
     fireEvent.click(within(card).getByRole("button", { name: "Edited CHANGELOG.md" }));
 
     await screen.findByRole("tablist", { name: "Review mode" });
@@ -658,7 +721,7 @@ describe("MobileApp", () => {
 
   it("opens the review screen's changes from a multitask peek's Review button", async () => {
     listChangedFiles.mockResolvedValue([
-      { path: "CHANGELOG.md", status: "modified", additions: 1, deletions: 1, staged: false }
+      { path: "CHANGELOG.md", status: "modified", additions: 1, deletions: 1, staged: false },
     ]);
 
     await openMultitaskPeekWithChanges();
@@ -685,9 +748,9 @@ describe("MobileApp", () => {
           payload: {
             id: "tu_agent",
             name: "Task",
-            input: { description: "Audit the dashboard query", prompt: "Read it and report back." }
+            input: { description: "Audit the dashboard query", prompt: "Read it and report back." },
           },
-          createdAt: "2026-05-08T15:54:01.000Z"
+          createdAt: "2026-05-08T15:54:01.000Z",
         },
         {
           id: "event-agent-done",
@@ -695,23 +758,27 @@ describe("MobileApp", () => {
           type: "command.completed",
           message: "tool_result",
           payload: { tool_use_id: "tu_agent", content: "No issues found." },
-          createdAt: "2026-05-08T15:54:02.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:02.000Z",
+        },
+      ],
     });
     render(<MobileApp />);
 
     const list = await screen.findByRole("region", { name: "Chat list" });
     fireEvent.click(await within(list).findByRole("button", { name: /Build dashboard/ }));
     await screen.findByRole("region", { name: "Conversation" });
-    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Audit the dashboard query") }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: startedAgentName("Audit the dashboard query") }),
+    );
     await screen.findByRole("dialog", { name: "Delegated work" });
 
     act(() => {
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
 
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument(),
+    );
     expect(screen.getByRole("region", { name: "Conversation" })).toBeInTheDocument();
   });
 
@@ -746,13 +813,13 @@ describe("MobileApp", () => {
     const activity = new Date().toISOString();
     window.localStorage.setItem(
       SESSION_VIEWED_STORAGE_KEY,
-      JSON.stringify({ "workspace-1": "2020-01-01T00:00:00.000Z" })
+      JSON.stringify({ "workspace-1": "2020-01-01T00:00:00.000Z" }),
     );
     resetSessionUnreadForTests();
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: snapshot.workspaces.map((workspace) =>
-        workspace.id === "workspace-1" ? { ...workspace, lastActivityAt: activity } : workspace
+        workspace.id === "workspace-1" ? { ...workspace, lastActivityAt: activity } : workspace,
       ),
       sessions: snapshot.sessions.map((session) =>
         session.workspaceId === "workspace-1"
@@ -761,10 +828,10 @@ describe("MobileApp", () => {
               state: "complete" as const,
               attention: "review-ready" as const,
               attentionChangedAt: activity,
-              lastActivityAt: activity
+              lastActivityAt: activity,
             }
-          : session
-      )
+          : session,
+      ),
     });
     render(<MobileApp />);
 
@@ -790,8 +857,8 @@ describe("MobileApp", () => {
       sessions: snapshot.sessions.map((session) =>
         session.workspaceId === "workspace-1"
           ? { ...session, provider: "claude" as const, state: "complete" as const }
-          : session
-      )
+          : session,
+      ),
     });
     render(<MobileApp />);
 
@@ -801,7 +868,7 @@ describe("MobileApp", () => {
 
     const fork = vi.fn().mockResolvedValue({
       workspace: { id: "workspace-1" },
-      session: { id: "session-fork" }
+      session: { id: "session-fork" },
     });
     window.argmax!.session.fork = fork;
 
@@ -816,7 +883,7 @@ describe("MobileApp", () => {
   it("shows all branch changes without a comparison picker", async () => {
     window.localStorage.setItem("argmax.reviewPanel.changesScope", "uncommitted");
     listChangedFiles.mockResolvedValue([
-      { path: "src/foo.ts", status: "modified", additions: 1, deletions: 0, staged: false }
+      { path: "src/foo.ts", status: "modified", additions: 1, deletions: 0, staged: false },
     ]);
     render(<MobileApp />);
     const section = await screen.findByRole("region", { name: "Chat list" });
@@ -826,14 +893,17 @@ describe("MobileApp", () => {
     await screen.findByRole("tablist", { name: "Review mode" });
 
     await waitFor(() =>
-      expect(listChangedFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" }, "branch")
+      expect(listChangedFiles).toHaveBeenCalledWith(
+        { kind: "workspace", id: "workspace-1" },
+        "branch",
+      ),
     );
     expect(screen.queryByRole("button", { name: "Changes shown" })).not.toBeInTheDocument();
   });
 
   it("browses changed diffs and the file tree from the session screen", async () => {
     listChangedFiles.mockResolvedValue([
-      { path: "src/foo.ts", status: "modified", additions: 1, deletions: 0, staged: false }
+      { path: "src/foo.ts", status: "modified", additions: 1, deletions: 0, staged: false },
     ]);
     loadDiff.mockResolvedValue({
       workspaceId: "workspace-1",
@@ -844,12 +914,17 @@ describe("MobileApp", () => {
         "+++ b/src/foo.ts",
         "@@ -1,1 +1,2 @@",
         " const a = 1;",
-        "+const b = 2;"
+        "+const b = 2;",
       ].join("\n"),
-      revision: "test-revision"
+      revision: "test-revision",
     });
     listWorkspaceFiles.mockResolvedValue([{ path: "src/foo.ts" }, { path: "README.md" }]);
-    readWorkspaceFile.mockResolvedValue({ kind: "text", content: "hello world", size: 11, mtimeMs: 1 });
+    readWorkspaceFile.mockResolvedValue({
+      kind: "text",
+      content: "hello world",
+      size: 11,
+      mtimeMs: 1,
+    });
 
     render(<MobileApp />);
     const section = await screen.findByRole("region", { name: "Chat list" });
@@ -932,7 +1007,7 @@ describe("MobileApp", () => {
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [{ ...snapshot.workspaces[0], state: "complete" }],
-      sessions: [{ ...snapshot.sessions[0], state: "complete" }]
+      sessions: [{ ...snapshot.sessions[0], state: "complete" }],
     });
 
     render(<MobileApp />);
@@ -945,7 +1020,9 @@ describe("MobileApp", () => {
     act(() => remote.publish({ status: "connected", resync: true }));
 
     await waitFor(() => expect(sessionEventsSince.mock.calls.length).toBeGreaterThan(before));
-    expect(sessionEventsSince).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: "session-1" }));
+    expect(sessionEventsSince).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionId: "session-1" }),
+    );
   });
 
   it("launches a new session in the current checkout from the + screen", async () => {
@@ -955,7 +1032,7 @@ describe("MobileApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
     await screen.findByLabelText("Task");
     fireEvent.change(screen.getByLabelText("Task"), {
-      target: { value: "Fix the flaky archive test" }
+      target: { value: "Fix the flaky archive test" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
 
@@ -973,16 +1050,24 @@ describe("MobileApp", () => {
         prompt: "Fix the flaky archive test",
         provider: "claude",
         modelId: "claude-opus-5-5",
-        fastMode: false
-      })
+        fastMode: false,
+      }),
     );
     expect(launchProvider.mock.calls[0][0]).not.toHaveProperty("permissionMode");
     expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
   });
 
   it("goes straight from the new-chat screen into the launched chat", async () => {
-    const launchedWorkspace = { ...snapshot.workspaces[0], id: "workspace-new", taskLabel: "Fresh chat" };
-    const launchedSession = { ...snapshot.sessions[0], id: "session-new", workspaceId: "workspace-new" };
+    const launchedWorkspace = {
+      ...snapshot.workspaces[0],
+      id: "workspace-new",
+      taskLabel: "Fresh chat",
+    };
+    const launchedSession = {
+      ...snapshot.sessions[0],
+      id: "session-new",
+      workspaceId: "workspace-new",
+    };
     createCurrentWorkspace.mockResolvedValue(launchedWorkspace);
     launchProvider.mockResolvedValue(launchedSession);
 
@@ -991,7 +1076,7 @@ describe("MobileApp", () => {
 
     // The shell's screen attribute is the navigation itself: a "list" reading
     // between "new" and "session" is the flash this guards against.
-    const shell = document.querySelector(".mobile-shell") as HTMLElement;
+    const shell = screen.getByTestId("mobile-shell");
     const screens: string[] = [];
     const observer = new MutationObserver(() => {
       const current = shell.dataset.screen ?? "";
@@ -1019,8 +1104,8 @@ describe("MobileApp", () => {
         ...session,
         state: "running" as const,
         startedAt: new Date().toISOString(),
-        completedAt: null
-      }))
+        completedAt: null,
+      })),
     });
 
     render(<MobileApp />);
@@ -1031,7 +1116,9 @@ describe("MobileApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stop chat" }));
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
-    await waitFor(() => expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: true }));
+    await waitFor(() =>
+      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: true }),
+    );
     expect(await screen.findByRole("region", { name: "Chat list" })).toBeInTheDocument();
   });
 
@@ -1044,11 +1131,11 @@ describe("MobileApp", () => {
       fireEvent.click(screen.getByRole("button", { name: "New chat" }));
       await screen.findByLabelText("Task");
       const screenshot = new File([new Uint8Array([137, 80, 78, 71])], "screenshot.png", {
-        type: "image/png"
+        type: "image/png",
       });
-      const input = document.querySelector('input[type="file"]');
-      expect(input).not.toBeNull();
-      fireEvent.change(input as HTMLInputElement, { target: { files: [screenshot] } });
+      const input = screen.getByTestId("attachment-input");
+      expect(input).toHaveAttribute("type", "file");
+      fireEvent.change(input, { target: { files: [screenshot] } });
 
       // The thumbnail is the whole chip — the image is its own label, so the
       // only text to assert on is the button that opens it.
@@ -1058,7 +1145,7 @@ describe("MobileApp", () => {
       fireEvent.click(screen.getByRole("button", { name: "Close image preview" }));
       expect(screen.queryByRole("dialog", { name: "Attached image" })).toBeNull();
       fireEvent.change(screen.getByLabelText("Task"), {
-        target: { value: "Review this screenshot" }
+        target: { value: "Review this screenshot" },
       });
       fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
 
@@ -1066,8 +1153,8 @@ describe("MobileApp", () => {
       expect(launchProvider).toHaveBeenCalledWith(
         expect.objectContaining({
           prompt: "Review this screenshot @/tmp/fake.png",
-          attachments: [{ filePath: "/tmp/fake.png", mimeType: "image/png", sizeBytes: 0 }]
-        })
+          attachments: [{ filePath: "/tmp/fake.png", mimeType: "image/png", sizeBytes: 0 }],
+        }),
       );
     } finally {
       restoreObjectUrl();
@@ -1123,7 +1210,7 @@ describe("MobileApp", () => {
 
     await waitFor(() => {
       expect(createIsolatedWorkspace).toHaveBeenCalledWith(
-        expect.objectContaining({ projectId: snapshot.projects[0].id })
+        expect.objectContaining({ projectId: snapshot.projects[0].id }),
       );
     });
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
@@ -1135,15 +1222,15 @@ describe("MobileApp", () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
 
-    const row = (await screen.findByRole("button", { name: /Build dashboard/ })).closest("li");
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
+    const row = chatRowFor(await screen.findByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click(within(row).getByRole("button", { name: "Chat actions" }));
     const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
 
     fireEvent.click(within(sheet).getByRole("button", { name: "New chat here" }));
     await screen.findByLabelText("Task");
 
     const workspaceBtn = screen.getByRole("button", { name: "Workspace" });
-    expect(workspaceBtn.closest(".mobile-new-row")).toHaveTextContent("New worktree · from Build dashboard");
+    expect(newRowFor(workspaceBtn)).toHaveTextContent("New worktree · from Build dashboard");
 
     fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Follow up work" } });
     fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
@@ -1152,8 +1239,8 @@ describe("MobileApp", () => {
       expect(createIsolatedWorkspace).toHaveBeenCalledWith(
         expect.objectContaining({
           projectId: snapshot.projects[0].id,
-          baseRef: "argmax/dashboard"
-        })
+          baseRef: "argmax/dashboard",
+        }),
       );
     });
   });
@@ -1163,22 +1250,24 @@ describe("MobileApp", () => {
       ...snapshot,
       workspaces: [
         ...snapshot.workspaces.map((workspace) =>
-          workspace.taskLabel === "Build dashboard" ? { ...workspace, projectFolderId: "folder-data" } : workspace
+          workspace.taskLabel === "Build dashboard"
+            ? { ...workspace, projectFolderId: "folder-data" }
+            : workspace,
         ),
         {
           ...snapshot.workspaces[0],
           id: "workspace-other-folder",
           projectFolderId: "folder-web",
           taskLabel: "Polish site",
-          branch: "argmax/site"
-        }
-      ]
+          branch: "argmax/site",
+        },
+      ],
     });
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
 
-    const row = (await screen.findByRole("button", { name: /Build dashboard/ })).closest("li");
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
+    const row = chatRowFor(await screen.findByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click(within(row).getByRole("button", { name: "Chat actions" }));
     const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
     fireEvent.click(within(sheet).getByRole("button", { name: "New chat here" }));
     fireEvent.change(await screen.findByLabelText("Task"), { target: { value: "Follow up work" } });
@@ -1186,13 +1275,19 @@ describe("MobileApp", () => {
     // new worktree leaves the base to the host.
     fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     const workspaceSheet = await screen.findByRole("dialog", { name: "Choose workspace" });
-    expect(within(workspaceSheet).queryByRole("button", { name: "Polish site argmax/site" })).not.toBeInTheDocument();
+    expect(
+      within(workspaceSheet).queryByRole("button", { name: "Polish site argmax/site" }),
+    ).not.toBeInTheDocument();
     fireEvent.click(within(workspaceSheet).getByRole("button", { name: "New worktree" }));
     fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
 
     await waitFor(() => {
       expect(createIsolatedWorkspace).toHaveBeenCalledWith(
-        expect.objectContaining({ projectId: snapshot.projects[0].id, projectFolderId: "folder-data", baseRef: null })
+        expect.objectContaining({
+          projectId: snapshot.projects[0].id,
+          projectFolderId: "folder-data",
+          baseRef: null,
+        }),
       );
     });
   });
@@ -1209,12 +1304,12 @@ describe("MobileApp", () => {
     fireEvent.click(
       // The row is a ledger entry now: the worktree's title leads and its
       // branch sits underneath, so the accessible name is the two joined.
-      within(sheet).getByRole("button", { name: "Build dashboard argmax/dashboard" })
+      within(sheet).getByRole("button", { name: "Build dashboard argmax/dashboard" }),
     );
     expect(screen.queryByRole("dialog", { name: "Choose workspace" })).not.toBeInTheDocument();
 
     const workspaceBtn = screen.getByRole("button", { name: "Workspace" });
-    expect(workspaceBtn.closest(".mobile-new-row")).toHaveTextContent("New worktree · from Build dashboard");
+    expect(newRowFor(workspaceBtn)).toHaveTextContent("New worktree · from Build dashboard");
 
     fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Branch from dashboard" } });
     fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
@@ -1223,8 +1318,8 @@ describe("MobileApp", () => {
       expect(createIsolatedWorkspace).toHaveBeenCalledWith(
         expect.objectContaining({
           projectId: snapshot.projects[0].id,
-          baseRef: "argmax/dashboard"
-        })
+          baseRef: "argmax/dashboard",
+        }),
       );
     });
   });
@@ -1276,7 +1371,9 @@ describe("MobileApp", () => {
     expect(screen.queryByRole("button", { name: "Project" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(SIDE_CHAT_TITLE);
 
-    fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Explain event sourcing" } });
+    fireEvent.change(screen.getByLabelText("Task"), {
+      target: { value: "Explain event sourcing" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
 
     await waitFor(() => expect(createScratchWorkspace).toHaveBeenCalledTimes(1));
@@ -1291,8 +1388,8 @@ describe("MobileApp", () => {
         workspaceId: "workspace-chat",
         prompt: "Explain event sourcing",
         provider: "claude",
-        modelId: "claude-opus-5-5"
-      })
+        modelId: "claude-opus-5-5",
+      }),
     );
   });
 
@@ -1319,14 +1416,16 @@ describe("MobileApp", () => {
     render(<MobileApp />);
     const list = await screen.findByRole("region", { name: "Chat list" });
 
-    const row = (await within(list).findByRole("button", { name: /Build dashboard/ })).closest(".mobile-session-item");
-    if (!row) throw new Error("no row");
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
+    const row = chatRowFor(await within(list).findByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click(within(row).getByRole("button", { name: "Chat actions" }));
     fireEvent.click(await screen.findByRole("button", { name: /^Archive/ }));
 
     // Workspace 0 is dirty and not shared, so the confirm runs and force goes out.
     await waitFor(() =>
-      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: snapshot.workspaces[0].id, force: true })
+      expect(archiveWorkspace).toHaveBeenCalledWith({
+        workspaceId: snapshot.workspaces[0].id,
+        force: true,
+      }),
     );
     expect(confirmSpy).toHaveBeenCalledTimes(1);
     expect(await screen.findByRole("region", { name: "Chat list" })).toBeInTheDocument();
@@ -1359,14 +1458,17 @@ describe("MobileApp", () => {
     await screen.findByRole("region", { name: "Chat list" });
     const setPinned = vi.spyOn(window.argmax!.workspaces, "setPinned");
 
-    const row = (await screen.findByRole("button", { name: /Build dashboard/ })).closest("li");
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
+    const row = chatRowFor(await screen.findByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click(within(row).getByRole("button", { name: "Chat actions" }));
     const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
     fireEvent.click(within(sheet).getByRole("button", { name: "Pin to top" }));
 
     expect(screen.queryByRole("dialog", { name: "Chat actions" })).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(setPinned).toHaveBeenCalledWith({ workspaceId: snapshot.workspaces[0].id, pinned: true })
+      expect(setPinned).toHaveBeenCalledWith({
+        workspaceId: snapshot.workspaces[0].id,
+        pinned: true,
+      }),
     );
   });
 
@@ -1378,20 +1480,20 @@ describe("MobileApp", () => {
       sessions: snapshot.sessions.map((session) =>
         session.workspaceId === "workspace-1"
           ? { ...session, provider: "claude" as const, state: "complete" as const }
-          : session
-      )
+          : session,
+      ),
     });
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
 
     const fork = vi.fn().mockResolvedValue({
       workspace: { id: "workspace-1" },
-      session: { id: "session-fork" }
+      session: { id: "session-fork" },
     });
     window.argmax!.session.fork = fork;
 
-    const row = (await screen.findByRole("button", { name: /Build dashboard/ })).closest("li");
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
+    const row = chatRowFor(await screen.findByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click(within(row).getByRole("button", { name: "Chat actions" }));
     const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
     fireEvent.click(within(sheet).getByRole("button", { name: /^Fork chat/ }));
 
@@ -1406,8 +1508,8 @@ describe("MobileApp", () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
 
-    const row = (await screen.findByRole("button", { name: /Build dashboard/ })).closest("li");
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
+    const row = chatRowFor(await screen.findByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click(within(row).getByRole("button", { name: "Chat actions" }));
     const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
 
     expect(within(sheet).queryByRole("button", { name: /^Fork chat/ })).not.toBeInTheDocument();
@@ -1430,7 +1532,12 @@ describe("MobileApp", () => {
 
   it("pops the file preview on a back gesture, keeping the review screen open", async () => {
     listWorkspaceFiles.mockResolvedValue([{ path: "README.md" }]);
-    readWorkspaceFile.mockResolvedValue({ kind: "text", content: "hello world", size: 11, mtimeMs: 1 });
+    readWorkspaceFile.mockResolvedValue({
+      kind: "text",
+      content: "hello world",
+      size: 11,
+      mtimeMs: 1,
+    });
 
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
@@ -1460,8 +1567,8 @@ describe("MobileApp", () => {
   it("closes the row actions sheet on a back gesture instead of leaving the list", async () => {
     render(<MobileApp />);
     const item = await screen.findByRole("button", { name: /Build dashboard/ });
-    const row = item.closest("li");
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
+    const row = chatRowFor(item);
+    fireEvent.click(within(row).getByRole("button", { name: "Chat actions" }));
     await screen.findByRole("dialog", { name: "Chat actions" });
 
     act(() => {
@@ -1494,8 +1601,8 @@ describe("MobileApp", () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
 
-    const row = (await screen.findByRole("button", { name: /Build dashboard/ })).closest("li");
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
+    const row = chatRowFor(await screen.findByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click(within(row).getByRole("button", { name: "Chat actions" }));
     const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
     expect(sheet).toHaveAttribute("aria-modal", "true");
 
@@ -1523,7 +1630,10 @@ describe("MobileApp", () => {
     fireEvent.click(within(themePicker).getByRole("radio", { name: "Light" }));
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
     expect(window.localStorage.getItem("argmax.theme.mode")).toBe("light");
-    expect(within(themePicker).getByRole("radio", { name: "Light" })).toHaveAttribute("aria-checked", "true");
+    expect(within(themePicker).getByRole("radio", { name: "Light" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
 
     fireEvent.click(within(themePicker).getByRole("radio", { name: "Dark" }));
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
@@ -1550,16 +1660,25 @@ describe("MobileApp", () => {
 
     openAppearance();
     const accentPicker = screen.getByRole("radiogroup", { name: "Accent" });
-    expect(within(accentPicker).getByRole("radio", { name: "Green" })).toHaveAttribute("aria-checked", "true");
+    expect(within(accentPicker).getByRole("radio", { name: "Green" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     expect(within(accentPicker).getByRole("radio", { name: "Black" })).toBeTruthy();
 
     fireEvent.click(within(accentPicker).getByRole("radio", { name: "Orange" }));
     expect(document.documentElement.getAttribute("data-accent")).toBe("orange");
     expect(window.localStorage.getItem("argmax.accent.tint")).toBe("orange");
-    expect(within(accentPicker).getByRole("radio", { name: "Orange" })).toHaveAttribute("aria-checked", "true");
+    expect(within(accentPicker).getByRole("radio", { name: "Orange" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
 
     const bubblePicker = screen.getByRole("radiogroup", { name: "Your message bubbles" });
-    expect(within(bubblePicker).getByRole("radio", { name: "Accent" })).toHaveAttribute("aria-checked", "true");
+    expect(within(bubblePicker).getByRole("radio", { name: "Accent" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     fireEvent.click(within(bubblePicker).getByRole("radio", { name: "Neutral" }));
     expect(document.documentElement.getAttribute("data-user-bubble")).toBe("neutral");
     expect(window.localStorage.getItem("argmax.chat.bubbleTint")).toBe("neutral");

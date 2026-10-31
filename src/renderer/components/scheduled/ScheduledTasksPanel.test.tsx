@@ -26,7 +26,7 @@ function routine(overrides: Partial<Routine> = {}): Routine {
     createdBy: "user",
     createdAt: "2026-08-30T08:00:00.000Z",
     updatedAt: "2026-08-30T08:00:00.000Z",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -42,7 +42,7 @@ function arc(overrides: Partial<ArcRecord> = {}): ArcRecord {
     createdAt: "2026-08-30T08:00:00.000Z",
     updatedAt: "2026-08-30T08:00:00.000Z",
     archivedAt: null,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -57,10 +57,10 @@ function project(): ProjectSummary {
       mergeCleanup: "off",
       worktreeLocation: "/tmp/worktrees",
       setupCommand: "",
-      checkCommands: []
+      checkCommands: [],
     },
     counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
-    latestActivityAt: null
+    latestActivityAt: null,
   };
 }
 
@@ -70,15 +70,15 @@ const routinesStub = {
   delete: vi.fn<ArgmaxApi["routines"]["delete"]>(),
   setEnabled: vi.fn<ArgmaxApi["routines"]["setEnabled"]>(),
   runNow: vi.fn<ArgmaxApi["routines"]["runNow"]>(),
-  resetSession: vi.fn<ArgmaxApi["routines"]["resetSession"]>()
+  resetSession: vi.fn<ArgmaxApi["routines"]["resetSession"]>(),
 };
 
 const systemStub = {
-  confirm: vi.fn<ArgmaxApi["system"]["confirm"]>()
+  confirm: vi.fn<ArgmaxApi["system"]["confirm"]>(),
 };
 
 const arcsStub = {
-  list: vi.fn<ArgmaxApi["arcs"]["list"]>()
+  list: vi.fn<ArgmaxApi["arcs"]["list"]>(),
 };
 
 beforeEach(() => {
@@ -100,21 +100,23 @@ beforeEach(() => {
         ...input,
         enabled: input.enabled ?? true,
         runTarget: input.runTarget ?? (input.worktree ? "worktree" : "new_session"),
-        arcId: input.arcId ?? null
-      })
-    )
+        arcId: input.arcId ?? null,
+      }),
+    ),
   );
-  routinesStub.setEnabled.mockImplementation((id, enabled) => Promise.resolve(routine({ id, enabled })));
+  routinesStub.setEnabled.mockImplementation((id, enabled) =>
+    Promise.resolve(routine({ id, enabled })),
+  );
   routinesStub.runNow.mockImplementation((id) => Promise.resolve(routine({ id, enabled: false })));
   routinesStub.resetSession.mockImplementation((id) =>
-    Promise.resolve(routine({ id, runTarget: "same_session", lastSessionId: null }))
+    Promise.resolve(routine({ id, runTarget: "same_session", lastSessionId: null })),
   );
   systemStub.confirm.mockResolvedValue(true);
   arcsStub.list.mockResolvedValue([arc()]);
   window.argmax = {
     routines: routinesStub,
     system: systemStub,
-    arcs: arcsStub
+    arcs: arcsStub,
   } as unknown as ArgmaxApi;
 });
 
@@ -135,7 +137,10 @@ describe("ScheduledTasksPanel", () => {
   });
 
   it("counts the tasks and calls out the paused ones", async () => {
-    routinesStub.list.mockResolvedValue([routine(), routine({ id: "r2", name: "Nightly", enabled: false })]);
+    routinesStub.list.mockResolvedValue([
+      routine(),
+      routine({ id: "r2", name: "Nightly", enabled: false }),
+    ]);
     render(<ScheduledTasksPanel projects={[project()]} />);
 
     expect(await screen.findByText(/2 tasks/)).toBeInTheDocument();
@@ -152,7 +157,9 @@ describe("ScheduledTasksPanel", () => {
   });
 
   it("shows and saves a task stored on a retired model as its successor", async () => {
-    routinesStub.list.mockResolvedValue([routine({ modelLabel: "Sonnet 5", modelId: "claude-sonnet-5" })]);
+    routinesStub.list.mockResolvedValue([
+      routine({ modelLabel: "Sonnet 5", modelId: "claude-sonnet-5" }),
+    ]);
     render(<ScheduledTasksPanel projects={[project()]} />);
 
     expect(await screen.findByRole("listitem")).toHaveTextContent("Claude Sonnet 5.5");
@@ -161,8 +168,8 @@ describe("ScheduledTasksPanel", () => {
 
     await waitFor(() =>
       expect(routinesStub.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({ modelLabel: "Sonnet 5.5", modelId: "claude-sonnet-5-5" })
-      )
+        expect.objectContaining({ modelLabel: "Sonnet 5.5", modelId: "claude-sonnet-5-5" }),
+      ),
     );
   });
 
@@ -172,7 +179,7 @@ describe("ScheduledTasksPanel", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "New task" }));
     expect(screen.getByText(/use the permission setting for their provider/)).toHaveTextContent(
-      "Scheduled runs use the permission setting for their provider and may wait for approval."
+      "Scheduled runs use the permission setting for their provider and may wait for approval.",
     );
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Nightly triage" } });
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Triage the board" } });
@@ -187,9 +194,9 @@ describe("ScheduledTasksPanel", () => {
           cronExpr: "0 0 9 * * *",
           runOnceAt: null,
           worktree: true,
-          runTarget: "worktree"
-        })
-      )
+          runTarget: "worktree",
+        }),
+      ),
     );
   });
 
@@ -214,9 +221,9 @@ describe("ScheduledTasksPanel", () => {
         expect.objectContaining({
           name: "Status check",
           runTarget: "arc_coordinator",
-          arcId: "arc-1"
-        })
-      )
+          arcId: "arc-1",
+        }),
+      ),
     );
   });
 
@@ -264,14 +271,16 @@ describe("ScheduledTasksPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Create task" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Choose an Arc for this task's coordinator.");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Choose an Arc for this task's coordinator.",
+    );
     expect(routinesStub.upsert).not.toHaveBeenCalled();
   });
 
   it("offers open chat and reset for same-session tasks", async () => {
     const onOpenSession = vi.fn();
     routinesStub.list.mockResolvedValue([
-      routine({ runTarget: "same_session", lastSessionId: "s-shared", worktree: false })
+      routine({ runTarget: "same_session", lastSessionId: "s-shared", worktree: false }),
     ]);
     render(<ScheduledTasksPanel projects={[project()]} onOpenSession={onOpenSession} />);
 
@@ -287,7 +296,7 @@ describe("ScheduledTasksPanel", () => {
     systemStub.confirm.mockReturnValue(
       new Promise((resolve) => {
         settleConfirmation = resolve;
-      })
+      }),
     );
     render(<ScheduledTasksPanel projects={[project()]} />);
 
@@ -297,7 +306,9 @@ describe("ScheduledTasksPanel", () => {
     expect(screen.getByRole("button", { name: "Delete Morning triage" })).toBeDisabled();
 
     settleConfirmation!(false);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Delete Morning triage" })).toBeEnabled());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Delete Morning triage" })).toBeEnabled(),
+    );
     expect(routinesStub.delete).not.toHaveBeenCalled();
   });
 
@@ -343,7 +354,9 @@ describe("ScheduledTasksPanel", () => {
   });
 
   it("surfaces the backend validation error in a toast instead of saving", async () => {
-    routinesStub.upsert.mockRejectedValue(new Error("provide a cron expression or a one-shot time"));
+    routinesStub.upsert.mockRejectedValue(
+      new Error("provide a cron expression or a one-shot time"),
+    );
     render(<ScheduledTasksPanel projects={[project()]} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "New task" }));
@@ -351,7 +364,9 @@ describe("ScheduledTasksPanel", () => {
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Do things" } });
     fireEvent.click(screen.getByRole("button", { name: "Create task" }));
 
-    await waitFor(() => expect(toastSnapshot()?.message).toContain("provide a cron expression or a one-shot time"));
+    await waitFor(() =>
+      expect(toastSnapshot()?.message).toContain("provide a cron expression or a one-shot time"),
+    );
     expect(routinesStub.list).toHaveBeenCalledTimes(1);
   });
 });

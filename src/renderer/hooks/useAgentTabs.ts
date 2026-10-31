@@ -28,15 +28,17 @@ interface AgentTabs extends AgentTabsState {
 }
 
 export function useAgentTabs(): AgentTabs {
-  const [{ tabIds, activeTabId }, setTabs] = useState<Pick<AgentTabsState, "tabIds" | "activeTabId">>({
+  const [{ tabIds, activeTabId }, setTabs] = useState<
+    Pick<AgentTabsState, "tabIds" | "activeTabId">
+  >({
     tabIds: [],
-    activeTabId: null
+    activeTabId: null,
   });
 
   const openTab = useCallback((tabId: string): void => {
     setTabs((current) => ({
       tabIds: current.tabIds.includes(tabId) ? current.tabIds : [...current.tabIds, tabId],
-      activeTabId: tabId
+      activeTabId: tabId,
     }));
   }, []);
 
@@ -49,7 +51,9 @@ export function useAgentTabs(): AgentTabs {
   }, []);
 
   const selectTab = useCallback((tabId: string): void => {
-    setTabs((current) => (current.activeTabId === tabId ? current : { ...current, activeTabId: tabId }));
+    setTabs((current) =>
+      current.activeTabId === tabId ? current : { ...current, activeTabId: tabId },
+    );
   }, []);
 
   // Closing the active tab activates the right neighbour, else the left — the
@@ -62,7 +66,9 @@ export function useAgentTabs(): AgentTabs {
       return {
         tabIds: remaining,
         activeTabId:
-          current.activeTabId === tabId ? (remaining[index] ?? remaining[index - 1] ?? null) : current.activeTabId
+          current.activeTabId === tabId
+            ? (remaining[index] ?? remaining[index - 1] ?? null)
+            : current.activeTabId,
       };
     });
   }, []);
@@ -77,7 +83,7 @@ export function useAgentTabs(): AgentTabs {
       tabIds: current.tabIds
         .map((id) => (id === fromTabId ? toTabId : id))
         .filter((id, index, all) => all.indexOf(id) === index),
-      activeTabId: current.activeTabId === fromTabId ? toTabId : current.activeTabId
+      activeTabId: current.activeTabId === fromTabId ? toTabId : current.activeTabId,
     }));
   }, []);
 
@@ -90,6 +96,6 @@ export function useAgentTabs(): AgentTabs {
     closeTab,
     replaceTab,
     closeAllTabs,
-    resetForSourceChange: closeAllTabs
+    resetForSourceChange: closeAllTabs,
   };
 }

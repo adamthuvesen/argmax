@@ -43,7 +43,7 @@ function inputWith(overrides: Partial<SettingCommandsInput> = {}): SettingComman
     onContextIndicatorEnabledChange: vi.fn(),
     windowTranslucent: false,
     onWindowTranslucentChange: vi.fn(),
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -97,7 +97,9 @@ describe("buildSettingCommands", () => {
 
   it("marks only the current value of each setting with a check", () => {
     const commands = buildSettingCommands(inputWith({ themeMode: "system", chatVerbosity: 1 }));
-    const checked = commands.filter((command) => command.icon === Check).map((command) => command.id);
+    const checked = commands
+      .filter((command) => command.icon === Check)
+      .map((command) => command.id);
     expect(checked).toEqual([
       "setting:theme:system",
       "setting:accent:green",
@@ -111,17 +113,19 @@ describe("buildSettingCommands", () => {
       "setting:ink-strength:7",
       "setting:background-intensity:70",
       "setting:sidebar-intensity:70",
-      "setting:contrast:50"
+      "setting:contrast:50",
     ]);
   });
 
   it("keeps heaviness adjustments open and respects both limits", () => {
     for (const [level, direction] of [
       [1, "lighter"],
-      [10, "heavier"]
+      [10, "heavier"],
     ] as const) {
       const input = inputWith({ fontHeaviness: level });
-      const command = buildSettingCommands(input).find((row) => row.id === `setting:font-heaviness:${direction}`)!;
+      const command = buildSettingCommands(input).find(
+        (row) => row.id === `setting:font-heaviness:${direction}`,
+      )!;
       expect(command.keepOpen).toBe(true);
       command.run();
       expect(input.onFontHeavinessChange).not.toHaveBeenCalled();
@@ -136,10 +140,12 @@ describe("buildSettingCommands", () => {
   it("steps sidebar intensity within its range and keeps the palette open", () => {
     for (const [level, direction] of [
       [0, "softer"],
-      [100, "stronger"]
+      [100, "stronger"],
     ] as const) {
       const input = inputWith({ sidebarIntensity: level });
-      const command = buildSettingCommands(input).find((row) => row.id === `setting:sidebar-intensity:${direction}`)!;
+      const command = buildSettingCommands(input).find(
+        (row) => row.id === `setting:sidebar-intensity:${direction}`,
+      )!;
       expect(command.keepOpen).toBe(true);
       command.run();
       expect(input.onSidebarIntensityChange).not.toHaveBeenCalled();
@@ -181,7 +187,8 @@ describe("buildSettingCommands", () => {
 
   it("is reachable by the words a user types", () => {
     const commands = buildSettingCommands(inputWith());
-    const top = (query: string): string | undefined => searchPaletteItems(commands, query)[0]?.item.label;
+    const top = (query: string): string | undefined =>
+      searchPaletteItems(commands, query)[0]?.item.label;
     expect(top("dark")).toBe("Dark theme");
     expect(top("blue accent")).toBe("Blue accent");
     expect(top("black accent")).toBe("Black accent");

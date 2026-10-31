@@ -11,15 +11,19 @@ import {
   reviewToolTab,
   selectReviewTab,
   splitReviewTab,
-  type ReviewTab
+  type ReviewTab,
 } from "./reviewTabs.js";
 
-const browser = (id: string): ReviewTab => ({ id: `browser:${id}`, kind: "browser", browserTabId: id });
+const browser = (id: string): ReviewTab => ({
+  id: `browser:${id}`,
+  kind: "browser",
+  browserTabId: id,
+});
 const file = (path: string, sourceKey = "workspace:1"): ReviewTab => ({
   id: `${sourceKey}:${path}`,
   kind: "file",
   path,
-  sourceKey
+  sourceKey,
 });
 
 describe("review tabs", () => {
@@ -30,7 +34,11 @@ describe("review tabs", () => {
     const opened = openReviewTab(chooser, browser("chosen"));
     expect(opened.paneTabIds).toEqual(["browser:chosen"]);
     expect(opened.tabs.map((tab) => tab.id)).toEqual(["tool:changes", "browser:chosen"]);
-    const splitChooser = splitReviewTab(openReviewTab(opened, reviewToolTab("new")), "tool:changes", "bottom");
+    const splitChooser = splitReviewTab(
+      openReviewTab(opened, reviewToolTab("new")),
+      "tool:changes",
+      "bottom",
+    );
     const replaced = openReviewTab(splitChooser, reviewToolTab("files"), 0);
     expect(replaced.paneTabIds).toEqual(["tool:files", "tool:changes"]);
     expect(replaced.tabs.some((tab) => tab.id === "tool:new")).toBe(false);
@@ -41,20 +49,26 @@ describe("review tabs", () => {
       id: "side-chat:child-session",
       kind: "side-chat",
       sessionId: "child-session",
-      workspaceId: "shared-checkout"
+      workspaceId: "shared-checkout",
     };
     const opened = openReviewTab(createReviewTabs(), session);
     expect(opened.paneTabIds).toEqual([session.id]);
     expect(parseReviewTabs(JSON.stringify(opened))).toEqual(opened);
     expect(projectReviewLayout(opened).modes).toEqual(["side-chat"]);
-    expect(openReviewTab(opened, session).tabs.filter((tab) => tab.kind === "side-chat")).toHaveLength(1);
+    expect(
+      openReviewTab(opened, session).tabs.filter((tab) => tab.kind === "side-chat"),
+    ).toHaveLength(1);
   });
 
   it("keeps a Side chat form in the strip when another tab opens over it", () => {
     const form = openReviewTab(createReviewTabs(), reviewToolTab("side-chat"));
     const opened = openReviewTab(form, reviewToolTab("files"));
     expect(opened.paneTabIds).toEqual(["tool:files"]);
-    expect(opened.tabs.map((tab) => tab.id)).toEqual(["tool:changes", "tool:side-chat", "tool:files"]);
+    expect(opened.tabs.map((tab) => tab.id)).toEqual([
+      "tool:changes",
+      "tool:side-chat",
+      "tool:files",
+    ]);
   });
 
   it("round-trips order and two independent browser panes", () => {
@@ -71,7 +85,7 @@ describe("review tabs", () => {
   it("migrates a saved split without mutating tool identity", () => {
     const state = migrateReviewTabs(
       JSON.stringify({ modes: ["changes", "files"], activeIndex: 1, ratio: 0.67 }),
-      (mode) => (mode === "browser" || mode === "terminal" ? null : reviewToolTab(mode))
+      (mode) => (mode === "browser" || mode === "terminal" ? null : reviewToolTab(mode)),
     );
     expect(state?.paneTabIds).toEqual(["tool:changes", "tool:files"]);
     expect(state?.activeIndex).toBe(1);
@@ -84,11 +98,17 @@ describe("review tabs", () => {
     expect(removeReviewTab(state, "browser:a").paneTabIds).toEqual(["browser:b"]);
     state = splitReviewTab(state, "browser:b", "bottom");
     expect(removeReviewTab(state, "browser:a").paneTabIds).toEqual(["browser:b"]);
-    expect(removeReviewTab(state, "browser:a").tabs.map((tab) => tab.id)).toEqual(["tool:changes", "browser:b"]);
+    expect(removeReviewTab(state, "browser:a").tabs.map((tab) => tab.id)).toEqual([
+      "tool:changes",
+      "browser:b",
+    ]);
   });
 
   it("routes every file into the existing editor pane while retaining the browser", () => {
-    let state = addReviewTab(addReviewTab(addReviewTab(createReviewTabs(), browser("a")), file("a.ts")), file("b.ts"));
+    let state = addReviewTab(
+      addReviewTab(addReviewTab(createReviewTabs(), browser("a")), file("a.ts")),
+      file("b.ts"),
+    );
     state = selectReviewTab(state, "browser:a");
     state = splitReviewTab(state, "workspace:1:a.ts", "bottom");
     state = selectReviewTab(state, "workspace:1:b.ts", 0);
@@ -101,16 +121,18 @@ describe("review tabs", () => {
     const state = createReviewTabs();
     expect(parseReviewTabs(JSON.stringify({ ...state, paneTabIds: ["missing"] }))).toBeNull();
     expect(
-      parseReviewTabs(JSON.stringify({ ...state, tabs: [reviewToolTab("changes"), reviewToolTab("changes")] }))
+      parseReviewTabs(
+        JSON.stringify({ ...state, tabs: [reviewToolTab("changes"), reviewToolTab("changes")] }),
+      ),
     ).toBeNull();
     expect(
       parseReviewTabs(
         JSON.stringify({
           ...state,
           tabs: [file("a.ts"), file("b.ts")],
-          paneTabIds: ["workspace:1:a.ts", "workspace:1:b.ts"]
-        })
-      )
+          paneTabIds: ["workspace:1:a.ts", "workspace:1:b.ts"],
+        }),
+      ),
     ).toBeNull();
   });
 });

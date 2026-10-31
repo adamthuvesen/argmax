@@ -42,38 +42,38 @@ export const ACTIVITY_MARK_OPTIONS: readonly ActivityMarkOption[] = [
   {
     id: "nest",
     label: "Nest",
-    hint: "Four dots in a 2x2, emphasis relaying clockwise. The original — the cluster rearranges rather than blinking."
+    hint: "Four dots in a 2x2, emphasis relaying clockwise. The original — the cluster rearranges rather than blinking.",
   },
   {
     id: "cascade",
     label: "Cascade",
-    hint: "A wave running down the diagonal of a 3x3 field. The nest's material at higher resolution."
+    hint: "A wave running down the diagonal of a 3x3 field. The nest's material at higher resolution.",
   },
   {
     id: "meter",
     label: "Meter",
-    hint: "Three bars on unrelated periods, so the figure never visibly repeats. Reads as throughput rather than waiting."
+    hint: "Three bars on unrelated periods, so the figure never visibly repeats. Reads as throughput rather than waiting.",
   },
   {
     id: "orbit",
     label: "Orbit",
-    hint: "A comet and its trail on a fixed track. One moving element keeps it smooth."
+    hint: "A comet and its trail on a fixed track. One moving element keeps it smooth.",
   },
   {
     id: "halo",
     label: "Halo",
-    hint: "A still core with a softly breathing ring. The quietest mark for a busy sidebar."
+    hint: "A still core with a softly breathing ring. The quietest mark for a busy sidebar.",
   },
   {
     id: "squares",
     label: "Squares",
-    hint: "Nine tiles slide through a small puzzle, then return to their starting positions."
+    hint: "Nine tiles slide through a small puzzle, then return to their starting positions.",
   },
   {
     id: "bars",
     label: "Bars",
-    hint: "Three rounded bars grow from the centre in a soft, staggered rhythm."
-  }
+    hint: "Three rounded bars grow from the centre in a soft, staggered rhythm.",
+  },
 ] as const;
 
 /** How many animated parts each style draws, so callers can build the markup. */
@@ -84,7 +84,7 @@ export const ACTIVITY_MARK_PART_COUNT: Record<ActivityMarkId, number> = {
   orbit: 1,
   halo: 2,
   squares: 9,
-  bars: 3
+  bars: 3,
 };
 
 const ACTIVITY_MARK_IDS = new Set<string>(ACTIVITY_MARK_OPTIONS.map((option) => option.id));
@@ -170,13 +170,13 @@ export const SESSION_UNDERLINE_OPTIONS: readonly SessionUnderlineOption[] = [
   {
     id: "off",
     label: "Off",
-    hint: "A running row is marked by its activity mark alone."
+    hint: "A running row is marked by its activity mark alone.",
   },
   {
     id: "sweep",
     label: "Sweep",
-    hint: "A light crosses under the row's text, the way a caret crosses a line being written. Phased per row, so a column of running sessions reads as flow rather than strobing together."
-  }
+    hint: "A light crosses under the row's text, the way a caret crosses a line being written. Phased per row, so a column of running sessions reads as flow rather than strobing together.",
+  },
 ] as const;
 
 function isSessionUnderlineId(value: unknown): value is SessionUnderlineId {
@@ -230,7 +230,11 @@ export function sessionUnderlineSnapshot(): SessionUnderlineId {
 }
 
 export function useSessionUnderline(): SessionUnderlineId {
-  return useSyncExternalStore(subscribeSessionUnderline, sessionUnderlineSnapshot, sessionUnderlineSnapshot);
+  return useSyncExternalStore(
+    subscribeSessionUnderline,
+    sessionUnderlineSnapshot,
+    sessionUnderlineSnapshot,
+  );
 }
 
 /** Push both persisted choices onto `<html>` at boot, before the first paint. */

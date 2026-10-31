@@ -6,7 +6,7 @@ describe("agent dock tab ids", () => {
   it("reads a multitask tab back as the session it names", () => {
     expect(readAgentTab(multitaskTabId("session-9"))).toEqual({
       kind: "multitask",
-      sessionId: "session-9"
+      sessionId: "session-9",
     });
   });
 
@@ -15,7 +15,7 @@ describe("agent dock tab ids", () => {
       kind: "subagent",
       toolUseId: "toolu_01ABC",
       providerParentConversationId: null,
-      providerChildSessionId: null
+      providerChildSessionId: null,
     });
   });
 
@@ -25,8 +25,8 @@ describe("agent dock tab ids", () => {
         toolUseId: "send-message-2",
         agentRootToolUseId: "task-original",
         providerChildSessionId: "native-child",
-        providerParentConversationId: "native-parent"
-      })
+        providerParentConversationId: "native-parent",
+      }),
     ).toBe("native-agent:task-original:native-parent:native-child");
   });
 

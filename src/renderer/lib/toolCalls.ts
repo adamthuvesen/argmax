@@ -8,7 +8,7 @@ import {
   linkedRepoName,
   summarizeActivities,
   type ToolActivity,
-  type ToolActivityKind
+  type ToolActivityKind,
 } from "./toolActivity.js";
 
 export type ToolCall = {
@@ -56,13 +56,15 @@ export type ToolCallGroup = {
 
 export type TurnToolItem = { kind: "tool"; tool: ToolCall; children?: ToolCall[] };
 
-export type ConversationItem = { kind: "message"; event: TimelineEvent } | { kind: "tool"; tool: ToolCall };
+export type ConversationItem =
+  | { kind: "message"; event: TimelineEvent }
+  | { kind: "tool"; tool: ToolCall };
 
 export function buildToolCallGroup(tools: ToolCall[]): ToolCallGroup {
   const firstTool = tools[0];
   return {
     id: firstTool ? `tcg-${firstTool.id}` : "tcg-empty",
-    tools
+    tools,
   };
 }
 
@@ -89,11 +91,19 @@ export function buildGroupRows(tools: ToolCall[]): GroupRow[] {
   }
   return topLevel.map((tool) => ({
     tool,
-    children: childrenByParent.get(tool.toolUseId) ?? []
+    children: childrenByParent.get(tool.toolUseId) ?? [],
   }));
 }
 
-type FineBucket = "read-files" | "read-lists" | "search" | "web" | "edit" | "bash" | "agent" | "other";
+type FineBucket =
+  | "read-files"
+  | "read-lists"
+  | "search"
+  | "web"
+  | "edit"
+  | "bash"
+  | "agent"
+  | "other";
 
 /**
  * The sub-agent / Task tool gets its own bucket so a parent agent spawning a
@@ -154,7 +164,9 @@ export function parseMcpToolName(name: string): { server: string; tool: string }
   const argmax = parseArgmaxToolName(name);
   if (argmax) return argmax;
   const match =
-    /^mcp__(.+?)__(.+)$/.exec(name) ?? /^([a-z0-9-]+)_\1-(.+)$/.exec(name) ?? /^([a-z][a-z0-9-]*)\.(.+)$/.exec(name);
+    /^mcp__(.+?)__(.+)$/.exec(name) ??
+    /^([a-z0-9-]+)_\1-(.+)$/.exec(name) ??
+    /^([a-z][a-z0-9-]*)\.(.+)$/.exec(name);
   if (match) {
     const [, namespace, toolSegment] = match;
     if (!namespace || !toolSegment) return null;
@@ -162,7 +174,9 @@ export function parseMcpToolName(name: string): { server: string; tool: string }
     // to the last segment.
     // Claude's hosted namespace adds a client prefix. Other underscores belong
     // to the server (`browser_use`) and must survive.
-    let server = namespace.startsWith("claude_ai_") ? namespace.slice("claude_ai_".length) : namespace;
+    let server = namespace.startsWith("claude_ai_")
+      ? namespace.slice("claude_ai_".length)
+      : namespace;
     if (server.startsWith("plugin-")) {
       const parts = server.slice("plugin-".length).split("-").filter(Boolean);
       const half = parts.length / 2;
@@ -212,7 +226,7 @@ const OPENCODE_MCP_SERVERS = new Set([
   "hex",
   "executor",
   "profound",
-  "confidence-experiments"
+  "confidence-experiments",
 ]);
 
 function parseOpenCodeServerTool(name: string): { server: string; tool: string } | null {
@@ -251,7 +265,7 @@ const HIDDEN_TOOL_NAMES = new Set([
   // Grok's poll for a spawned child. Same job as Codex `wait`: it names no
   // user-facing work, and leaving it visible splits the parent's sentence
   // around "Get command or subagent output".
-  "get_command_or_subagent_output"
+  "get_command_or_subagent_output",
 ]);
 
 export function isHiddenToolName(name: string): boolean {
@@ -291,7 +305,16 @@ function getFineBucket(name: string): FineBucket {
   return "other";
 }
 
-const FINE_BUCKET_ORDER: FineBucket[] = ["edit", "read-files", "read-lists", "search", "web", "bash", "agent", "other"];
+const FINE_BUCKET_ORDER: FineBucket[] = [
+  "edit",
+  "read-files",
+  "read-lists",
+  "search",
+  "web",
+  "bash",
+  "agent",
+  "other",
+];
 
 // Each bucket keeps its action verb when several kinds of work share a
 // headline. Counts only decide between singular and plural wording.
@@ -347,7 +370,13 @@ export function summarizeToolChangeCounts(tools: ToolCall[]): ChangeCounts | nul
   let adds = 0;
   let dels = 0;
   for (const tool of tools) {
-    if (tool.status !== "done" || tool.cancelled || tool.completionObserved === false || seen.has(tool.id)) continue;
+    if (
+      tool.status !== "done" ||
+      tool.cancelled ||
+      tool.completionObserved === false ||
+      seen.has(tool.id)
+    )
+      continue;
     seen.add(tool.id);
     const changes = interpretFileChange(tool.name, tool.inputFull);
     if (!changes) continue;
@@ -364,7 +393,8 @@ export function describeToolAction(tool: ToolCall): string {
   if (activity && tool.activity?.kind === "command" && tool.inputPreview) {
     const command = displayBashCommand(tool.inputPreview);
     if (tool.status === "running" && !tool.cancelled) return `Running ${command}`;
-    if (tool.status === "done" && tool.completionObserved && !tool.cancelled) return `Ran ${command}`;
+    if (tool.status === "done" && tool.completionObserved && !tool.cancelled)
+      return `Ran ${command}`;
     return `${activity}: ${command}`;
   }
   if (activity && tool.activity?.kind !== "tool") return activity;
@@ -442,7 +472,7 @@ export function toolGroupKindKey(tools: ToolCall[]): string {
 
 export function summarizeToolGroup(
   tools: ToolCall[],
-  counting = true
+  counting = true,
 ): {
   headline: string;
   currentAction: string | null;
@@ -467,7 +497,9 @@ export function summarizeToolGroup(
   for (const bucket of FINE_BUCKET_ORDER) {
     const n = counts.get(bucket);
     if (!n) continue;
-    clauses.push(clauseForBucket(bucket, n, first, counting && tools.every((tool) => tool.status === "done")));
+    clauses.push(
+      clauseForBucket(bucket, n, first, counting && tools.every((tool) => tool.status === "done")),
+    );
     first = false;
   }
   const headline = clauses.length > 0 ? joinClauses(clauses) : "Used tools";
@@ -525,7 +557,11 @@ export function extractToolName(payload: Record<string, unknown>): string {
   // the input. Resolve that identity before classification so `other` + task
   // becomes an agent launch, and MCP calls name the server they actually used.
   const embeddedName = input._toolName;
-  if (payloadName?.toLowerCase() === "other" && typeof embeddedName === "string" && embeddedName.length > 0) {
+  if (
+    payloadName?.toLowerCase() === "other" &&
+    typeof embeddedName === "string" &&
+    embeddedName.length > 0
+  ) {
     return embeddedName;
   }
 
@@ -533,7 +569,12 @@ export function extractToolName(payload: Record<string, unknown>): string {
   if (lower === "mcptoolcall" || lower === "getmcptoolstoolcall") {
     const server = input.serverIdentifier ?? input.providerIdentifier ?? input.server;
     const tool = input.toolName;
-    if (typeof server === "string" && server.length > 0 && typeof tool === "string" && tool.length > 0) {
+    if (
+      typeof server === "string" &&
+      server.length > 0 &&
+      typeof tool === "string" &&
+      tool.length > 0
+    ) {
       return `mcp__${server}__${tool}`;
     }
   }
@@ -572,7 +613,7 @@ export function extractToolInput(payload: Record<string, unknown>): Record<strin
   const args = {
     ...inputRecord(payload.parameters, "toolCalls.parameters"),
     ...inputRecord(payload.arguments, "toolCalls.arguments"),
-    ...inputRecord(payload.args, "toolCalls.args")
+    ...inputRecord(payload.args, "toolCalls.args"),
   };
   const input = inputRecord(payload.input, "toolCalls.input");
   return { ...args, ...input };
@@ -581,7 +622,7 @@ export function extractToolInput(payload: Record<string, unknown>): Record<strin
 export function cleanToolInput(
   name: string,
   input: Record<string, unknown>,
-  providerName?: string | null
+  providerName?: string | null,
 ): Record<string, unknown> {
   if (!parseMcpToolName(name) || providerName?.toLowerCase() !== "mcptoolcall") return input;
   const args = inputRecord(input.args, "toolCalls.mcp.args");
@@ -689,7 +730,9 @@ export function extractToolOutput(payload: Record<string, unknown>): string | nu
   if (Array.isArray(payload.content)) {
     const text = payload.content
       .map((c: unknown) =>
-        c && typeof c === "object" && "text" in c ? String((c as Record<string, unknown>).text) : ""
+        c && typeof c === "object" && "text" in c
+          ? String((c as Record<string, unknown>).text)
+          : "",
       )
       .filter(Boolean)
       .join("\n");
@@ -758,7 +801,14 @@ export function extractOpenablePath(name: string, input: Record<string, unknown>
   if (!/read|view|cat|write|edit|patch|create|open/.test(lower)) return null;
   // A linked-repository path is relative to that repository, not this checkout.
   if (linkedRepoName(input)) return null;
-  for (const key of ["file_path", "filePath", "filepath", "path", "relative_path", "absolute_path"]) {
+  for (const key of [
+    "file_path",
+    "filePath",
+    "filepath",
+    "path",
+    "relative_path",
+    "absolute_path",
+  ]) {
     const value = input[key];
     if (typeof value === "string" && value.length > 0) return value;
   }

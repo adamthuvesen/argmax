@@ -7,7 +7,11 @@ import { ChangesTree } from "./ChangesTree.js";
 import { DiffBlocks } from "./DiffBlocks.js";
 import { LinesSkeleton } from "./LinesSkeleton.js";
 
-export function ProjectFolderChangesList({ state }: { state: ProjectFolderChangesState }): JSX.Element | null {
+export function ProjectFolderChangesList({
+  state,
+}: {
+  state: ProjectFolderChangesState;
+}): JSX.Element | null {
   if (!state.error && state.groups.length === 0) return null;
   return (
     <section className="project-folder-changes" aria-label="Other project folders">
@@ -19,9 +23,17 @@ export function ProjectFolderChangesList({ state }: { state: ProjectFolderChange
       {state.groups.map(({ folder, files, error }) => {
         const folderName = repoNameFromPath(folder.rootPath) ?? folder.name;
         return (
-          <details className="project-folder-change-group" key={folder.id} open={files.length > 0 || !!error}>
+          <details
+            className="project-folder-change-group"
+            key={folder.id}
+            open={files.length > 0 || !!error}
+          >
             <summary title={folder.rootPath}>
-              <ChevronRight className="project-folder-change-chevron" size={12} aria-hidden="true" />
+              <ChevronRight
+                className="project-folder-change-chevron"
+                size={12}
+                aria-hidden="true"
+              />
               <Folder size={14} aria-hidden="true" />
               <span className="project-folder-change-name">{folderName}</span>
               {error ? <span className="project-folder-change-total">Unavailable</span> : null}
@@ -45,7 +57,11 @@ export function ProjectFolderChangesList({ state }: { state: ProjectFolderChange
   );
 }
 
-export function ProjectFolderChangesDiff({ state }: { state: ProjectFolderChangesState }): JSX.Element {
+export function ProjectFolderChangesDiff({
+  state,
+}: {
+  state: ProjectFolderChangesState;
+}): JSX.Element {
   const blocks = useMemo(() => parseUnifiedDiff(state.diff?.content ?? ""), [state.diff?.content]);
   return (
     <div className="review-diff-scroll">

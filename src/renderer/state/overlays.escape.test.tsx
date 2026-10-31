@@ -1,6 +1,11 @@
 import { cleanup, fireEvent, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { overlaysSnapshot, resetOverlaysForTests, showSettings, useOverlayEscape } from "./overlays.js";
+import {
+  overlaysSnapshot,
+  resetOverlaysForTests,
+  showSettings,
+  useOverlayEscape,
+} from "./overlays.js";
 
 describe("useOverlayEscape", () => {
   afterEach(() => {
@@ -17,7 +22,7 @@ describe("useOverlayEscape", () => {
       const event = new KeyboardEvent("keydown", {
         key: "Escape",
         bubbles: true,
-        cancelable: true
+        cancelable: true,
       });
       input.dispatchEvent(event);
 
@@ -32,7 +37,11 @@ describe("useOverlayEscape", () => {
     renderHook(() => useOverlayEscape());
     showSettings();
 
-    const consumed = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    const consumed = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
     consumed.preventDefault();
     document.dispatchEvent(consumed);
     fireEvent.keyDown(document, { key: "Escape", repeat: true });

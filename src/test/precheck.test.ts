@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const temporaryDirectories: string[] = [];
 afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
+  for (const directory of temporaryDirectories.splice(0))
+    rmSync(directory, { recursive: true, force: true });
 });
 
 function fixture() {
@@ -24,11 +25,12 @@ function fixture() {
     PATH: `${bin}${path.delimiter}${process.env.PATH}`,
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_CONFIG_SYSTEM: "/dev/null",
-    PRECHECK_TEST_LOG: log
+    PRECHECK_TEST_LOG: log,
   };
   const stub = `#!/usr/bin/env node\nimport { appendFileSync } from "node:fs";\nappendFileSync(process.env.PRECHECK_TEST_LOG, process.argv.slice(1).join(" ") + "\\n");\n`;
   writeFileSync(path.join(bin, "package.json"), '{"type":"module"}');
-  for (const command of ["npx", "cargo"]) writeFileSync(path.join(bin, command), stub, { mode: 0o755 });
+  for (const command of ["npx", "cargo"])
+    writeFileSync(path.join(bin, command), stub, { mode: 0o755 });
   const files = ["src/café.ts", "vite.config.ts", ".github/workflows/ci.yml"];
   for (const name of files) writeFileSync(path.join(repository, name), "initial\n");
   for (const name of ["static-checks.mjs", "lint.mjs", "check-bundle.mjs", "ios-tests.mjs"]) {
@@ -37,12 +39,21 @@ function fixture() {
   writeFileSync(path.join(repository, ".gitignore"), "node_modules/\n");
   writeFileSync(
     path.join(repository, "scripts/precheck.mjs"),
-    readFileSync(new URL("../../scripts/precheck.mjs", import.meta.url))
+    readFileSync(new URL("../../scripts/precheck.mjs", import.meta.url)),
   );
   for (const args of [
     ["init", "-q", "-b", "main"],
     ["add", ".gitignore", "scripts", ...files],
-    ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--no-gpg-sign", "-qm", "fixture"]
+    [
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.invalid",
+      "commit",
+      "--no-gpg-sign",
+      "-qm",
+      "fixture",
+    ],
   ]) {
     const result = spawnSync("git", args, { cwd: repository, env, encoding: "utf8" });
     expect(result.status, result.stderr).toBe(0);
@@ -65,21 +76,29 @@ function fixture() {
           "-am",
           message,
           "--no-gpg-sign",
-          "-q"
+          "-q",
         ],
-        { cwd: repository, env, encoding: "utf8" }
+        { cwd: repository, env, encoding: "utf8" },
       );
       expect(result.status, result.stderr).toBe(0);
-      return spawnSync("git", ["rev-parse", "HEAD"], { cwd: repository, env, encoding: "utf8" }).stdout.trim();
+      return spawnSync("git", ["rev-parse", "HEAD"], {
+        cwd: repository,
+        env,
+        encoding: "utf8",
+      }).stdout.trim();
     },
     head() {
-      return spawnSync("git", ["rev-parse", "HEAD"], { cwd: repository, env, encoding: "utf8" }).stdout.trim();
+      return spawnSync("git", ["rev-parse", "HEAD"], {
+        cwd: repository,
+        env,
+        encoding: "utf8",
+      }).stdout.trim();
     },
     run(base = "HEAD") {
       const result = spawnSync(process.execPath, ["scripts/precheck.mjs", "--base", base], {
         cwd: repository,
         env,
-        encoding: "utf8"
+        encoding: "utf8",
       });
       return { ...result, checks: readFileSync(log, "utf8") };
     },
@@ -91,11 +110,11 @@ function fixture() {
           cwd: repository,
           env,
           input,
-          encoding: "utf8"
-        }
+          encoding: "utf8",
+        },
       );
       return { ...result, checks: readFileSync(log, "utf8") };
-    }
+    },
   };
 }
 
@@ -105,11 +124,14 @@ describe("precheck CLI", () => {
     [".github/workflows/ci.yml", ["lint.mjs", "cargo test", "check-bundle.mjs"]],
     ["vite.config.ts", ["vite build", "check-bundle.mjs"]],
     ["src-tauri/src/lib.rs", ["lint.mjs", "cargo test", "check-bundle.mjs"]],
-    ["ios/Argmax/Sources/App.swift", ["lint.mjs", "static-checks.mjs", "check-bundle.mjs", "ios-tests.mjs"]],
+    [
+      "ios/Argmax/Sources/App.swift",
+      ["lint.mjs", "static-checks.mjs", "check-bundle.mjs", "ios-tests.mjs"],
+    ],
     ["fixtures/parity/inline-math.json", ["lint.mjs", "vitest run --changed", "ios-tests.mjs"]],
     ["assets/browser-blocking/light.txt", ["lint.mjs", "cargo test", "check-bundle.mjs"]],
     ["index.html", ["lint.mjs", "vite build", "check-bundle.mjs"]],
-    ["Dockerfile", ["lint.mjs", "cargo test", "check-bundle.mjs"]]
+    ["Dockerfile", ["lint.mjs", "cargo test", "check-bundle.mjs"]],
   ])("selects checks for %s in a checkout with spaces and #", (name, checks) => {
     const repo = fixture();
     repo.change(name);
@@ -128,7 +150,7 @@ describe("precheck CLI", () => {
       result.checks
         .trim()
         .split("\n")
-        .map((line) => line.split("/").pop())
+        .map((line) => line.split("/").pop()),
     ).toEqual(["static-checks.mjs"]);
   });
 
@@ -144,7 +166,7 @@ describe("precheck CLI", () => {
     const repo = fixture();
     repo.change(".github/workflows/ci.yml");
     const result = repo.runWithPush(
-      "(delete) 0000000000000000000000000000000000000000 refs/heads/feature-old 1111111111111111111111111111111111111111\n"
+      "(delete) 0000000000000000000000000000000000000000 refs/heads/feature-old 1111111111111111111111111111111111111111\n",
     );
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("deleting remote ref, skipping checks");

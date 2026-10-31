@@ -7,7 +7,7 @@ import {
   useState,
   type CSSProperties,
   type JSX,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import type { FontSize } from "../lib/fonts.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
@@ -29,11 +29,17 @@ import type {
   ProjectSummary,
   ProviderId,
   SessionSummary,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../../shared/types.js";
 import type { GridCell, GridCoord, GridState, SplitPosition } from "../lib/gridState.js";
 import type { MultitaskChild } from "../lib/multitask.js";
-import { findWorkspaceCell, isSessionCell, MAX_CELLS, MAX_COLS, MAX_ROWS } from "../lib/gridState.js";
+import {
+  findWorkspaceCell,
+  isSessionCell,
+  MAX_CELLS,
+  MAX_COLS,
+  MAX_ROWS,
+} from "../lib/gridState.js";
 import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import type { FollowUpDelivery, ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
@@ -104,7 +110,7 @@ interface SessionMultiGridProps {
   onLoadAgentEvents: (
     sessionId: string,
     parentToolUseId: string,
-    identity?: NativeAgentIdentity
+    identity?: NativeAgentIdentity,
   ) => Promise<void | { hasMore: boolean }>;
   /** Opens a launcher cell beside the focused pane. */
   onNewSession: (seed?: NewSessionSeed) => void;
@@ -125,11 +131,20 @@ interface SessionMultiGridProps {
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
     agentReferences?: AgentReference[],
-    delivery?: FollowUpDelivery
+    delivery?: FollowUpDelivery,
   ) => Promise<SendInputResult>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
-  onSendQueuedMessageNow: (sessionId: string, messageId: string, delivery?: QueuedMessageDelivery) => Promise<void>;
-  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId, pendingMessageId?: string) => Promise<void>;
+  onSendQueuedMessageNow: (
+    sessionId: string,
+    messageId: string,
+    delivery?: QueuedMessageDelivery,
+  ) => Promise<void>;
+  onMultitask?: (
+    sessionId: string,
+    prompt: string,
+    provider: ProviderId,
+    pendingMessageId?: string,
+  ) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
@@ -192,12 +207,13 @@ export function SessionMultiGrid({
   onClearSession,
   onForkSession,
   onRunCheck,
-  registerPaletteFileContext
+  registerPaletteFileContext,
 }: SessionMultiGridProps): JSX.Element {
   const dragActive = dragSourceWorkspaceId !== null;
   const [columnWeights, setColumnWeights] = useState<number[]>([1, 1]);
   const rowShape = grid.rows.map((row) => row.length).join(",");
-  const draggingExisting = dragSourceWorkspaceId !== null && findWorkspaceCell(grid, dragSourceWorkspaceId) !== null;
+  const draggingExisting =
+    dragSourceWorkspaceId !== null && findWorkspaceCell(grid, dragSourceWorkspaceId) !== null;
   const [rightPanelWidthByCell, setRightPanelWidthByCell] = useState<Record<string, number>>({});
   const [isResizing, setIsResizing] = useState(false);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -210,7 +226,7 @@ export function SessionMultiGrid({
       dragCleanupRef.current?.();
       dragCleanupRef.current = null;
     },
-    []
+    [],
   );
 
   useEffect(() => {
@@ -233,9 +249,11 @@ export function SessionMultiGrid({
   const cellMinWidthForKey = useCallback(
     (cellKey: string): number => {
       const rightPanelWidth = rightPanelWidthByCell[cellKey];
-      return rightPanelWidth ? CHAT_PANE_MIN_WIDTH_PX + rightPanelWidth : MIN_RESIZABLE_CELL_WIDTH_PX;
+      return rightPanelWidth
+        ? CHAT_PANE_MIN_WIDTH_PX + rightPanelWidth
+        : MIN_RESIZABLE_CELL_WIDTH_PX;
     },
-    [rightPanelWidthByCell]
+    [rightPanelWidthByCell],
   );
 
   const requiredWorkspaceMinWidth = useMemo(() => {
@@ -259,7 +277,7 @@ export function SessionMultiGrid({
     () => () => {
       onWorkspaceMinWidthChange?.(0);
     },
-    [onWorkspaceMinWidthChange]
+    [onWorkspaceMinWidthChange],
   );
 
   const setCellRightPanelWidth = useCallback((cellKey: string, width: number | null): void => {
@@ -289,17 +307,22 @@ export function SessionMultiGrid({
       const availableWidth = Math.max(1, rowWidth - (row.length - 1));
       const startWeights = columnWeights;
       const totalWeight = startWeights.reduce((sum, value) => sum + Math.max(value, 0.01), 0);
-      const startWidths = startWeights.map((weight) => (Math.max(weight, 0.01) / totalWeight) * availableWidth);
+      const startWidths = startWeights.map(
+        (weight) => (Math.max(weight, 0.01) / totalWeight) * availableWidth,
+      );
       const pairWidth = startWidths[dividerIndex] + startWidths[dividerIndex + 1];
       // Both rows share a divider, so respect the widest dock in each column.
       const columnMinWidth = (col: number): number =>
         Math.max(
           MIN_RESIZABLE_CELL_WIDTH_PX,
-          ...grid.rows.map((cells, r) => (cells.length === 2 ? cellMinWidthForKey(gridCellKey(cells[col], r, col)) : 0))
+          ...grid.rows.map((cells, r) =>
+            cells.length === 2 ? cellMinWidthForKey(gridCellKey(cells[col], r, col)) : 0,
+          ),
         );
       const leftMinWidth = columnMinWidth(dividerIndex);
       const rightMinWidth = columnMinWidth(dividerIndex + 1);
-      const minScale = pairWidth < leftMinWidth + rightMinWidth ? pairWidth / (leftMinWidth + rightMinWidth) : 1;
+      const minScale =
+        pairWidth < leftMinWidth + rightMinWidth ? pairWidth / (leftMinWidth + rightMinWidth) : 1;
       const effectiveLeftMinWidth = leftMinWidth * minScale;
       const effectiveRightMinWidth = rightMinWidth * minScale;
 
@@ -344,7 +367,7 @@ export function SessionMultiGrid({
       window.addEventListener("blur", cleanup);
       dragCleanupRef.current = cleanup;
     },
-    [cellMinWidthForKey, grid.rows, columnWeights]
+    [cellMinWidthForKey, grid.rows, columnWeights],
   );
 
   return (
@@ -356,7 +379,7 @@ export function SessionMultiGrid({
       data-resizing={isResizing ? "true" : undefined}
       style={
         {
-          "--session-pane-min-width": `${MIN_RESIZABLE_CELL_WIDTH_PX}px`
+          "--session-pane-min-width": `${MIN_RESIZABLE_CELL_WIDTH_PX}px`,
         } as CSSProperties
       }
     >
@@ -378,10 +401,14 @@ export function SessionMultiGrid({
           >
             {row.map((cell, c) => {
               const isLauncher = cell.kind === "launcher";
-              const session = isSessionCell(cell) ? (sessionsById.get(cell.sessionId) ?? null) : null;
+              const session = isSessionCell(cell)
+                ? (sessionsById.get(cell.sessionId) ?? null)
+                : null;
               const workspace = !isLauncher ? (workspacesById.get(cell.workspaceId) ?? null) : null;
               const project = workspace ? (projectsById.get(workspace.projectId) ?? null) : null;
-              const launcherProject = isLauncher ? (projectsById.get(cell.projectId) ?? null) : null;
+              const launcherProject = isLauncher
+                ? (projectsById.get(cell.projectId) ?? null)
+                : null;
               const focused = grid.focused?.row === r && grid.focused.col === c;
               const paneLabel = isLauncher
                 ? `New chat${launcherProject ? ` for ${launcherProject.name}` : ""}`
@@ -392,7 +419,7 @@ export function SessionMultiGrid({
                   : []),
                 ...(!draggingExisting && canAddGridCell && row.length < rowColumnCap
                   ? (["left", "right"] as const)
-                  : [])
+                  : []),
               ];
               const cellKey = gridCellKey(cell, r, c);
               return (
@@ -468,7 +495,7 @@ export function SessionMultiGrid({
                           onDropWorkspace(dragSourceWorkspaceId, {
                             row: r,
                             col: c,
-                            position
+                            position,
                           });
                         }}
                       />
@@ -497,7 +524,7 @@ export function SessionMultiGrid({
 function edgeDropPositionAtPoint(
   point: WorkspaceDragPoint,
   element: HTMLDivElement,
-  allowedPositions: EdgeDropPosition[]
+  allowedPositions: EdgeDropPosition[],
 ): SplitPosition {
   if (allowedPositions.length === 0) return "replace";
   const rect = element.getBoundingClientRect();
@@ -508,17 +535,19 @@ function edgeDropPositionAtPoint(
     ["above", y / rect.height],
     ["right", (rect.width - x) / rect.width],
     ["below", (rect.height - y) / rect.height],
-    ["left", x / rect.width]
+    ["left", x / rect.width],
   ];
   const distances = allDistances.filter(([position]) => allowedPositions.includes(position));
-  const nearest = distances.reduce((best, candidate) => (candidate[1] < best[1] ? candidate : best));
+  const nearest = distances.reduce((best, candidate) =>
+    candidate[1] < best[1] ? candidate : best,
+  );
   return nearest[1] <= 0.25 ? nearest[0] : "replace";
 }
 
 function DropZones({
   allowedPositions,
   replaceLabel,
-  onDrop
+  onDrop,
 }: {
   allowedPositions: EdgeDropPosition[];
   replaceLabel: string;
@@ -553,9 +582,9 @@ function DropZones({
           setHovered(null);
           if (inside) onDrop(edgeDropPositionAtPoint(point, overlay, allowedPositions));
         },
-        cancel: () => setHovered(null)
+        cancel: () => setHovered(null),
       }),
-    [allowedPositions, onDrop]
+    [allowedPositions, onDrop],
   );
 
   return (
@@ -592,7 +621,7 @@ function DropZones({
                   left: "Split left",
                   right: "Split right",
                   above: "Split above",
-                  below: "Split below"
+                  below: "Split below",
                 }[hovered]}
           </span>
         </div>

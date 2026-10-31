@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, renderHook } from "@testing-library/react";
+import { cleanup, fireEvent, renderHook, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetChatCycle } from "../lib/chatCycle.js";
 import { useGlobalKeybindings } from "./useGlobalKeybindings.js";
@@ -16,7 +16,7 @@ describe("useGlobalKeybindings", () => {
       <div class="project-list">
         <div class="session-row" data-workspace-id="workspace-1"></div>
         <div class="session-row" data-workspace-id="workspace-2"></div>
-        <div class="session-row" data-workspace-id="workspace-3"></div>
+        <div class="session-row" data-testid="session-row-3" data-workspace-id="workspace-3"></div>
       </div>
     `;
   });
@@ -34,8 +34,8 @@ describe("useGlobalKeybindings", () => {
         onOpenSearch: vi.fn(),
         onOpenContentSearch: vi.fn(),
         onSelectWorkspace,
-        onCloseSettings
-      })
+        onCloseSettings,
+      }),
     );
 
     const textarea = document.createElement("textarea");
@@ -66,8 +66,8 @@ describe("useGlobalKeybindings", () => {
         onOpenSearch: vi.fn(),
         onOpenContentSearch: vi.fn(),
         onSelectWorkspace,
-        onCloseSettings
-      })
+        onCloseSettings,
+      }),
     );
 
     // Nothing selected (launcher) and nothing used yet: forward lands on the
@@ -81,8 +81,7 @@ describe("useGlobalKeybindings", () => {
     // Releasing Cmd promotes workspace-3, so the next press toggles back to
     // the row the traversal started from rather than stepping on to the next.
     fireEvent.keyUp(document, { key: "Meta" });
-    const rows = document.querySelectorAll(".session-row");
-    rows[2].innerHTML = '<a aria-current="true"></a>';
+    screen.getByTestId("session-row-3").innerHTML = '<a aria-current="true"></a>';
     fireEvent.keyDown(document, { key: "`", code: "Backquote", metaKey: true });
     expect(onSelectWorkspace).toHaveBeenLastCalledWith("workspace-1");
   });
@@ -98,8 +97,8 @@ describe("useGlobalKeybindings", () => {
         onOpenSearch: vi.fn(),
         onOpenContentSearch: vi.fn(),
         onSelectWorkspace,
-        onCloseSettings: vi.fn()
-      })
+        onCloseSettings: vi.fn(),
+      }),
     );
 
     const event = new KeyboardEvent("keydown", {
@@ -107,7 +106,7 @@ describe("useGlobalKeybindings", () => {
       code: "Backquote",
       metaKey: true,
       cancelable: true,
-      bubbles: true
+      bubbles: true,
     });
     document.dispatchEvent(event);
     expect(onSelectWorkspace).not.toHaveBeenCalled();
@@ -126,8 +125,8 @@ describe("useGlobalKeybindings", () => {
         onOpenSearch: vi.fn(),
         onOpenContentSearch: vi.fn(),
         onSelectWorkspace,
-        onCloseSettings
-      })
+        onCloseSettings,
+      }),
     );
 
     // On non-US keyboards, key might be '&' but code is 'Digit1'
@@ -151,8 +150,8 @@ describe("useGlobalKeybindings", () => {
         onOpenSearch: vi.fn(),
         onOpenContentSearch: vi.fn(),
         onSelectWorkspace,
-        onCloseSettings
-      })
+        onCloseSettings,
+      }),
     );
 
     fireEvent.keyDown(document, { key: "1", metaKey: true, isComposing: true });
@@ -175,8 +174,8 @@ describe("useGlobalKeybindings", () => {
         onOpenSearch,
         onOpenContentSearch,
         onSelectWorkspace: vi.fn(),
-        onCloseSettings: vi.fn()
-      })
+        onCloseSettings: vi.fn(),
+      }),
     );
 
     const input = document.createElement("input");
@@ -203,8 +202,8 @@ describe("useGlobalKeybindings", () => {
         onOpenSearch: vi.fn(),
         onOpenContentSearch: vi.fn(),
         onSelectWorkspace: vi.fn(),
-        onCloseSettings: vi.fn()
-      })
+        onCloseSettings: vi.fn(),
+      }),
     );
 
     const button = document.createElement("button");
@@ -215,7 +214,7 @@ describe("useGlobalKeybindings", () => {
       key: "a",
       metaKey: true,
       bubbles: true,
-      cancelable: true
+      cancelable: true,
     });
     button.dispatchEvent(event);
 
@@ -232,7 +231,7 @@ describe("useGlobalKeybindings", () => {
         const editor = document.createElement("div");
         editor.setAttribute("contenteditable", "true");
         return editor;
-      }
+      },
     ],
     [
       "role textbox editor",
@@ -241,8 +240,8 @@ describe("useGlobalKeybindings", () => {
         editor.setAttribute("role", "textbox");
         editor.tabIndex = 0;
         return editor;
-      }
-    ]
+      },
+    ],
   ])("keeps Select All in a focused %s", (_label, makeTarget) => {
     const onOpenActionPalette = vi.fn();
     renderHook(() =>
@@ -253,8 +252,8 @@ describe("useGlobalKeybindings", () => {
         onOpenSearch: vi.fn(),
         onOpenContentSearch: vi.fn(),
         onSelectWorkspace: vi.fn(),
-        onCloseSettings: vi.fn()
-      })
+        onCloseSettings: vi.fn(),
+      }),
     );
 
     const target = makeTarget();
@@ -264,7 +263,7 @@ describe("useGlobalKeybindings", () => {
       key: "a",
       metaKey: true,
       bubbles: true,
-      cancelable: true
+      cancelable: true,
     });
     target.dispatchEvent(event);
 
@@ -282,8 +281,8 @@ describe("useGlobalKeybindings", () => {
         onOpenSearch: vi.fn(),
         onOpenContentSearch: vi.fn(),
         onSelectWorkspace: vi.fn(),
-        onCloseSettings: vi.fn()
-      })
+        onCloseSettings: vi.fn(),
+      }),
     );
 
     fireEvent.keyDown(document, { key: "a", metaKey: true, isComposing: true });

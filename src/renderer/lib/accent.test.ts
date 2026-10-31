@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { ACCENT_STORAGE_KEY, DEFAULT_ACCENT_ID, readStoredAccent, writeStoredAccent } from "./accent.js";
+import {
+  ACCENT_STORAGE_KEY,
+  DEFAULT_ACCENT_ID,
+  readStoredAccent,
+  writeStoredAccent,
+} from "./accent.js";
 
 afterEach(() => {
   window.localStorage.removeItem(ACCENT_STORAGE_KEY);

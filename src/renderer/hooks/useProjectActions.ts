@@ -22,7 +22,7 @@ export function useProjectActions({
   setSelectedProjectId,
   setSelectedWorkspaceId,
   setSelectedSessionId,
-  setSnapshot
+  setSnapshot,
 }: ProjectActions) {
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const addProject = useCallback((): void => {
@@ -47,7 +47,7 @@ export function useProjectActions({
       setNewProjectOpen(false);
       showInfoToast(`Created ${project.name}.`);
     },
-    [setSelectedProjectId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot]
+    [setSelectedProjectId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot],
   );
 
   const removeProject = useCallback(
@@ -66,9 +66,10 @@ export function useProjectActions({
           workspaces: current.workspaces.filter((workspace) => workspace.projectId !== projectId),
           sessions: current.sessions.filter((session) =>
             current.workspaces.some(
-              (workspace) => workspace.id === session.workspaceId && workspace.projectId !== projectId
-            )
-          )
+              (workspace) =>
+                workspace.id === session.workspaceId && workspace.projectId !== projectId,
+            ),
+          ),
         }));
         if (selectedProjectId === projectId) {
           setSelectedProjectId(null);
@@ -81,7 +82,14 @@ export function useProjectActions({
         showErrorToast(error instanceof Error ? error.message : `Could not remove ${projectName}.`);
       }
     },
-    [projects, selectedProjectId, setSelectedProjectId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot]
+    [
+      projects,
+      selectedProjectId,
+      setSelectedProjectId,
+      setSelectedSessionId,
+      setSelectedWorkspaceId,
+      setSnapshot,
+    ],
   );
 
   return { addProject, removeProject, newProjectOpen, closeNewProject, createProject };

@@ -9,7 +9,7 @@ function event(id: string, type: TimelineEvent["type"], message: string): Timeli
     type,
     message,
     payload: {},
-    createdAt: "2026-05-12T15:00:00.000Z"
+    createdAt: "2026-05-12T15:00:00.000Z",
   };
 }
 
@@ -19,7 +19,7 @@ describe("buildSideChatSeed", () => {
       event("u1", "user.message", "fix the flaky test"),
       event("c1", "command.started", "npm test"),
       event("d1", "message.delta", "partial stream"),
-      event("m1", "message.completed", "The retry masks a race condition.")
+      event("m1", "message.completed", "The retry masks a race condition."),
     ]);
 
     expect(seed).toContain("> the interesting part");
@@ -27,7 +27,9 @@ describe("buildSideChatSeed", () => {
     expect(seed).toContain("Assistant: The retry masks a race condition.");
     expect(seed).not.toContain("npm test");
     expect(seed).not.toContain("partial stream");
-    expect(seed.endsWith("Give me your read on this excerpt, then answer my follow-up questions.")).toBe(true);
+    expect(
+      seed.endsWith("Give me your read on this excerpt, then answer my follow-up questions."),
+    ).toBe(true);
   });
 
   it("quotes every line of a multi-line excerpt", () => {
@@ -43,7 +45,7 @@ describe("buildSideChatSeed", () => {
 
   it("keeps only the newest exchanges and clips long messages", () => {
     const events = Array.from({ length: 15 }, (_, index) =>
-      event(`m${index}`, "message.completed", `answer number ${index}`)
+      event(`m${index}`, "message.completed", `answer number ${index}`),
     );
     events.push(event("long", "message.completed", "x".repeat(900)));
 
@@ -66,7 +68,7 @@ describe("buildDetailsSeed", () => {
   it("shares the context block but asks for an explanation", () => {
     const seed = buildDetailsSeed("the interesting part", [
       event("u1", "user.message", "fix the flaky test"),
-      event("m1", "message.completed", "The retry masks a race condition.")
+      event("m1", "message.completed", "The retry masks a race condition."),
     ]);
 
     expect(seed).toContain("> the interesting part");

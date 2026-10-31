@@ -2,7 +2,13 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineEvent } from "../../shared/types.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
-import { baseSession, event, project, reviewStub, workspace } from "../../test/sessionConversationTestHarness.js";
+import {
+  baseSession,
+  event,
+  project,
+  reviewStub,
+  workspace,
+} from "../../test/sessionConversationTestHarness.js";
 import { SessionConversation } from "./SessionConversation.js";
 
 function renderPane(
@@ -12,7 +18,7 @@ function renderPane(
     review?: ReviewState;
     workspace?: typeof workspace;
     workspaceCardEnabled?: boolean;
-  } = {}
+  } = {},
 ) {
   return render(
     <SessionConversation
@@ -31,7 +37,7 @@ function renderPane(
       session={baseSession()}
       workspaceCardEnabled={options.workspaceCardEnabled ?? true}
       workspace={options.workspace ?? workspace}
-    />
+    />,
   );
 }
 
@@ -54,11 +60,11 @@ describe("SessionConversation workspace card", () => {
               rootPath: "/repos/dbt",
               isPrimary: false,
               enabled: true,
-              summary: null
+              summary: null,
             },
             files: [{ path: "README.md", status: "M", additions: 4, deletions: 0, staged: false }],
-            error: null
-          }
+            error: null,
+          },
         ],
         error: null,
         selection: null,
@@ -69,8 +75,8 @@ describe("SessionConversation workspace card", () => {
         selectFile,
         clearSelection,
         refresh: vi.fn(),
-        expandContext: vi.fn()
-      }
+        expandContext: vi.fn(),
+      },
     });
     renderPane({ review });
     fireEvent.click(screen.getByRole("button", { name: "Changes in dbt" }));
@@ -101,11 +107,16 @@ describe("SessionConversation workspace card", () => {
   // are container queries jsdom cannot run.
   it("marks the surface only while the card is in the tree", () => {
     const { container } = renderPane();
-    expect(container.querySelector(".conversation-surface")).toHaveAttribute("data-workspace-card", "true");
+    expect(container.querySelector(".conversation-surface")).toHaveAttribute(
+      "data-workspace-card",
+      "true",
+    );
 
     cleanup();
     const off = renderPane({ workspaceCardEnabled: false });
-    expect(off.container.querySelector(".conversation-surface")).not.toHaveAttribute("data-workspace-card");
+    expect(off.container.querySelector(".conversation-surface")).not.toHaveAttribute(
+      "data-workspace-card",
+    );
   });
 
   it("toggles from the session actions menu, which reports the preference rather than what is on screen", () => {
@@ -129,7 +140,7 @@ describe("SessionConversation workspace card", () => {
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Workspace Card" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Workspace card is on. It shows up on chats that have a git worktree."
+      "Workspace card is on. It shows up on chats that have a git worktree.",
     );
   });
 
@@ -143,10 +154,10 @@ describe("SessionConversation workspace card", () => {
         activeTabId: null,
         selectTab,
         closeTab: vi.fn(),
-        closeAllTabs: vi.fn()
+        closeAllTabs: vi.fn(),
       },
       openAgent,
-      openAgents
+      openAgents,
     });
 
     renderPane({
@@ -154,15 +165,15 @@ describe("SessionConversation workspace card", () => {
         event("task-2-start", "command.started", "Task", "2026-05-12T15:00:02.000Z", {
           id: "task-2",
           name: "Task",
-          input: { description: "Sweep tests", prompt: "Sweep." }
+          input: { description: "Sweep tests", prompt: "Sweep." },
         }),
         event("task-1-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
           id: "task-1",
           name: "Task",
-          input: { description: "Map renderer", prompt: "Map." }
-        })
+          input: { description: "Map renderer", prompt: "Map." },
+        }),
       ],
-      review
+      review,
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Open Agents" }));

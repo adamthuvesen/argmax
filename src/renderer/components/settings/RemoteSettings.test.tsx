@@ -1,6 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ArgmaxApi, RemoteApnsStatus, RemotePushDevice, RemoteStatus } from "../../../shared/types.js";
+import type {
+  ArgmaxApi,
+  RemoteApnsStatus,
+  RemotePushDevice,
+  RemoteStatus,
+} from "../../../shared/types.js";
 import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
 import { RemoteSettings } from "./RemoteSettings.js";
 
@@ -24,7 +29,7 @@ function remoteStatus(overrides: Partial<RemoteStatus> = {}): RemoteStatus {
     qrSvg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
     serveCommand: "tailscale serve --bg 8790",
     apns: apnsStatus(),
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -36,7 +41,7 @@ function apnsStatus(overrides: Partial<RemoteApnsStatus> = {}): RemoteApnsStatus
     teamId: null,
     sandbox: false,
     devices: [],
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -45,7 +50,7 @@ function pushDevice(overrides: Partial<RemotePushDevice> = {}): RemotePushDevice
     token: "a1b2c3d4e5f6a7b8",
     name: "Adam's iPhone",
     registeredAt: "2026-01-01T00:00:00Z",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -56,7 +61,7 @@ function pairedApns(): RemoteApnsStatus {
     keyPath: "/Users/adam/Keys/AuthKey_ABC1234567.p8",
     keyId: "ABC1234567",
     teamId: "TEAM123456",
-    devices: [pushDevice()]
+    devices: [pushDevice()],
   });
 }
 
@@ -76,8 +81,8 @@ function installRemoteStub(overrides: {
       setApnsConfig: overrides.setApnsConfig ?? vi.fn(),
       registerPushDevice: vi.fn(),
       unregisterPushDevice: overrides.unregisterPushDevice ?? vi.fn(),
-      pushTest: overrides.pushTest ?? vi.fn()
-    }
+      pushTest: overrides.pushTest ?? vi.fn(),
+    },
   } as unknown as ArgmaxApi;
 }
 
@@ -95,7 +100,7 @@ describe("RemoteSettings", () => {
     const setConfig = vi.fn().mockResolvedValue(remoteStatus({ enabled: false, serving: false }));
     installRemoteStub({
       getStatus: vi.fn().mockResolvedValue(remoteStatus()),
-      setConfig
+      setConfig,
     });
     render(<RemoteSettings />);
 
@@ -112,14 +117,18 @@ describe("RemoteSettings", () => {
     installRemoteStub({ getStatus: vi.fn().mockResolvedValue(remoteStatus({ serving: false })) });
     render(<RemoteSettings />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("The bridge is enabled but not running.");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The bridge is enabled but not running.",
+    );
   });
 
   it("sends a test notification once a topic is saved", async () => {
     const testNotification = vi.fn().mockResolvedValue({ ok: true });
     installRemoteStub({
-      getStatus: vi.fn().mockResolvedValue(remoteStatus({ ntfyTopic: "https://ntfy.sh/argmax-test" })),
-      testNotification
+      getStatus: vi
+        .fn()
+        .mockResolvedValue(remoteStatus({ ntfyTopic: "https://ntfy.sh/argmax-test" })),
+      testNotification,
     });
     render(<RemoteSettings />);
 
@@ -139,7 +148,7 @@ describe("RemoteSettings", () => {
     // Half-typed port, unsaved topic: neither may ride along on the switch.
     fireEvent.change(await screen.findByLabelText("Port"), { target: { value: "87" } });
     fireEvent.change(screen.getByLabelText("ntfy topic"), {
-      target: { value: "https://ntfy.sh/not-saved-yet" }
+      target: { value: "https://ntfy.sh/not-saved-yet" },
     });
     fireEvent.click(screen.getByRole("checkbox", { name: "Enable phone remote" }));
 
@@ -154,7 +163,7 @@ describe("RemoteSettings", () => {
     render(<RemoteSettings />);
 
     fireEvent.change(await screen.findByLabelText("APNs key file"), {
-      target: { value: "/Users/adam/Keys/AuthKey_ABC1234567.p8" }
+      target: { value: "/Users/adam/Keys/AuthKey_ABC1234567.p8" },
     });
     fireEvent.change(screen.getByLabelText("Key ID"), { target: { value: "ABC1234567" } });
     fireEvent.change(screen.getByLabelText("Team ID"), { target: { value: "TEAM123456" } });
@@ -165,7 +174,7 @@ describe("RemoteSettings", () => {
         keyPath: "/Users/adam/Keys/AuthKey_ABC1234567.p8",
         keyId: "ABC1234567",
         teamId: "TEAM123456",
-        sandbox: false
+        sandbox: false,
       });
     });
   });
@@ -174,18 +183,20 @@ describe("RemoteSettings", () => {
     const setApnsConfig = vi.fn().mockResolvedValue(remoteStatus({ apns: pairedApns() }));
     installRemoteStub({
       getStatus: vi.fn().mockResolvedValue(remoteStatus({ apns: pairedApns() })),
-      setApnsConfig
+      setApnsConfig,
     });
     render(<RemoteSettings />);
 
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Use Apple's development server" }));
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: "Use Apple's development server" }),
+    );
 
     await waitFor(() => {
       expect(setApnsConfig).toHaveBeenCalledWith({
         keyPath: "/Users/adam/Keys/AuthKey_ABC1234567.p8",
         keyId: "ABC1234567",
         teamId: "TEAM123456",
-        sandbox: true
+        sandbox: true,
       });
     });
   });
@@ -194,7 +205,7 @@ describe("RemoteSettings", () => {
     const unregisterPushDevice = vi.fn().mockResolvedValue([]);
     installRemoteStub({
       getStatus: vi.fn().mockResolvedValue(remoteStatus({ apns: pairedApns() })),
-      unregisterPushDevice
+      unregisterPushDevice,
     });
     render(<RemoteSettings />);
 
@@ -210,10 +221,12 @@ describe("RemoteSettings", () => {
   it("sends a test push once a key and a phone are in place", async () => {
     const pushTest = vi
       .fn()
-      .mockResolvedValue([{ token: "a1b2c3d4e5f6a7b8", name: "Adam's iPhone", ok: true, error: null }]);
+      .mockResolvedValue([
+        { token: "a1b2c3d4e5f6a7b8", name: "Adam's iPhone", ok: true, error: null },
+      ]);
     installRemoteStub({
       getStatus: vi.fn().mockResolvedValue(remoteStatus({ apns: pairedApns() })),
-      pushTest
+      pushTest,
     });
     render(<RemoteSettings />);
 
@@ -228,21 +241,26 @@ describe("RemoteSettings", () => {
   it("names the phone Apple rejected instead of reporting a blanket failure", async () => {
     const pushTest = vi.fn().mockResolvedValue([
       { token: "a1b2c3d4e5f6a7b8", name: "Adam's iPhone", ok: true, error: null },
-      { token: "ffff", name: "Old iPhone", ok: false, error: "APNs returned 410 (Unregistered)" }
+      { token: "ffff", name: "Old iPhone", ok: false, error: "APNs returned 410 (Unregistered)" },
     ]);
     installRemoteStub({
       getStatus: vi.fn().mockResolvedValue(
         remoteStatus({
-          apns: { ...pairedApns(), devices: [pushDevice(), pushDevice({ token: "ffff", name: "Old iPhone" })] }
-        })
+          apns: {
+            ...pairedApns(),
+            devices: [pushDevice(), pushDevice({ token: "ffff", name: "Old iPhone" })],
+          },
+        }),
       ),
-      pushTest
+      pushTest,
     });
     render(<RemoteSettings />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Send test push" }));
 
-    await waitFor(() => expect(toastSnapshot()?.message).toContain("Old iPhone: APNs returned 410 (Unregistered)"));
+    await waitFor(() =>
+      expect(toastSnapshot()?.message).toContain("Old iPhone: APNs returned 410 (Unregistered)"),
+    );
   });
 
   it("blocks the test push until the key is saved and a phone is paired", async () => {

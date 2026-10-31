@@ -7,11 +7,31 @@ interface WorkspaceFixture {
   lastActivityAt: string;
 }
 
-const ROW_OLD: WorkspaceFixture = { id: "w-old", pinned: false, lastActivityAt: "2026-05-01T00:00:00.000Z" };
-const ROW_MID: WorkspaceFixture = { id: "w-mid", pinned: false, lastActivityAt: "2026-05-02T00:00:00.000Z" };
-const ROW_NEW: WorkspaceFixture = { id: "w-new", pinned: false, lastActivityAt: "2026-05-03T00:00:00.000Z" };
-const ROW_PINNED_OLD: WorkspaceFixture = { id: "w-pin-old", pinned: true, lastActivityAt: "2026-04-01T00:00:00.000Z" };
-const ROW_PINNED_NEW: WorkspaceFixture = { id: "w-pin-new", pinned: true, lastActivityAt: "2026-05-04T00:00:00.000Z" };
+const ROW_OLD: WorkspaceFixture = {
+  id: "w-old",
+  pinned: false,
+  lastActivityAt: "2026-05-01T00:00:00.000Z",
+};
+const ROW_MID: WorkspaceFixture = {
+  id: "w-mid",
+  pinned: false,
+  lastActivityAt: "2026-05-02T00:00:00.000Z",
+};
+const ROW_NEW: WorkspaceFixture = {
+  id: "w-new",
+  pinned: false,
+  lastActivityAt: "2026-05-03T00:00:00.000Z",
+};
+const ROW_PINNED_OLD: WorkspaceFixture = {
+  id: "w-pin-old",
+  pinned: true,
+  lastActivityAt: "2026-04-01T00:00:00.000Z",
+};
+const ROW_PINNED_NEW: WorkspaceFixture = {
+  id: "w-pin-new",
+  pinned: true,
+  lastActivityAt: "2026-05-04T00:00:00.000Z",
+};
 
 describe("sortWorkspaceGroup", () => {
   it("pinned items appear before unpinned regardless of recency", () => {
@@ -22,7 +42,7 @@ describe("sortWorkspaceGroup", () => {
   it("honors a manual order within pinned and unpinned groups", () => {
     const result = sortWorkspaceGroup(
       [ROW_OLD, ROW_NEW, ROW_PINNED_OLD, ROW_PINNED_NEW],
-      ["w-new", "w-old", "w-pin-new", "w-pin-old"]
+      ["w-new", "w-old", "w-pin-new", "w-pin-old"],
     );
     // Pinned bubble first; within each group the manual order wins.
     expect(result.map((row) => row.id)).toEqual(["w-pin-new", "w-pin-old", "w-new", "w-old"]);
@@ -49,7 +69,7 @@ describe("groupWorkspacesByDate", () => {
   const NOW = new Date(2026, 5, 5, 12, 0, 0);
   const at = (y: number, m: number, d: number, h = 9): { id: string; lastActivityAt: string } => ({
     id: `${y}-${m}-${d}-${h}`,
-    lastActivityAt: new Date(y, m, d, h).toISOString()
+    lastActivityAt: new Date(y, m, d, h).toISOString(),
   });
 
   it("buckets into Today / Yesterday / Last 7 Days / Older", () => {
@@ -60,15 +80,15 @@ describe("groupWorkspacesByDate", () => {
         at(2026, 5, 1), // 4 days ago → Last 7 Days
         at(2026, 4, 20), // 16 days ago → Older
         at(2026, 3, 10), // April → Older
-        at(2025, 11, 10) // Dec 2025 → Older, same bucket as April
+        at(2025, 11, 10), // Dec 2025 → Older, same bucket as April
       ],
-      NOW
+      NOW,
     );
     expect(groups.map((group) => [group.key, group.label])).toEqual([
       ["today", "Today"],
       ["yesterday", "Yesterday"],
       ["last-7", "Last 7 Days"],
-      ["older", "Older"]
+      ["older", "Older"],
     ]);
     // Everything past 7 days collapses into one Older bucket instead of one
     // header per calendar month.
@@ -86,9 +106,16 @@ describe("groupWorkspacesByDate", () => {
   });
 
   it("sorts newest first and groups multiple sessions per bucket", () => {
-    const groups = groupWorkspacesByDate([at(2026, 5, 5, 8), at(2026, 5, 5, 18), at(2026, 5, 5, 12)], NOW);
+    const groups = groupWorkspacesByDate(
+      [at(2026, 5, 5, 8), at(2026, 5, 5, 18), at(2026, 5, 5, 12)],
+      NOW,
+    );
     expect(groups).toHaveLength(1);
-    expect(groups[0]?.items.map((row) => row.id)).toEqual(["2026-5-5-18", "2026-5-5-12", "2026-5-5-8"]);
+    expect(groups[0]?.items.map((row) => row.id)).toEqual([
+      "2026-5-5-18",
+      "2026-5-5-12",
+      "2026-5-5-8",
+    ]);
   });
 
   it("drops empty buckets and returns nothing for no input", () => {

@@ -1,5 +1,9 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { activateBrowserTab, getBrowserRequest, subscribeBrowserRequest } from "../lib/browserPanel.js";
+import {
+  activateBrowserTab,
+  getBrowserRequest,
+  subscribeBrowserRequest,
+} from "../lib/browserPanel.js";
 import { readStoredLinkTarget } from "../lib/linkTarget.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { isSecondaryWindow } from "../lib/windowRole.js";
@@ -30,7 +34,9 @@ export function useStandaloneBrowserLinks(options: {
     const url = pendingBrowserRequest.url;
     if (
       !isSecondaryWindow() &&
-      (pendingBrowserRequest.tabId || pendingBrowserRequest.newTab || readStoredLinkTarget() === "argmax")
+      (pendingBrowserRequest.tabId ||
+        pendingBrowserRequest.newTab ||
+        readStoredLinkTarget() === "argmax")
     ) {
       if (pendingBrowserRequest.tabId) activateBrowserTab(pendingBrowserRequest.tabId);
       onOpenInAppBrowser(url);

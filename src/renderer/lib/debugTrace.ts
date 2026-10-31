@@ -57,7 +57,7 @@ function canonicalDiagnostic(event: CanonicalTimelineEvent): Record<string, unkn
         phase: event.phase,
         content: event.content,
         childProse: event.childProse,
-        rawStream: event.rawStream
+        rawStream: event.rawStream,
       };
     case "tool":
       return {
@@ -69,7 +69,7 @@ function canonicalDiagnostic(event: CanonicalTimelineEvent): Record<string, unkn
         invocationId: event.invocationId,
         outcome: event.outcome,
         running: event.running,
-        traceSyntheticLaunch: event.traceSyntheticLaunch
+        traceSyntheticLaunch: event.traceSyntheticLaunch,
       };
     case "lifecycle": {
       const lifecycle: Record<string, unknown> = { ...diagnostic, name: event.name };
@@ -105,7 +105,7 @@ function canonicalDiagnostic(event: CanonicalTimelineEvent): Record<string, unkn
         status: event.status,
         providerInvocationId: event.providerInvocationId,
         providerChildSessionId: event.providerChildSessionId,
-        agentRunId: event.agentRunId
+        agentRunId: event.agentRunId,
       };
     case "multitask":
       return {
@@ -114,7 +114,7 @@ function canonicalDiagnostic(event: CanonicalTimelineEvent): Record<string, unkn
         childSessionId: event.childSessionId,
         state: event.state,
         taskLabel: event.taskLabel,
-        worktree: event.worktree
+        worktree: event.worktree,
       };
     case "approval":
       return {
@@ -127,14 +127,14 @@ function canonicalDiagnostic(event: CanonicalTimelineEvent): Record<string, unkn
         toolUseId: event.toolUseId,
         resolution: event.resolution,
         cwd: event.cwd,
-        riskLevel: event.riskLevel
+        riskLevel: event.riskLevel,
       };
     case "error":
       return {
         ...diagnostic,
         code: event.code,
         operation: event.operation,
-        isPayloadTruncation: event.isPayloadTruncation
+        isPayloadTruncation: event.isPayloadTruncation,
       };
     case "unknown":
       return { ...diagnostic, reason: event.reason };
@@ -149,7 +149,10 @@ function canonicalDiagnostic(event: CanonicalTimelineEvent): Record<string, unkn
  * one wall of text. A chunk that ends mid-line yields a row that fails to
  * parse, which is itself the signal you want when framing is the bug.
  */
-export function buildTraceRows(events: TimelineEvent[], rawOutputs: RawProviderOutput[]): TraceRow[] {
+export function buildTraceRows(
+  events: TimelineEvent[],
+  rawOutputs: RawProviderOutput[],
+): TraceRow[] {
   const rows: Omit<TraceRow, "deltaMs">[] = [];
 
   for (const event of events) {
@@ -158,7 +161,7 @@ export function buildTraceRows(events: TimelineEvent[], rawOutputs: RawProviderO
     const raw = JSON.stringify(
       { type: decoded.raw.type, message: decoded.raw.message, payload: decoded.raw.payload },
       null,
-      2
+      2,
     );
     rows.push({
       id: `event:${event.id}`,
@@ -169,7 +172,7 @@ export function buildTraceRows(events: TimelineEvent[], rawOutputs: RawProviderO
       haystack: `${decoded.raw.type} ${decoded.raw.message} ${detail} ${raw}`.toLowerCase(),
       summary: decoded.raw.message || decoded.raw.type,
       detail,
-      raw
+      raw,
     });
   }
 
@@ -188,7 +191,7 @@ export function buildTraceRows(events: TimelineEvent[], rawOutputs: RawProviderO
         haystack: line.toLowerCase(),
         summary: summarizeProtocolLine(line) ?? line,
         detail: record ? JSON.stringify(record, null, 2) : line,
-        raw: line
+        raw: line,
       });
     });
   }

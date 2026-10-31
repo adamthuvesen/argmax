@@ -17,7 +17,7 @@ import { ForkMergeDialog } from "./ForkMergeDialog.js";
  */
 export function ForkBar({
   sessionId,
-  onOpenSession
+  onOpenSession,
 }: {
   sessionId: string;
   onOpenSession?: (sessionId: string) => void;
@@ -33,7 +33,7 @@ export function ForkBar({
     // channels simply has no lineage to show. A chat that cannot report its
     // lineage is just an ordinary chat, so a failed read shows nothing.
     read: (api) => api.session?.forkLineage?.({ sessionId }),
-    onData: setLineage
+    onData: setLineage,
   });
   useEffect(() => {
     setLineage(null);
@@ -48,7 +48,9 @@ export function ForkBar({
       const renamed = delta.workspaces?.find((workspace) => workspace.id === sourceWorkspaceId);
       if (!renamed) return;
       setLineage((current) =>
-        current && current.sourceLabel !== renamed.taskLabel ? { ...current, sourceLabel: renamed.taskLabel } : current
+        current && current.sourceLabel !== renamed.taskLabel
+          ? { ...current, sourceLabel: renamed.taskLabel }
+          : current,
       );
     });
   }, [sourceWorkspaceId]);
@@ -87,7 +89,9 @@ export function ForkBar({
           Bring findings back
         </button>
       ) : null}
-      {merging ? <ForkMergeDialog childSessionId={sessionId} onClose={() => setMerging(false)} /> : null}
+      {merging ? (
+        <ForkMergeDialog childSessionId={sessionId} onClose={() => setMerging(false)} />
+      ) : null}
     </div>
   );
 }

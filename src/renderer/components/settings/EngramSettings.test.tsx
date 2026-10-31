@@ -21,7 +21,7 @@ describe("EngramSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Set up Engram" }));
     expect(screen.getByRole("link", { name: "Installation guide" })).toHaveAttribute(
       "href",
-      "https://github.com/adamthuvesen/engram#run-it"
+      "https://github.com/adamthuvesen/engram#run-it",
     );
   });
 
@@ -45,7 +45,9 @@ describe("EngramSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Set up Engram" }));
     fireEvent.click(screen.getByRole("link", { name: "Installation guide" }));
 
-    expect(openPath).toHaveBeenCalledWith({ path: "https://github.com/adamthuvesen/engram#run-it" });
+    expect(openPath).toHaveBeenCalledWith({
+      path: "https://github.com/adamthuvesen/engram#run-it",
+    });
   });
 
   it("shows generated command for an absolute directory", () => {
@@ -53,7 +55,7 @@ describe("EngramSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Set up Engram" }));
 
     fireEvent.change(screen.getByLabelText("Where Engram is installed"), {
-      target: { value: "/Users/dev/argmax" }
+      target: { value: "/Users/dev/argmax" },
     });
 
     const command = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "3. Connect Codex" });
@@ -66,13 +68,19 @@ describe("EngramSettings", () => {
     const { rerender } = render(<EngramSettings provider="codex" onProviderChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Set up Engram" }));
 
-    fireEvent.change(screen.getByLabelText("Where Engram is installed"), { target: { value: path } });
-    const codexCommand = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "3. Connect Codex" }).value;
+    fireEvent.change(screen.getByLabelText("Where Engram is installed"), {
+      target: { value: path },
+    });
+    const codexCommand = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "3. Connect Codex",
+    }).value;
 
     rerender(<EngramSettings provider="cursor" onProviderChange={vi.fn()} />);
 
     expect(screen.getByLabelText("Where Engram is installed")).toHaveValue(path);
-    const cursorCommand = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "3. Connect Cursor" }).value;
+    const cursorCommand = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "3. Connect Cursor",
+    }).value;
     expect(cursorCommand).not.toBe(codexCommand);
     expect(cursorCommand).toMatch(/^\s*\{/);
   });
@@ -85,7 +93,7 @@ describe("EngramSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Set up Engram" }));
 
     fireEvent.change(screen.getByLabelText("Where Engram is installed"), {
-      target: { value: "/Users/dev/argmax" }
+      target: { value: "/Users/dev/argmax" },
     });
     const command = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "3. Connect Codex" });
     await act(async () => {

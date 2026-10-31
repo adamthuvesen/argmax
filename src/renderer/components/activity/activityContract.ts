@@ -20,5 +20,5 @@ export type {
   ActivitySummary,
   ActivitySummaryInput,
   ActivityTotals,
-  ActivityWindow
+  ActivityWindow,
 } from "../../../shared/bindings.js";

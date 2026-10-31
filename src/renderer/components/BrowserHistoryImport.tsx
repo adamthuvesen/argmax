@@ -49,7 +49,9 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
         if (profileRequestRef.current !== request) return;
         setProfiles(nextProfiles);
         setSelectedProfileId((current) =>
-          nextProfiles.some((profile) => profile.id === current) ? current : (nextProfiles[0]?.id ?? "")
+          nextProfiles.some((profile) => profile.id === current)
+            ? current
+            : (nextProfiles[0]?.id ?? ""),
         );
       })
       .catch((error: unknown) => {
@@ -84,7 +86,11 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
 
   const profileControls =
     profiles === null ? (
-      <p className="browser-history-import-loading" role="status" aria-label="Loading Chrome profiles">
+      <p
+        className="browser-history-import-loading"
+        role="status"
+        aria-label="Loading Chrome profiles"
+      >
         Loading Chrome profiles…
       </p>
     ) : loadError ? (
@@ -149,7 +155,8 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
         </header>
 
         <p className="browser-history-import-description">
-          History improves suggestions when you type in the address bar. Cookies and saved logins are not included.
+          History improves suggestions when you type in the address bar. Cookies and saved logins
+          are not included.
         </p>
 
         {profileControls}
@@ -158,12 +165,14 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
           <div className="browser-history-import-success" role="status">
             <CheckCircle2 size={17} aria-hidden="true" />
             <p>
-              Imported {summary.read.toLocaleString()} {summary.read === 1 ? "page" : "pages"} from Chrome.{" "}
-              {summary.added.toLocaleString()} {summary.added === 1 ? "was" : "were"} new to Argmax.
+              Imported {summary.read.toLocaleString()} {summary.read === 1 ? "page" : "pages"} from
+              Chrome. {summary.added.toLocaleString()} {summary.added === 1 ? "was" : "were"} new to
+              Argmax.
               {summary.totalAvailable > summary.read ? (
                 <>
                   {" "}
-                  Chrome has {summary.totalAvailable.toLocaleString()} available pages. Each import is capped at 10,000.
+                  Chrome has {summary.totalAvailable.toLocaleString()} available pages. Each import
+                  is capped at 10,000.
                 </>
               ) : null}
             </p>
@@ -179,7 +188,11 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
               type="button"
               className="browser-history-import-submit"
               disabled={
-                profiles === null || profiles.length === 0 || !selectedProfileId || importing || Boolean(loadError)
+                profiles === null ||
+                profiles.length === 0 ||
+                !selectedProfileId ||
+                importing ||
+                Boolean(loadError)
               }
               onClick={() => void handleImport()}
             >
@@ -189,6 +202,6 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
         </footer>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

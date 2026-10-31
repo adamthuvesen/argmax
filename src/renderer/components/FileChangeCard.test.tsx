@@ -5,7 +5,7 @@ vi.mock("../lib/highlighter.js", () => ({
   highlightLine: (content: string) => [{ content }],
   useHighlighterReady: () => true,
   useHighlightThemeAppearance: () => "light",
-  langFromPath: (path: string | null | undefined) => (path?.endsWith(".ts") ? "typescript" : null)
+  langFromPath: (path: string | null | undefined) => (path?.endsWith(".ts") ? "typescript" : null),
 }));
 
 import { interpretFileChange } from "../lib/fileChange.js";
@@ -38,7 +38,7 @@ describe("FileChangeCard", () => {
   it("displays workspace-relative path when cwd matches", () => {
     const change = changeFor("Write", {
       file_path: "/Users/me/proj/src/foo.ts",
-      content: "x"
+      content: "x",
     });
     render(<FileChangeCard change={change} workspaceCwd="/Users/me/proj" />);
     expect(screen.getByText("src/foo.ts")).toBeInTheDocument();
@@ -52,10 +52,12 @@ describe("FileChangeCard", () => {
     const change = changeFor("Edit", {
       file_path: "/Users/me/proj/src/foo.ts",
       old_string: "a",
-      new_string: "b"
+      new_string: "b",
     });
     const onOpenFile = vi.fn();
-    render(<FileChangeCard change={change} workspaceCwd="/Users/me/proj" onOpenFile={onOpenFile} />);
+    render(
+      <FileChangeCard change={change} workspaceCwd="/Users/me/proj" onOpenFile={onOpenFile} />,
+    );
     fireEvent.click(screen.getByLabelText("Open /Users/me/proj/src/foo.ts"));
     expect(onOpenFile).toHaveBeenCalledWith("src/foo.ts");
   });
@@ -83,7 +85,7 @@ describe("FileChangeCard", () => {
   it("hides line numbers for MultiEdit hunks", () => {
     const change = changeFor("MultiEdit", {
       file_path: "/tmp/a.ts",
-      edits: [{ old_string: "a", new_string: "A" }]
+      edits: [{ old_string: "a", new_string: "A" }],
     });
     const { container } = render(<FileChangeCard change={change} workspaceCwd={null} />);
     expect(container.querySelector(".file-change-card[data-no-line-numbers]")).not.toBeNull();
@@ -94,7 +96,7 @@ describe("FileChangeCard", () => {
       file_path: "/tmp/a.ts",
       old_string: "x",
       new_string: "y",
-      replace_all: true
+      replace_all: true,
     });
     const { container } = render(<FileChangeCard change={change} workspaceCwd={null} />);
     expect(container.querySelector(".file-change-card-note")?.textContent).toMatch(/all matches/i);

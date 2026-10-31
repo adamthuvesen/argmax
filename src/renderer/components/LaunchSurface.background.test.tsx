@@ -5,7 +5,7 @@ import { readDraft } from "../lib/composerDrafts.js";
 import {
   BACKGROUND_SEND_SHORTCUT_KEY,
   resetBackgroundSendShortcut,
-  writeBackgroundSendShortcut
+  writeBackgroundSendShortcut,
 } from "../lib/backgroundSend.js";
 import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 import { windowSnapshotInbox } from "../lib/windowSnapshotInbox.js";
@@ -15,7 +15,7 @@ import {
   createIsolatedWorkspace,
   launchProvider,
   setupAppTestMocks,
-  snapshot
+  snapshot,
 } from "../../test/appTestHarness.js";
 
 const workspace = { ...snapshot.workspaces[0], id: "workspace-bg", taskLabel: "Background chat" };
@@ -55,7 +55,9 @@ describe("starting a new chat in the background", () => {
     await waitFor(() => expect(launchProvider).toHaveBeenCalledOnce());
     expect(launchProvider.mock.calls[0]?.[0]).toMatchObject({ prompt: "Fix the flaky test" });
     // Still the launcher: the field is there, empty, and kept the focus.
-    await waitFor(() => expect(toastSnapshot()?.message).toContain("Started “Fix the flaky test” in the background."));
+    await waitFor(() =>
+      expect(toastSnapshot()?.message).toContain("Started “Fix the flaky test” in the background."),
+    );
     expect(await promptField()).toHaveValue("");
     expect(screen.getByLabelText("Task prompt")).toHaveFocus();
     expect(screen.queryByRole("region", { name: "Background chat" })).not.toBeInTheDocument();
@@ -69,7 +71,7 @@ describe("starting a new chat in the background", () => {
       () =>
         new Promise((resolve) => {
           finishLaunch = () => resolve(session);
-        })
+        }),
     );
     render(<App />);
     const field = await promptField();
@@ -94,7 +96,7 @@ describe("starting a new chat in the background", () => {
       () =>
         new Promise((_resolve, reject) => {
           failLaunch = reject;
-        })
+        }),
     );
     render(<App />);
     const field = await promptField();
@@ -108,10 +110,12 @@ describe("starting a new chat in the background", () => {
       return Promise.resolve();
     });
 
-    await waitFor(() => expect(screen.getByLabelText("Task prompt")).toHaveValue("Doomed task\n\nNext idea"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Task prompt")).toHaveValue("Doomed task\n\nNext idea"),
+    );
     expect(toastSnapshot()).toMatchObject({
       kind: "error",
-      message: "provider offline Your draft is back in the composer."
+      message: "provider offline Your draft is back in the composer.",
     });
     expect(readDraft("launch-project-1").text).toBe("Doomed task\n\nNext idea");
   });
@@ -122,7 +126,7 @@ describe("starting a new chat in the background", () => {
       () =>
         new Promise((_resolve, reject) => {
           failLaunch = reject;
-        })
+        }),
     );
     render(<App />);
     const field = await promptField();
@@ -143,7 +147,7 @@ describe("starting a new chat in the background", () => {
     await waitFor(() => expect(readDraft("launch-project-1").text).toBe("Doomed task"));
     expect(toastSnapshot()).toMatchObject({
       kind: "error",
-      message: "provider offline Your draft was put back in its New chat."
+      message: "provider offline Your draft was put back in its New chat.",
     });
   });
 
@@ -153,7 +157,7 @@ describe("starting a new chat in the background", () => {
       () =>
         new Promise((_resolve, reject) => {
           failLaunch = reject;
-        })
+        }),
     );
     const first = render(<App />);
     fireEvent.change(await promptField(), { target: { value: "Doomed task" } });
@@ -169,8 +173,12 @@ describe("starting a new chat in the background", () => {
       return Promise.resolve();
     });
 
-    await waitFor(() => expect(screen.getByLabelText("Task prompt")).toHaveValue("Doomed task\n\nNext idea"));
-    await waitFor(() => expect(readDraft("launch-project-1").text).toBe("Doomed task\n\nNext idea"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Task prompt")).toHaveValue("Doomed task\n\nNext idea"),
+    );
+    await waitFor(() =>
+      expect(readDraft("launch-project-1").text).toBe("Doomed task\n\nNext idea"),
+    );
   });
 
   it("answers the shortcut the user chose, and not the old one", async () => {
@@ -211,9 +219,18 @@ describe("a window capture arriving at the New chat draft", () => {
 
     act(() =>
       windowSnapshotInbox.deliver({
-        attachment: { filePath: "/attachments/window-snapshots/a.png", mimeType: "image/png", sizeBytes: 7 },
-        source: { appName: "Xcode", bundleId: null, windowTitle: null, capturedAt: "2026-10-04T08:00:00Z" }
-      })
+        attachment: {
+          filePath: "/attachments/window-snapshots/a.png",
+          mimeType: "image/png",
+          sizeBytes: 7,
+        },
+        source: {
+          appName: "Xcode",
+          bundleId: null,
+          windowTitle: null,
+          capturedAt: "2026-10-04T08:00:00Z",
+        },
+      }),
     );
 
     expect(screen.getByLabelText("Attached images").querySelectorAll("img")).toHaveLength(1);

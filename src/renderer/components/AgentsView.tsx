@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
   type JSX,
-  type KeyboardEvent as ReactKeyboardEvent
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import type {
   AgentMode,
@@ -14,14 +14,19 @@ import type {
   PendingMessage,
   SessionSummary,
   TimelineEvent,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../../shared/types.js";
 import type { SendInputResult } from "../../shared/bindings.js";
 import type { AgentTabsState } from "../hooks/useAgentTabs.js";
 import { buildAgentActivity } from "../lib/agentActivity.js";
 import { agentStripLimit } from "../lib/agentStripLimit.js";
 import { agentTabId, multitaskTabId, readAgentTab } from "../lib/agentTabs.js";
-import { agentRootToolUseId, assignAgentCodenames, codenameForTool, fallbackCodename } from "../lib/agentNames.js";
+import {
+  agentRootToolUseId,
+  assignAgentCodenames,
+  codenameForTool,
+  fallbackCodename,
+} from "../lib/agentNames.js";
 import type { FontSize } from "../lib/fonts.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
@@ -98,7 +103,7 @@ export function AgentsView({
   onOpenFullChat,
   onSendQueuedMessageNow,
   onSendSessionInput,
-  onTerminateSession
+  onTerminateSession,
 }: {
   events: TimelineEvent[];
   /** Settings → Appearance: the agent-window scale shared by delegated chats. */
@@ -123,7 +128,7 @@ export function AgentsView({
   onLoadAgentEvents?: (
     sessionId: string,
     parentToolUseId: string,
-    identity?: NativeAgentIdentity
+    identity?: NativeAgentIdentity,
   ) => Promise<void | { hasMore: boolean }>;
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onOpenAgent?: (tool: ToolCall) => void;
@@ -137,7 +142,7 @@ export function AgentsView({
     input: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
-    attachments?: ComposerAttachment[]
+    attachments?: ComposerAttachment[],
   ) => Promise<SendInputResult>;
   onTerminateSession?: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
 }): JSX.Element {
@@ -151,12 +156,15 @@ export function AgentsView({
       buildSessionToolCalls(
         events,
         parentSession?.state === "running",
-        parentSession?.state === "failed" || parentSession?.state === "cancelled"
+        parentSession?.state === "failed" || parentSession?.state === "cancelled",
       ),
-    [events, parentSession?.state]
+    [events, parentSession?.state],
   );
   const codenames = useMemo(() => assignAgentCodenames(tools), [tools]);
-  const roster = useMemo(() => buildAgentRoster(tools, codenames, multitasks), [codenames, multitasks, tools]);
+  const roster = useMemo(
+    () => buildAgentRoster(tools, codenames, multitasks),
+    [codenames, multitasks, tools],
+  );
   const orderedRoster = useMemo(
     () =>
       [...roster.entries].sort((a, b) => {
@@ -164,7 +172,7 @@ export function AgentsView({
         const status = statusOrder[a.status] - statusOrder[b.status];
         return status || newestAgentFirst(a, b);
       }),
-    [roster.entries]
+    [roster.entries],
   );
 
   const discoveredTabs = useRef(new Set<string>());
@@ -195,7 +203,9 @@ export function AgentsView({
 
   const tabs = useMemo((): DockTab[] => {
     const sessionRunning = parentSession?.state === "running";
-    const childrenByTabId = new Map((multitasks ?? []).map((child) => [multitaskTabId(child.session.id), child]));
+    const childrenByTabId = new Map(
+      (multitasks ?? []).map((child) => [multitaskTabId(child.session.id), child]),
+    );
     const openOrder = tabIds.map((id): DockTab => {
       const tab = readAgentTab(id);
       if (tab.kind === "multitask") {
@@ -210,7 +220,7 @@ export function AgentsView({
           status: child ? multitaskRowStatus(child.session.state) : "missing",
           name: label,
           multitask: child,
-          rootToolUseId: null
+          rootToolUseId: null,
         };
       }
       const identityTool = tools.find(
@@ -218,7 +228,8 @@ export function AgentsView({
           agentRootToolUseId(tool) === tab.toolUseId &&
           (!tab.providerParentConversationId ||
             tool.providerParentConversationId === tab.providerParentConversationId) &&
-          (!tab.providerChildSessionId || tool.providerChildSessionId === tab.providerChildSessionId)
+          (!tab.providerChildSessionId ||
+            tool.providerChildSessionId === tab.providerChildSessionId),
       );
       const persistedCodename = events.find((event) => {
         const decoded = decodeTimelineEvent(event);
@@ -229,7 +240,9 @@ export function AgentsView({
           decoded.agentCodename
         );
       });
-      const decodedCodename = persistedCodename ? decodeTimelineEvent(persistedCodename).agentCodename : null;
+      const decodedCodename = persistedCodename
+        ? decodeTimelineEvent(persistedCodename).agentCodename
+        : null;
       const codename = identityTool
         ? (codenameForTool(identityTool, codenames) ?? fallbackCodename(tab.toolUseId))
         : (decodedCodename ?? fallbackCodename(tab.toolUseId));
@@ -237,15 +250,16 @@ export function AgentsView({
         parentToolUseId: tab.toolUseId,
         events,
         sessionRunning,
-        sessionInterrupted: parentSession?.state === "failed" || parentSession?.state === "cancelled",
+        sessionInterrupted:
+          parentSession?.state === "failed" || parentSession?.state === "cancelled",
         provider: parentSession?.provider,
         nativeIdentity:
           tab.providerParentConversationId && tab.providerChildSessionId
             ? {
                 providerParentConversationId: tab.providerParentConversationId,
-                providerChildSessionId: tab.providerChildSessionId
+                providerChildSessionId: tab.providerChildSessionId,
               }
-            : null
+            : null,
       });
       return {
         id,
@@ -253,7 +267,7 @@ export function AgentsView({
         status: activity.status,
         name: codename,
         multitask: null,
-        rootToolUseId: tab.toolUseId
+        rootToolUseId: tab.toolUseId,
       };
     });
     // Discovery order, oldest first. These panels are stacked and shown one at
@@ -272,23 +286,25 @@ export function AgentsView({
           const tab = readAgentTab(id);
           return [
             id,
-            tab.kind === "subagent" && tab.providerParentConversationId && tab.providerChildSessionId
+            tab.kind === "subagent" &&
+            tab.providerParentConversationId &&
+            tab.providerChildSessionId
               ? {
                   providerParentConversationId: tab.providerParentConversationId,
-                  providerChildSessionId: tab.providerChildSessionId
+                  providerChildSessionId: tab.providerChildSessionId,
                 }
-              : null
+              : null,
           ];
-        })
+        }),
       ),
-    [tabIds]
+    [tabIds],
   );
   // Launch order, oldest leftmost: a new agent appends on the right and the
   // tabs already there stay put. Completed work leaves the strip once it is no
   // longer selected, but the selection itself never changes anyone's position.
   const stripCandidates = useMemo(
     () => roster.entries.filter((entry) => entry.status !== "done" || entry.id === activeId),
-    [activeId, roster.entries]
+    [activeId, roster.entries],
   );
   const stripRef = useRef<HTMLDivElement | null>(null);
   const [stripLimit, setStripLimit] = useState(() => agentStripLimit(0));
@@ -326,10 +342,10 @@ export function AgentsView({
         .sort(
           (a, b) =>
             slotPriority(a, activeId) - slotPriority(b, activeId) ||
-            (launchIndex.get(b.id) ?? 0) - (launchIndex.get(a.id) ?? 0)
+            (launchIndex.get(b.id) ?? 0) - (launchIndex.get(a.id) ?? 0),
         )
         .slice(0, stripLimit)
-        .map((entry) => entry.id)
+        .map((entry) => entry.id),
     );
     return stripCandidates.filter((entry) => kept.has(entry.id));
   }, [activeId, stripCandidates, stripLimit]);
@@ -343,7 +359,7 @@ export function AgentsView({
       agentTabs.openTabs?.([id]);
       agentTabs.selectTab(id);
     },
-    [agentTabs]
+    [agentTabs],
   );
 
   // Drop a tab whose launch row left the timeline: Codex supersedes a synthetic
@@ -371,7 +387,7 @@ export function AgentsView({
         events,
         sessionRunning: parentSession.state === "running",
         sessionInterrupted: parentSession.state === "failed" || parentSession.state === "cancelled",
-        provider: parentSession.provider
+        provider: parentSession.provider,
       });
       if (!activity.parentTool) continue;
       const durableId = agentTabId(activity.parentTool);
@@ -386,7 +402,7 @@ export function AgentsView({
         if (node === null) tabButtonRefs.current.delete(tabId);
         else tabButtonRefs.current.set(tabId, node);
       },
-    []
+    [],
   );
 
   const handleTabKeyDown = useCallback(
@@ -402,7 +418,9 @@ export function AgentsView({
         };
         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
           const delta = event.key === "ArrowLeft" ? -1 : 1;
-          focusTab(orderedTabIds[(currentIndex + delta + orderedTabIds.length) % orderedTabIds.length]);
+          focusTab(
+            orderedTabIds[(currentIndex + delta + orderedTabIds.length) % orderedTabIds.length],
+          );
           return;
         }
         if (event.key === "Home") {
@@ -414,7 +432,7 @@ export function AgentsView({
           return;
         }
       },
-    [agentTabs, orderedTabIds]
+    [agentTabs, orderedTabIds],
   );
 
   if (tabIds.length === 0) {
@@ -494,7 +512,10 @@ export function AgentsView({
               data-active={isActive ? "true" : "false"}
               role="tabpanel"
               id={`review-agent-${tab.id}`}
-              aria-labelledby={visibleStripIds.has(tab.id) ? `review-agent-tab-${tab.id}` : undefined}
+              data-testid={`review-agent-${tab.id}`}
+              aria-labelledby={
+                visibleStripIds.has(tab.id) ? `review-agent-tab-${tab.id}` : undefined
+              }
               aria-label={visibleStripIds.has(tab.id) ? undefined : tab.title}
               aria-hidden={isActive ? undefined : true}
             >

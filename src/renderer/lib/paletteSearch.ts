@@ -104,7 +104,7 @@ const fuzzy = new uFuzzy({
   intraTrn: 1,
   intraDel: 1,
   interLft: 2,
-  interRgt: 0
+  interRgt: 0,
 });
 
 // File-path matcher: same left-boundary strictness so "src" matches
@@ -118,7 +118,7 @@ const filePathFuzzy = new uFuzzy({
   intraTrn: 1,
   intraDel: 1,
   interLft: 2,
-  interRgt: 0
+  interRgt: 0,
 });
 
 const EMPTY_RANGES: number[] = [];
@@ -131,7 +131,7 @@ export function searchFilePaths(
   paths: string[],
   rawQuery: string,
   limit = 50,
-  preferred?: ReadonlySet<string>
+  preferred?: ReadonlySet<string>,
 ): string[] {
   if (paths.length === 0) return [];
   const query = rawQuery.trim();
@@ -152,8 +152,11 @@ export function searchFilePaths(
       return {
         path,
         rank:
-          (pathQuery ? searchMatchRank(path, query) : nameRank < 5 ? nameRank : 6 + searchMatchRank(path, query)) -
-          preference(path)
+          (pathQuery
+            ? searchMatchRank(path, query)
+            : nameRank < 5
+              ? nameRank
+              : 6 + searchMatchRank(path, query)) - preference(path),
       };
     })
     .sort((left, right) => left.rank - right.rank)
@@ -175,18 +178,22 @@ export function searchPaletteItems(items: PaletteItem[], rawQuery: string): Pale
   // Keywords are synonyms for the label, so they rank one tier under it and
   // above anything that only matched the subtitle.
   const keyworded = items.filter((item) => item.keywords?.length && !matched.has(item.id));
-  const keywordHits = keyworded.length > 0 ? rankBy(keyworded, keyworded.map(keywordText), query, "keywords") : [];
+  const keywordHits =
+    keyworded.length > 0 ? rankBy(keyworded, keyworded.map(keywordText), query, "keywords") : [];
   for (const hit of keywordHits) matched.add(hit.item.id);
   const remaining = items.filter((item) => secondaryText(item) && !matched.has(item.id));
-  const subtitleHits = remaining.length > 0 ? rankBy(remaining, remaining.map(secondaryText), query, "subtitle") : [];
+  const subtitleHits =
+    remaining.length > 0 ? rankBy(remaining, remaining.map(secondaryText), query, "subtitle") : [];
 
   for (const hit of subtitleHits) matched.add(hit.item.id);
-  const combinedItems = items.filter((item) => (secondaryText(item) || item.keywords?.length) && !matched.has(item.id));
+  const combinedItems = items.filter(
+    (item) => (secondaryText(item) || item.keywords?.length) && !matched.has(item.id),
+  );
   const combinedHits = rankBy(
     combinedItems,
     combinedItems.map((item) => `${item.label} ${secondaryText(item)} ${keywordText(item)}`),
     query,
-    "label"
+    "label",
   );
   for (const hit of combinedHits) {
     const offset = hit.item.label.length + 1;
@@ -206,7 +213,7 @@ export function searchPaletteItems(items: PaletteItem[], rawQuery: string): Pale
     hit.matchRank = 6 + (hit.matchRank ?? 5);
   }
   return [...labelHits, ...keywordHits, ...subtitleHits, ...combinedHits].sort(
-    (left, right) => (left.matchRank ?? 5) - (right.matchRank ?? 5)
+    (left, right) => (left.matchRank ?? 5) - (right.matchRank ?? 5),
   );
 }
 
@@ -223,7 +230,7 @@ function rankBy(
   items: PaletteItem[],
   haystack: string[],
   needle: string,
-  field: "label" | "keywords" | "subtitle"
+  field: "label" | "keywords" | "subtitle",
 ): PaletteHit[] {
   // Tier offset per field. Keyword hits get no ranges: nothing on screen matched.
   const offset = field === "subtitle" ? 6 : field === "keywords" ? 1 : 0;
@@ -240,13 +247,13 @@ function rankBy(
       .map((idx) => {
         const ranges = Array.from(haystack[idx].matchAll(literalTerms)).flatMap((match) => [
           match.index,
-          match.index + match[0].length
+          match.index + match[0].length,
         ]);
         return {
           item: items[idx],
           labelRanges: field === "label" ? ranges : null,
           subtitleRanges: field === "subtitle" ? ranges : null,
-          matchRank: searchMatchRank(haystack[idx], needle) + offset
+          matchRank: searchMatchRank(haystack[idx], needle) + offset,
         };
       })
       .sort((left, right) => left.matchRank - right.matchRank);
@@ -260,7 +267,7 @@ function rankBy(
       item: items[itemIdx],
       matchRank: searchMatchRank(haystack[itemIdx], needle) + offset,
       labelRanges: field === "label" ? ranges : null,
-      subtitleRanges: field === "subtitle" ? ranges : null
+      subtitleRanges: field === "subtitle" ? ranges : null,
     });
   }
   return hits.sort((left, right) => (left.matchRank ?? 5) - (right.matchRank ?? 5));

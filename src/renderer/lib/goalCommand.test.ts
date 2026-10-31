@@ -5,14 +5,14 @@ describe("parseGoalCommand", () => {
   it("reads the condition after the command", () => {
     expect(parseGoalCommand("/goal all tests in test/auth pass")).toEqual({
       kind: "set",
-      condition: "all tests in test/auth pass"
+      condition: "all tests in test/auth pass",
     });
   });
 
   it("keeps a multiline condition intact", () => {
     expect(parseGoalCommand("/goal npm test exits 0\nand lint is clean")).toEqual({
       kind: "set",
-      condition: "npm test exits 0\nand lint is clean"
+      condition: "npm test exits 0\nand lint is clean",
     });
   });
 

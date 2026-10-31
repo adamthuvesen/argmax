@@ -15,12 +15,14 @@ const HAIKU: ProviderModelSelection = { label: "Haiku 5.5", modelId: "claude-hai
 const OPUS_MEDIUM: ProviderModelSelection = {
   label: "Opus 5.5",
   modelId: "claude-opus-5-5",
-  reasoningEffort: "medium"
+  reasoningEffort: "medium",
 };
 
 function openClaudePicker(value: ProviderModelSelection = HAIKU): ReturnType<typeof vi.fn> {
   const onChange = vi.fn();
-  render(<ModelSelector ariaLabel="Chat model" provider="claude" value={value} onChange={onChange} />);
+  render(
+    <ModelSelector ariaLabel="Chat model" provider="claude" value={value} onChange={onChange} />,
+  );
   fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
   return onChange;
 }
@@ -32,12 +34,16 @@ describe("ModelSelector — one row per model", () => {
     expect(onChange).toHaveBeenCalledWith({
       label: "Opus 5.5",
       modelId: "claude-opus-5-5",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     });
   });
 
   it("picking a fast model selects it with no effort", () => {
-    const onChange = openClaudePicker({ label: "Opus 5.5", modelId: "claude-opus-5-5", reasoningEffort: "high" });
+    const onChange = openClaudePicker({
+      label: "Opus 5.5",
+      modelId: "claude-opus-5-5",
+      reasoningEffort: "high",
+    });
     fireEvent.click(screen.getByText("Haiku 5.5"));
     expect(onChange).toHaveBeenCalledWith({ label: "Haiku 5.5", modelId: "claude-haiku-5-5" });
   });
@@ -45,7 +51,7 @@ describe("ModelSelector — one row per model", () => {
   it("lists only the locked provider's catalog, with no Recent block", () => {
     window.localStorage.setItem(
       LAUNCH_MODEL_RECENCY_KEY,
-      JSON.stringify(["claude:claude-haiku-5-5", "codex:gpt-6-luna"])
+      JSON.stringify(["claude:claude-haiku-5-5", "codex:gpt-6-luna"]),
     );
     openClaudePicker(OPUS_MEDIUM);
 
@@ -54,7 +60,7 @@ describe("ModelSelector — one row per model", () => {
     expect(
       within(list)
         .getAllByRole("option")
-        .map((option) => optionName(option))
+        .map((option) => optionName(option)),
     ).toEqual(["Fable 5.1", "Opus 5.5", "Sonnet 5.5", "Haiku 5.5"]);
   });
 
@@ -66,11 +72,15 @@ describe("ModelSelector — one row per model", () => {
         "opencode:openrouter/deepseek/deepseek-v4-pro-0813",
         "grok:grok-4.7",
         "cursor:claude-opus-5-5-medium",
-        "codex:gpt-6-luna"
-      ])
+        "codex:gpt-6-luna",
+      ]),
     );
     render(
-      <LaunchModelSelector ariaLabel="Launch model" value={{ provider: "claude", ...OPUS_MEDIUM }} onChange={vi.fn()} />
+      <LaunchModelSelector
+        ariaLabel="Launch model"
+        value={{ provider: "claude", ...OPUS_MEDIUM }}
+        onChange={vi.fn()}
+      />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
 
@@ -81,9 +91,14 @@ describe("ModelSelector — one row per model", () => {
     expect(labels).toContain("DeepSeek V4.1 Flash 1017");
     expect(labels).toContain("Grok 4.7");
     expect(
-      labels.some((label) => label.includes("Grok 4.6") || label.includes("Grok 4.5") || label.includes("Nemotron"))
+      labels.some(
+        (label) =>
+          label.includes("Grok 4.6") || label.includes("Grok 4.5") || label.includes("Nemotron"),
+      ),
     ).toBe(false);
-    expect(labels.indexOf("DeepSeek V4.1 Flash 1017")).toBeLessThan(labels.lastIndexOf("DeepSeek V4.1 Flash 1017"));
+    expect(labels.indexOf("DeepSeek V4.1 Flash 1017")).toBeLessThan(
+      labels.lastIndexOf("DeepSeek V4.1 Flash 1017"),
+    );
     expect(labels.indexOf("Grok 4.7")).toBeLessThan(labels.lastIndexOf("Grok 4.7"));
     expect(labels.slice(3, 4)).toEqual(["Fable 5.1"]);
   });
@@ -93,19 +108,26 @@ describe("Cursor Auto models", () => {
   const autoModels = [
     { label: "Auto Cost (Cursor)", modelId: "auto-smart[optimize_for=cost]" },
     { label: "Auto Balance (Cursor)", modelId: "auto-smart[optimize_for=balanced]" },
-    { label: "Auto Intelligence (Cursor)", modelId: "auto-smart[optimize_for=intelligence]" }
+    { label: "Auto Intelligence (Cursor)", modelId: "auto-smart[optimize_for=intelligence]" },
   ];
 
   it("places Auto modes before the other Cursor models in the launch catalog", () => {
     render(
-      <LaunchModelSelector ariaLabel="Launch model" value={{ provider: "claude", ...OPUS_MEDIUM }} onChange={vi.fn()} />
+      <LaunchModelSelector
+        ariaLabel="Launch model"
+        value={{ provider: "claude", ...OPUS_MEDIUM }}
+        onChange={vi.fn()}
+      />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
     const cursorLabels = within(screen.getByRole("listbox", { name: "Launch model" }))
       .getAllByRole("option")
       .map((option) => optionName(option))
       .filter((label) => label?.includes("(Cursor)"));
-    expect(cursorLabels.slice(0, 4)).toEqual([...autoModels.map((model) => model.label), "Composer 2.5 (Cursor)"]);
+    expect(cursorLabels.slice(0, 4)).toEqual([
+      ...autoModels.map((model) => model.label),
+      "Composer 2.5 (Cursor)",
+    ]);
   });
 
   it.each(autoModels)("selects $label without effort or speed overrides", (model) => {
@@ -116,11 +138,13 @@ describe("Cursor Auto models", () => {
         provider="cursor"
         value={{ label: "Grok 4.7 (Cursor)", modelId: "grok-4.7-medium", reasoningEffort: "high" }}
         onChange={onChange}
-      />
+      />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
     fireEvent.click(
-      within(screen.getByRole("option", { name: model.label })).getByRole("button", { name: model.label })
+      within(screen.getByRole("option", { name: model.label })).getByRole("button", {
+        name: model.label,
+      }),
     );
     expect(onChange).toHaveBeenCalledWith(model);
 
@@ -133,7 +157,7 @@ describe("Cursor Auto models", () => {
         withEffortSlider
         fastModeEnabled
         onFastModeEnabledChange={vi.fn()}
-      />
+      />,
     );
     expect(screen.queryByRole("button", { name: "Chat model effort" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
@@ -162,7 +186,7 @@ describe("ModelSelector type to filter", () => {
     expect(onChange).toHaveBeenCalledWith({
       label: "Opus 5.5",
       modelId: "claude-opus-5-5",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     });
   });
 
@@ -207,7 +231,7 @@ describe("ModelSelector type to filter", () => {
     expect(onChange).toHaveBeenCalledWith({
       label: "Opus 5.5",
       modelId: "claude-opus-5-5",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     });
   });
 
@@ -242,7 +266,7 @@ describe("ModelSelector type to filter", () => {
       provider: "claude",
       label: "Opus 5.5",
       modelId: "claude-opus-5-5",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     };
     render(<LaunchModelSelector ariaLabel="Launch model" value={value} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
@@ -269,7 +293,7 @@ describe("LaunchModelSelector — all providers", () => {
       provider: "cursor",
       label: "GPT-5.6 Sol (Cursor)",
       modelId: "gpt-5.6-sol-medium",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     };
     render(<LaunchModelSelector ariaLabel="Launch model" value={value} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
@@ -281,7 +305,9 @@ describe("LaunchModelSelector — all providers", () => {
     expect(screen.queryByRole("separator")).not.toBeInTheDocument();
     expect(screen.getAllByText("GPT-5.6 Sol")).toHaveLength(1);
     expect(
-      within(screen.getByRole("listbox", { name: "Launch model" })).queryByText("GPT-5.6 Sol (Cursor)")
+      within(screen.getByRole("listbox", { name: "Launch model" })).queryByText(
+        "GPT-5.6 Sol (Cursor)",
+      ),
     ).not.toBeInTheDocument();
     // The chosen row is the one carrying the check, not a fill.
     const chosen = screen.getByRole("option", { selected: true });
@@ -299,7 +325,7 @@ describe("LaunchModelSelector — all providers", () => {
       provider: "codex",
       label: "GPT-6.1 Sol",
       modelId: "gpt-6.1-sol",
-      reasoningEffort: "high"
+      reasoningEffort: "high",
     };
     render(
       <LaunchModelSelector
@@ -308,7 +334,7 @@ describe("LaunchModelSelector — all providers", () => {
         onChange={vi.fn()}
         fastModeEnabled={false}
         onFastModeEnabledChange={vi.fn()}
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
@@ -322,7 +348,9 @@ describe("LaunchModelSelector — all providers", () => {
     expect(flyout?.style.maxHeight).toBe("");
 
     fireEvent.click(screen.getByRole("button", { name: "Fast mode" }));
-    expect(screen.getByRole("listbox", { name: "Fast mode" })).toHaveStyle({ position: "absolute" });
+    expect(screen.getByRole("listbox", { name: "Fast mode" })).toHaveStyle({
+      position: "absolute",
+    });
   });
 
   it("marks fast mode in the closed chip for a supported model", () => {
@@ -330,7 +358,7 @@ describe("LaunchModelSelector — all providers", () => {
       provider: "codex",
       label: "GPT-6.1 Sol",
       modelId: "gpt-6.1-sol",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     };
     render(
       <LaunchModelSelector
@@ -339,10 +367,13 @@ describe("LaunchModelSelector — all providers", () => {
         onChange={vi.fn()}
         fastModeEnabled={true}
         onFastModeEnabledChange={vi.fn()}
-      />
+      />,
     );
 
-    expect(screen.getByRole("button", { name: "Launch model" })).toHaveAttribute("title", "GPT-6.1 Sol · Fast speed");
+    expect(screen.getByRole("button", { name: "Launch model" })).toHaveAttribute(
+      "title",
+      "GPT-6.1 Sol · Fast speed",
+    );
   });
 
   const unsupportedFastModeModels = (["claude", "cursor", "opencode", "grok"] as const)
@@ -356,7 +387,7 @@ describe("LaunchModelSelector — all providers", () => {
         provider,
         label,
         modelId,
-        ...(supportsReasoningEffort ? { reasoningEffort: "medium" } : {})
+        ...(supportsReasoningEffort ? { reasoningEffort: "medium" } : {}),
       };
       const onFastModeEnabledChange = vi.fn();
       render(
@@ -366,15 +397,17 @@ describe("LaunchModelSelector — all providers", () => {
           onChange={vi.fn()}
           fastModeEnabled={true}
           onFastModeEnabledChange={onFastModeEnabledChange}
-        />
+        />,
       );
 
-      expect(screen.getByRole("button", { name: "Launch model" }).getAttribute("title")).not.toContain("Fast speed");
+      expect(
+        screen.getByRole("button", { name: "Launch model" }).getAttribute("title"),
+      ).not.toContain("Fast speed");
       fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
       expect(screen.queryByRole("button", { name: "Fast mode" })).toBeNull();
       expect(screen.queryByRole("listbox", { name: "Fast mode" })).toBeNull();
       expect(onFastModeEnabledChange).not.toHaveBeenCalled();
-    }
+    },
   );
 
   it("selecting a Cursor model keeps the stored fast preference", () => {
@@ -382,7 +415,7 @@ describe("LaunchModelSelector — all providers", () => {
       provider: "claude",
       label: "Opus 5.5",
       modelId: "claude-opus-5-5",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     };
     const onChange = vi.fn();
     const onFastModeEnabledChange = vi.fn();
@@ -393,7 +426,7 @@ describe("LaunchModelSelector — all providers", () => {
         onChange={onChange}
         fastModeEnabled={true}
         onFastModeEnabledChange={onFastModeEnabledChange}
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
@@ -404,7 +437,7 @@ describe("LaunchModelSelector — all providers", () => {
       provider: "cursor",
       label: "GPT-5.6 Sol (Cursor)",
       modelId: "gpt-5.6-sol-medium",
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     });
   });
 
@@ -413,13 +446,13 @@ describe("LaunchModelSelector — all providers", () => {
     { provider: "codex" as const, label: "GPT-6.1 Sol", modelId: "gpt-6.1-sol" },
     { provider: "codex" as const, label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra" },
     { provider: "codex" as const, label: "GPT-6 Luna", modelId: "gpt-6-luna" },
-    { provider: "grok" as const, label: "Grok 4.7", modelId: "grok-4.7" }
+    { provider: "grok" as const, label: "Grok 4.7", modelId: "grok-4.7" },
   ])("offers fast mode for $provider $label", ({ provider, label, modelId }) => {
     const value: ModelPickerSelection = {
       provider,
       label,
       modelId,
-      reasoningEffort: "medium"
+      reasoningEffort: "medium",
     };
     const onFastModeEnabledChange = vi.fn();
     render(
@@ -429,7 +462,7 @@ describe("LaunchModelSelector — all providers", () => {
         onChange={vi.fn()}
         fastModeEnabled={false}
         onFastModeEnabledChange={onFastModeEnabledChange}
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
@@ -449,7 +482,7 @@ describe("LaunchModelSelector — provider availability gating", () => {
     provider: "claude",
     label: "Opus 5.5",
     modelId: "claude-opus-5-5",
-    reasoningEffort: "medium"
+    reasoningEffort: "medium",
   };
 
   function openLauncher(availability?: ProviderAvailability): ReturnType<typeof vi.fn> {
@@ -460,7 +493,7 @@ describe("LaunchModelSelector — provider availability gating", () => {
         availability={availability}
         value={CLAUDE_VALUE}
         onChange={onChange}
-      />
+      />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
     return onChange;
@@ -477,7 +510,7 @@ describe("LaunchModelSelector — provider availability gating", () => {
     openLauncher({
       claude: { installed: true, authenticated: true },
       codex: { installed: false, authenticated: null },
-      cursor: { installed: true, authenticated: true }
+      cursor: { installed: true, authenticated: true },
     });
     const codexRow = screen.getByRole("button", { name: CODEX_SOL_ROW }).closest("li");
     expect(codexRow).toHaveAttribute("data-disabled", "true");
@@ -490,7 +523,7 @@ describe("LaunchModelSelector — provider availability gating", () => {
     const onChange = openLauncher({
       claude: { installed: true, authenticated: true },
       codex: { installed: true, authenticated: false },
-      cursor: { installed: true, authenticated: true }
+      cursor: { installed: true, authenticated: true },
     });
     const codexRow = screen.getByRole("button", { name: CODEX_SOL_ROW }).closest("li");
     expect(codexRow).not.toHaveAttribute("data-disabled");
@@ -503,7 +536,13 @@ describe("LaunchModelSelector — provider availability gating", () => {
 describe("ModelSelector — standalone effort slider", () => {
   it("with withEffortSlider the model chip stays effort-free and a separate chip shows it", () => {
     render(
-      <ModelSelector ariaLabel="Chat model" provider="claude" value={OPUS_MEDIUM} onChange={vi.fn()} withEffortSlider />
+      <ModelSelector
+        ariaLabel="Chat model"
+        provider="claude"
+        value={OPUS_MEDIUM}
+        onChange={vi.fn()}
+        withEffortSlider
+      />,
     );
     const modelButton = screen.getByRole("button", { name: "Chat model" });
     expect(modelButton).toHaveTextContent("Opus 5.5");
@@ -513,7 +552,13 @@ describe("ModelSelector — standalone effort slider", () => {
 
   it("hides the effort chip for a no-effort (fast) model", () => {
     render(
-      <ModelSelector ariaLabel="Chat model" provider="claude" value={HAIKU} onChange={vi.fn()} withEffortSlider />
+      <ModelSelector
+        ariaLabel="Chat model"
+        provider="claude"
+        value={HAIKU}
+        onChange={vi.fn()}
+        withEffortSlider
+      />,
     );
     expect(screen.queryByRole("button", { name: "Chat model effort" })).toBeNull();
   });
@@ -527,7 +572,7 @@ describe("ModelSelector — standalone effort slider", () => {
         value={OPUS_MEDIUM}
         onChange={onChange}
         withEffortSlider
-      />
+      />,
     );
     const chip = screen.getByRole("button", { name: "Chat model effort" });
     fireEvent.click(chip);
@@ -557,7 +602,7 @@ describe("ModelSelector — standalone effort slider", () => {
     expect(onChange).toHaveBeenCalledWith({
       label: "Opus 5.5",
       modelId: "claude-opus-5-5",
-      reasoningEffort: "ultra"
+      reasoningEffort: "ultra",
     });
   });
 });
@@ -575,14 +620,14 @@ describe("LaunchModelSelector — effort carries across model switches", () => {
       provider: "claude",
       label: "Opus 5.5",
       modelId: "claude-opus-5-5",
-      reasoningEffort: "ultra"
+      reasoningEffort: "ultra",
     });
     fireEvent.click(screen.getByRole("button", { name: "GPT-6.1 Sol" }));
     expect(onChange).toHaveBeenCalledWith({
       provider: "codex",
       label: "GPT-6.1 Sol",
       modelId: "gpt-6.1-sol",
-      reasoningEffort: "ultra"
+      reasoningEffort: "ultra",
     });
   });
 
@@ -591,14 +636,14 @@ describe("LaunchModelSelector — effort carries across model switches", () => {
       provider: "claude",
       label: "Opus 5.5",
       modelId: "claude-opus-5-5",
-      reasoningEffort: "ultra"
+      reasoningEffort: "ultra",
     });
     fireEvent.click(screen.getByRole("button", { name: "GPT-6 Luna" }));
     expect(onChange).toHaveBeenCalledWith({
       provider: "codex",
       label: "GPT-6 Luna",
       modelId: "gpt-6-luna",
-      reasoningEffort: "max"
+      reasoningEffort: "max",
     });
   });
 
@@ -607,14 +652,14 @@ describe("LaunchModelSelector — effort carries across model switches", () => {
       provider: "codex",
       label: "GPT-6.1 Sol",
       modelId: "gpt-6.1-sol",
-      reasoningEffort: "xhigh"
+      reasoningEffort: "xhigh",
     });
     fireEvent.click(screen.getByText("Opus 5.5"));
     expect(onChange).toHaveBeenCalledWith({
       provider: "claude",
       label: "Opus 5.5",
       modelId: "claude-opus-5-5",
-      reasoningEffort: "xhigh"
+      reasoningEffort: "xhigh",
     });
   });
 
@@ -623,14 +668,14 @@ describe("LaunchModelSelector — effort carries across model switches", () => {
       provider: "claude",
       label: "Opus 5.5",
       modelId: "claude-opus-5-5",
-      reasoningEffort: "ultra"
+      reasoningEffort: "ultra",
     });
     fireEvent.click(screen.getByRole("button", { name: "Claude Opus 5.5 (Cursor)" }));
     expect(onChange).toHaveBeenCalledWith({
       provider: "cursor",
       label: "Claude Opus 5.5 (Cursor)",
       modelId: "claude-opus-5-5-medium",
-      reasoningEffort: "max"
+      reasoningEffort: "max",
     });
   });
 
@@ -639,13 +684,13 @@ describe("LaunchModelSelector — effort carries across model switches", () => {
       provider: "claude",
       label: "Opus 5.5",
       modelId: "claude-opus-5-5",
-      reasoningEffort: "ultra"
+      reasoningEffort: "ultra",
     });
     fireEvent.click(screen.getByText("Haiku 5.5"));
     expect(onChange).toHaveBeenCalledWith({
       provider: "claude",
       label: "Haiku 5.5",
-      modelId: "claude-haiku-5-5"
+      modelId: "claude-haiku-5-5",
     });
   });
 });
@@ -653,7 +698,10 @@ describe("LaunchModelSelector — effort carries across model switches", () => {
 describe("LaunchModelSelector — Auto rows", () => {
   const OPUS: ModelPickerSelection = { provider: "claude", ...OPUS_MEDIUM };
 
-  function openLaunchPicker(props: { autoRouting?: boolean; value?: ModelPickerSelection }): ReturnType<typeof vi.fn> {
+  function openLaunchPicker(props: {
+    autoRouting?: boolean;
+    value?: ModelPickerSelection;
+  }): ReturnType<typeof vi.fn> {
     const onChange = vi.fn();
     render(
       <LaunchModelSelector
@@ -662,7 +710,7 @@ describe("LaunchModelSelector — Auto rows", () => {
         withEffortSlider
         value={props.value ?? OPUS}
         onChange={onChange}
-      />
+      />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
     return onChange;
@@ -676,12 +724,14 @@ describe("LaunchModelSelector — Auto rows", () => {
 
   it("leads with four tiers when routing is on and picks each by wire value", () => {
     const onChange = openLaunchPicker({ autoRouting: true });
-    const options = within(screen.getByRole("listbox", { name: "Launch model" })).getAllByRole("option");
+    const options = within(screen.getByRole("listbox", { name: "Launch model" })).getAllByRole(
+      "option",
+    );
     expect(options.slice(0, 4).map((option) => optionName(option))).toEqual([
       "Router Frontier",
       "Router Balance",
       "Router Speed",
-      "Router Cost"
+      "Router Cost",
     ]);
     // Under the Router header the rows drop the repeated prefix.
     expect(options[0]).toHaveTextContent(/^Frontier$/);
@@ -698,7 +748,9 @@ describe("LaunchModelSelector — Auto rows", () => {
   it("uses the short Router label for a recent tier", () => {
     window.localStorage.setItem(LAUNCH_MODEL_RECENCY_KEY, JSON.stringify(["auto:intelligence"]));
     openLaunchPicker({ autoRouting: true });
-    const [recent] = within(screen.getByRole("listbox", { name: "Launch model" })).getAllByRole("option");
+    const [recent] = within(screen.getByRole("listbox", { name: "Launch model" })).getAllByRole(
+      "option",
+    );
     expect(recent).toHaveTextContent(/^Frontier$/);
   });
 
@@ -710,7 +762,7 @@ describe("LaunchModelSelector — Auto rows", () => {
         withEffortSlider
         value={autoTierSelection("balanced")}
         onChange={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByRole("button", { name: "Launch model" }).textContent).toBe("Balance");
     expect(screen.queryByRole("button", { name: "Launch model effort" })).toBeNull();

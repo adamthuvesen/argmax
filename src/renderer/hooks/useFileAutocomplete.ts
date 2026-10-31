@@ -40,7 +40,10 @@ const CHAT_ROW_LIMIT = 5;
  *
  * Skips `foo@bar.com` correctly: the `@` is preceded by `o`, not whitespace.
  */
-export function parseFileQuery(input: string, caret: number): { triggerStart: number; query: string } | null {
+export function parseFileQuery(
+  input: string,
+  caret: number,
+): { triggerStart: number; query: string } | null {
   if (caret < 1) return null;
   const upto = input.slice(0, caret);
   let atIndex = -1;
@@ -120,13 +123,15 @@ export function useFileAutocomplete({
   inputRef,
   source,
   chats = NO_CHATS,
-  ownSessionId = null
+  ownSessionId = null,
 }: UseFileAutocompleteArgs): FileAutocompleteState {
   const [caret, setCaret] = useState(0);
   const [selectionIndex, setSelectionIndex] = useState(0);
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
   const cacheRef = useRef<Map<string, FileAutocompleteEntry[]>>(new Map());
-  const [entriesBySource, setEntriesBySource] = useState<Map<string, FileAutocompleteEntry[]>>(new Map());
+  const [entriesBySource, setEntriesBySource] = useState<Map<string, FileAutocompleteEntry[]>>(
+    new Map(),
+  );
   const inflightRef = useRef(new Set<string>());
 
   const trigger = useMemo(() => parseFileQuery(input, caret), [input, caret]);
@@ -196,7 +201,7 @@ export function useFileAutocomplete({
     const rankedPaths = searchFilePaths(
       allEntries.map((entry) => entry.path),
       trigger.query,
-      POPOVER_LIMIT
+      POPOVER_LIMIT,
     );
     const out: FileAutocompleteEntry[] = [];
     for (const path of rankedPaths) {
@@ -210,7 +215,8 @@ export function useFileAutocomplete({
   // what was said in them come from the conversation search, a round trip, so
   // it waits for the typing to pause and answers only for the query it was
   // asked: a late reply to an old query is dropped.
-  const chatQuery = trigger && trigger.query.length >= CHAT_QUERY_MIN_CHARS ? trigger.query.trim() : "";
+  const chatQuery =
+    trigger && trigger.query.length >= CHAT_QUERY_MIN_CHARS ? trigger.query.trim() : "";
   const [contentHits, setContentHits] = useState<{
     query: string;
     entries: FileAutocompleteEntry[];
@@ -236,12 +242,12 @@ export function useFileAutocomplete({
               path: chat.sessionId,
               title: chat.title,
               projectName: chat.projectName,
-              snippet: hit.snippet.replace(/<\/?b>/g, "")
+              snippet: hit.snippet.replace(/<\/?b>/g, ""),
             });
           }
           setContentHits({ query: chatQuery, entries });
         },
-        () => undefined
+        () => undefined,
       );
     }, CHAT_CONTENT_DEBOUNCE_MS);
     return () => {
@@ -258,17 +264,22 @@ export function useFileAutocomplete({
         kind: "chat",
         path: chat.sessionId,
         title: chat.title,
-        projectName: chat.projectName
+        projectName: chat.projectName,
       }));
     const taken = new Set(byTitle.map((entry) => entry.path));
     const byContent =
       contentHits.query === chatQuery
-        ? contentHits.entries.filter((entry) => !taken.has(entry.path) && entry.path !== ownSessionId)
+        ? contentHits.entries.filter(
+            (entry) => !taken.has(entry.path) && entry.path !== ownSessionId,
+          )
         : [];
     return [...byTitle, ...byContent].slice(0, CHAT_ROW_LIMIT);
   }, [chatQuery, chats, contentHits, ownSessionId]);
 
-  const filteredEntries = useMemo(() => [...fileEntries, ...chatEntries], [fileEntries, chatEntries]);
+  const filteredEntries = useMemo(
+    () => [...fileEntries, ...chatEntries],
+    [fileEntries, chatEntries],
+  );
 
   // Reset the dismissed flag when the trigger boundary moves — either
   // the user closed and reopened a fresh `@`, or the `@` left the document.
@@ -317,7 +328,7 @@ export function useFileAutocomplete({
         setCaret(nextCaret);
       });
     },
-    [trigger, input, caret, setInput, inputRef]
+    [trigger, input, caret, setInput, inputRef],
   );
 
   const onSelectionChange = useCallback((nextCaret: number): void => {
@@ -355,7 +366,7 @@ export function useFileAutocomplete({
         }
       }
     },
-    [popoverOpen, filteredEntries, selectionIndex, selectEntry, trigger]
+    [popoverOpen, filteredEntries, selectionIndex, selectEntry, trigger],
   );
 
   return {
@@ -365,6 +376,6 @@ export function useFileAutocomplete({
     setSelectionIndex,
     selectEntry,
     onKeyDown,
-    onSelectionChange
+    onSelectionChange,
   };
 }

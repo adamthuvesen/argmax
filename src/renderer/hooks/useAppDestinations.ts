@@ -3,14 +3,22 @@ import type { SessionSummary } from "../../shared/types.js";
 import { hostsBrowserSurface } from "../lib/tauriBridge.js";
 import { persistLaunchProjectId } from "../lib/launchProjectPreference.js";
 import { clearPaneGrid } from "../state/paneGrid.js";
-import { hideArcPage, hideCommandPalette, hideStandalonePage, showArcPage } from "../state/overlays.js";
+import {
+  hideArcPage,
+  hideCommandPalette,
+  hideStandalonePage,
+  showArcPage,
+} from "../state/overlays.js";
 import { hideFullLauncher, setLauncherSideChatMode } from "../state/launcherSurface.js";
 
 interface AppDestinations {
   sessions: SessionSummary[];
   closeWorkspacePages: () => void;
   openProjectLauncher: (projectId: string) => void;
-  openWorkspaceChat: (workspaceId: string, modifiers: { ctrlOrMeta: boolean; alt: boolean }) => void;
+  openWorkspaceChat: (
+    workspaceId: string,
+    modifiers: { ctrlOrMeta: boolean; alt: boolean },
+  ) => void;
   setBrowserPageOpen: (open: boolean) => void;
 }
 
@@ -20,7 +28,7 @@ export function useAppDestinations({
   closeWorkspacePages,
   openProjectLauncher,
   openWorkspaceChat,
-  setBrowserPageOpen
+  setBrowserPageOpen,
 }: AppDestinations) {
   const openRepoProjectLauncher = useCallback(
     (projectId: string): void => {
@@ -28,7 +36,7 @@ export function useAppDestinations({
       setLauncherSideChatMode(false);
       openProjectLauncher(projectId);
     },
-    [openProjectLauncher]
+    [openProjectLauncher],
   );
 
   const openProject = useCallback(
@@ -39,7 +47,7 @@ export function useAppDestinations({
       clearPaneGrid();
       openRepoProjectLauncher(projectId);
     },
-    [closeWorkspacePages, openRepoProjectLauncher]
+    [closeWorkspacePages, openRepoProjectLauncher],
   );
 
   const openWorkspace = useCallback(
@@ -49,7 +57,7 @@ export function useAppDestinations({
       closeWorkspacePages();
       openWorkspaceChat(workspaceId, modifiers);
     },
-    [closeWorkspacePages, openWorkspaceChat]
+    [closeWorkspacePages, openWorkspaceChat],
   );
 
   const openArc = useCallback(
@@ -60,7 +68,7 @@ export function useAppDestinations({
       closeWorkspacePages();
       showArcPage(arcId);
     },
-    [closeWorkspacePages]
+    [closeWorkspacePages],
   );
 
   const openBrowser = useCallback((): void => {
@@ -78,7 +86,7 @@ export function useAppDestinations({
       if (!session) return;
       openWorkspace(session.workspaceId, { ctrlOrMeta: false, alt: false });
     },
-    [openWorkspace, sessions]
+    [openWorkspace, sessions],
   );
 
   return { openRepoProjectLauncher, openProject, openWorkspace, openArc, openBrowser, openSession };

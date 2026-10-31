@@ -42,18 +42,18 @@ export const THEME_OPTIONS: readonly ThemeOption[] = [
   {
     id: "system",
     label: "System",
-    hint: "Follow macOS — switches with your OS appearance setting."
+    hint: "Follow macOS — switches with your OS appearance setting.",
   },
   {
     id: "light",
     label: "Light",
-    hint: "Paper. Warm off-white with subtle pulp grain."
+    hint: "Paper. Warm off-white with subtle pulp grain.",
   },
   {
     id: "dark",
     label: "Dark",
-    hint: "Warm charcoal. Yellow-leaning grays, never midnight blue."
-  }
+    hint: "Warm charcoal. Yellow-leaning grays, never midnight blue.",
+  },
 ] as const;
 
 export function readStoredTheme(): ThemeMode {
@@ -81,7 +81,10 @@ export function prefersDarkSystem(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-export function resolveTheme(mode: ThemeMode, prefersDark: boolean = prefersDarkSystem()): ResolvedTheme {
+export function resolveTheme(
+  mode: ThemeMode,
+  prefersDark: boolean = prefersDarkSystem(),
+): ResolvedTheme {
   if (mode === "system") return prefersDark ? "dark" : "light";
   return mode;
 }

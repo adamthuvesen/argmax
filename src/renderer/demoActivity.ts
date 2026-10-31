@@ -10,7 +10,7 @@ import type {
   ActivitySummary,
   ActivitySummaryInput,
   ActivityTotals,
-  ActivityWindow
+  ActivityWindow,
 } from "./components/activity/activityContract.js";
 
 /**
@@ -67,54 +67,98 @@ interface DemoRepo {
 }
 
 const REPOS: readonly DemoRepo[] = [
-  { projectId: "p-argmax", name: "argmax", path: "~/dev/menti/argmax", githubRepo: "adamthuvesen/argmax", base: 2.2 },
+  {
+    projectId: "p-argmax",
+    name: "argmax",
+    path: "~/dev/menti/argmax",
+    githubRepo: "adamthuvesen/argmax",
+    base: 2.2,
+  },
   {
     projectId: "p-dbt",
     name: "dbt-transform",
     path: "~/dev/menti/dbt-transform",
     githubRepo: "mentimeter/dbt-transform",
-    base: 1.25
+    base: 1.25,
   },
   {
     projectId: "p-pat",
     name: "product-analytics-tools",
     path: "~/dev/menti/product-analytics-tools",
     githubRepo: "mentimeter/product-analytics-tools",
-    base: 0.9
+    base: 0.9,
   },
-  { projectId: "p-alfred", name: "alfred", path: "~/dev/alfred", githubRepo: "adamthuvesen/alfred", base: 0.6 },
-  { projectId: "p-dotfiles", name: "dotfiles", path: "~/dotfiles", githubRepo: "adamthuvesen/dotfiles", base: 0.42 },
+  {
+    projectId: "p-alfred",
+    name: "alfred",
+    path: "~/dev/alfred",
+    githubRepo: "adamthuvesen/alfred",
+    base: 0.6,
+  },
+  {
+    projectId: "p-dotfiles",
+    name: "dotfiles",
+    path: "~/dotfiles",
+    githubRepo: "adamthuvesen/dotfiles",
+    base: 0.42,
+  },
   {
     projectId: "p-revops",
     name: "revops-backoffice",
     path: "~/dev/menti/revops-backoffice",
     githubRepo: "mentimeter/revops-backoffice",
-    base: 0.3
+    base: 0.3,
   },
   {
     projectId: "p-hexops",
     name: "hex-agent-ops",
     path: "~/dev/menti/hex-agent-ops",
     githubRepo: "mentimeter/hex-agent-ops",
-    base: 0.24
+    base: 0.24,
   },
-  { projectId: "p-llm", name: "llm-infer", path: "~/dev/llm-infer", githubRepo: "adamthuvesen/llm-infer", base: 0.17 },
+  {
+    projectId: "p-llm",
+    name: "llm-infer",
+    path: "~/dev/llm-infer",
+    githubRepo: "adamthuvesen/llm-infer",
+    base: 0.17,
+  },
   {
     projectId: "p-scenario",
     name: "scenario-model",
     path: "~/dev/menti/scenario-model",
     githubRepo: "mentimeter/scenario-model",
-    base: 0.13
+    base: 0.13,
   },
-  { projectId: "p-ntfy", name: "ntfy-bridge", path: "~/dev/ntfy-bridge", githubRepo: null, base: 0.1 },
-  { projectId: "p-engram", name: "engram", path: "~/dev/engram", githubRepo: "adamthuvesen/engram", base: 0.07 },
-  { projectId: "p-trace", name: "trace-index", path: "~/dev/trace-index", githubRepo: null, base: 0.05 }
+  {
+    projectId: "p-ntfy",
+    name: "ntfy-bridge",
+    path: "~/dev/ntfy-bridge",
+    githubRepo: null,
+    base: 0.1,
+  },
+  {
+    projectId: "p-engram",
+    name: "engram",
+    path: "~/dev/engram",
+    githubRepo: "adamthuvesen/engram",
+    base: 0.07,
+  },
+  {
+    projectId: "p-trace",
+    name: "trace-index",
+    path: "~/dev/trace-index",
+    githubRepo: null,
+    base: 0.05,
+  },
 ];
 
 /** A working week: quiet at the ends, busiest on Tuesday. Monday first. */
 const WEEKDAY_SHAPE = [1, 1.16, 1.05, 0.95, 0.88, 0.44, 0.34];
 /** When commits land, by local hour. Weights, not counts. */
-const HOUR_SHAPE = [0, 0, 0, 0, 0, 1, 2, 5, 11, 17, 21, 18, 9, 12, 16, 15, 13, 11, 8, 7, 6, 6, 4, 2];
+const HOUR_SHAPE = [
+  0, 0, 0, 0, 0, 1, 2, 5, 11, 17, 21, 18, 9, 12, 16, 15, 13, 11, 8, 7, 6, 6, 4, 2,
+];
 const HOUR_TOTAL = HOUR_SHAPE.reduce((sum, weight) => sum + weight, 0);
 
 /**
@@ -163,7 +207,8 @@ function dayIntensities(): number[] {
     // A forced day needs a floor rather than merely a non-zero factor: twelve
     // repositories each rolling under their own mean still leaves the day at
     // zero commits, which breaks the streak the floor exists to guarantee.
-    const forced = day > streakEdge || (at.getTime() >= LONG_STREAK_START && at.getTime() <= LONG_STREAK_END);
+    const forced =
+      day > streakEdge || (at.getTime() >= LONG_STREAK_START && at.getTime() <= LONG_STREAK_END);
     if (forced) {
       factors.push(1.1 + 1.1 * spread);
       continue;
@@ -171,7 +216,9 @@ function dayIntensities(): number[] {
     // The day either side of a forced run is off, so the run is exactly as
     // long as it says rather than however far the noise happens to extend it.
     const edge =
-      day === streakEdge || at.getTime() === LONG_STREAK_START - DAY_MS || at.getTime() === LONG_STREAK_END + DAY_MS;
+      day === streakEdge ||
+      at.getTime() === LONG_STREAK_START - DAY_MS ||
+      at.getTime() === LONG_STREAK_END + DAY_MS;
     if (edge || roll < (weekend ? 0.42 : 0.06)) {
       factors.push(0);
       continue;
@@ -215,7 +262,7 @@ function commitLog(): DemoCommit[] {
           projectId: repo.projectId,
           added: size,
           removed: Math.round(size * (0.18 + rand() * 0.62)),
-          files: 1 + Math.floor(rand() * 9)
+          files: 1 + Math.floor(rand() * 9),
         });
       }
     }
@@ -256,7 +303,7 @@ function emptyTotals(): ActivityTotals {
     reviewsGiven: 0,
     reviewApprovals: 0,
     reviewChangesRequested: 0,
-    reviewComments: 0
+    reviewComments: 0,
   };
 }
 
@@ -274,14 +321,23 @@ function rangeFor(window: ActivityWindow): DemoRange {
     new Date(END.getFullYear(), END.getMonth(), END.getDate() + offset).getTime();
   switch (window) {
     case "24h":
-      return { start: end - 24 * HOUR_MS, end, resolution: "hour", previousStart: end - 48 * HOUR_MS };
+      return {
+        start: end - 24 * HOUR_MS,
+        end,
+        resolution: "hour",
+        previousStart: end - 48 * HOUR_MS,
+      };
     case "7d":
       return { start: startOfDay(-7), end, resolution: "day", previousStart: startOfDay(-14) };
     case "30d":
       return { start: startOfDay(-30), end, resolution: "day", previousStart: startOfDay(-60) };
     case "12m": {
       const start = new Date(END.getFullYear() - 1, END.getMonth(), END.getDate()).getTime();
-      const previousStart = new Date(END.getFullYear() - 2, END.getMonth(), END.getDate()).getTime();
+      const previousStart = new Date(
+        END.getFullYear() - 2,
+        END.getMonth(),
+        END.getDate(),
+      ).getTime();
       return { start, end, resolution: "week", previousStart };
     }
     default: {
@@ -334,8 +390,11 @@ function totalsFrom(commits: readonly DemoCommit[]): ActivityTotals {
 
 function seriesFrom(commits: readonly DemoCommit[], range: DemoRange): ActivitySeriesPoint[] {
   const starts = bucketStarts(range);
-  const step = range.resolution === "hour" ? HOUR_MS : range.resolution === "day" ? DAY_MS : 7 * DAY_MS;
-  const buckets = starts.map(() => new Map<string, { commits: number; linesAdded: number; linesRemoved: number }>());
+  const step =
+    range.resolution === "hour" ? HOUR_MS : range.resolution === "day" ? DAY_MS : 7 * DAY_MS;
+  const buckets = starts.map(
+    () => new Map<string, { commits: number; linesAdded: number; linesRemoved: number }>(),
+  );
   for (const commit of commits) {
     const index = Math.min(starts.length - 1, Math.floor((commit.at - starts[0]) / step));
     if (index < 0) continue;
@@ -348,7 +407,10 @@ function seriesFrom(commits: readonly DemoCommit[], range: DemoRange): ActivityS
   }
   return starts.map((start, index) => ({
     bucketStart: new Date(start).toISOString(),
-    byRepository: [...buckets[index].entries()].map(([projectId, slice]) => ({ projectId, ...slice }))
+    byRepository: [...buckets[index].entries()].map(([projectId, slice]) => ({
+      projectId,
+      ...slice,
+    })),
   }));
 }
 
@@ -368,7 +430,10 @@ function heatmapFrom(log: readonly DemoCommit[]): ActivityHeatmapDay[] {
   return days;
 }
 
-function streaksFrom(heatmap: readonly ActivityHeatmapDay[], windowed: readonly DemoCommit[]): ActivityStreaks {
+function streaksFrom(
+  heatmap: readonly ActivityHeatmapDay[],
+  windowed: readonly DemoCommit[],
+): ActivityStreaks {
   let current = 0;
   let currentStart: string | null = null;
   for (let index = heatmap.length - 1; index >= 0; index -= 1) {
@@ -404,7 +469,14 @@ function streaksFrom(heatmap: readonly ActivityHeatmapDay[], windowed: readonly 
   for (const [date, commits] of perDay) {
     if (!busiestDay || commits > busiestDay.commits) busiestDay = { date, commits };
   }
-  return { currentDays: current, currentStart, longestDays: longest, longestStart, longestEnd, busiestDay };
+  return {
+    currentDays: current,
+    currentStart,
+    longestDays: longest,
+    longestStart,
+    longestEnd,
+    busiestDay,
+  };
 }
 
 function cadenceFrom(commits: readonly DemoCommit[]): ActivityCadence {
@@ -438,7 +510,7 @@ const PR_TITLES: readonly string[] = [
   "chore(ci): shard the vitest suite eight ways",
   "fix(heatmap): parse calendar dates field by field",
   "Retire the pixel-field constants duplicated in the sweep",
-  "feat(activity): rank repositories onto the series palette"
+  "feat(activity): rank repositories onto the series palette",
 ];
 
 const REVIEW_TITLES: readonly string[] = [
@@ -451,7 +523,7 @@ const REVIEW_TITLES: readonly string[] = [
   "Move the reader pool off the main thread",
   "Backfill the routine run history",
   "Drop the recurring renderer poll",
-  "Name the old checksum before rebuilding the migration"
+  "Name the old checksum before rebuilding the migration",
 ];
 
 let cachedPrs: ActivityPullRequest[] | null = null;
@@ -479,7 +551,8 @@ function pullRequestLog(): ActivityPullRequest[] {
     const count = Math.floor(expected + rand());
     for (let index = 0; index < count; index += 1) {
       const repo = REPOS[Math.floor(rand() ** 1.7 * 6)] ?? REPOS[0];
-      const createdMs = at.getTime() + (9 + Math.floor(rand() * 9)) * HOUR_MS + Math.floor(rand() * 60) * 60_000;
+      const createdMs =
+        at.getTime() + (9 + Math.floor(rand() * 9)) * HOUR_MS + Math.floor(rand() * 60) * 60_000;
       // Short-tailed: most merge the same day, a few sit for days.
       const cycleSeconds = Math.round(900 + rand() ** 3.4 * 320_000);
       // Either still inside its cycle, or one of the few that stalled: a
@@ -498,11 +571,12 @@ function pullRequestLog(): ActivityPullRequest[] {
         state: stillOpen ? "open" : abandoned ? "closed" : "merged",
         isDraft: stillOpen && rand() < 0.2,
         createdAt: new Date(createdMs).toISOString(),
-        mergedAt: stillOpen || abandoned ? null : new Date(createdMs + cycleSeconds * 1000).toISOString(),
+        mergedAt:
+          stillOpen || abandoned ? null : new Date(createdMs + cycleSeconds * 1000).toISOString(),
         closedAt: abandoned ? new Date(createdMs + cycleSeconds * 1000).toISOString() : null,
         additions,
         deletions: Math.round(additions * (0.12 + rand() * 0.8)),
-        cycleSeconds: stillOpen || abandoned ? null : cycleSeconds
+        cycleSeconds: stillOpen || abandoned ? null : cycleSeconds,
       });
     }
   }
@@ -533,8 +607,8 @@ function reviewLog(): ActivityReview[] {
         url: `https://github.com/${repo.githubRepo ?? `adamthuvesen/${repo.name}`}/pull/${number}`,
         state: roll < 0.7 ? "approved" : roll < 0.89 ? "changes_requested" : "commented",
         submittedAt: new Date(
-          at.getTime() + (10 + Math.floor(rand() * 8)) * HOUR_MS + Math.floor(rand() * 60) * 60_000
-        ).toISOString()
+          at.getTime() + (10 + Math.floor(rand() * 8)) * HOUR_MS + Math.floor(rand() * 60) * 60_000,
+        ).toISOString(),
       });
     }
   }
@@ -547,7 +621,9 @@ function median(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((left, right) => left - right);
   const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+  return sorted.length % 2 === 1
+    ? sorted[middle]
+    : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
 }
 
 /**
@@ -557,7 +633,7 @@ function median(values: readonly number[]): number | null {
  */
 export function demoActivitySummary(
   input: ActivitySummaryInput,
-  state: DemoActivityState = urlState()
+  state: DemoActivityState = urlState(),
 ): ActivitySummary {
   const range = rangeFor(input.window);
   const log = commitLog();
@@ -568,7 +644,7 @@ export function demoActivitySummary(
           phase: "idle",
           reposTotal: REPOS.length,
           reposDone: REPOS.length,
-          lastCompletedAt: new Date(END.getTime() - 240_000).toISOString()
+          lastCompletedAt: new Date(END.getTime() - 240_000).toISOString(),
         };
   const github: ActivitySummary["github"] =
     state === "nogh"
@@ -576,13 +652,13 @@ export function demoActivitySummary(
           available: false,
           login: null,
           error: "gh: not signed in to any GitHub hosts.",
-          lastFetchedAt: null
+          lastFetchedAt: null,
         }
       : {
           available: true,
           login: "adamthuvesen",
           error: null,
-          lastFetchedAt: new Date(END.getTime() - 90_000).toISOString()
+          lastFetchedAt: new Date(END.getTime() - 90_000).toISOString(),
         };
 
   const base: ActivitySummary = {
@@ -606,12 +682,12 @@ export function demoActivitySummary(
       longestDays: 0,
       longestStart: null,
       longestEnd: null,
-      busiestDay: null
+      busiestDay: null,
     },
     cadence: { byWeekday: new Array<number>(7).fill(0), byHour: new Array<number>(24).fill(0) },
     pullRequests: [],
     reviews: [],
-    medianCycleSeconds: null
+    medianCycleSeconds: null,
   };
 
   // No projects in the ledger at all: there is nothing to scan and nothing to
@@ -619,13 +695,17 @@ export function demoActivitySummary(
   if (state === "empty") return base;
 
   const inWindow = (at: number): boolean => at >= range.start && at < range.end;
-  const matches = (projectId: string | null): boolean => input.projectId === null || projectId === input.projectId;
+  const matches = (projectId: string | null): boolean =>
+    input.projectId === null || projectId === input.projectId;
 
   // `repositories` and `heatmap` never narrow: their point is the comparison a
   // filter would remove, the same rule the Usage page's provider tiles follow.
   const windowAll = log.filter((commit) => inWindow(commit.at));
   const windowTotal = windowAll.length;
-  const perRepo = new Map<string, { commits: number; added: number; removed: number; last: number }>();
+  const perRepo = new Map<
+    string,
+    { commits: number; added: number; removed: number; last: number }
+  >();
   for (const commit of windowAll) {
     const row = perRepo.get(commit.projectId) ?? { commits: 0, added: 0, removed: 0, last: 0 };
     row.commits += 1;
@@ -637,7 +717,8 @@ export function demoActivitySummary(
 
   const windowed = windowAll.filter((commit) => matches(commit.projectId));
   const previousWindow = log.filter(
-    (commit) => commit.at >= range.previousStart && commit.at < range.start && matches(commit.projectId)
+    (commit) =>
+      commit.at >= range.previousStart && commit.at < range.start && matches(commit.projectId),
   );
 
   const prs = pullRequestLog().filter((pr) => {
@@ -658,7 +739,9 @@ export function demoActivitySummary(
   totals.prsClosed = prs.filter((pr) => pr.state === "closed").length;
   totals.reviewsGiven = reviews.length;
   totals.reviewApprovals = reviews.filter((review) => review.state === "approved").length;
-  totals.reviewChangesRequested = reviews.filter((review) => review.state === "changes_requested").length;
+  totals.reviewChangesRequested = reviews.filter(
+    (review) => review.state === "changes_requested",
+  ).length;
   totals.reviewComments = reviews.filter((review) => review.state === "commented").length;
 
   const previous = totalsFrom(previousWindow);
@@ -677,10 +760,10 @@ export function demoActivitySummary(
       linesAdded: row?.added ?? 0,
       linesRemoved: row?.removed ?? 0,
       prsMerged: pullRequestLog().filter(
-        (pr) => pr.projectId === repo.projectId && pr.state === "merged" && inWindow(openedAt(pr))
+        (pr) => pr.projectId === repo.projectId && pr.state === "merged" && inWindow(openedAt(pr)),
       ).length,
       lastCommitAt: row?.last ? new Date(row.last).toISOString() : null,
-      share: windowTotal > 0 ? (row?.commits ?? 0) / windowTotal : 0
+      share: windowTotal > 0 ? (row?.commits ?? 0) / windowTotal : 0,
     };
   }).sort((left, right) => right.commits - left.commits);
 
@@ -696,6 +779,8 @@ export function demoActivitySummary(
     cadence: cadenceFrom(windowed),
     pullRequests: prs.sort((left, right) => openedAt(right) - openedAt(left)).slice(0, 100),
     reviews: reviews.slice(0, 50),
-    medianCycleSeconds: median(prs.flatMap((pr) => (pr.cycleSeconds === null ? [] : [pr.cycleSeconds])))
+    medianCycleSeconds: median(
+      prs.flatMap((pr) => (pr.cycleSeconds === null ? [] : [pr.cycleSeconds])),
+    ),
   };
 }

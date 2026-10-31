@@ -12,17 +12,20 @@ import { projectFolderInput, type ProjectTarget } from "../lib/projectTarget.js"
  * A read that follows state belongs in `useBridgeQuery`, which drops a stale
  * reply. Keep such reads out of these lists, so the shorter path does not compile.
  */
-type Actions<Domain extends keyof ArgmaxApi, Method extends keyof NonNullable<ArgmaxApi[Domain]>> = Pick<
-  NonNullable<ArgmaxApi[Domain]>,
-  Method
->;
+type Actions<
+  Domain extends keyof ArgmaxApi,
+  Method extends keyof NonNullable<ArgmaxApi[Domain]>,
+> = Pick<NonNullable<ArgmaxApi[Domain]>, Method>;
 
 export function bridgeAvailable(): boolean {
   return typeof window !== "undefined" && Boolean(window.argmax);
 }
 
 export function arcActions():
-  | Actions<"arcs", "create" | "update" | "setState" | "setArchived" | "launchCoordinator" | "promote">
+  | Actions<
+      "arcs",
+      "create" | "update" | "setState" | "setArchived" | "launchCoordinator" | "promote"
+    >
   | undefined {
   return window.argmax?.arcs;
 }
@@ -31,7 +34,9 @@ export function browserActions(): ArgmaxApi["browser"] | undefined {
   return window.argmax?.browser;
 }
 
-export function checkpointActions(): Actions<"checkpoints", "previewRewind" | "rewindFiles"> | undefined {
+export function checkpointActions():
+  | Actions<"checkpoints", "previewRewind" | "rewindFiles">
+  | undefined {
   return window.argmax?.checkpoints;
 }
 
@@ -44,7 +49,9 @@ export function dashboardEvents(): Actions<"dashboard", "onDelta"> | undefined {
 }
 
 /** `statFile` and friends here answer "does this file exist", asked per hover or click. */
-export function fileActions(): Actions<"workspace", "statFile" | "statExternalFile" | "listFiles"> | undefined {
+export function fileActions():
+  | Actions<"workspace", "statFile" | "statExternalFile" | "listFiles">
+  | undefined {
   return window.argmax?.workspace;
 }
 
@@ -56,7 +63,9 @@ export function learningActions(): Actions<"learnings", "update" | "delete"> | u
   return window.argmax?.learnings;
 }
 
-export function linkedRepoActions(): Actions<"linkedRepos", "summarize" | "setEnabled"> | undefined {
+export function linkedRepoActions():
+  | Actions<"linkedRepos", "summarize" | "setEnabled">
+  | undefined {
   return window.argmax?.linkedRepos;
 }
 
@@ -90,7 +99,10 @@ export function questionActions(): Actions<"questions", "resolve"> | undefined {
 }
 
 export function remoteActions():
-  | Actions<"remote", "setConfig" | "testNotification" | "setApnsConfig" | "unregisterPushDevice" | "pushTest">
+  | Actions<
+      "remote",
+      "setConfig" | "testNotification" | "setApnsConfig" | "unregisterPushDevice" | "pushTest"
+    >
   | undefined {
   return window.argmax?.remote;
 }
@@ -185,10 +197,12 @@ export function warmLedgerPrefetch(): void {
  * The shared checkout workspace of a project folder. It takes a `ProjectTarget`,
  * so a terminal shortcut cannot leave out the folder that is picked.
  */
-export function createProjectCheckout(target: ProjectTarget): Promise<WorkspaceSummary> | undefined {
+export function createProjectCheckout(
+  target: ProjectTarget,
+): Promise<WorkspaceSummary> | undefined {
   return window.argmax?.workspaces.createCurrent({
     projectId: target.project.id,
     taskLabel: target.project.name,
-    ...projectFolderInput(target)
+    ...projectFolderInput(target),
   });
 }

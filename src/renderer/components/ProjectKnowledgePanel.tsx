@@ -12,7 +12,7 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
   const query = useBridgeQuery({
     key: ["learnings.list", selectedProjectId],
     enabled: selectedProjectId !== "",
-    read: (api) => api.learnings.list({ projectId: selectedProjectId })
+    read: (api) => api.learnings.list({ projectId: selectedProjectId }),
   });
   const learnings = query.data ?? [];
   const loadError = query.error;
@@ -63,7 +63,7 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
     if (!actions) return;
     const nextVerified = !learning.verified;
     setLearnings((current) =>
-      current.map((item) => (item.id === learning.id ? { ...item, verified: nextVerified } : item))
+      current.map((item) => (item.id === learning.id ? { ...item, verified: nextVerified } : item)),
     );
     try {
       const updated = await actions.update({ id: learning.id, verified: nextVerified });
@@ -73,7 +73,9 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
       if (!query.isCurrent()) return;
       // Roll back on failure.
       setLearnings((current) =>
-        current.map((item) => (item.id === learning.id ? { ...item, verified: learning.verified } : item))
+        current.map((item) =>
+          item.id === learning.id ? { ...item, verified: learning.verified } : item,
+        ),
       );
       showErrorToast(error instanceof Error ? error.message : "Could not toggle verified.");
     }
@@ -123,7 +125,9 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
       ) : null}
 
       {learnings.length === 0 ? (
-        <p className="settings-note">No learnings captured yet. Complete a chat to start filling this list.</p>
+        <p className="settings-note">
+          No learnings captured yet. Complete a chat to start filling this list.
+        </p>
       ) : (
         <ul className="project-knowledge-list" aria-label="Project learnings">
           {learnings.map((learning) => {
@@ -142,7 +146,10 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
                   rows={2}
                   value={draftActive ? draft : learning.summary}
                   onChange={(event) =>
-                    setDraftSummaries((current) => ({ ...current, [learning.id]: event.target.value }))
+                    setDraftSummaries((current) => ({
+                      ...current,
+                      [learning.id]: event.target.value,
+                    }))
                   }
                   onBlur={() => {
                     void handleSummaryBlur(learning);

@@ -7,12 +7,15 @@ import { parseChord } from "./shortcutChord.js";
 describe("reservedChords", () => {
   it("covers every accelerator the native menu declares", () => {
     const source = readFileSync(new URL("../../../src-tauri/src/menu.rs", import.meta.url), "utf8");
-    const accelerators = [...source.matchAll(/Some\("((?:Alt\+|Shift\+|CmdOrCtrl\+)+[^"]+)"\)/g)].map(
-      (match) => match[1]
-    );
+    const accelerators = [
+      ...source.matchAll(/Some\("((?:Alt\+|Shift\+|CmdOrCtrl\+)+[^"]+)"\)/g),
+    ].map((match) => match[1]);
     expect(accelerators.length).toBeGreaterThan(10);
     for (const accelerator of accelerators) {
-      expect(parseChord(accelerator), `${accelerator} must be a chord the recorder can read`).not.toBeNull();
+      expect(
+        parseChord(accelerator),
+        `${accelerator} must be a chord the recorder can read`,
+      ).not.toBeNull();
       expect(chordInUse(accelerator), `${accelerator} is a menu accelerator`).not.toBeNull();
     }
   });
@@ -31,7 +34,7 @@ describe("reservedChords", () => {
         `CmdOrCtrl+${code}`,
         `CmdOrCtrl+Shift+${code}`,
         `CmdOrCtrl+Alt+${code}`,
-        `CmdOrCtrl+Shift+Alt+${code}`
+        `CmdOrCtrl+Shift+Alt+${code}`,
       ]) {
         expect(chordInUse(chord), chord).not.toBeNull();
       }
@@ -52,14 +55,20 @@ describe("reservedChords", () => {
       "CmdOrCtrl+R",
       "CmdOrCtrl+S",
       "CmdOrCtrl+Alt+Backquote",
-      "CmdOrCtrl+N"
+      "CmdOrCtrl+N",
     ]) {
       expect(chordInUse(chord), chord).not.toBeNull();
     }
   });
 
   it("leaves free the chords nothing answers", () => {
-    for (const chord of ["Alt+Enter", "CmdOrCtrl+Enter", "CmdOrCtrl+Alt+Enter", "Alt+B", "CmdOrCtrl+Shift+Enter"]) {
+    for (const chord of [
+      "Alt+Enter",
+      "CmdOrCtrl+Enter",
+      "CmdOrCtrl+Alt+Enter",
+      "Alt+B",
+      "CmdOrCtrl+Shift+Enter",
+    ]) {
       expect(chordInUse(chord), chord).toBeNull();
     }
   });

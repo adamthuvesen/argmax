@@ -4,7 +4,7 @@ import {
   REASONING_EFFORTS,
   reasoningEffortsForModel,
   resolveModelId,
-  type ReasoningEffort
+  type ReasoningEffort,
 } from "../../shared/providerModels.js";
 import { allModelOptions, type ModelPickerSelection } from "./models.js";
 
@@ -20,7 +20,10 @@ function sessionModelKey(sessionId: string): string {
  * source of the active turn's settings, so this override is intentionally
  * separate: changing it while a provider is running must not touch that run.
  */
-export function readStoredSessionModel(sessionId: string, fallback: ModelPickerSelection): ModelPickerSelection {
+export function readStoredSessionModel(
+  sessionId: string,
+  fallback: ModelPickerSelection,
+): ModelPickerSelection {
   if (typeof window === "undefined") return fallback;
 
   try {
@@ -35,7 +38,7 @@ export function readStoredSessionModel(sessionId: string, fallback: ModelPickerS
     const option = allModelOptions.find(
       (candidate) =>
         candidate.provider === stored.provider &&
-        candidate.modelId === resolveModelId(candidate.provider, storedModelId)
+        candidate.modelId === resolveModelId(candidate.provider, storedModelId),
     );
     if (!option) return fallback;
 
@@ -55,7 +58,7 @@ export function readStoredSessionModel(sessionId: string, fallback: ModelPickerS
       provider: option.provider,
       label: option.label,
       modelId: option.modelId,
-      ...(reasoningEffort ? { reasoningEffort } : {})
+      ...(reasoningEffort ? { reasoningEffort } : {}),
     };
   } catch {
     return fallback;
@@ -71,8 +74,8 @@ export function writeStoredSessionModel(sessionId: string, model: ModelPickerSel
       JSON.stringify({
         provider: model.provider,
         modelId: model.modelId,
-        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
-      })
+        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+      }),
     );
   } catch {
     // Storage failure costs a restored picker choice, never the running turn.

@@ -1,8 +1,19 @@
 import { useId, type JSX } from "react";
 import type { ProviderId, UsageCostSource, UsageSummary } from "../../../shared/types.js";
-import { approximately, formatCount, formatDeltaRatio, formatMetric, formatPricingDate } from "./usageFormat.js";
+import {
+  approximately,
+  formatCount,
+  formatDeltaRatio,
+  formatMetric,
+  formatPricingDate,
+} from "./usageFormat.js";
 import { peakBucket, perBucketAverage, type UsageDelta } from "./usageInsights.js";
-import { isEstimatedProvider, processedTokens, providerLabel, type UsageMetric } from "./usagePresentation.js";
+import {
+  isEstimatedProvider,
+  processedTokens,
+  providerLabel,
+  type UsageMetric,
+} from "./usagePresentation.js";
 
 /** Where the headline number comes from, said plainly under it. */
 function provenance(costSource: UsageCostSource, metric: UsageMetric): string {
@@ -24,14 +35,14 @@ function provenance(costSource: UsageCostSource, metric: UsageMetric): string {
 const DELTA_GLYPH: Record<UsageDelta["direction"], string> = {
   up: "↑",
   down: "↓",
-  flat: "→"
+  flat: "→",
 };
 
 /** The direction for a reader who cannot see the glyph. */
 const DELTA_WORD: Record<UsageDelta["direction"], string> = {
   up: "up",
   down: "down",
-  flat: "level"
+  flat: "level",
 };
 
 /**
@@ -41,7 +52,11 @@ const DELTA_WORD: Record<UsageDelta["direction"], string> = {
  */
 function UsageDeltaChip({ delta }: { delta: UsageDelta }): JSX.Element {
   return (
-    <span className="usage-hero-delta" data-direction={delta.direction}>
+    <span
+      className="usage-hero-delta"
+      data-testid="usage-hero-delta"
+      data-direction={delta.direction}
+    >
       <span className="usage-hero-delta-glyph" aria-hidden="true">
         {DELTA_GLYPH[delta.direction]}
       </span>
@@ -56,7 +71,7 @@ export function UsageHero({
   summary,
   metric,
   delta,
-  onShowAll
+  onShowAll,
 }: {
   summary: UsageSummary;
   metric: UsageMetric;
@@ -78,7 +93,7 @@ export function UsageHero({
   const peak = peakBucket(summary, metric);
   const insight = [
     average ? `${formatMetric(average.value, metric)} ${average.unitLabel}` : null,
-    peak ? `busiest ${peak.label}, ${formatMetric(peak.value, metric)}` : null
+    peak ? `busiest ${peak.label}, ${formatMetric(peak.value, metric)}` : null,
   ].filter((clause): clause is string => clause !== null);
 
   return (
@@ -102,7 +117,10 @@ export function UsageHero({
       <div className="usage-hero-meta">
         <p className="usage-hero-sub">
           {narrowed ? (
-            <span className="usage-hero-clause usage-hero-scope usage-series" data-provider={narrowed}>
+            <span
+              className="usage-hero-clause usage-hero-scope usage-series"
+              data-provider={narrowed}
+            >
               <span className="usage-series-dot" aria-hidden="true" />
               {providerLabel(narrowed)}
             </span>
@@ -119,7 +137,9 @@ export function UsageHero({
             <span className="usage-dot-sep" aria-hidden="true">
               ·{" "}
             </span>
-            {allEstimated ? "estimated from Cursor chat transcripts" : provenance(summary.costSource, metric)}
+            {allEstimated
+              ? "estimated from Cursor chat transcripts"
+              : provenance(summary.costSource, metric)}
           </span>
           {!allEstimated && estimatedPart > 0 ? (
             <span className="usage-hero-clause">

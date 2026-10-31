@@ -32,7 +32,13 @@ function blockTone(label: string): "error" | "warn" | "log" {
   }
 }
 
-function LogRecordView({ record, fallbackError }: { record: LogRecord; fallbackError: boolean }): JSX.Element {
+function LogRecordView({
+  record,
+  fallbackError,
+}: {
+  record: LogRecord;
+  fallbackError: boolean;
+}): JSX.Element {
   const tone = recordTone(record.level, fallbackError);
   const hasHead = record.timestamp !== null || record.level !== null || record.target !== null;
   return (
@@ -49,7 +55,13 @@ function LogRecordView({ record, fallbackError }: { record: LogRecord; fallbackE
   );
 }
 
-export function LogBlock({ text, tone = "auto" }: { text: string; tone?: "auto" | "error" }): JSX.Element | null {
+export function LogBlock({
+  text,
+  tone = "auto",
+}: {
+  text: string;
+  tone?: "auto" | "error";
+}): JSX.Element | null {
   const records = parseLogDump(text);
   if (records.length === 0) return null;
   const label = logBlockLabel(records, tone);

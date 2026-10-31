@@ -5,7 +5,13 @@ import { useMotionPresence } from "./useMotionPresence.js";
 function Surface({ open }: { open: boolean }): React.JSX.Element | null {
   const motion = useMotionPresence(open);
   if (!motion.present) return null;
-  return <div data-testid="surface" data-motion-state={motion.motionState} onAnimationEnd={motion.onMotionEnd} />;
+  return (
+    <div
+      data-testid="surface"
+      data-motion-state={motion.motionState}
+      onAnimationEnd={motion.onMotionEnd}
+    />
+  );
 }
 
 afterEach(() => {
@@ -37,7 +43,7 @@ describe("useMotionPresence", () => {
   it("removes closing motion immediately when reduced motion is requested", () => {
     vi.stubGlobal(
       "matchMedia",
-      vi.fn(() => ({ matches: true }))
+      vi.fn(() => ({ matches: true })),
     );
     const { rerender } = render(<Surface open />);
     rerender(<Surface open={false} />);

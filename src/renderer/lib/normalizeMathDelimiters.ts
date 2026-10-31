@@ -109,9 +109,12 @@ function transformProseMath(text: string): string {
   });
 
   // 1b. Convert bracketed LaTeX equations missing backslash on brackets: [ \command ... ] -> $$ ... $$
-  result = result.replace(/(?:^|\n)\s*\[\s*(\\[a-zA-Z]+[\s\S]*?)\]\s*(?:\n|$)/g, (_match, equation: string) => {
-    return `\n\n$$\n${equation.trim()}\n$$\n\n`;
-  });
+  result = result.replace(
+    /(?:^|\n)\s*\[\s*(\\[a-zA-Z]+[\s\S]*?)\]\s*(?:\n|$)/g,
+    (_match, equation: string) => {
+      return `\n\n$$\n${equation.trim()}\n$$\n\n`;
+    },
+  );
 
   // 2. Convert LaTeX inline math: \( equation \) -> $equation$
   result = result.replace(/\\\(([\s\S]*?)\\\)/g, (_match, equation: string) => {
@@ -124,9 +127,12 @@ function transformProseMath(text: string): string {
   });
 
   // 4. Normalize single-line standalone $$equation$$ on its own line into block display math
-  result = result.replace(/(?:^|\n)\s*\$\$(?!\$)([^\n]+?)\$\$\s*(?:\n|$)/g, (_match, equation: string) => {
-    return `\n\n$$\n${equation.trim()}\n$$\n\n`;
-  });
+  result = result.replace(
+    /(?:^|\n)\s*\$\$(?!\$)([^\n]+?)\$\$\s*(?:\n|$)/g,
+    (_match, equation: string) => {
+      return `\n\n$$\n${equation.trim()}\n$$\n\n`;
+    },
+  );
 
   // 5. Mask every math region — the ones above just created and any the author
   // already wrote — so the currency and bare-symbol passes below only ever see
@@ -140,9 +146,12 @@ function transformProseMath(text: string): string {
   result = result.replace(/(?<!\\)\$/g, () => "\\$");
 
   // 7. Convert bare Greek letter commands in prose (\tau, \alpha) -> $\tau$, $\alpha$
-  result = result.replace(GREEK_MATH_REGEX, (_match, prefix: string, symbol: string, suffix: string) => {
-    return `${prefix}$\\${symbol}$${suffix}`;
-  });
+  result = result.replace(
+    GREEK_MATH_REGEX,
+    (_match, prefix: string, symbol: string, suffix: string) => {
+      return `${prefix}$\\${symbol}$${suffix}`;
+    },
+  );
 
   return result.replace(/\uE000(\d+)\uE000/g, (_match, index: string) => mathSpans[Number(index)]);
 }

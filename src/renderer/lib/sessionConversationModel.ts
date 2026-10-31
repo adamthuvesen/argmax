@@ -11,7 +11,7 @@ import {
   extractToolOutput,
   getToolTypeBucket,
   isHiddenToolName,
-  type ToolCall
+  type ToolCall,
 } from "./toolCalls.js";
 import { supersededAnswerDeltaIds } from "./turnBoundaries.js";
 
@@ -57,7 +57,11 @@ function isSupersededTraceEvent(event: TimelineEvent): boolean {
 
 /** Persisted row order when both rows carry a cursor, wall-clock otherwise. */
 function compareEventOrder(left: TimelineEvent, right: TimelineEvent): number {
-  if (left.rowCursor !== undefined && right.rowCursor !== undefined && left.rowCursor !== right.rowCursor) {
+  if (
+    left.rowCursor !== undefined &&
+    right.rowCursor !== undefined &&
+    left.rowCursor !== right.rowCursor
+  ) {
     return left.rowCursor - right.rowCursor;
   }
   return left.createdAt.localeCompare(right.createdAt);
@@ -92,7 +96,7 @@ export function latestClearEvent(events: readonly TimelineEvent[]): TimelineEven
 
 export function outputsAfterClear<T extends { createdAt: string }>(
   outputs: readonly T[],
-  clear: TimelineEvent | null
+  clear: TimelineEvent | null,
 ): T[] {
   if (!clear) return [...outputs];
   return outputs.filter((output) => output.createdAt > clear.createdAt);
@@ -111,7 +115,10 @@ function stringArray(value: unknown): string[] {
 }
 
 export function receiverThreadIds(tool: ToolCall): string[] {
-  return [...stringArray(tool.inputFull.receiver_thread_ids), ...stringArray(tool.inputFull.receiverThreadIds)];
+  return [
+    ...stringArray(tool.inputFull.receiver_thread_ids),
+    ...stringArray(tool.inputFull.receiverThreadIds),
+  ];
 }
 
 function hasReceiverOverlap(left: ToolCall, right: ToolCall): boolean {
@@ -188,7 +195,11 @@ function hasAgentLaunchEvidence(tool: ToolCall): boolean {
 // agents. A launch that completed with a provider error has evidence and stays.
 // Two completed same-prompt agents are legitimate separate work and must stay.
 function isSupersededAgentLaunchAttempt(tool: ToolCall, allTools: readonly ToolCall[]): boolean {
-  if (getToolTypeBucket(tool.name) !== "agent" || tool.status === "running" || hasAgentLaunchEvidence(tool)) {
+  if (
+    getToolTypeBucket(tool.name) !== "agent" ||
+    tool.status === "running" ||
+    hasAgentLaunchEvidence(tool)
+  ) {
     return false;
   }
   const signature = agentLaunchSignature(tool);
@@ -198,7 +209,7 @@ function isSupersededAgentLaunchAttempt(tool: ToolCall, allTools: readonly ToolC
       candidate !== tool &&
       candidate.createdAt > tool.createdAt &&
       agentLaunchSignature(candidate) === signature &&
-      hasAgentLaunchEvidence(candidate)
+      hasAgentLaunchEvidence(candidate),
   );
 }
 
@@ -227,9 +238,11 @@ function isCodexAgentControlTool(tool: ToolCall): boolean {
 }
 
 function hasMatchingCodexSender(spawn: ToolCall, control: ToolCall): boolean {
-  const spawnSender = stringValue(spawn.inputFull.sender_thread_id) ?? stringValue(spawn.inputFull.senderThreadId);
+  const spawnSender =
+    stringValue(spawn.inputFull.sender_thread_id) ?? stringValue(spawn.inputFull.senderThreadId);
   const controlSender =
-    stringValue(control.inputFull.sender_thread_id) ?? stringValue(control.inputFull.senderThreadId);
+    stringValue(control.inputFull.sender_thread_id) ??
+    stringValue(control.inputFull.senderThreadId);
   return spawnSender !== null && spawnSender === controlSender;
 }
 
@@ -253,7 +266,8 @@ function matchingCodexSpawns(spawns: readonly ToolCall[], control: ToolCall): To
 
 function mergeCodexWaitIntoSpawn(spawn: ToolCall, wait: ToolCall): ToolCall {
   if (spawn.agentRunId && spawn.providerChildSessionId) return spawn;
-  const waitIsAuthoritative = wait.status === "running" || wait.status === "error" || wait.completedAt !== null;
+  const waitIsAuthoritative =
+    wait.status === "running" || wait.status === "error" || wait.completedAt !== null;
   if (!waitIsAuthoritative) return spawn;
   const status = wait.status;
   return {
@@ -271,13 +285,13 @@ function mergeCodexWaitIntoSpawn(spawn: ToolCall, wait: ToolCall): ToolCall {
             return false;
           }
           return value !== null && value !== undefined;
-        })
-      )
+        }),
+      ),
     },
     output: wait.output ?? spawn.output,
     status,
     completedAt: status === "running" ? null : (wait.completedAt ?? spawn.completedAt),
-    error: wait.error ?? spawn.error
+    error: wait.error ?? spawn.error,
   };
 }
 
@@ -298,7 +312,9 @@ function foldCodexAgentControlTools(tools: readonly ToolCall[]): ToolCall[] {
       replacements.set(spawn.id, mergeCodexWaitIntoSpawn(current, control));
     }
   }
-  return tools.filter((tool) => !isCodexAgentControlTool(tool)).map((tool) => replacements.get(tool.id) ?? tool);
+  return tools
+    .filter((tool) => !isCodexAgentControlTool(tool))
+    .map((tool) => replacements.get(tool.id) ?? tool);
 }
 
 // Cursor answers a backgrounded `task` with a dispatch receipt — a completion
@@ -317,7 +333,7 @@ function isStillRunningAgentLaunch(
   name: string,
   input: Record<string, unknown>,
   output: string | null,
-  completion: TimelineEvent | null
+  completion: TimelineEvent | null,
 ): boolean {
   if (getToolTypeBucket(name) !== "agent") return false;
   if (!completion) return false;
@@ -344,7 +360,11 @@ function isStillRunningAgentLaunch(
  */
 export function buildConversationEvents(events: readonly TimelineEvent[]): TimelineEvent[] {
   const ascending = events
-    .filter((event) => !isSupersededTraceEvent(event) && (isConversationVisible(event) || isToolBoundaryEvent(event)))
+    .filter(
+      (event) =>
+        !isSupersededTraceEvent(event) &&
+        (isConversationVisible(event) || isToolBoundaryEvent(event)),
+    )
     .reverse();
   // The same rule the dashboard merge applies when pruning (see turnBoundaries.ts).
   const superseded = supersededAnswerDeltaIds(ascending);
@@ -353,7 +373,7 @@ export function buildConversationEvents(events: readonly TimelineEvent[]): Timel
 
 export function hasRenderableSessionContent(
   conversationEvents: readonly TimelineEvent[],
-  events: readonly TimelineEvent[]
+  events: readonly TimelineEvent[],
 ): boolean {
   return (
     conversationEvents.some((event) => {
@@ -448,7 +468,7 @@ function correlateToolEvents(events: readonly TimelineEvent[]): StartedTool[] {
         event,
         toolUseId,
         invocationId: canonical.invocationId,
-        completion: null
+        completion: null,
       };
       started.push(start);
       const pending = pendingByToolUseId.get(toolUseId);
@@ -477,7 +497,9 @@ export function latestSessionEndAt(events: readonly TimelineEvent[]): string {
       decoded.kind === "lifecycle" &&
       !decoded.isRaw &&
       !decoded.parentToolUseId &&
-      (decoded.name === "completed" || decoded.name === "cancelled" || decoded.name === "recovered-from-crash") &&
+      (decoded.name === "completed" ||
+        decoded.name === "cancelled" ||
+        decoded.name === "recovered-from-crash") &&
       event.createdAt > endedAt
     ) {
       endedAt = event.createdAt;
@@ -489,7 +511,7 @@ export function latestSessionEndAt(events: readonly TimelineEvent[]): string {
 export function buildSessionToolCalls(
   events: readonly TimelineEvent[],
   sessionRunning = true,
-  sessionInterrupted = false
+  sessionInterrupted = false,
 ): ToolCall[] {
   const sessionEndAt = latestSessionEndAt(events);
   const nativeRunMetadata = new Map<string, Record<string, unknown>>();
@@ -503,7 +525,9 @@ export function buildSessionToolCalls(
     const key = `${decoded.providerInvocationId ?? ""}\u0000${decoded.agentRunId}`;
     nativeRunMetadata.set(key, {
       ...(nativeRunMetadata.get(key) ?? {}),
-      ...Object.fromEntries(Object.entries(event.payload).filter(([, value]) => value !== null && value !== undefined))
+      ...Object.fromEntries(
+        Object.entries(event.payload).filter(([, value]) => value !== null && value !== undefined),
+      ),
     });
     const current = nativeRunLifecycle.get(key);
     const isLater =
@@ -517,7 +541,7 @@ export function buildSessionToolCalls(
         phase: decoded.phase,
         createdAt: event.createdAt,
         rowCursor: event.rowCursor,
-        status: decoded.status
+        status: decoded.status,
       });
     }
   }
@@ -537,7 +561,8 @@ export function buildSessionToolCalls(
     } else if (
       latestProgressCursor === undefined ||
       event.rowCursor > latestProgressCursor ||
-      (event.rowCursor === latestProgressCursor && event.createdAt.localeCompare(latestProgressCursorTimestamp) > 0)
+      (event.rowCursor === latestProgressCursor &&
+        event.createdAt.localeCompare(latestProgressCursorTimestamp) > 0)
     ) {
       latestProgressCursor = event.rowCursor;
       latestProgressCursorTimestamp = event.createdAt;
@@ -561,19 +586,25 @@ export function buildSessionToolCalls(
       const providerName = canonicalStart.providerName;
       const lowerName = canonicalStart.name.toLowerCase();
       const acceptsNativeAgentLifecycle =
-        getToolTypeBucket(canonicalStart.name) === "agent" || lowerName === "sendmessage" || lowerName === "send_input";
+        getToolTypeBucket(canonicalStart.name) === "agent" ||
+        lowerName === "sendmessage" ||
+        lowerName === "send_input";
       const nativeRunKey = `${canonicalStart.invocationId ?? ""}\u0000${canonicalStart.toolUseId ?? toolUseId}`;
-      const nativeMetadata = acceptsNativeAgentLifecycle ? nativeRunMetadata.get(nativeRunKey) : undefined;
-      const nativeLifecycle = acceptsNativeAgentLifecycle ? nativeRunLifecycle.get(nativeRunKey) : undefined;
+      const nativeMetadata = acceptsNativeAgentLifecycle
+        ? nativeRunMetadata.get(nativeRunKey)
+        : undefined;
+      const nativeLifecycle = acceptsNativeAgentLifecycle
+        ? nativeRunLifecycle.get(nativeRunKey)
+        : undefined;
       const isNativeContinuation =
         (lowerName === "sendmessage" || lowerName === "send_input") && nativeMetadata !== undefined;
       const name = isNativeContinuation ? "Agent" : canonicalStart.name;
       const startInput = extractToolInput(event.payload);
       const metadataInput = nativeMetadata
         ? Object.fromEntries(
-            ["description", "prompt", "instructions", "subagentType", "subagent_type"].flatMap((key) =>
-              nativeMetadata[key] === undefined ? [] : [[key, nativeMetadata[key]]]
-            )
+            ["description", "prompt", "instructions", "subagentType", "subagent_type"].flatMap(
+              (key) => (nativeMetadata[key] === undefined ? [] : [[key, nativeMetadata[key]]]),
+            ),
           )
         : {};
       const completionInput = completion ? extractToolInput(completion.payload) : {};
@@ -581,7 +612,8 @@ export function buildSessionToolCalls(
       const input = cleanToolInput(name, mergedInput, providerName);
       const output = completion ? extractToolOutput(completion.payload) : null;
       const canonicalCompletion = completion ? decodeTimelineEvent(completion) : null;
-      const isError = canonicalCompletion?.kind === "tool" && canonicalCompletion.outcome === "failed";
+      const isError =
+        canonicalCompletion?.kind === "tool" && canonicalCompletion.outcome === "failed";
       const hasLaterVisibleProgress =
         event.rowCursor === undefined
           ? latestProgressTimestamp.localeCompare(event.createdAt) > 0
@@ -605,8 +637,15 @@ export function buildSessionToolCalls(
       // question starts, which must not settle it.
       const isAgent = getToolTypeBucket(name) === "agent";
       const isBlockingQuestion = input.delivery === "blocking";
-      const inferredDone = !sessionRunning || (!isAgent && !isBlockingQuestion && hasLaterVisibleProgress);
-      const status: ToolCall["status"] = completion ? (isError ? "error" : "done") : inferredDone ? "done" : "running";
+      const inferredDone =
+        !sessionRunning || (!isAgent && !isBlockingQuestion && hasLaterVisibleProgress);
+      const status: ToolCall["status"] = completion
+        ? isError
+          ? "error"
+          : "done"
+        : inferredDone
+          ? "done"
+          : "running";
       // An async launch answers in milliseconds with a receipt, so the tool is
       // `done` while its agent has barely started. Keep the row running until
       // the provider's child lifecycle reports its own terminal state. This is
@@ -618,14 +657,18 @@ export function buildSessionToolCalls(
         isStillRunningAgentLaunch(name, input, output, completion);
       // An exit ends unfinished native work even when the provider exits cleanly.
       // Use the persisted boundary so resuming the parent cannot revive old runs.
-      const nativeRunEnded = nativeLifecycle?.phase === "started" && sessionEndAt >= nativeLifecycle.createdAt;
+      const nativeRunEnded =
+        nativeLifecycle?.phase === "started" && sessionEndAt >= nativeLifecycle.createdAt;
       // The same boundary settles a row with no lifecycle pair at all — a Codex
       // launch read back from the on-disk rollout trace, or any start whose
       // `command.completed` was lost. The process that owed the completion is
       // gone, so the row cannot still be in flight. A start after the last end
       // belongs to the live turn, and an empty boundary means never ended.
       const endedWithoutCompletion =
-        completion === null && !inferredDone && sessionEndAt !== "" && sessionEndAt >= event.createdAt;
+        completion === null &&
+        !inferredDone &&
+        sessionEndAt !== "" &&
+        sessionEndAt >= event.createdAt;
       const renderedStatus: ToolCall["status"] = nativeLifecycle
         ? nativeLifecycle.phase === "started"
           ? sessionInterrupted || nativeRunEnded
@@ -649,10 +692,11 @@ export function buildSessionToolCalls(
         output,
         status: renderedStatus,
         completionObserved: completion !== null,
-        cancelled: canonicalCompletion?.kind === "tool" && canonicalCompletion.outcome === "cancelled",
+        cancelled:
+          canonicalCompletion?.kind === "tool" && canonicalCompletion.outcome === "cancelled",
         activity: mergeToolActivity(
           canonicalStart.activity,
-          canonicalCompletion?.kind === "tool" ? canonicalCompletion.activity : null
+          canonicalCompletion?.kind === "tool" ? canonicalCompletion.activity : null,
         ),
         createdAt: event.createdAt,
         // No real completion timestamp exists for a dropped completion; anchor
@@ -680,7 +724,8 @@ export function buildSessionToolCalls(
         backgroundLaunch: isBackgroundLaunch,
         parentToolUseId,
         providerChildSessionId:
-          canonicalStart.providerChildSessionId ?? stringValue(nativeMetadata?.providerChildSessionId),
+          canonicalStart.providerChildSessionId ??
+          stringValue(nativeMetadata?.providerChildSessionId),
         agentRunId: canonicalStart.agentRunId ?? stringValue(nativeMetadata?.agentRunId),
         providerInvocationId: canonicalStart.invocationId,
         agentRootToolUseId:
@@ -688,14 +733,17 @@ export function buildSessionToolCalls(
           stringValue(nativeMetadata?.agentRootToolUseId) ??
           stringValue(nativeMetadata?.parentToolUseId),
         providerParentConversationId:
-          canonicalStart.providerParentConversationId ?? stringValue(nativeMetadata?.providerParentConversationId),
-        agentCodename: canonicalStart.agentCodename ?? stringValue(nativeMetadata?.agentCodename)
+          canonicalStart.providerParentConversationId ??
+          stringValue(nativeMetadata?.providerParentConversationId),
+        agentCodename: canonicalStart.agentCodename ?? stringValue(nativeMetadata?.agentCodename),
       };
     });
   const folded = foldCodexAgentControlTools(tools);
   return folded.filter(
     (tool) =>
-      !isHiddenToolName(tool.name) && !isNoOpCodexAgentLaunch(tool) && !isSupersededAgentLaunchAttempt(tool, folded)
+      !isHiddenToolName(tool.name) &&
+      !isNoOpCodexAgentLaunch(tool) &&
+      !isSupersededAgentLaunchAttempt(tool, folded),
   );
 }
 
@@ -705,7 +753,9 @@ export function buildSessionToolCalls(
  * progress state must not react to them.
  */
 export function subAgentToolUseIds(tools: readonly ToolCall[]): Set<string> {
-  return new Set(tools.filter((tool) => tool.parentToolUseId !== null).map((tool) => tool.toolUseId));
+  return new Set(
+    tools.filter((tool) => tool.parentToolUseId !== null).map((tool) => tool.toolUseId),
+  );
 }
 
 /**
@@ -736,13 +786,14 @@ function isParentVisibleEvent(event: TimelineEvent, childToolUseIds: ReadonlySet
 
 export function lastSignificantSessionEvent(
   events: readonly TimelineEvent[],
-  childToolUseIds: ReadonlySet<string> = new Set<string>()
+  childToolUseIds: ReadonlySet<string> = new Set<string>(),
 ): TimelineEvent | undefined {
   return events.find((event) => {
     const canonical = decodeTimelineEvent(event);
     return (
       isParentVisibleEvent(event, childToolUseIds) &&
-      ((canonical.kind === "message" && !(canonical.role === "user" && canonical.delivery === "steer")) ||
+      ((canonical.kind === "message" &&
+        !(canonical.role === "user" && canonical.delivery === "steer")) ||
         (canonical.kind === "tool" && canonical.phase !== "output"))
     );
   });
@@ -756,7 +807,7 @@ export function lastSignificantSessionEvent(
  */
 export function lastAgentResponseEvent(
   events: readonly TimelineEvent[],
-  childToolUseIds: ReadonlySet<string> = new Set<string>()
+  childToolUseIds: ReadonlySet<string> = new Set<string>(),
 ): TimelineEvent | undefined {
   return events.find((event) => {
     const canonical = decodeTimelineEvent(event);

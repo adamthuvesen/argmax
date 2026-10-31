@@ -6,7 +6,7 @@ export function buildSidebarChatTree(
   workspaces: readonly WorkspaceSummary[],
   sessions: readonly SessionSummary[],
   detachedIds: ReadonlySet<string>,
-  nested: boolean
+  nested: boolean,
 ): {
   childrenByWorkspace: Map<string, WorkspaceSummary[]>;
   rootByWorkspace: Map<string, string>;

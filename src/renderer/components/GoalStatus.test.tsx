@@ -4,7 +4,11 @@ import type { ArgmaxApi, Goal, SessionSummary } from "../../shared/types.js";
 import { defaultDashboardSnapshot } from "../../test/fixtures/dashboardSnapshot.js";
 import { GoalStatus } from "./GoalStatus.js";
 
-const session: SessionSummary = { ...defaultDashboardSnapshot.sessions[0], state: "running", attention: "normal" };
+const session: SessionSummary = {
+  ...defaultDashboardSnapshot.sessions[0],
+  state: "running",
+  attention: "normal",
+};
 
 function goal(overrides: Partial<Goal> = {}): Goal {
   return {
@@ -18,20 +22,22 @@ function goal(overrides: Partial<Goal> = {}): Goal {
     lastReason: "Two auth tests still fail on timeout.",
     createdAt: "2026-09-08T10:00:00.000Z",
     updatedAt: "2026-09-08T10:05:00.000Z",
-    ...overrides
+    ...overrides,
   };
 }
 
 /** Captures the dashboard subscriber so a test can push one delta. */
 const onDelta = vi.fn<
-  (listener: (delta: { changedSessionIds?: string[]; goalChangedIds?: string[] }) => void) => () => void
+  (
+    listener: (delta: { changedSessionIds?: string[]; goalChangedIds?: string[] }) => void,
+  ) => () => void
 >(() => () => undefined);
 
 const goals = {
   set: vi.fn<ArgmaxApi["goals"]["set"]>(),
   get: vi.fn<ArgmaxApi["goals"]["get"]>(),
   list: vi.fn<ArgmaxApi["goals"]["list"]>(),
-  clear: vi.fn<ArgmaxApi["goals"]["clear"]>()
+  clear: vi.fn<ArgmaxApi["goals"]["clear"]>(),
 };
 
 beforeEach(() => {
@@ -53,7 +59,10 @@ describe("GoalStatus", () => {
     expect(screen.queryByText(/turn \d+ of/)).not.toBeInTheDocument();
     expect(screen.queryByText("Two auth tests still fail on timeout.")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Goal every test/ }));
-    expect(screen.getByRole("button", { name: /Goal every test/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /Goal every test/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     expect(screen.queryByText("Two auth tests still fail on timeout.")).not.toBeInTheDocument();
   });
 
@@ -84,7 +93,9 @@ describe("GoalStatus", () => {
     render(<GoalStatus session={session} />);
     fireEvent.click(await screen.findByRole("button", { name: "Clear goal" }));
     await waitFor(() => expect(goals.clear).toHaveBeenCalledWith({ sessionId: session.id }));
-    await waitFor(() => expect(screen.queryByText("every test in test/auth passes")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByText("every test in test/auth passes")).not.toBeInTheDocument(),
+    );
   });
 
   it("keeps a met goal on screen until it is dismissed, without clearing it again", async () => {
@@ -99,7 +110,9 @@ describe("GoalStatus", () => {
   });
 
   it("names an impossible goal rather than dropping it silently", async () => {
-    goals.get.mockResolvedValue(goal({ state: "impossible", lastReason: "The referenced test file does not exist." }));
+    goals.get.mockResolvedValue(
+      goal({ state: "impossible", lastReason: "The referenced test file does not exist." }),
+    );
     render(<GoalStatus session={session} />);
     expect(await screen.findByText("Goal can't be met")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Goal can.t be met every test/ }));

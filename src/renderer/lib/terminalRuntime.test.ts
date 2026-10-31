@@ -7,7 +7,7 @@ import {
   attachTerminalTab,
   resetTerminalRuntimesForTests,
   syncTerminalSize,
-  type TerminalTabRuntime
+  type TerminalTabRuntime,
 } from "./terminalRuntime.js";
 
 /** `syncTerminalSize` reads only the grid off the terminal and never touches
@@ -18,7 +18,7 @@ function makeRuntime(cols: number, rows: number, terminalId: string | null): Ter
     term: { cols, rows } as unknown as Terminal,
     fit: {} as unknown as FitAddon,
     terminalId,
-    lastSentSize: null
+    lastSentSize: null,
   };
 }
 
@@ -75,8 +75,18 @@ describe("syncTerminalSize", () => {
 });
 
 /** A key as WebKit delivers it; xterm still reads the legacy `keyCode`. */
-function pressKey(target: HTMLElement, key: string, keyCode: number, modifiers: KeyboardEventInit = {}): void {
-  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...modifiers });
+function pressKey(
+  target: HTMLElement,
+  key: string,
+  keyCode: number,
+  modifiers: KeyboardEventInit = {},
+): void {
+  const event = new KeyboardEvent("keydown", {
+    key,
+    bubbles: true,
+    cancelable: true,
+    ...modifiers,
+  });
   Object.defineProperty(event, "keyCode", { value: keyCode });
   target.dispatchEvent(event);
 }
@@ -107,27 +117,30 @@ describe("terminal editing keys", () => {
     ["Esc", "Escape", 27, {}, "\x1b"],
     ["Ctrl+U", "u", 85, { ctrlKey: true }, "\x15"],
     ["Ctrl+W", "w", 87, { ctrlKey: true }, "\x17"],
-    ["Ctrl+C", "c", 67, { ctrlKey: true }, "\x03"]
-  ] as const)("%s reaches the PTY as the shell's editing sequence", async (_label, key, keyCode, modifiers, bytes) => {
-    const write = vi.fn().mockResolvedValue(undefined);
-    const subscription = () => Object.assign(() => undefined, { ready: Promise.resolve() });
-    (window as unknown as { argmax: unknown }).argmax = {
-      terminal: {
-        onData: subscription,
-        onExit: subscription,
-        spawn: vi.fn().mockResolvedValue({ terminalId: "term-1" }),
-        resize: vi.fn().mockResolvedValue(undefined),
-        terminate: vi.fn().mockResolvedValue(undefined),
-        write
-      }
-    };
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const runtime = attachTerminalTab("tab-1", "ws-1", container);
-    await waitFor(() => expect(runtime.terminalId).toBe("term-1"));
+    ["Ctrl+C", "c", 67, { ctrlKey: true }, "\x03"],
+  ] as const)(
+    "%s reaches the PTY as the shell's editing sequence",
+    async (_label, key, keyCode, modifiers, bytes) => {
+      const write = vi.fn().mockResolvedValue(undefined);
+      const subscription = () => Object.assign(() => undefined, { ready: Promise.resolve() });
+      (window as unknown as { argmax: unknown }).argmax = {
+        terminal: {
+          onData: subscription,
+          onExit: subscription,
+          spawn: vi.fn().mockResolvedValue({ terminalId: "term-1" }),
+          resize: vi.fn().mockResolvedValue(undefined),
+          terminate: vi.fn().mockResolvedValue(undefined),
+          write,
+        },
+      };
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const runtime = attachTerminalTab("tab-1", "ws-1", container);
+      await waitFor(() => expect(runtime.terminalId).toBe("term-1"));
 
-    pressKey(runtime.term.textarea!, key, keyCode, modifiers);
+      pressKey(runtime.term.textarea!, key, keyCode, modifiers);
 
-    expect(write.mock.calls).toEqual([[{ terminalId: "term-1", data: bytes }]]);
-  });
+      expect(write.mock.calls).toEqual([[{ terminalId: "term-1", data: bytes }]]);
+    },
+  );
 });

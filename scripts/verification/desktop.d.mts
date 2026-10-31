@@ -6,7 +6,10 @@ export interface ProcessIdentity {
   startedAt: string;
 }
 
-export function matchingProcessIdentities(processes: ProcessIdentity[], expected: ProcessIdentity[]): ProcessIdentity[];
+export function matchingProcessIdentities(
+  processes: ProcessIdentity[],
+  expected: ProcessIdentity[],
+): ProcessIdentity[];
 
 export interface MacosApplicationState {
   pid?: number;
@@ -61,23 +64,44 @@ export function foregroundActivationTimeoutDetails(options: {
   consoleLock: MacosConsoleLockState;
 }): ForegroundActivationTimeoutDetails;
 
-export function ensureDesktopForeground(browser: unknown): Promise<{ changed: boolean; pid: number }>;
-export function pressNativeEscape(browser: unknown): Promise<{ pid: number; method: "CGEventPostToPid" }>;
+export function ensureDesktopForeground(
+  browser: unknown,
+): Promise<{ changed: boolean; pid: number }>;
+export function pressNativeEscape(
+  browser: unknown,
+): Promise<{ pid: number; method: "CGEventPostToPid" }>;
 export function captureDesktopState(browser: unknown): Promise<Record<string, unknown>>;
 export function rendererErrorMessages(uiState: unknown): string[];
 export function readComposerText(browser: unknown, field: unknown): Promise<string>;
 export function typeIntoComposer(browser: unknown, field: unknown, text: string): Promise<void>;
-export function waitForCodeMirror(browser: unknown, label: string, timeoutMs?: number): Promise<unknown>;
+export function waitForCodeMirror(
+  browser: unknown,
+  label: string,
+  timeoutMs?: number,
+): Promise<unknown>;
 export function pressChord(
   browser: unknown,
-  chord: { key: string; altKey?: boolean; ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean }
+  chord: {
+    key: string;
+    altKey?: boolean;
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    shiftKey?: boolean;
+  },
 ): Promise<boolean>;
-export function composerEditorCommand(element: unknown, action: "text" | "select-all" | "select-end"): string | null;
-export function selectComposerText(browser: unknown, field: unknown, where: "all" | "end"): Promise<void>;
+export function composerEditorCommand(
+  element: unknown,
+  action: "text" | "select-all" | "select-end",
+): string | null;
+export function selectComposerText(
+  browser: unknown,
+  field: unknown,
+  where: "all" | "end",
+): Promise<void>;
 export function pressMouseDown(browser: unknown, element: unknown): Promise<void>;
 export function openContextMenu(
   browser: unknown,
-  selector: string
+  selector: string,
 ): Promise<{
   found: boolean;
   defaultPrevented: boolean;

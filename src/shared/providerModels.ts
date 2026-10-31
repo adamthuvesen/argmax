@@ -1,5 +1,8 @@
 import { BoundedSet } from "./boundedSet.js";
-import type { ReasoningEffort as BindingReasoningEffort, UsageCounts as BindingUsageCounts } from "./bindings.js";
+import type {
+  ReasoningEffort as BindingReasoningEffort,
+  UsageCounts as BindingUsageCounts,
+} from "./bindings.js";
 import { logger } from "./logger.js";
 import type { ProviderId } from "./types.js";
 
@@ -58,7 +61,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
   codex: "Codex",
   cursor: "Cursor",
   opencode: "OpenCode",
-  grok: "Grok Build"
+  grok: "Grok Build",
 };
 
 /** All effort levels, low → high. Each model's picker list is a prefix or
@@ -77,7 +80,10 @@ export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultr
  * A retired id reads its successor's ladder. The Rust adapters read these
  * ladders from the generated model_catalogue.generated.rs.
  */
-export function reasoningEffortsForModel(provider: ProviderId, storedModelId: string): readonly ReasoningEffort[] {
+export function reasoningEffortsForModel(
+  provider: ProviderId,
+  storedModelId: string,
+): readonly ReasoningEffort[] {
   const modelId: string = resolveModelId(provider, storedModelId);
   if (provider === "claude") return REASONING_EFFORTS; // low → ultra
   if (provider === "codex") {
@@ -89,7 +95,8 @@ export function reasoningEffortsForModel(provider: ProviderId, storedModelId: st
     ) {
       return REASONING_EFFORTS; // low → ultra
     }
-    if (modelId === "gpt-6-luna" || modelId === "gpt-5.6-luna") return REASONING_EFFORTS.slice(0, 5); // low → max
+    if (modelId === "gpt-6-luna" || modelId === "gpt-5.6-luna")
+      return REASONING_EFFORTS.slice(0, 5); // low → max
     return REASONING_EFFORTS.slice(0, 4); // unknown/legacy: low → xhigh
   }
   if (
@@ -127,7 +134,7 @@ export function reasoningEffortsForModel(provider: ProviderId, storedModelId: st
     "openrouter/qwen/qwen3.8-max-0902": ["low", "medium", "high", "xhigh"],
     "openrouter/qwen/qwen3.8-flash": ["high", "max"],
     "openrouter/meta/muse-spark-1.3-contributor": ["low", "medium", "high", "xhigh", "max"],
-    "openrouter/meta/muse-wonder": ["low", "medium", "high", "xhigh", "max"]
+    "openrouter/meta/muse-wonder": ["low", "medium", "high", "xhigh", "max"],
   };
   if (provider === "opencode" && modelId in opencodeVariants) return opencodeVariants[modelId];
   // Grok Build's --reasoning-effort accepts only low/medium/high/xhigh; the CLI
@@ -149,7 +156,7 @@ export function reasoningEffortsForModel(provider: ProviderId, storedModelId: st
  */
 export function clampEffort(
   effort: ReasoningEffort | undefined,
-  efforts: readonly ReasoningEffort[]
+  efforts: readonly ReasoningEffort[],
 ): ReasoningEffort | undefined {
   if (!effort || efforts.length === 0) return undefined;
   if (efforts.includes(effort)) return effort;
@@ -179,7 +186,7 @@ export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
 export function effortForModel(
   provider: ProviderId,
   modelId: string,
-  preferred: ReasoningEffort = DEFAULT_REASONING_EFFORT
+  preferred: ReasoningEffort = DEFAULT_REASONING_EFFORT,
 ): ReasoningEffort | undefined {
   const allowed = reasoningEffortsForModel(provider, modelId);
   if (allowed.includes(preferred)) return preferred;
@@ -200,16 +207,26 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   // catalog), at twice the price. Do not enable it for other models: turning it
   // on switches the chat to Opus. https://code.claude.com/docs/en/fast-mode
   claude: [
-    { label: "Fable 5.1", modelId: "claude-fable-5-1", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    {
+      label: "Fable 5.1",
+      modelId: "claude-fable-5-1",
+      supportsReasoningEffort: true,
+      contextWindow: 1_000_000,
+    },
     {
       label: "Opus 5.5",
       modelId: "claude-opus-5-5",
       supportsReasoningEffort: true,
       supportsFastMode: true,
-      contextWindow: 1_000_000
+      contextWindow: 1_000_000,
     },
-    { label: "Sonnet 5.5", modelId: "claude-sonnet-5-5", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "Haiku 5.5", modelId: "claude-haiku-5-5", contextWindow: 1_000_000 }
+    {
+      label: "Sonnet 5.5",
+      modelId: "claude-sonnet-5-5",
+      supportsReasoningEffort: true,
+      contextWindow: 1_000_000,
+    },
+    { label: "Haiku 5.5", modelId: "claude-haiku-5-5", contextWindow: 1_000_000 },
   ],
   // The GPT-6 models' Codex CLI catalog reports a 272_000 default context. Live
   // rollouts can replace it with the model_context_window value they report.
@@ -222,29 +239,29 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       modelId: "gpt-6-astra",
       supportsReasoningEffort: true,
       supportsFastMode: true,
-      contextWindow: 272_000
+      contextWindow: 272_000,
     },
     {
       label: "GPT-6.1 Sol",
       modelId: "gpt-6.1-sol",
       supportsReasoningEffort: true,
       supportsFastMode: true,
-      contextWindow: 272_000
+      contextWindow: 272_000,
     },
     {
       label: "GPT-5.6 Terra",
       modelId: "gpt-5.6-terra",
       supportsReasoningEffort: true,
       supportsFastMode: true,
-      contextWindow: 258_400
+      contextWindow: 258_400,
     },
     {
       label: "GPT-6 Luna",
       modelId: "gpt-6-luna",
       supportsReasoningEffort: true,
       supportsFastMode: true,
-      contextWindow: 272_000
-    }
+      contextWindow: 272_000,
+    },
   ],
   cursor: [
     { label: "Auto Cost (Cursor)", modelId: "auto-smart[optimize_for=cost]" },
@@ -257,49 +274,49 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       modelId: "grok-4.7-medium",
       supportsReasoningEffort: true,
       supportsFastMode: true,
-      contextWindow: 1_000_000
+      contextWindow: 1_000_000,
     },
     {
       label: "Gemini 3.8 Flash (Cursor)",
       modelId: "gemini-3.8-flash-medium",
       supportsReasoningEffort: true,
-      contextWindow: 1_000_000
+      contextWindow: 1_000_000,
     },
     {
       label: "GPT-5.6 Sol (Cursor)",
       modelId: "gpt-5.6-sol-medium",
       supportsReasoningEffort: true,
       supportsFastMode: true,
-      contextWindow: 1_000_000
+      contextWindow: 1_000_000,
     },
     {
       label: "GPT-5.6 Terra (Cursor)",
       modelId: "gpt-5.6-terra-medium",
       supportsReasoningEffort: true,
       supportsFastMode: true,
-      contextWindow: 1_000_000
+      contextWindow: 1_000_000,
     },
     {
       label: "GPT-5.6 Luna (Cursor)",
       modelId: "gpt-5.6-luna-medium",
       supportsReasoningEffort: true,
       supportsFastMode: true,
-      contextWindow: 1_000_000
+      contextWindow: 1_000_000,
     },
     {
       label: "Claude Opus 5.5 (Cursor)",
       modelId: "claude-opus-5-5-medium",
       supportsReasoningEffort: true,
       supportsFastMode: true,
-      contextWindow: 1_000_000
+      contextWindow: 1_000_000,
     },
     // cursor-agent 2026.09.26 lists low through max and no `-fast` ids.
     {
       label: "Claude Sonnet 5.5 (Cursor)",
       modelId: "claude-sonnet-5-5-medium",
       supportsReasoningEffort: true,
-      contextWindow: 1_000_000
-    }
+      contextWindow: 1_000_000,
+    },
   ],
   // OpenCode runs every model through the OpenCode gateway chosen in Settings
   // (OpenRouter or Vercel AI Gateway). Ids keep the
@@ -317,60 +334,60 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       modelId: "openrouter/z-ai/glm-5.3-flash",
       supportsReasoningEffort: true,
       contextWindow: 1_048_576,
-      vercelSlug: "zai/glm-5.3-flash"
+      vercelSlug: "zai/glm-5.3-flash",
     },
     {
       label: "GLM-5.3",
       modelId: "openrouter/z-ai/glm-5.3",
       supportsReasoningEffort: true,
       contextWindow: 1_048_576,
-      vercelSlug: "zai/glm-5.3"
+      vercelSlug: "zai/glm-5.3",
     },
     {
       label: "DeepSeek V4.1 Flash 1017",
       modelId: "openrouter/deepseek/deepseek-v4.1-flash-1017",
       supportsReasoningEffort: true,
-      contextWindow: 1_048_576
+      contextWindow: 1_048_576,
     },
     {
       label: "DeepSeek V4 Pro",
       modelId: "openrouter/deepseek/deepseek-v4-pro-0813",
       supportsReasoningEffort: true,
-      contextWindow: 1_048_576
+      contextWindow: 1_048_576,
     },
     {
       label: "Kimi K3",
       modelId: "openrouter/moonshotai/kimi-k3",
       supportsReasoningEffort: true,
-      contextWindow: 1_048_576
+      contextWindow: 1_048_576,
     },
     {
       label: "Qwen3.8 Max",
       modelId: "openrouter/qwen/qwen3.8-max-0902",
       supportsReasoningEffort: true,
       contextWindow: 1_000_000,
-      vercelSlug: "alibaba/qwen3.8-max-0902"
+      vercelSlug: "alibaba/qwen3.8-max-0902",
     },
     {
       label: "Qwen3.8 Flash",
       modelId: "openrouter/qwen/qwen3.8-flash",
       supportsReasoningEffort: true,
       contextWindow: 1_000_000,
-      vercelSlug: "alibaba/qwen3.8-flash"
+      vercelSlug: "alibaba/qwen3.8-flash",
     },
     {
       label: "Muse Spark 1.3 Contributor",
       modelId: "openrouter/meta/muse-spark-1.3-contributor",
       supportsReasoningEffort: true,
-      contextWindow: 1_048_576
+      contextWindow: 1_048_576,
     },
     {
       label: "Muse Wonder",
       modelId: "openrouter/meta/muse-wonder",
       supportsReasoningEffort: true,
       contextWindow: 1_048_576,
-      vercelSlug: "meta/muse-wonder-1.0"
-    }
+      vercelSlug: "meta/muse-wonder-1.0",
+    },
   ],
   // The picker offers Grok 4.7. It takes --reasoning-effort up to xhigh (the
   // CLI rejects max/ultra). Fast is the advertised SKU `grok-4.7-build-fast`.
@@ -382,9 +399,9 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       supportsReasoningEffort: true,
       supportsFastMode: true,
       contextWindow: 500_000,
-      fastModeModelId: "grok-4.7-build-fast"
-    }
-  ]
+      fastModeModelId: "grok-4.7-build-fast",
+    },
+  ],
 };
 
 /**
@@ -395,25 +412,37 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
 export const STORED_ONLY_MODELS: Partial<
   Record<
     ProviderId,
-    readonly Pick<ProviderModelOption, "modelId" | "supportsReasoningEffort" | "supportsFastMode" | "contextWindow">[]
+    readonly Pick<
+      ProviderModelOption,
+      "modelId" | "supportsReasoningEffort" | "supportsFastMode" | "contextWindow"
+    >[]
   >
 > = {
   claude: [
-    { modelId: "claude-opus-5", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 1_000_000 }
+    {
+      modelId: "claude-opus-5",
+      supportsReasoningEffort: true,
+      supportsFastMode: true,
+      contextWindow: 1_000_000,
+    },
   ],
   codex: [
     { modelId: "gpt-5.6-sol", supportsReasoningEffort: true, supportsFastMode: true },
-    { modelId: "gpt-5.6-luna", supportsReasoningEffort: true, supportsFastMode: true }
+    { modelId: "gpt-5.6-luna", supportsReasoningEffort: true, supportsFastMode: true },
   ],
   cursor: [
-    { modelId: "claude-opus-5-thinking-medium", supportsReasoningEffort: true, supportsFastMode: true },
+    {
+      modelId: "claude-opus-5-thinking-medium",
+      supportsReasoningEffort: true,
+      supportsFastMode: true,
+    },
     { modelId: "cursor-grok-4.6-medium", supportsReasoningEffort: true, supportsFastMode: true },
-    { modelId: "cursor-grok-4.5-medium", supportsReasoningEffort: true, supportsFastMode: true }
+    { modelId: "cursor-grok-4.5-medium", supportsReasoningEffort: true, supportsFastMode: true },
   ],
   grok: [
     { modelId: "grok-4.6", supportsReasoningEffort: true },
-    { modelId: "grok-4.5", supportsReasoningEffort: true }
-  ]
+    { modelId: "grok-4.5", supportsReasoningEffort: true },
+  ],
 };
 
 // Cheap, fast model per provider used only to mint a short sidebar title from
@@ -428,7 +457,7 @@ export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
   cursor: "composer-2.5",
   opencode: "openrouter/z-ai/glm-5.3-flash",
   // Same Grok Build rate as the chat model.
-  grok: "grok-4.7"
+  grok: "grok-4.7",
 };
 
 /**
@@ -444,24 +473,24 @@ export const FORK_CAPABLE_PROVIDERS: ReadonlySet<string> = new Set<ProviderId>([
   "codex",
   "cursor",
   "opencode",
-  "grok"
+  "grok",
 ]);
 
 export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> = {
   claude: {
     label: "Opus 5.5",
     modelId: "claude-opus-5-5",
-    supportsReasoningEffort: true
+    supportsReasoningEffort: true,
   },
   codex: {
     label: "GPT-6.1 Sol",
     modelId: "gpt-6.1-sol",
-    supportsReasoningEffort: true
+    supportsReasoningEffort: true,
   },
   cursor: {
     label: "Grok 4.7 (Cursor)",
     modelId: "grok-4.7-medium",
-    supportsReasoningEffort: true
+    supportsReasoningEffort: true,
   },
   // GLM-5.3-Flash's variant list is low/high/max (no medium), so seed High
   // rather than DEFAULT_REASONING_EFFORT.
@@ -469,13 +498,13 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
     label: "GLM-5.3-Flash",
     modelId: "openrouter/z-ai/glm-5.3-flash",
     supportsReasoningEffort: true,
-    reasoningEffort: "high"
+    reasoningEffort: "high",
   },
   grok: {
     label: "Grok 4.7",
     modelId: "grok-4.7",
-    supportsReasoningEffort: true
-  }
+    supportsReasoningEffort: true,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -537,12 +566,27 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // Cache writes bill as plain input. Keep in sync with the Rust pricing mirror.
   "openrouter/z-ai/glm-5.3-flash": { input: 0.15, output: 0.5, cacheRead: 0.03, cacheWrite: 0.15 },
   "openrouter/z-ai/glm-5.3": { input: 1.4, output: 4.4, cacheRead: 0.26, cacheWrite: 1.4 },
-  "openrouter/deepseek/deepseek-v4.1-flash-1017": { input: 0.15, output: 0.6, cacheRead: 0.003, cacheWrite: 0.15 },
-  "openrouter/deepseek/deepseek-v4-pro-0813": { input: 0.66, output: 1.98, cacheRead: 0.022, cacheWrite: 0.66 },
+  "openrouter/deepseek/deepseek-v4.1-flash-1017": {
+    input: 0.15,
+    output: 0.6,
+    cacheRead: 0.003,
+    cacheWrite: 0.15,
+  },
+  "openrouter/deepseek/deepseek-v4-pro-0813": {
+    input: 0.66,
+    output: 1.98,
+    cacheRead: 0.022,
+    cacheWrite: 0.66,
+  },
   "openrouter/moonshotai/kimi-k3": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3 },
   "openrouter/qwen/qwen3.8-max-0902": { input: 2, output: 6, cacheRead: 0.25, cacheWrite: 2.5 },
   "openrouter/qwen/qwen3.8-flash": { input: 0.15, output: 0.47, cacheRead: 0.016, cacheWrite: 0.2 },
-  "openrouter/meta/muse-spark-1.3-contributor": { input: 0.1, output: 0.2, cacheRead: 0.002, cacheWrite: 0.1 },
+  "openrouter/meta/muse-spark-1.3-contributor": {
+    input: 0.1,
+    output: 0.2,
+    cacheRead: 0.002,
+    cacheWrite: 0.1,
+  },
   "openrouter/meta/muse-wonder": { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 4 },
 
   // Grok Build bills its own SKUs (`grok-4.7-build` / `grok-4.6-build` /
@@ -556,11 +600,16 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "grok-4.7": { input: 0.68, output: 2.04, cacheRead: 0.17, cacheWrite: 0 },
   "grok-4.7-build-fast": { input: 1.36, output: 4.08, cacheRead: 0.34, cacheWrite: 0 },
   "grok-4.6": { input: 0.68, output: 2.04, cacheRead: 0.17, cacheWrite: 0 },
-  "grok-4.5": { input: 0.68, output: 2.04, cacheRead: 0.102, cacheWrite: 0 }
+  "grok-4.5": { input: 0.68, output: 2.04, cacheRead: 0.102, cacheWrite: 0 },
 };
 
 const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {
-  "openrouter/deepseek/deepseek-v4.1-flash": { input: 0.15, output: 0.6, cacheRead: 0.003, cacheWrite: 0.15 },
+  "openrouter/deepseek/deepseek-v4.1-flash": {
+    input: 0.15,
+    output: 0.6,
+    cacheRead: 0.003,
+    cacheWrite: 0.15,
+  },
   "claude-fable-5": { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
   "claude-sonnet-5": { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
   "claude-opus-4-8": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
@@ -601,7 +650,7 @@ const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {
   "gemini-3.5-flash": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gemini-3.6-flash-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gemini-3.7-flash-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "cursor-grok-4.5-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+  "cursor-grok-4.5-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 };
 
 export type UsageCounts = BindingUsageCounts;
@@ -621,7 +670,9 @@ export function normalizeModelId(modelId: string): string {
 export const SUCCESSOR_MODEL_IDS: Partial<Record<ProviderId, Readonly<Record<string, string>>>> = {
   claude: { "claude-sonnet-5": "claude-sonnet-5-5", "claude-haiku-4-5": "claude-haiku-5-5" },
   codex: { "gpt-6-sol": "gpt-6.1-sol" },
-  opencode: { "openrouter/deepseek/deepseek-v4.1-flash": "openrouter/deepseek/deepseek-v4.1-flash-1017" }
+  opencode: {
+    "openrouter/deepseek/deepseek-v4.1-flash": "openrouter/deepseek/deepseek-v4.1-flash-1017",
+  },
 };
 
 /** A model id that has been through {@link resolveModelId}. */
@@ -646,7 +697,9 @@ export function resolveModelId(provider: ProviderId, modelId: string): ResolvedM
 export function modelLabelFor(provider: ProviderId, modelId: string): string | null {
   if (!modelId) return null;
   const wanted = normalizeModelId(resolveModelId(provider, modelId));
-  const match = PROVIDER_MODELS[provider]?.find((model) => normalizeModelId(model.modelId) === wanted);
+  const match = PROVIDER_MODELS[provider]?.find(
+    (model) => normalizeModelId(model.modelId) === wanted,
+  );
   return match?.label ?? null;
 }
 
@@ -663,7 +716,9 @@ export function modelLabelForReference(provider: ProviderId, reference: string):
   const alias = reference.trim().toLowerCase();
   if (!alias) return null;
   const matches =
-    PROVIDER_MODELS[provider]?.filter((model) => normalizeModelId(model.modelId).split("-").includes(alias)) ?? [];
+    PROVIDER_MODELS[provider]?.filter((model) =>
+      normalizeModelId(model.modelId).split("-").includes(alias),
+    ) ?? [];
   return matches.length === 1 ? (matches[0]?.label ?? null) : null;
 }
 
@@ -714,7 +769,10 @@ export function __resetUnknownModelLog(): void {
  * window behind.
  */
 export function contextWindowForModel(modelId: string): number | null {
-  for (const [provider, models] of Object.entries(PROVIDER_MODELS) as [ProviderId, ProviderModelOption[]][]) {
+  for (const [provider, models] of Object.entries(PROVIDER_MODELS) as [
+    ProviderId,
+    ProviderModelOption[],
+  ][]) {
     // A retired id reads its successor's window, the model it now launches on.
     const id = normalizeModelId(resolveModelId(provider, modelId));
     const match = models.find((model) => model.modelId === id);

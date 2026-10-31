@@ -47,8 +47,8 @@ function publishSidebarChatNesting(next: SidebarChatNesting): void {
         SIDEBAR_CHAT_NESTING_STORAGE_KEY,
         JSON.stringify({
           nested: next.nested,
-          detachedIds: [...next.detachedIds]
-        })
+          detachedIds: [...next.detachedIds],
+        }),
       );
     } catch {
       // The choice still applies when storage is unavailable.
@@ -66,7 +66,10 @@ export function setSidebarChatsNested(nested: boolean): void {
 export function detachSidebarChat(workspaceId: string): void {
   const current = sidebarChatNestingSnapshot();
   if (current.detachedIds.has(workspaceId)) return;
-  publishSidebarChatNesting({ ...current, detachedIds: new Set([...current.detachedIds, workspaceId]) });
+  publishSidebarChatNesting({
+    ...current,
+    detachedIds: new Set([...current.detachedIds, workspaceId]),
+  });
 }
 
 function subscribeSidebarChatNesting(listener: () => void): () => void {
@@ -77,7 +80,11 @@ function subscribeSidebarChatNesting(listener: () => void): () => void {
 }
 
 export function useSidebarChatNesting(): SidebarChatNesting {
-  return useSyncExternalStore(subscribeSidebarChatNesting, sidebarChatNestingSnapshot, sidebarChatNestingSnapshot);
+  return useSyncExternalStore(
+    subscribeSidebarChatNesting,
+    sidebarChatNestingSnapshot,
+    sidebarChatNestingSnapshot,
+  );
 }
 
 export function loadCollapsedChatIds(): Set<string> {
@@ -85,7 +92,10 @@ export function loadCollapsedChatIds(): Set<string> {
   try {
     const raw = window.localStorage.getItem(SIDEBAR_COLLAPSED_CHATS_STORAGE_KEY);
     const stored: unknown = raw === null ? null : JSON.parse(raw);
-    if (Array.isArray(stored) && stored.every((id): id is string => typeof id === "string" && id.length > 0)) {
+    if (
+      Array.isArray(stored) &&
+      stored.every((id): id is string => typeof id === "string" && id.length > 0)
+    ) {
       return new Set(stored);
     }
   } catch {
@@ -97,7 +107,10 @@ export function loadCollapsedChatIds(): Set<string> {
 export function saveCollapsedChatIds(workspaceIds: ReadonlySet<string>): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(SIDEBAR_COLLAPSED_CHATS_STORAGE_KEY, JSON.stringify([...workspaceIds]));
+    window.localStorage.setItem(
+      SIDEBAR_COLLAPSED_CHATS_STORAGE_KEY,
+      JSON.stringify([...workspaceIds]),
+    );
   } catch {
     // The collapse still applies when storage is unavailable.
   }

@@ -1,6 +1,13 @@
 import type { JSX } from "react";
 import type { ProviderId, UsageSummary } from "../../../shared/types.js";
-import { approximately, formatCount, formatMetric, formatPercent, formatTokens, formatUsd } from "./usageFormat.js";
+import {
+  approximately,
+  formatCount,
+  formatMetric,
+  formatPercent,
+  formatTokens,
+  formatUsd,
+} from "./usageFormat.js";
 import {
   isEstimatedProvider,
   orderedProviderRows,
@@ -8,7 +15,7 @@ import {
   providerLabel,
   providerValue,
   shareOfTotal,
-  type UsageMetric
+  type UsageMetric,
 } from "./usagePresentation.js";
 
 /**
@@ -36,7 +43,7 @@ export function UsageProviderRows({
   summary,
   metric,
   selected,
-  onSelect
+  onSelect,
 }: {
   summary: UsageSummary;
   metric: UsageMetric;
@@ -54,7 +61,11 @@ export function UsageProviderRows({
       {/* Named the way the figure above is, so the card reads as two parts:
           the total, then who it is made of. */}
       <p className="usage-eyebrow">By provider</p>
-      <ul className="usage-provider-rows" aria-label="Usage by provider" data-narrowed={selected ? "true" : "false"}>
+      <ul
+        className="usage-provider-rows"
+        aria-label="Usage by provider"
+        data-narrowed={selected ? "true" : "false"}
+      >
         {rows.map((row) => {
           const value = providerValue(row, metric);
           const share = row.available ? shareOfTotal(value, total) : null;
@@ -78,7 +89,13 @@ export function UsageProviderRows({
                   focusable="false"
                 >
                   <rect className="usage-provider-bar-track" x="0" y="1" width="100" height="1" />
-                  <rect className="usage-provider-bar-fill" x="0" y="0" width={barWidth(share)} height="3" />
+                  <rect
+                    className="usage-provider-bar-fill"
+                    x="0"
+                    y="0"
+                    width={barWidth(share)}
+                    height="3"
+                  />
                 </svg>
               ) : null}
               <span className="usage-provider-body">
@@ -89,7 +106,9 @@ export function UsageProviderRows({
                 <span className="usage-provider-head">
                   <span className="usage-series-dot" aria-hidden="true" />
                   <span className="usage-provider-name">{providerLabel(row.provider)}</span>
-                  {row.available ? <span className="usage-provider-share">{formatPercent(share)}</span> : null}
+                  {row.available ? (
+                    <span className="usage-provider-share">{formatPercent(share)}</span>
+                  ) : null}
                 </span>
                 <span className="usage-provider-amount">
                   {row.available ? approximately(formatMetric(value, metric), estimated) : "—"}
@@ -107,7 +126,7 @@ export function UsageProviderRows({
                         metric === "cost"
                           ? `${formatTokens(processedTokens(row.tokens))} tokens`
                           : formatUsd(row.costUsd),
-                        estimated
+                        estimated,
                       )}
                     </>
                   ) : (
@@ -130,7 +149,9 @@ export function UsageProviderRows({
                   type="button"
                   className="usage-provider-toggle"
                   aria-pressed={pressed}
-                  title={pressed ? "Show every provider" : `Show only ${providerLabel(row.provider)}`}
+                  title={
+                    pressed ? "Show every provider" : `Show only ${providerLabel(row.provider)}`
+                  }
                   onClick={() => onSelect(pressed ? null : row.provider)}
                 >
                   {body}

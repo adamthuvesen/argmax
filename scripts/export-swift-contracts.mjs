@@ -6,11 +6,21 @@ import ts from "typescript-5";
 const root = resolve(import.meta.dirname, "..");
 const sourcePath = resolve(root, "src/shared/bindings.d.ts");
 const outputPath = resolve(root, "ios/Argmax/Sources/Bridge/GeneratedWireContracts.swift");
-const semanticOutputPath = resolve(root, "ios/Argmax/Sources/Transcript/GeneratedTimelineSemantics.swift");
+const semanticOutputPath = resolve(
+  root,
+  "ios/Argmax/Sources/Transcript/GeneratedTimelineSemantics.swift",
+);
 const responseOutputPath = resolve(root, "ios/Argmax/Sources/Bridge/GeneratedWireResponses.swift");
-const source = ts.createSourceFile(sourcePath, readFileSync(sourcePath, "utf8"), ts.ScriptTarget.Latest, true);
+const source = ts.createSourceFile(
+  sourcePath,
+  readFileSync(sourcePath, "utf8"),
+  ts.ScriptTarget.Latest,
+  true,
+);
 const aliases = new Map(
-  source.statements.filter(ts.isTypeAliasDeclaration).map((declaration) => [declaration.name.text, declaration])
+  source.statements
+    .filter(ts.isTypeAliasDeclaration)
+    .map((declaration) => [declaration.name.text, declaration]),
 );
 
 // The phone's request contracts. Responses are declared below; every other
@@ -37,7 +47,7 @@ const requests = [
   "WorkspacesArchiveInput",
   "SessionForkInput",
   "RemoteRegisterPushDeviceInput",
-  "RemoteUnregisterPushDeviceInput"
+  "RemoteUnregisterPushDeviceInput",
 ];
 const enums = new Set();
 const objects = new Set(requests);
@@ -50,7 +60,9 @@ function alias(name) {
 
 function literalValues(node) {
   const members = ts.isUnionTypeNode(node) ? node.types : [node];
-  if (members.every((member) => ts.isLiteralTypeNode(member) && ts.isStringLiteral(member.literal))) {
+  if (
+    members.every((member) => ts.isLiteralTypeNode(member) && ts.isStringLiteral(member.literal))
+  ) {
     return members.map((member) => member.literal.text);
   }
   return null;
@@ -61,7 +73,7 @@ function removeNull(node) {
   const members = node.types.filter(
     (member) =>
       member.kind !== ts.SyntaxKind.NullKeyword &&
-      !(ts.isLiteralTypeNode(member) && member.literal.kind === ts.SyntaxKind.NullKeyword)
+      !(ts.isLiteralTypeNode(member) && member.literal.kind === ts.SyntaxKind.NullKeyword),
   );
   if (members.length === node.types.length) return { type: node, nullable: false };
   if (members.length !== 1) throw new Error(`Unsupported nullable union: ${node.getText(source)}`);
@@ -76,7 +88,8 @@ function swiftType(node) {
   if (ts.isParenthesizedTypeNode(node)) return swiftType(node.type);
   if (ts.isTypeReferenceNode(node)) {
     const name = node.typeName.getText(source);
-    if (name === "Partial" && node.typeArguments?.length === 1) return swiftType(node.typeArguments[0]);
+    if (name === "Partial" && node.typeArguments?.length === 1)
+      return swiftType(node.typeArguments[0]);
     if (objects.has(name)) return `Wire${name}`;
     const target = alias(name);
     if (literalValues(target)) {
@@ -85,7 +98,11 @@ function swiftType(node) {
     }
     return swiftType(target);
   }
-  if (ts.isTypeLiteralNode(node) && node.members.length === 1 && ts.isIndexSignatureDeclaration(node.members[0])) {
+  if (
+    ts.isTypeLiteralNode(node) &&
+    node.members.length === 1 &&
+    ts.isIndexSignatureDeclaration(node.members[0])
+  ) {
     const signature = node.members[0];
     return `[String: ${swiftType(signature.type)}]`;
   }
@@ -97,14 +114,19 @@ function fields(name) {
   const node = alias(name);
   if (!ts.isTypeLiteralNode(node)) throw new Error(`${name} is not a Rust object binding`);
   return node.members.map((member) => {
-    if (!ts.isPropertySignature(member) || !member.type || !member.name || !ts.isIdentifier(member.name)) {
+    if (
+      !ts.isPropertySignature(member) ||
+      !member.type ||
+      !member.name ||
+      !ts.isIdentifier(member.name)
+    ) {
       throw new Error(`Unsupported field in ${name}: ${member.getText(source)}`);
     }
     const { type, nullable } = removeNull(member.type);
     return {
       name: member.name.text,
       type: swiftType(type),
-      presence: Boolean(member.questionToken) || nullable
+      presence: Boolean(member.questionToken) || nullable,
     };
   });
 }
@@ -112,7 +134,9 @@ function fields(name) {
 function enumCase(value) {
   const words = value.split(/[^a-zA-Z0-9]+/).filter(Boolean);
   const name = words
-    .map((word, index) => (index === 0 ? word.toLowerCase() : word[0].toUpperCase() + word.slice(1).toLowerCase()))
+    .map((word, index) =>
+      index === 0 ? word.toLowerCase() : word[0].toUpperCase() + word.slice(1).toLowerCase(),
+    )
     .join("");
   return /^[0-9]/.test(name) ? `value${name}` : name;
 }
@@ -144,7 +168,7 @@ const lines = [
   "    }",
   "    return value",
   "}",
-  ""
+  "",
 ];
 
 for (const name of [...enums].sort()) {
@@ -166,13 +190,13 @@ for (const [name, properties] of requestFields) {
     "    }",
     "",
     "    func encode(to encoder: Encoder) throws {",
-    "        var container = encoder.container(keyedBy: CodingKeys.self)"
+    "        var container = encoder.container(keyedBy: CodingKeys.self)",
   );
   for (const property of properties) {
     lines.push(
       property.presence
         ? `        try ${property.name}.encode(into: &container, forKey: .${property.name})`
-        : `        try container.encode(${property.name}, forKey: .${property.name})`
+        : `        try container.encode(${property.name}, forKey: .${property.name})`,
     );
   }
   lines.push("    }", "}", "");
@@ -195,13 +219,13 @@ const swiftNameForBinding = new Map([
   ["SessionState", "SessionState"],
   ["AttentionState", "AttentionState"],
   ["TimelineSemantics", "TimelineSemantics"],
-  ["JsonValue", "TranscriptJSONValue"]
+  ["JsonValue", "TranscriptJSONValue"],
 ]);
 // A Swift type standing in for a wider wire type, and the binding it reads.
 const swiftReadsWire = new Map([
   ["Int64", ts.SyntaxKind.NumberKeyword],
   ["WorkspaceState", ts.SyntaxKind.StringKeyword],
-  ["WorkspaceKind", ts.SyntaxKind.StringKeyword]
+  ["WorkspaceKind", ts.SyntaxKind.StringKeyword],
 ]);
 const identifiable = "Codable, Hashable, Sendable, Identifiable";
 const responses = [
@@ -210,7 +234,7 @@ const responses = [
     binding: "ProjectSummary",
     conforms: identifiable,
     doc: "`ProjectSummary`. `settings` and `counts` are desktop-only and dropped.",
-    fields: ["id", "name", "repoPath", "currentBranch", "defaultBranch", "latestActivityAt"]
+    fields: ["id", "name", "repoPath", "currentBranch", "defaultBranch", "latestActivityAt"],
   },
   {
     swift: "WorkspaceSummary",
@@ -222,7 +246,7 @@ const responses = [
       "projectId",
       {
         name: "projectFolderId",
-        note: 'The project folder this chat works in. Nil for side chats and for hosts older than named projects. "New chat here" sends it back so the new chat starts in the same folder.'
+        note: 'The project folder this chat works in. Nil for side chats and for hosts older than named projects. "New chat here" sends it back so the new chat starts in the same folder.',
       },
       "taskLabel",
       "branch",
@@ -239,7 +263,7 @@ const responses = [
       "priorityAddedAt",
       {
         name: "snoozedUntil",
-        note: "RFC 3339 instant the desktop's snooze shelf holds this row until. Display metadata only: a snooze never changes the chat's state. The phone decodes it so the field survives a round trip; it does not shelve rows."
+        note: "RFC 3339 instant the desktop's snooze shelf holds this row until. Display metadata only: a snooze never changes the chat's state. The phone decodes it so the field survives a round trip; it does not shelve rows.",
       },
       "prState",
       "prNumber",
@@ -247,21 +271,24 @@ const responses = [
       "prActivityAt",
       {
         name: "icon",
-        note: "The glyph the desktop's icon picker put on this row, as a curated Lucide name (`src/renderer/lib/sessionIcons.ts`)."
+        note: "The glyph the desktop's icon picker put on this row, as a curated Lucide name (`src/renderer/lib/sessionIcons.ts`).",
       },
       {
         name: "iconColor",
-        note: 'The palette entry paired with `icon`: a name ("violet"), not a colour. Both clients resolve the token against their own theme, which is how one pick reads right on paper and on charcoal.'
+        note: 'The palette entry paired with `icon`: a name ("violet"), not a colour. Both clients resolve the token against their own theme, which is how one pick reads right on paper and on charcoal.',
       },
-      { name: "lastViewedAt", note: "Shared host acknowledgement of the activity actually shown on a device." },
-      "prs"
-    ]
+      {
+        name: "lastViewedAt",
+        note: "Shared host acknowledgement of the activity actually shown on a device.",
+      },
+      "prs",
+    ],
   },
   {
     swift: "WorkspacePullRequest",
     binding: "SessionPrSummary",
     conforms: "Codable, Hashable, Sendable",
-    fields: ["prNumber", "url"]
+    fields: ["prNumber", "url"],
   },
   {
     swift: "SessionSummary",
@@ -279,7 +306,7 @@ const responses = [
       "attention",
       {
         name: "attentionChangedAt",
-        note: 'When `attention` last changed. Null on rows written before the column existed, which the Priority rules treat as "not yet a reason".'
+        note: 'When `attention` last changed. Null on rows written before the column existed, which the Priority rules treat as "not yet a reason".',
       },
       "startedAt",
       "completedAt",
@@ -289,14 +316,14 @@ const responses = [
       "launchedBySessionId",
       {
         name: "reasoningEffort",
-        note: "Read on open so the composer's effort chip starts right instead of showing the first option until the metadata read lands."
+        note: "Read on open so the composer's effort chip starts right instead of showing the first option until the metadata read lands.",
       },
       { name: "arcId", note: "The Arc this chat belongs to, as its coordinator or a member." },
       {
         name: "autoTier",
-        note: "The Router tier while the router picks this chat's model; absent once a model is picked by hand."
-      }
-    ]
+        note: "The Router tier while the router picks this chat's model; absent once a model is picked by hand.",
+      },
+    ],
   },
   {
     swift: "DashboardDelta",
@@ -312,15 +339,15 @@ const responses = [
       {
         name: "dashboardChanged",
         older: true,
-        note: 'Hints rather than rows: the host says "the dashboard moved, read it again" instead of shipping the changed rows, and names the sessions whose transcripts advanced.'
+        note: 'Hints rather than rows: the host says "the dashboard moved, read it again" instead of shipping the changed rows, and names the sessions whose transcripts advanced.',
       },
       { name: "changedSessionIds", older: true },
       {
         name: "resyncRequired",
         older: true,
-        note: "The event stream dropped frames and the whole snapshot must be reloaded."
-      }
-    ]
+        note: "The event stream dropped frames and the whole snapshot must be reloaded.",
+      },
+    ],
   },
   {
     swift: "TranscriptEvent",
@@ -335,17 +362,24 @@ const responses = [
       {
         name: "semantic",
         older: true,
-        note: "Absent from a saved transcript this app wrote before semantics existed."
+        note: "Absent from a saved transcript this app wrote before semantics existed.",
       },
       "createdAt",
-      { name: "rowCursor", as: "Int64" }
-    ]
+      { name: "rowCursor", as: "Int64" },
+    ],
   },
   {
     swift: "TranscriptRawOutput",
     binding: "RawProviderOutput",
     conforms: identifiable,
-    fields: ["id", "sessionId", "stream", "content", "createdAt", { name: "rowCursor", as: "Int64" }]
+    fields: [
+      "id",
+      "sessionId",
+      "stream",
+      "content",
+      "createdAt",
+      { name: "rowCursor", as: "Int64" },
+    ],
   },
   {
     swift: "TranscriptPage",
@@ -360,8 +394,8 @@ const responses = [
       "deletedEventIds",
       "deletedRawOutputIds",
       "resetRequired",
-      "hasMore"
-    ]
+      "hasMore",
+    ],
   },
   {
     swift: "TranscriptPendingMessage",
@@ -373,14 +407,14 @@ const responses = [
       "content",
       {
         name: "provider",
-        note: "The provider this follow-up runs under once it drains. Nil is the chat's provider at that moment."
+        note: "The provider this follow-up runs under once it drains. Nil is the chat's provider at that moment.",
       },
       "modelLabel",
       "modelId",
       "reasoningEffort",
       "recoveryStatus",
-      "queuedAt"
-    ]
+      "queuedAt",
+    ],
   },
   {
     swift: "TranscriptSessionMetadata",
@@ -400,9 +434,9 @@ const responses = [
       "contextWindow",
       {
         name: "autoTier",
-        note: "The Router tier while the router picks this chat's model; cleared once a model is picked by hand."
-      }
-    ]
+        note: "The Router tier while the router picks this chat's model; cleared once a model is picked by hand.",
+      },
+    ],
   },
   {
     swift: "TranscriptWorkspaceMetadata",
@@ -411,27 +445,34 @@ const responses = [
     fields: [
       "id",
       "taskLabel",
-      { name: "path", older: true, note: "Optional for the older hosts this read has always tolerated." }
-    ]
-  }
+      {
+        name: "path",
+        older: true,
+        note: "Optional for the older hosts this read has always tolerated.",
+      },
+    ],
+  },
 ];
 // Two Swift views can read one binding. A reference to it means the first, fuller one.
 const swiftNames = new Map([...responses].reverse().map(({ binding, swift }) => [binding, swift]));
 
 function responseBaseType(node, owner, fieldName, as) {
   if (ts.isParenthesizedTypeNode(node)) return responseBaseType(node.type, owner, fieldName, as);
-  if (ts.isArrayTypeNode(node)) return `[${responseBaseType(node.elementType, owner, fieldName, as)}]`;
+  if (ts.isArrayTypeNode(node))
+    return `[${responseBaseType(node.elementType, owner, fieldName, as)}]`;
   if (as) {
     if (swiftReadsWire.has(as)) {
       if (node.kind !== swiftReadsWire.get(as)) {
         throw new Error(
-          `${owner}.${fieldName}: ${as} reads ${ts.SyntaxKind[swiftReadsWire.get(as)]}, the binding is now ${node.getText(source)}`
+          `${owner}.${fieldName}: ${as} reads ${ts.SyntaxKind[swiftReadsWire.get(as)]}, the binding is now ${node.getText(source)}`,
         );
       }
       return as;
     }
     if (!ts.isTypeReferenceNode(node) && !ts.isTypeLiteralNode(node)) {
-      throw new Error(`${owner}.${fieldName}: ${as} reads an object, the binding is now ${node.getText(source)}`);
+      throw new Error(
+        `${owner}.${fieldName}: ${as} reads an object, the binding is now ${node.getText(source)}`,
+      );
     }
     return as;
   }
@@ -448,7 +489,9 @@ function responseBaseType(node, owner, fieldName, as) {
     if (literalValues(target)) return "String";
     return responseBaseType(target, owner, fieldName);
   }
-  throw new Error(`${owner}.${fieldName}: no Swift type for ${node.getText(source)}. Add one to the response list.`);
+  throw new Error(
+    `${owner}.${fieldName}: no Swift type for ${node.getText(source)}. Add one to the response list.`,
+  );
 }
 
 function responseFields({ swift, binding, fields: specs }) {
@@ -485,7 +528,7 @@ const responseLines = [
   "// Change the Rust contract, or the response list in that script, and run",
   "// `npm run generate:contracts`. Unlisted keys on the wire are ignored.",
   "import Foundation",
-  ""
+  "",
 ];
 for (const response of responses) {
   if (response.doc) responseLines.push(...wrappedComment(response.doc, ""));
@@ -508,7 +551,12 @@ function semanticType(node) {
   else if (literalValues(type)) value = "String";
   else if (ts.isTypeReferenceNode(type)) {
     const name = type.typeName.getText(source);
-    value = name === "TimelineContext" ? "Context" : name === "SemanticEvent" ? "Event" : semanticType(alias(name));
+    value =
+      name === "TimelineContext"
+        ? "Context"
+        : name === "SemanticEvent"
+          ? "Event"
+          : semanticType(alias(name));
   } else throw new Error(`Unsupported semantic type: ${node.getText(source)}`);
   return `${value}${nullable ? "?" : ""}`;
 }
@@ -540,16 +588,23 @@ const semanticLines = [
   "",
   "/// Host-owned meaning for a timeline row. Raw payload remains diagnostic.",
   "struct TimelineSemantics: Codable, Hashable, Sendable {",
-  ...semanticFields(alias("TimelineSemantics")).map((field) => `    var ${field.name}: ${field.type}`),
+  ...semanticFields(alias("TimelineSemantics")).map(
+    (field) => `    var ${field.name}: ${field.type}`,
+  ),
   "",
   "    struct Context: Codable, Hashable, Sendable {",
-  ...semanticFields(alias("TimelineContext")).map((field) => `        var ${field.name}: ${field.type}`),
+  ...semanticFields(alias("TimelineContext")).map(
+    (field) => `        var ${field.name}: ${field.type}`,
+  ),
   "    }",
   "",
   "    enum Event: Codable, Hashable, Sendable {",
   ...semanticVariants
     .filter((variant) => variant.name !== "unknown")
-    .map((variant) => `        case ${variant.name}(${variant.name[0].toUpperCase()}${variant.name.slice(1)})`),
+    .map(
+      (variant) =>
+        `        case ${variant.name}(${variant.name[0].toUpperCase()}${variant.name.slice(1)})`,
+    ),
   "        case unknown",
   "",
   "        private enum CodingKeys: String, CodingKey { case kind }",
@@ -561,7 +616,7 @@ const semanticLines = [
     .filter((variant) => variant.name !== "unknown")
     .map(
       (variant) =>
-        `            case \"${variant.name}\": self = .${variant.name}(try ${variant.name[0].toUpperCase()}${variant.name.slice(1)}(from: decoder))`
+        `            case \"${variant.name}\": self = .${variant.name}(try ${variant.name[0].toUpperCase()}${variant.name.slice(1)}(from: decoder))`,
     ),
   "            default: self = .unknown",
   "            }",
@@ -571,19 +626,22 @@ const semanticLines = [
   "            switch self {",
   ...semanticVariants
     .filter((variant) => variant.name !== "unknown")
-    .map((variant) => `            case .${variant.name}(let value): try value.encode(to: encoder)`),
+    .map(
+      (variant) => `            case .${variant.name}(let value): try value.encode(to: encoder)`,
+    ),
   "            case .unknown:",
   "                var container = encoder.container(keyedBy: CodingKeys.self)",
   '                try container.encode("unknown", forKey: .kind)',
   "            }",
   "        }",
   "    }",
-  ""
+  "",
 ];
 for (const variant of semanticVariants.filter((variant) => variant.name !== "unknown")) {
   const name = `${variant.name[0].toUpperCase()}${variant.name.slice(1)}`;
   semanticLines.push(`    struct ${name}: Codable, Hashable, Sendable {`);
-  for (const field of variant.properties) semanticLines.push(`        var ${field.name}: ${field.type}`);
+  for (const field of variant.properties)
+    semanticLines.push(`        var ${field.name}: ${field.type}`);
   semanticLines.push("    }", "");
 }
 semanticLines.push("}");
@@ -592,7 +650,7 @@ if (process.argv.includes("--check")) {
   for (const [path, expected] of [
     [outputPath, output],
     [semanticOutputPath, semanticOutput],
-    [responseOutputPath, responseOutput]
+    [responseOutputPath, responseOutput],
   ]) {
     if (readFileSync(path, "utf8") !== expected) {
       throw new Error(`${path} is stale. Run npm run generate:contracts.`);

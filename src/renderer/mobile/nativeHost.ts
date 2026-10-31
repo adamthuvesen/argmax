@@ -15,7 +15,12 @@ import { logger } from "../../shared/logger.js";
 import { ACCENT_OPTIONS, type AccentId } from "../lib/accent.js";
 import type { ResolvedTheme } from "../lib/theme.js";
 import { isUserBubbleTint, type UserBubbleTint } from "../lib/userBubbleTint.js";
-import type { AttentionState, ProviderId, ReasoningEffort, SessionState } from "../../shared/types.js";
+import type {
+  AttentionState,
+  ProviderId,
+  ReasoningEffort,
+  SessionState,
+} from "../../shared/types.js";
 import { isDeepLinkSessionId } from "./deepLink.js";
 
 /** `.impact(.light)` on send, `.notification(…)` for the other two. */
@@ -195,7 +200,7 @@ export function installNativeApi(handlers: NativeApi): () => void {
         return;
       }
       handlers.setComposer(hidden);
-    }
+    },
   };
   return () => {
     delete window.argmaxNative;

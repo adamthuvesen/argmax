@@ -10,7 +10,9 @@ import { checkFile } from "../check-changed.mjs";
 import { editedPaths, readHookInput, ROOT } from "./hook-input.mjs";
 import { editedFilesLog, seenGuidance, rememberGuidance } from "./session-log.mjs";
 
-const RULES = JSON.parse(readFileSync(resolve(ROOT, "scripts/agent-hooks/feedback-rules.json"), "utf8"));
+const RULES = JSON.parse(
+  readFileSync(resolve(ROOT, "scripts/agent-hooks/feedback-rules.json"), "utf8"),
+);
 
 const request = readHookInput();
 const sessionId = request.session_id ?? "unknown";
@@ -20,7 +22,11 @@ for (const path of editedPaths(request)) {
   messages.push(...checkFile(path, { fast: true }));
   const source = existsSync(resolve(ROOT, path)) ? readFileSync(resolve(ROOT, path), "utf8") : "";
   for (const { pattern, paths, text } of RULES.generatedInputs) {
-    if (new RegExp(paths).test(path) && new RegExp(pattern).test(source) && !seenGuidance(sessionId, text)) {
+    if (
+      new RegExp(paths).test(path) &&
+      new RegExp(pattern).test(source) &&
+      !seenGuidance(sessionId, text)
+    ) {
       rememberGuidance(sessionId, text);
       messages.push(text);
     }
@@ -36,7 +42,7 @@ for (const path of editedPaths(request)) {
 if (messages.length) {
   console.log(
     JSON.stringify({
-      hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: messages.join("\n") }
-    })
+      hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: messages.join("\n") },
+    }),
   );
 }

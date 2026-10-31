@@ -18,7 +18,7 @@ import { formatBytes } from "../lib/formatBytes.js";
 export function ImageFilePreview({
   absolutePath,
   label,
-  sizeBytes
+  sizeBytes,
 }: {
   absolutePath: string;
   /** File path, used as the image's alt text. */
@@ -45,7 +45,7 @@ export function ImageFilePreview({
   const toggleLabel = actualSize ? "Fit image to the panel" : "View image at actual size";
   const measurements = [
     natural ? `${natural.width} × ${natural.height}` : null,
-    sizeBytes === null ? null : formatBytes(sizeBytes)
+    sizeBytes === null ? null : formatBytes(sizeBytes),
   ]
     .filter((part) => part !== null)
     .join(" · ");
@@ -61,7 +61,7 @@ export function ImageFilePreview({
           onLoad={(event) =>
             setNatural({
               width: event.currentTarget.naturalWidth,
-              height: event.currentTarget.naturalHeight
+              height: event.currentTarget.naturalHeight,
             })
           }
           onError={() => setLoadFailed(true)}

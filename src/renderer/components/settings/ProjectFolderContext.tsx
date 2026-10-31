@@ -53,7 +53,11 @@ export function ProjectFolderContext({ folder }: { folder: ProjectFolder }): JSX
     if (!api) return;
     setBusy(true);
     try {
-      const updated = await api.setEnabled({ projectId: folder.projectId, id: folder.id, enabled: next });
+      const updated = await api.setEnabled({
+        projectId: folder.projectId,
+        id: folder.id,
+        enabled: next,
+      });
       if (mounted.current) setEnabled(updated.enabled);
     } catch (reason) {
       if (mounted.current) showErrorToast(validationMessage(reason));

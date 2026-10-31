@@ -57,7 +57,7 @@ export function useBridgeQuery<T>(options: BridgeQueryOptions<T>): BridgeQuery<T
     keyHash,
     data: null,
     error: null,
-    isLoading: enabled && isAvailable
+    isLoading: enabled && isAvailable,
   }));
   const latestOptions = useRef(options);
   latestOptions.current = options;
@@ -89,7 +89,11 @@ export function useBridgeQuery<T>(options: BridgeQueryOptions<T>): BridgeQuery<T
       return { status: "data", data };
     } catch (error) {
       if (generation.current !== thisGeneration) return { status: "stale" };
-      landing((current) => ({ ...current, error: errorMessage(error) || "Could not load that.", isLoading: false }));
+      landing((current) => ({
+        ...current,
+        error: errorMessage(error) || "Could not load that.",
+        isLoading: false,
+      }));
       latestOptions.current.onError?.(error);
       return { status: "error", error };
     }
@@ -119,7 +123,7 @@ export function useBridgeQuery<T>(options: BridgeQueryOptions<T>): BridgeQuery<T
         return { ...base, data: update(base.data), isLoading: false };
       });
     },
-    [keyHash]
+    [keyHash],
   );
 
   const isCurrent = useCallback(() => mounted.current && shownKey.current === keyHash, [keyHash]);
@@ -132,7 +136,7 @@ export function useBridgeQuery<T>(options: BridgeQueryOptions<T>): BridgeQuery<T
     isAvailable,
     refetch,
     setData,
-    isCurrent
+    isCurrent,
   };
 }
 

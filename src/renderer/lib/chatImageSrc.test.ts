@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ATTACHMENT_PROTOCOL_SCHEME, attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
+import {
+  ATTACHMENT_PROTOCOL_SCHEME,
+  attachmentProtocolUrl,
+} from "../../shared/attachmentProtocol.js";
 import { WORKSPACE_ASSET_PROTOCOL_SCHEME, workspaceAssetUrl } from "../../shared/assetProtocol.js";
 import { REMOTE_BRIDGE_KEY, REMOTE_TOKEN_KEY } from "../../shared/remoteProtocol.js";
 import { resolveChatImageSrc } from "./chatImageSrc.js";
@@ -8,16 +11,16 @@ import { resolveChatImageSrc } from "./chatImageSrc.js";
 describe("resolveChatImageSrc", () => {
   it("routes workspace images through the guarded workspace protocol", () => {
     expect(resolveChatImageSrc("scratch/lane.png", "/repo")).toBe(
-      `${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/repo/scratch/lane.png`
+      `${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/repo/scratch/lane.png`,
     );
     expect(resolveChatImageSrc("/repo/scratch/lane.png", "/repo")).toBe(
-      `${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/repo/scratch/lane.png`
+      `${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/repo/scratch/lane.png`,
     );
   });
 
   it("routes paths outside the checkout, such as agent temp screenshots, to the asset protocol", () => {
     expect(resolveChatImageSrc("/private/tmp/claude-502/scratch/shot.png", "/repo")).toBe(
-      `${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/private/tmp/claude-502/scratch/shot.png`
+      `${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/private/tmp/claude-502/scratch/shot.png`,
     );
   });
 
@@ -25,10 +28,10 @@ describe("resolveChatImageSrc", () => {
     expect(
       resolveChatImageSrc(
         "/Users/me/Library/Application%20Support/com.argmax.rs/local-state/attachments/s/shot.png",
-        "/repo"
-      )
+        "/repo",
+      ),
     ).toBe(
-      `${ATTACHMENT_PROTOCOL_SCHEME}://file/Users/me/Library/Application%20Support/com.argmax.rs/local-state/attachments/s/shot.png`
+      `${ATTACHMENT_PROTOCOL_SCHEME}://file/Users/me/Library/Application%20Support/com.argmax.rs/local-state/attachments/s/shot.png`,
     );
   });
 
@@ -56,7 +59,9 @@ describe("remote image resolution", () => {
   it("resolves attachmentProtocolUrl as an authenticated HTTP route on remote", () => {
     const path = "/Users/me/attachments/session-1/screenshot.png";
     const url = attachmentProtocolUrl(path);
-    expect(url).toBe("/api/attachments/Users/me/attachments/session-1/screenshot.png?token=test-remote-token-12345");
+    expect(url).toBe(
+      "/api/attachments/Users/me/attachments/session-1/screenshot.png?token=test-remote-token-12345",
+    );
   });
 
   it("resolves workspaceAssetUrl as an authenticated HTTP route on remote", () => {
@@ -68,14 +73,14 @@ describe("remote image resolution", () => {
   it("converts existing argmax-attachment URLs to authenticated remote HTTP URLs", () => {
     const customScheme = "argmax-attachment://file/Users/me/attachments/session-1/screenshot.png";
     expect(resolveChatImageSrc(customScheme, "/repo")).toBe(
-      "/api/attachments/Users/me/attachments/session-1/screenshot.png?token=test-remote-token-12345"
+      "/api/attachments/Users/me/attachments/session-1/screenshot.png?token=test-remote-token-12345",
     );
   });
 
   it("converts existing argmax-asset URLs to authenticated remote HTTP URLs", () => {
     const customScheme = "argmax-asset://file/repo/assets/diagram.png";
     expect(resolveChatImageSrc(customScheme, "/repo")).toBe(
-      "/api/workspace-assets/repo/assets/diagram.png?token=test-remote-token-12345"
+      "/api/workspace-assets/repo/assets/diagram.png?token=test-remote-token-12345",
     );
   });
 });

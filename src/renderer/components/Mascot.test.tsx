@@ -1,9 +1,9 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MASCOT_VISIBLE_STORAGE_KEY,
   resetMascotVisibilityForTests,
-  setMascotVisible
+  setMascotVisible,
 } from "../lib/mascotVisibility.js";
 import { Mascot } from "./Mascot.js";
 
@@ -17,11 +17,13 @@ describe("Mascot", () => {
   it("draws no marks below the sprite", () => {
     render(<Mascot />);
     const svg = screen.getByRole("img", { name: "Fox mascot" });
-    const below = [...svg.querySelectorAll("rect")].filter((rect) => {
-      const y = Number(rect.getAttribute("y"));
-      const height = Number(rect.getAttribute("height"));
-      return y + height > 40;
-    });
+    const below = within(svg)
+      .getAllByTestId("mascot-mark")
+      .filter((rect) => {
+        const y = Number(rect.getAttribute("y"));
+        const height = Number(rect.getAttribute("height"));
+        return y + height > 40;
+      });
     expect(below).toHaveLength(0);
   });
 
@@ -36,18 +38,18 @@ describe("Mascot", () => {
     try {
       render(<Mascot onClick={() => undefined} />);
       const button = screen.getByRole("button");
-      const svg = button.querySelector("svg");
-      expect(svg?.getAttribute("data-pet")).toBeNull();
+      const svg = within(button).getByRole("img");
+      expect(svg.getAttribute("data-pet")).toBeNull();
 
       act(() => {
         fireEvent.click(button);
       });
-      expect(svg?.getAttribute("data-pet")).toBe("true");
+      expect(svg.getAttribute("data-pet")).toBe("true");
 
       act(() => {
         vi.advanceTimersByTime(700);
       });
-      expect(svg?.getAttribute("data-pet")).toBeNull();
+      expect(svg.getAttribute("data-pet")).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -58,18 +60,18 @@ describe("Mascot", () => {
     try {
       render(<Mascot onClick={() => undefined} />);
       const button = screen.getByRole("button");
-      const svg = button.querySelector("svg");
-      expect(svg?.getAttribute("data-sprite")).toBe("base");
+      const svg = within(button).getByRole("img");
+      expect(svg.getAttribute("data-sprite")).toBe("base");
 
       act(() => {
         fireEvent.click(button);
       });
-      expect(svg?.getAttribute("data-sprite")).toBe("wink");
+      expect(svg.getAttribute("data-sprite")).toBe("wink");
 
       act(() => {
         vi.advanceTimersByTime(700);
       });
-      expect(svg?.getAttribute("data-sprite")).toBe("base");
+      expect(svg.getAttribute("data-sprite")).toBe("base");
     } finally {
       vi.useRealTimers();
     }
@@ -79,7 +81,7 @@ describe("Mascot", () => {
     window.localStorage.setItem(MASCOT_VISIBLE_STORAGE_KEY, "false");
     resetMascotVisibilityForTests();
     const { container } = render(<Mascot onClick={() => undefined} />);
-    expect(container.querySelector("svg")).toBeNull();
+    expect(container).toBeEmptyDOMElement();
     expect(screen.queryByRole("button", { name: "Fox mascot" })).toBeNull();
   });
 
@@ -106,13 +108,13 @@ describe("Mascot", () => {
     try {
       render(<Mascot shades onClick={() => undefined} />);
       const button = screen.getByRole("button");
-      const svg = button.querySelector("svg");
+      const svg = within(button).getByRole("img");
 
       act(() => {
         fireEvent.click(button);
       });
-      expect(svg?.getAttribute("data-pet")).toBe("true");
-      expect(svg?.getAttribute("data-sprite")).toBe("shades");
+      expect(svg.getAttribute("data-pet")).toBe("true");
+      expect(svg.getAttribute("data-sprite")).toBe("shades");
     } finally {
       vi.useRealTimers();
     }

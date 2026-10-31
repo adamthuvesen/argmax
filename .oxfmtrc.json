@@ -1,6 +1,4 @@
 {
-  "printWidth": 120,
-  "trailingComma": "none",
   "ignorePatterns": [
     "**/*.{md,json,jsonl,css,html,svg,toml,yml,yaml,swift,rs,txt}",
     "public/sw.js",

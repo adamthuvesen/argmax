@@ -14,12 +14,22 @@ const PREVIEW_GAP_PX = 8;
 const PREVIEW_MAX_W = 520;
 const PREVIEW_MIN_W = 280;
 
-export function FilePreviewPopover({ anchorRect, data, loading, error, path }: FilePreviewPopoverProps): JSX.Element {
+export function FilePreviewPopover({
+  anchorRect,
+  data,
+  loading,
+  error,
+  path,
+}: FilePreviewPopoverProps): JSX.Element {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [position, setPosition] = useState<{ left: number; top: number; placement: "above" | "below" }>(() => ({
+  const [position, setPosition] = useState<{
+    left: number;
+    top: number;
+    placement: "above" | "below";
+  }>(() => ({
     left: anchorRect.left,
     top: anchorRect.bottom + PREVIEW_GAP_PX,
-    placement: "below"
+    placement: "below",
   }));
 
   useLayoutEffect(() => {
@@ -52,7 +62,7 @@ export function FilePreviewPopover({ anchorRect, data, loading, error, path }: F
         left: `${position.left}px`,
         top: `${position.top}px`,
         maxWidth: `${PREVIEW_MAX_W}px`,
-        minWidth: `${PREVIEW_MIN_W}px`
+        minWidth: `${PREVIEW_MIN_W}px`,
       }}
     >
       <div className="file-preview-popover-header">
@@ -78,7 +88,10 @@ export function FilePreviewPopover({ anchorRect, data, loading, error, path }: F
             const lineNum = data.startLine + idx;
             const isTarget = data.targetLine !== null && lineNum === data.targetLine;
             return (
-              <span key={idx} className={`file-preview-popover-line${isTarget ? " is-target" : ""}`}>
+              <span
+                key={idx}
+                className={`file-preview-popover-line${isTarget ? " is-target" : ""}`}
+              >
                 <span className="file-preview-popover-gutter">{lineNum}</span>
                 <span className="file-preview-popover-code">{line || " "}</span>
               </span>

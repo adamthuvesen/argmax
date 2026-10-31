@@ -27,7 +27,11 @@ const sidebarViewModes: readonly SidebarViewMode[] = ["projects", "sessions", "s
 
 // The value is written as a bare JSON string ("recent"); tolerate plain strings
 // too in case the key was set manually for debugging.
-function loadStoredChoice<T extends string>(storageKey: string, allowed: readonly T[], fallback: T): T {
+function loadStoredChoice<T extends string>(
+  storageKey: string,
+  allowed: readonly T[],
+  fallback: T,
+): T {
   if (typeof window === "undefined") return fallback;
   const raw = window.localStorage.getItem(storageKey);
   if (raw === null) return fallback;
@@ -119,7 +123,7 @@ function writeStorageJson(storageKey: string, value: unknown): void {
     // the click handler that triggered the write.
     logger.warn("renderer.projects", "writeStorageJson failed", {
       storageKey,
-      error: errorMessage(error)
+      error: errorMessage(error),
     });
   }
 }
@@ -128,7 +132,7 @@ function loadStringArray(storageKey: string): string[] {
   if (typeof window === "undefined") return [];
   return safeJsonParseArray(
     window.localStorage.getItem(storageKey),
-    (value): value is string => typeof value === "string"
+    (value): value is string => typeof value === "string",
   );
 }
 
@@ -137,7 +141,10 @@ function loadStringArray(storageKey: string): string[] {
 // unpinned (or among pinned) sessions inside a single project group.
 export function loadWorkspaceOrders(): Record<string, string[]> {
   if (typeof window === "undefined") return {};
-  const parsed = safeJsonParseRecord(window.localStorage.getItem(workspaceOrderStorageKey), "projects.workspaceOrder");
+  const parsed = safeJsonParseRecord(
+    window.localStorage.getItem(workspaceOrderStorageKey),
+    "projects.workspaceOrder",
+  );
   const result: Record<string, string[]> = {};
   for (const [projectId, ids] of Object.entries(parsed)) {
     if (Array.isArray(ids) && ids.every((entry) => typeof entry === "string")) {
@@ -151,10 +158,9 @@ export function saveWorkspaceOrders(orders: Record<string, string[]>): void {
   writeStorageJson(workspaceOrderStorageKey, orders);
 }
 
-export function sortWorkspaceGroup<T extends { id: string; pinned: boolean; lastActivityAt: string }>(
-  workspaces: T[],
-  manualOrder: string[]
-): T[] {
+export function sortWorkspaceGroup<
+  T extends { id: string; pinned: boolean; lastActivityAt: string },
+>(workspaces: T[], manualOrder: string[]): T[] {
   const rank = new Map(manualOrder.map((id, index) => [id, index]));
   return [...workspaces].sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
@@ -187,7 +193,7 @@ interface SidebarDateGroup<T> {
 // so the bucketing stays pure and testable.
 export function groupWorkspacesByDate<T extends { lastActivityAt: string }>(
   workspaces: T[],
-  now: Date = new Date()
+  now: Date = new Date(),
 ): SidebarDateGroup<T>[] {
   const sorted = [...workspaces].sort((a, b) => {
     if (a.lastActivityAt === b.lastActivityAt) return 0;
@@ -214,7 +220,7 @@ export function groupWorkspacesByDate<T extends { lastActivityAt: string }>(
     const startOfActivityDay = new Date(
       new Date(activity).getFullYear(),
       new Date(activity).getMonth(),
-      new Date(activity).getDate()
+      new Date(activity).getDate(),
     ).getTime();
     const dayDiff = Math.round((startOfToday - startOfActivityDay) / dayMs);
 
@@ -235,11 +241,13 @@ export function groupWorkspacesByDate<T extends { lastActivityAt: string }>(
 export function sortProjectsBy(
   projects: ProjectSummary[],
   mode: ProjectSortMode,
-  manualOrder: string[]
+  manualOrder: string[],
 ): ProjectSummary[] {
   if (mode === "manual") return applyProjectOrder(projects, manualOrder);
   if (mode === "alphabetical") {
-    return [...projects].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    return [...projects].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+    );
   }
   // "recent" — pass through the snapshot order (DB sorts by latest activity DESC).
   return projects;
@@ -250,7 +258,10 @@ export function sortProjectsBy(
  * sort mode; the mode orders everything after them. An id with no project
  * (removed since it was pinned) is skipped.
  */
-export function pinnedProjectsFirst(projects: ProjectSummary[], pinnedIds: readonly string[]): ProjectSummary[] {
+export function pinnedProjectsFirst(
+  projects: ProjectSummary[],
+  pinnedIds: readonly string[],
+): ProjectSummary[] {
   if (pinnedIds.length === 0) return projects;
   const byId = new Map(projects.map((project) => [project.id, project]));
   const pinned = pinnedIds.flatMap((id) => byId.get(id) ?? []);

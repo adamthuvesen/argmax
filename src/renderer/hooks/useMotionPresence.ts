@@ -44,12 +44,12 @@ export function useMotionPresence(visible: boolean): {
       if (visible || event.target !== event.currentTarget) return;
       setPresent(false);
     },
-    [visible]
+    [visible],
   );
 
   return {
     present,
     motionState: visible ? "open" : "closing",
-    onMotionEnd
+    onMotionEnd,
   };
 }

@@ -7,7 +7,7 @@ import { SegmentedControl, SettingGroup, SettingNote, SettingRow } from "./setti
 const PROJECT_CHECK_OPTIONS: ReadonlyArray<{ value: ProjectCheckMode; label: string }> = [
   { value: "off", label: "Off" },
   { value: "suggest", label: "Suggest" },
-  { value: "switch", label: "Suggest & switch" }
+  { value: "switch", label: "Suggest & switch" },
 ];
 
 function isProjectCheckMode(value: string): value is ProjectCheckMode {
@@ -21,7 +21,7 @@ function isProjectCheckMode(value: string): value is ProjectCheckMode {
  */
 export function AutoRoutingSettings({
   routing,
-  onRoutingChange
+  onRoutingChange,
 }: {
   /** Null until the first read answers. */
   routing: RoutingSettings | null;
@@ -105,7 +105,11 @@ export function AutoRoutingSettings({
                   aria-invalid={error !== null}
                   disabled={isSaving}
                 />
-                <button type="submit" className="settings-button" disabled={isSaving || apiKey.trim() === ""}>
+                <button
+                  type="submit"
+                  className="settings-button"
+                  disabled={isSaving || apiKey.trim() === ""}
+                >
                   {isSaving ? "Checking…" : "Save"}
                 </button>
               </>

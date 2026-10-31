@@ -1,7 +1,11 @@
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { TimelineEvent } from "../../shared/types.js";
-import { baseSession, event, renderConversation } from "../../test/sessionConversationTestHarness.js";
+import {
+  baseSession,
+  event,
+  renderConversation,
+} from "../../test/sessionConversationTestHarness.js";
 
 /** One user turn plus one assistant reply, so each pair is a rendered item. */
 function longTranscript(turns: number): TimelineEvent[] {
@@ -17,7 +21,7 @@ function longTranscript(turns: number): TimelineEvent[] {
 /** One provider turn with more internal rows than the outer turn window sees. */
 function giantTurn(steps: number): TimelineEvent[] {
   const events: TimelineEvent[] = [
-    event("giant-user", "user.message", "inspect everything", "2026-01-01T00:00:00.000Z")
+    event("giant-user", "user.message", "inspect everything", "2026-01-01T00:00:00.000Z"),
   ];
   for (let index = 0; index < steps; index += 1) {
     const at = (offsetMs: number): string =>
@@ -27,12 +31,12 @@ function giantTurn(steps: number): TimelineEvent[] {
       event(`tool-${index}-start`, "command.started", "Read", at(100), {
         id: `tool-${index}`,
         name: "Read",
-        input: { file_path: `src/${index}.ts` }
+        input: { file_path: `src/${index}.ts` },
       }),
       event(`tool-${index}-end`, "command.completed", "tool_result", at(200), {
         tool_use_id: `tool-${index}`,
-        content: `file ${index}`
-      })
+        content: `file ${index}`,
+      }),
     );
   }
   return events;
@@ -84,7 +88,7 @@ describe("SessionConversation — render window", () => {
     renderConversation(baseSession(), giantTurn(80), {
       defaultToolCallsDisplay: "collapsed",
       defaultToolCallGroupsExpanded: false,
-      thinkingDisplay: "preview"
+      thinkingDisplay: "preview",
     });
 
     fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));

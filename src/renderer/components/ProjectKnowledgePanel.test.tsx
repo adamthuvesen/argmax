@@ -14,10 +14,10 @@ const PROJECT: ProjectSummary = {
     mergeCleanup: "off",
     worktreeLocation: "/repo/argmax/.worktrees",
     setupCommand: "",
-    checkCommands: []
+    checkCommands: [],
   },
   counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
-  latestActivityAt: null
+  latestActivityAt: null,
 };
 
 function makeLearning(overrides: Partial<Learning> & { id: string }): Learning {
@@ -31,7 +31,7 @@ function makeLearning(overrides: Partial<Learning> & { id: string }): Learning {
     hits: 1,
     createdAt: "2026-05-12T00:00:00.000Z",
     lastSeenAt: "2026-05-12T00:00:00.000Z",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -46,15 +46,17 @@ describe("ProjectKnowledgePanel", () => {
     originalArgmax = window.argmax;
     listSpy = vi
       .fn<ArgmaxApi["learnings"]["list"]>()
-      .mockResolvedValue([makeLearning({ id: "L1", summary: "Always run prettier before commit" })]);
+      .mockResolvedValue([
+        makeLearning({ id: "L1", summary: "Always run prettier before commit" }),
+      ]);
     updateSpy = vi.fn<ArgmaxApi["learnings"]["update"]>().mockImplementation((input) =>
       Promise.resolve(
         makeLearning({
           id: input.id,
           summary: input.summary ?? "Always run prettier before commit",
-          verified: input.verified ?? false
-        })
-      )
+          verified: input.verified ?? false,
+        }),
+      ),
     );
     deleteSpy = vi.fn<ArgmaxApi["learnings"]["delete"]>().mockResolvedValue(null);
     window.argmax = {
@@ -62,8 +64,8 @@ describe("ProjectKnowledgePanel", () => {
       learnings: {
         list: listSpy,
         update: updateSpy,
-        delete: deleteSpy
-      }
+        delete: deleteSpy,
+      },
     } as typeof window.argmax;
   });
 
@@ -81,7 +83,10 @@ describe("ProjectKnowledgePanel", () => {
     fireEvent.blur(input);
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
-    expect(updateSpy).toHaveBeenCalledWith({ id: "L1", summary: "Run prettier + eslint pre-commit" });
+    expect(updateSpy).toHaveBeenCalledWith({
+      id: "L1",
+      summary: "Run prettier + eslint pre-commit",
+    });
   });
 
   it("toasts a failed summary save and preserves the draft for retry", async () => {
@@ -118,7 +123,11 @@ describe("ProjectKnowledgePanel", () => {
     expect(updateSpy).toHaveBeenCalledWith({ id: "L1", verified: true });
   });
   it("ignores a stale project-1 list response after switching to project-2", async () => {
-    const L2 = makeLearning({ id: "L2", projectId: "project-2", summary: "Other project learning" });
+    const L2 = makeLearning({
+      id: "L2",
+      projectId: "project-2",
+      summary: "Other project learning",
+    });
     let resolveA!: (value: Learning[]) => void;
     const promiseA = new Promise<Learning[]>((resolve) => {
       resolveA = resolve;
@@ -129,7 +138,11 @@ describe("ProjectKnowledgePanel", () => {
       return Promise.resolve([]);
     });
 
-    render(<ProjectKnowledgePanel projects={[PROJECT, { ...PROJECT, id: "project-2", name: "Other" }]} />);
+    render(
+      <ProjectKnowledgePanel
+        projects={[PROJECT, { ...PROJECT, id: "project-2", name: "Other" }]}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Project knowledge — project picker" }));
     fireEvent.click(screen.getByRole("button", { name: "Other" }));
     await screen.findByLabelText("Edit summary for learning L2");
@@ -144,13 +157,17 @@ describe("ProjectKnowledgePanel", () => {
   });
 
   it("does not show L1 or alert when delete rejects after switching to project-2", async () => {
-    const L2 = makeLearning({ id: "L2", projectId: "project-2", summary: "Other project learning" });
+    const L2 = makeLearning({
+      id: "L2",
+      projectId: "project-2",
+      summary: "Other project learning",
+    });
     let rejectDelete!: (reason?: unknown) => void;
     deleteSpy.mockImplementation(
       () =>
         new Promise<Awaited<ReturnType<ArgmaxApi["learnings"]["delete"]>>>((_, reject) => {
           rejectDelete = reject;
-        })
+        }),
     );
     listSpy.mockImplementation(({ projectId }) => {
       if (projectId === "project-1") {
@@ -160,7 +177,11 @@ describe("ProjectKnowledgePanel", () => {
       return Promise.resolve([]);
     });
 
-    render(<ProjectKnowledgePanel projects={[PROJECT, { ...PROJECT, id: "project-2", name: "Other" }]} />);
+    render(
+      <ProjectKnowledgePanel
+        projects={[PROJECT, { ...PROJECT, id: "project-2", name: "Other" }]}
+      />,
+    );
     await screen.findByLabelText("Edit summary for learning L1");
     fireEvent.click(screen.getByRole("button", { name: "Delete learning L1" }));
     fireEvent.click(screen.getByRole("button", { name: "Project knowledge — project picker" }));

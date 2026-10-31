@@ -104,7 +104,11 @@ const FIND_RUNTIME = `
 `;
 
 /** A full script for `browser:evaluate`: install the runtime, run one action. */
-export function browserFindScript(action: "search" | "step" | "clear", query = "", delta = 0): string {
+export function browserFindScript(
+  action: "search" | "step" | "clear",
+  query = "",
+  delta = 0,
+): string {
   const runtime = FIND_RUNTIME;
   if (action === "search") {
     return `${runtime};window.__argmaxFind.search(${JSON.stringify(query)});`;

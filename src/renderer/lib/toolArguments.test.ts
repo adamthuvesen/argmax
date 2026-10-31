@@ -17,8 +17,8 @@ describe("opaque tool arguments", () => {
       displayToolInput("send_message", {
         message: CIPHERTEXT,
         receiver_thread_ids: ["thread-1"],
-        sender_thread_id: "thread-parent"
-      })
+        sender_thread_id: "thread-parent",
+      }),
     ).toEqual({});
   });
 
@@ -27,8 +27,8 @@ describe("opaque tool arguments", () => {
     expect(
       displayToolInput("SendMessage", {
         to: "a5c5b27a1557fa19e",
-        message: "Please also check the iOS path."
-      })
+        message: "Please also check the iOS path.",
+      }),
     ).toEqual({ message: "Please also check the iOS path." });
   });
 
@@ -41,8 +41,8 @@ describe("opaque tool arguments", () => {
     expect(
       displayToolInput("mcp__argmax__session_message", {
         session: "s-1",
-        message: "The review is ready."
-      })
+        message: "The review is ready.",
+      }),
     ).toEqual({ session: "s-1", message: "The review is ready." });
   });
 });

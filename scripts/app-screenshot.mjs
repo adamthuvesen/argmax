@@ -59,21 +59,24 @@ const windows = lookup.stdout
     return { windowId, pid };
   });
 if (windows.length === 0) fail("no on-screen Argmax window found");
-const target = options.pid === null ? windows[0] : windows.find((window) => window.pid === options.pid);
+const target =
+  options.pid === null ? windows[0] : windows.find((window) => window.pid === options.pid);
 if (!target) {
   fail(
     `no on-screen Argmax window for pid ${options.pid} (found pids: ${windows.map((w) => w.pid).join(", ")});` +
-      ` a window on another Space is not capturable`
+      ` a window on another Space is not capturable`,
   );
 }
 
 const out = path.resolve(options.out);
-const capture = spawnSync("screencapture", ["-o", "-x", "-l", String(target.windowId), out], { encoding: "utf8" });
+const capture = spawnSync("screencapture", ["-o", "-x", "-l", String(target.windowId), out], {
+  encoding: "utf8",
+});
 if (capture.status !== 0 || /could not create image/.test(capture.stderr)) {
   fail(
     `screencapture failed: ${capture.stderr.trim() || "no image"}\n` +
       `most likely the Screen Recording permission is missing for the app running this script\n` +
-      `(System Settings → Privacy & Security → Screen Recording), and macOS needs an app restart after granting it.`
+      `(System Settings → Privacy & Security → Screen Recording), and macOS needs an app restart after granting it.`,
   );
 }
 console.log(JSON.stringify({ out, windowId: target.windowId, pid: target.pid }));

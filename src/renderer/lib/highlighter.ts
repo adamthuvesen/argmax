@@ -17,7 +17,9 @@ export type HighlightAppearance = "light" | "dark";
 function activeThemeName(appearance?: HighlightAppearance): string {
   if (appearance) return appearance === "dark" ? DARK_THEME : LIGHT_THEME;
   if (typeof document === "undefined") return LIGHT_THEME;
-  return themeAppearance(document.documentElement.getAttribute("data-theme")) === "dark" ? DARK_THEME : LIGHT_THEME;
+  return themeAppearance(document.documentElement.getAttribute("data-theme")) === "dark"
+    ? DARK_THEME
+    : LIGHT_THEME;
 }
 
 function subscribeToThemeAttribute(onChange: () => void): () => void {
@@ -25,7 +27,7 @@ function subscribeToThemeAttribute(onChange: () => void): () => void {
   const observer = new MutationObserver(onChange);
   observer.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["data-theme"]
+    attributeFilter: ["data-theme"],
   });
   return () => observer.disconnect();
 }
@@ -64,12 +66,12 @@ const CURATED_LANGS: LanguageInput[] = [
   () => import("shiki/langs/shellscript.mjs"),
   () => import("shiki/langs/sql.mjs"),
   () => import("shiki/langs/yaml.mjs"),
-  () => import("shiki/langs/toml.mjs")
+  () => import("shiki/langs/toml.mjs"),
 ];
 
 const CURATED_THEMES: ThemeInput[] = [
   () => import("shiki/themes/vitesse-light.mjs"),
-  () => import("shiki/themes/vitesse-dark.mjs")
+  () => import("shiki/themes/vitesse-dark.mjs"),
 ];
 
 let highlighter: HighlighterCore | null = null;
@@ -87,8 +89,8 @@ function ensureHighlighter(): HighlighterCore | null {
       createHighlighterCore({
         themes: CURATED_THEMES,
         langs: CURATED_LANGS,
-        engine: createJavaScriptRegexEngine()
-      })
+        engine: createJavaScriptRegexEngine(),
+      }),
     )
     .then((instance) => {
       highlighter = instance;
@@ -105,7 +107,7 @@ function ensureHighlighter(): HighlighterCore | null {
       // this promise is an unawaited re-entrancy guard, so a rejection would
       // surface as an unhandledrejection with no consumer to catch it.
       logger.warn("renderer.highlighter", "shiki init failed; falling back to plain text", {
-        error: errorMessage(error)
+        error: errorMessage(error),
       });
       highlighterPromise = null;
     });
@@ -144,15 +146,21 @@ export function tokenizeLines(
   code: string,
   lang: string,
   appearance: HighlightAppearance,
-  grammarState?: GrammarState
+  grammarState?: GrammarState,
 ): { lines: HighlightToken[][]; grammarState?: GrammarState } | null {
   const instance = ensureHighlighter();
   if (!instance) return null;
   try {
-    const result = instance.codeToTokens(code, { theme: activeThemeName(appearance), lang, grammarState });
+    const result = instance.codeToTokens(code, {
+      theme: activeThemeName(appearance),
+      lang,
+      grammarState,
+    });
     return {
-      lines: result.tokens.map((line) => line.map((token) => ({ content: token.content, color: token.color }))),
-      grammarState: result.grammarState
+      lines: result.tokens.map((line) =>
+        line.map((token) => ({ content: token.content, color: token.color })),
+      ),
+      grammarState: result.grammarState,
     };
   } catch {
     return null;
@@ -181,7 +189,7 @@ function highlightedKey(code: string, lang: string, appearance?: HighlightAppear
 export function peekHighlightedCode(
   code: string,
   lang: string | null,
-  appearance?: HighlightAppearance
+  appearance?: HighlightAppearance,
 ): HighlightToken[][] | null {
   if (!lang || !highlighter) return null;
   return highlighted.get(highlightedKey(code, lang, appearance)) ?? null;
@@ -221,7 +229,7 @@ export function highlightCode(
   lang: string | null,
   appearance?: HighlightAppearance,
   /** False for a fence still being written: its prefixes are never asked for again. */
-  keep = true
+  keep = true,
 ): HighlightToken[][] {
   if (!lang) return plainCodeLines(code);
   const instance = ensureHighlighter();
@@ -236,7 +244,9 @@ export function highlightCode(
   let lines: HighlightToken[][];
   try {
     const result = instance.codeToTokens(code, { theme: activeThemeName(appearance), lang });
-    lines = result.tokens.map((line) => line.map((token) => ({ content: token.content, color: token.color })));
+    lines = result.tokens.map((line) =>
+      line.map((token) => ({ content: token.content, color: token.color })),
+    );
   } catch {
     return plainCodeLines(code);
   }
@@ -287,7 +297,7 @@ const FENCE_LANG_ALIASES: Record<string, string> = {
   sql: "sql",
   yaml: "yaml",
   yml: "yaml",
-  toml: "toml"
+  toml: "toml",
 };
 
 export function resolveFenceLang(tag: string | null | undefined): string | null {
@@ -321,7 +331,7 @@ const EXTENSION_TO_LANG: Record<string, string> = {
   sql: "sql",
   yaml: "yaml",
   yml: "yaml",
-  toml: "toml"
+  toml: "toml",
 };
 
 export function langFromPath(filePath: string | null | undefined): string | null {

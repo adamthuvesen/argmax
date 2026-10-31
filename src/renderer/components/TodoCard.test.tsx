@@ -9,14 +9,14 @@ function list(items: TodoItem[]): TodoList {
     items,
     updatedAt: "2026-01-01T00:00:00.000Z",
     doneCount: items.filter((item) => item.status === "done").length,
-    active: items.find((item) => item.status === "active") ?? null
+    active: items.find((item) => item.status === "active") ?? null,
   };
 }
 
 const working = list([
   { id: "1", text: "Read the normalizers", status: "done" },
   { id: "2", text: "Write the projection", status: "active" },
-  { id: "3", text: "Verify with checks", status: "pending" }
+  { id: "3", text: "Verify with checks", status: "pending" },
 ]);
 
 describe("TodoCard", () => {
@@ -37,7 +37,9 @@ describe("TodoCard", () => {
     const { rerender } = render(<TodoCard list={working} running />);
     expect(screen.getByRole("button", { name: /Plan/ }).getAttribute("aria-expanded")).toBe("true");
     rerender(<TodoCard list={working} running={false} />);
-    expect(screen.getByRole("button", { name: /Plan/ }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByRole("button", { name: /Plan/ }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
   });
 
   it("carries the running step in the headline once folded", () => {
@@ -48,7 +50,7 @@ describe("TodoCard", () => {
   it("marks a completed plan with an accessible check instead of a text tail", () => {
     const done = list([
       { id: "1", text: "One", status: "done" },
-      { id: "2", text: "Two", status: "done" }
+      { id: "2", text: "Two", status: "done" },
     ]);
     render(<TodoCard list={done} running={false} />);
     const heading = screen.getByRole("button", { name: /Plan 2 of 2 All done/ });
@@ -59,7 +61,7 @@ describe("TodoCard", () => {
   it("says not started before any work begins", () => {
     const fresh = list([
       { id: "1", text: "One", status: "pending" },
-      { id: "2", text: "Two", status: "pending" }
+      { id: "2", text: "Two", status: "pending" },
     ]);
     render(<TodoCard list={fresh} running={false} />);
     expect(screen.getByRole("button", { name: /· not started/ })).toBeTruthy();
@@ -69,9 +71,13 @@ describe("TodoCard", () => {
   it("keeps the reader's choice when the turn ends", () => {
     const { rerender } = render(<TodoCard list={working} running />);
     fireEvent.click(screen.getByRole("button", { name: /Plan/ }));
-    expect(screen.getByRole("button", { name: /Plan/ }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByRole("button", { name: /Plan/ }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
     rerender(<TodoCard list={working} running={false} />);
-    expect(screen.getByRole("button", { name: /Plan/ }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByRole("button", { name: /Plan/ }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
   });
 
   it("keeps a card the reader opened open after the turn ends", () => {
@@ -91,7 +97,7 @@ describe("TodoCard", () => {
   it("draws no row for an item the agent removed", () => {
     const trimmed = list([
       { id: "1", text: "Keep", status: "pending" },
-      { id: "2", text: "Gone", status: "removed" }
+      { id: "2", text: "Gone", status: "removed" },
     ]);
     render(<TodoCard list={trimmed} running />);
     expect(screen.getAllByRole("listitem")).toHaveLength(1);

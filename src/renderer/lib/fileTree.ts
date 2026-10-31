@@ -33,7 +33,7 @@ export function buildFileTree(entries: WorkspaceFileEntry[]): TreeNode {
           name: segment,
           path: childPath,
           kind: isLast ? "file" : "dir",
-          children: []
+          children: [],
         };
         cursor.children.push(next);
         cursorIndex.set(segment, next);

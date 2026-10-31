@@ -14,14 +14,14 @@ it("restores a pending DeepSeek selection through its successor without losing e
     JSON.stringify({
       provider: "opencode",
       modelId: "openrouter/deepseek/deepseek-v4.1-flash",
-      reasoningEffort: "high"
-    })
+      reasoningEffort: "high",
+    }),
   );
 
   expect(readStoredSessionModel(SESSION_ID, FALLBACK_LAUNCH_MODEL)).toEqual({
     provider: "opencode",
     label: "DeepSeek V4.1 Flash 1017",
     modelId: "openrouter/deepseek/deepseek-v4.1-flash-1017",
-    reasoningEffort: "high"
+    reasoningEffort: "high",
   });
 });

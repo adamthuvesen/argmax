@@ -18,7 +18,7 @@ const nativeConsole = {
   info: console.info,
   warn: console.warn,
   error: console.error,
-  debug: console.debug
+  debug: console.debug,
 };
 // oxlint-disable-next-line typescript/unbound-method -- restored as-is after each test
 const nativeFetch = window.fetch;
@@ -80,7 +80,7 @@ interface AgentApi {
   type: (
     ref: string,
     text: string,
-    options?: { submit?: boolean }
+    options?: { submit?: boolean },
   ) => { ok?: true; error?: string; submitted?: boolean };
   select: (ref: string, value: string) => { ok?: true; error?: string; selected?: string };
   hover: (ref: string) => { ok?: true; error?: string };
@@ -96,12 +96,12 @@ interface AgentApi {
       deltaX?: number;
       deltaY?: number;
       steps?: number;
-    }
+    },
   ) => { ok?: true; steps?: number; error?: string };
   dragStep: (id: string, index: number) => { ok?: true; error?: string };
   dragEnd: (
     id: string,
-    cancel?: boolean
+    cancel?: boolean,
   ) => { ok?: true; cancelled?: true; error?: string; target?: string; droppedOn?: string };
   pressKey: (key: string, modifiers?: string[]) => { ok?: true; error?: string };
   scroll: (spec: { ref?: string; direction: string; amount?: number }) => {
@@ -117,7 +117,7 @@ interface AgentApi {
       urlIncludes?: string;
       quietMs?: number;
       minCount?: number;
-    }
+    },
   ) => {
     ok?: true;
     pending?: boolean;
@@ -130,7 +130,7 @@ interface AgentApi {
   };
   handleDialog: (
     accept: boolean,
-    promptText?: string | null
+    promptText?: string | null,
   ) => {
     ok?: true;
     error?: string;
@@ -162,14 +162,14 @@ function installDialogCapture(): void {
 interface CaptureApi {
   readConsole: (
     limit?: number,
-    clear?: boolean
+    clear?: boolean,
   ) => {
     entries: Array<{ level: string; text: string; url: string }>;
     truncated: boolean;
   };
   readNetwork: (
     limit?: number,
-    clear?: boolean
+    clear?: boolean,
   ) => {
     entries: Array<{
       kind: string;
@@ -218,7 +218,7 @@ beforeAll(() => {
       bottom: zero ? 0 : 24,
       width: zero ? 0 : 120,
       height: zero ? 0 : 24,
-      toJSON: () => ({})
+      toJSON: () => ({}),
     };
   };
   Element.prototype.scrollIntoView = vi.fn();
@@ -230,7 +230,7 @@ beforeAll(() => {
     configurable: true,
     get(this: HTMLElement) {
       return this.textContent ?? "";
-    }
+    },
   });
 });
 
@@ -272,7 +272,7 @@ describe("snapshot.js", () => {
     expect(first.tree).toContain('- heading "Example Domain" level=1');
     expect(first.tree).not.toContain("- text: Example Domain");
     expect(first.tree).toMatch(
-      /- link "More information" \[ref=e\d+\] href=https:\/\/www\.iana\.org\/domains\/example/
+      /- link "More information" \[ref=e\d+\] href=https:\/\/www\.iana\.org\/domains\/example/,
     );
     expect(first.tree).toMatch(/- searchbox "Search" \[ref=e\d+\] value="tauri"/);
     expect(first.tree).toMatch(/- button "Sign in" \[ref=e\d+\]/);
@@ -317,7 +317,10 @@ describe("snapshot.js", () => {
   });
 
   it("marks the tree truncated once the node cap is hit", () => {
-    document.body.innerHTML = Array.from({ length: 900 }, (_, index) => `<button>Row ${index}</button>`).join("");
+    document.body.innerHTML = Array.from(
+      { length: 900 },
+      (_, index) => `<button>Row ${index}</button>`,
+    ).join("");
     install();
 
     const snapshot = api().snapshot({ interactiveOnly: true });
@@ -336,12 +339,12 @@ describe("snapshot.js", () => {
     expect(
       api()
         .find("cookies")
-        .matches.map((match) => match.name)
+        .matches.map((match) => match.name),
     ).toEqual(["Accept all cookies"]);
     expect(
       api()
         .find("TAURI")
-        .matches.map((match) => match.role)
+        .matches.map((match) => match.role),
     ).toEqual(["textbox"]);
     expect(api().find("").matches).toEqual([]);
     // Every match carries a usable handle.
@@ -377,7 +380,7 @@ describe("snapshot.js", () => {
       <meta name="author" content="Ada Lovelace" />
       <meta property="article:published_time" content="2026-09-03" />
       <link rel="canonical" href="https://example.com/article" />
-    `
+    `,
     );
     document.body.innerHTML = `
       <nav><a href="https://example.com/skip">Skip this</a></nav>
@@ -403,20 +406,22 @@ describe("snapshot.js", () => {
       canonicalUrl: "https://example.com/article",
       language: "en",
       author: "Ada Lovelace",
-      publishedTime: "2026-09-03"
+      publishedTime: "2026-09-03",
     });
     expect(extracted.headings).toEqual([
       { level: 1, text: "How the machine works" },
-      { level: 2, text: "Results" }
+      { level: 2, text: "Results" },
     ]);
     expect(extracted.sections).toEqual([
       { heading: "How the machine works", level: 1, text: "Opening summary." },
-      { heading: "Results", level: 2, text: "The useful result." }
+      { heading: "Results", level: 2, text: "The useful result." },
     ]);
     expect(extracted.tables).toEqual([
-      { caption: "Measurements", headers: ["Name", "Value"], rows: [["Speed", "42"]] }
+      { caption: "Measurements", headers: ["Name", "Value"], rows: [["Speed", "42"]] },
     ]);
-    expect(extracted.links).toEqual([{ text: "Primary source", url: "http://localhost:3000/source" }]);
+    expect(extracted.links).toEqual([
+      { text: "Primary source", url: "http://localhost:3000/source" },
+    ]);
     expect(extracted.state).toBe("ready");
     expect(extracted.items).toEqual([]);
     expect(extracted.fields).toEqual([]);
@@ -436,13 +441,18 @@ describe("snapshot.js", () => {
 
     const extracted = api().extract();
     expect(extracted.headings).toEqual([{ level: 1, text: "The reading" }]);
-    expect(extracted.sections).toEqual([{ heading: "The reading", level: 1, text: "The body of it." }]);
+    expect(extracted.sections).toEqual([
+      { heading: "The reading", level: 1, text: "The body of it." },
+    ]);
     expect(extracted.links).toEqual([{ text: "Cited work", url: "http://localhost:3000/cited" }]);
   });
 });
 
 /** The gesture Rust drives: begin, then one step per call, then end. */
-function runDrag(spec: Parameters<AgentApi["dragBegin"]>[1], id = "d1"): ReturnType<AgentApi["dragEnd"]> {
+function runDrag(
+  spec: Parameters<AgentApi["dragBegin"]>[1],
+  id = "d1",
+): ReturnType<AgentApi["dragEnd"]> {
   const begun = api().dragBegin(id, spec);
   if (begun.error) return begun;
   for (let step = 1; step <= (begun.steps ?? 0); step += 1) api().dragStep(id, step);
@@ -592,7 +602,7 @@ describe("actions.js", () => {
       expect(api().type(ref, "background text").ok).toBe(true);
       target.remove();
       expect(api().pressKey("Enter").error).toBe(
-        "the previous keyboard target was removed. Click or type into a field again"
+        "the previous keyboard target was removed. Click or type into a field again",
       );
     } finally {
       hasFocus.mockRestore();
@@ -736,7 +746,7 @@ describe("actions.js", () => {
       startY: 6,
       endX: 70,
       endY: 50,
-      steps: 3
+      steps: 3,
     });
     expect(result.ok).toBe(true);
     expect(sourceEvents).toContain("mousedown");
@@ -754,7 +764,8 @@ describe("actions.js", () => {
     install();
     const source = document.getElementById("source") as HTMLButtonElement;
     const target = document.getElementById("target") as HTMLButtonElement;
-    source.getBoundingClientRect = () => ({ left: 0, top: 0, width: 10, height: 10, right: 10, bottom: 10 }) as DOMRect;
+    source.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 10, height: 10, right: 10, bottom: 10 }) as DOMRect;
     target.getBoundingClientRect = () =>
       ({ left: 100, top: 0, width: 10, height: 10, right: 110, bottom: 10 }) as DOMRect;
     // The gesture starts over the source and ends over the target, so the
@@ -774,7 +785,7 @@ describe("actions.js", () => {
     const begun = api().dragBegin("d9", {
       ref: api().find("Card").matches[0]?.ref,
       toRef: api().find("Column").matches[0]?.ref,
-      steps: 4
+      steps: 4,
     });
     expect(begun.steps).toBe(4);
     for (let step = 1; step <= 4; step += 1) api().dragStep("d9", step);
@@ -807,7 +818,7 @@ describe("actions.js", () => {
     const begun = api().dragBegin("d5", {
       ref: api().find("Card").matches[0]?.ref,
       toRef: api().find("Column").matches[0]?.ref,
-      steps: 2
+      steps: 2,
     });
     // The frame is only requested at press time; nothing has run it yet.
     expect(measured).toEqual([]);
@@ -955,7 +966,7 @@ describe("capture.js", () => {
     expect(first.entries).toHaveLength(2);
     expect(first.entries[0]).toMatchObject({
       level: "log",
-      text: 'server {"ready":true}'
+      text: 'server {"ready":true}',
     });
     expect(first.entries[1]?.level).toBe("error");
     expect(first.entries[1]?.text).toContain("Error: render failed");
@@ -965,10 +976,15 @@ describe("capture.js", () => {
 
   it("records fetch status, method, URL, and failures without consuming responses", async () => {
     const response = { status: 404, ok: false };
-    window.fetch = vi.fn().mockResolvedValueOnce(response).mockRejectedValueOnce(new Error("offline"));
+    window.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(response)
+      .mockRejectedValueOnce(new Error("offline"));
     const capture = installCapture();
 
-    await expect(window.fetch(new URL("/missing", window.location.href), { method: "post" })).resolves.toBe(response);
+    await expect(
+      window.fetch(new URL("/missing", window.location.href), { method: "post" }),
+    ).resolves.toBe(response);
     await expect(window.fetch("/offline")).rejects.toThrow("offline");
 
     const entries = capture.readNetwork().entries;
@@ -979,15 +995,15 @@ describe("capture.js", () => {
         url: "http://localhost:3000/missing",
         status: 404,
         ok: false,
-        error: null
+        error: null,
       }),
       expect.objectContaining({
         kind: "fetch",
         method: "GET",
         url: "http://localhost:3000/offline",
         status: null,
-        ok: false
-      })
+        ok: false,
+      }),
     ]);
     expect(entries[1]?.error).toContain("offline");
   });
@@ -998,7 +1014,7 @@ describe("capture.js", () => {
       () =>
         new Promise<{ status: number; ok: boolean }>((resolve) => {
           resolveFetch = resolve;
-        })
+        }),
     );
     const capture = installCapture();
     expect(capture.pending()).toBe(0);
@@ -1129,7 +1145,7 @@ describe("page state, extract items, waits", () => {
     `;
     install();
     (window as unknown as { __argmaxCookies: { dismissed: boolean } }).__argmaxCookies = {
-      dismissed: true
+      dismissed: true,
     };
     expect(api().pageState().kind).toBe("cookie");
   });
@@ -1151,13 +1167,18 @@ describe("page state, extract items, waits", () => {
     `;
     install();
     const extracted = api().extract();
-    expect(extracted.items.map((item) => item.text)).toEqual(["Alpha 100", "Beta 200", "Gamma 300", "Delta 400"]);
+    expect(extracted.items.map((item) => item.text)).toEqual([
+      "Alpha 100",
+      "Beta 200",
+      "Gamma 300",
+      "Delta 400",
+    ]);
     expect(extracted.items[0]?.ref).toMatch(/^e\d+$/);
     expect(extracted.fields).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "From", value: "Stockholm" }),
-        expect.objectContaining({ name: "To", value: "Tokyo" })
-      ])
+        expect.objectContaining({ name: "To", value: "Tokyo" }),
+      ]),
     );
   });
 

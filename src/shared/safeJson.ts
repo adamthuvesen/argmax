@@ -67,7 +67,7 @@ export function safeJsonParse(value: string | null | undefined, context?: string
 export function safeJsonParseArray<T>(
   value: string | null | undefined,
   predicate: (item: unknown) => item is T,
-  context?: string
+  context?: string,
 ): T[] {
   const parsed = safeJsonParse(value, context);
   if (!Array.isArray(parsed)) {
@@ -80,7 +80,10 @@ export function safeJsonParseArray<T>(
  * Parses a JSON string that should be a plain object. Returns `{}` on parse
  * failure, null, array, or any non-object shape.
  */
-export function safeJsonParseRecord(value: string | null | undefined, context?: string): Record<string, unknown> {
+export function safeJsonParseRecord(
+  value: string | null | undefined,
+  context?: string,
+): Record<string, unknown> {
   const parsed = safeJsonParse(value, context);
   return isPlainObject(parsed) ? parsed : {};
 }

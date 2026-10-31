@@ -13,11 +13,11 @@ function makeProject(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
       mergeCleanup: "off",
       worktreeLocation: "/tmp/worktrees",
       setupCommand: "",
-      checkCommands: []
+      checkCommands: [],
     },
     counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
     latestActivityAt: null,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -46,7 +46,7 @@ function makeWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSumm
     prMergedAt: null,
     prCheckState: null,
     prActivityAt: null,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -55,7 +55,7 @@ describe("findSharedCheckoutWorkspace", () => {
     const project = makeProject();
     const workspaces = [
       makeWorkspace({ id: "w-worktree", path: "/tmp/worktrees/feature", sharedWorkspace: false }),
-      makeWorkspace({ id: "w-shared", path: "/tmp/argmax/" })
+      makeWorkspace({ id: "w-shared", path: "/tmp/argmax/" }),
     ];
 
     expect(findSharedCheckoutWorkspace(project, workspaces)?.id).toBe("w-shared");

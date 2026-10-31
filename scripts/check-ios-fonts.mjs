@@ -28,25 +28,32 @@ const EXEMPTION = /\/\/ *type-exception:/;
 
 const FONT_RULES = [
   // `.font(.body)`, `.font(.caption2.weight(.semibold))` — a literal Font.
-  { pattern: /\.font\(\s*(\.|Font\.)/, message: "names a font directly; use typeStyle / typeSize / typeSymbol" },
-  { pattern: /\bFont\.(system|custom)\(/, message: "builds a Font by hand; use the TypeScale in the environment" },
+  {
+    pattern: /\.font\(\s*(\.|Font\.)/,
+    message: "names a font directly; use typeStyle / typeSize / typeSymbol",
+  },
+  {
+    pattern: /\bFont\.(system|custom)\(/,
+    message: "builds a Font by hand; use the TypeScale in the environment",
+  },
   { pattern: /\bargmaxMono\b/, message: "argmaxMono is gone; use mono: true" },
   {
     pattern: /\bUIFont\.(systemFont|monospacedSystemFont|preferredFont)\(|\bUIFont\(name:/,
-    message: "builds a UIFont by hand; use TypeScale.uiFont"
-  }
+    message: "builds a UIFont by hand; use TypeScale.uiFont",
+  },
 ];
 
 const TIER_RULES = [
   {
     pattern: /type(Style\(\s*\.subheadline|Content\(\))/,
-    message: "transcript subheadline copy uses typeSubtitle(); output is .body and compact chrome is .footnote"
+    message:
+      "transcript subheadline copy uses typeSubtitle(); output is .body and compact chrome is .footnote",
   },
   {
     // `.caption` is the mono payload's size and nothing else's.
     pattern: /typeStyle\(\s*\.caption\b(?!2)(?![^)]*mono: true)/,
-    message: "bare .caption bypasses the transcript roles; only mono payload stays at .caption"
-  }
+    message: "bare .caption bypasses the transcript roles; only mono payload stays at .caption",
+  },
 ];
 
 function swiftFiles(dir) {
@@ -59,7 +66,10 @@ function swiftFiles(dir) {
 
 const failures = [];
 for (const path of swiftFiles(SOURCES)) {
-  const rules = [...(path === TYPOGRAPHY ? [] : FONT_RULES), ...(path.startsWith(TRANSCRIPT) ? TIER_RULES : [])];
+  const rules = [
+    ...(path === TYPOGRAPHY ? [] : FONT_RULES),
+    ...(path.startsWith(TRANSCRIPT) ? TIER_RULES : []),
+  ];
   if (rules.length === 0) continue;
   const lines = readFileSync(path, "utf8").split("\n");
   lines.forEach((line, index) => {

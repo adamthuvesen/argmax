@@ -9,15 +9,21 @@ const session = {
   reasoningEffort: "medium",
   agentMode: "auto",
   contextTokens: 0,
-  contextWindow: 258_400
+  contextWindow: 258_400,
 } as Pick<
   SessionSummary,
-  "state" | "provider" | "modelId" | "reasoningEffort" | "agentMode" | "contextTokens" | "contextWindow"
+  | "state"
+  | "provider"
+  | "modelId"
+  | "reasoningEffort"
+  | "agentMode"
+  | "contextTokens"
+  | "contextWindow"
 >;
 
 const entry = {
   modelId: "claude-opus-5",
-  reasoningEffort: "medium"
+  reasoningEffort: "medium",
 } as Pick<PendingMessage, "modelId" | "reasoningEffort" | "provider">;
 
 describe("canSteerQueuedMessage", () => {
@@ -41,13 +47,13 @@ describe("canSteerQueuedMessage", () => {
         ...session,
         provider: "codex" as const,
         contextTokens: 226_235,
-        contextWindow: 258_400
+        contextWindow: 258_400,
       },
-      entry
+      entry,
     ],
     ["the row is bound for another provider", session, { ...entry, provider: "codex" as const }],
     ["the row names another model", session, { ...entry, modelId: "claude-sonnet-5-5" }],
-    ["the row names another effort", session, { ...entry, reasoningEffort: "high" as const }]
+    ["the row names another effort", session, { ...entry, reasoningEffort: "high" as const }],
   ])("refuses when %s", (_case, openSession, queued) => {
     expect(canSteerQueuedMessage(openSession, queued)).toBe(false);
   });

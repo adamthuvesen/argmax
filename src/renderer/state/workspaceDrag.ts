@@ -48,7 +48,7 @@ export function endWorkspaceDrag(): void {
  */
 export function beginWorkspacePointerDrag(
   workspaceId: string,
-  start: WorkspaceDragPoint & { pointerId: number; button: number; onFinish?: () => void }
+  start: WorkspaceDragPoint & { pointerId: number; button: number; onFinish?: () => void },
 ): void {
   if (start.button !== 0 || typeof window === "undefined") return;
   cancelPointerCandidate?.();
@@ -57,7 +57,7 @@ export function beginWorkspacePointerDrag(
   const matches = (event: PointerEvent): boolean => event.pointerId === start.pointerId;
   const pointFrom = (event: PointerEvent): WorkspaceDragPoint => ({
     clientX: event.clientX,
-    clientY: event.clientY
+    clientY: event.clientY,
   });
   const cleanup = (): void => {
     window.removeEventListener("pointermove", onPointerMove);

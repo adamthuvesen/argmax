@@ -33,7 +33,7 @@ import {
   prepareRemoteOperation,
   remoteOperationWasSent,
   settleRemoteOperation,
-  type RemoteOperation
+  type RemoteOperation,
 } from "./remoteOperations.js";
 
 const TOKEN_KEY = "argmax.remote.token";
@@ -116,7 +116,9 @@ let connectionState: RemoteConnectionState = { status: "connected", resync: fals
 const connectionListeners = new Set<(state: RemoteConnectionState) => void>();
 
 /** Current state is replayed on subscribe, so late subscribers are not blind. */
-export function subscribeRemoteConnection(listener: (state: RemoteConnectionState) => void): () => void {
+export function subscribeRemoteConnection(
+  listener: (state: RemoteConnectionState) => void,
+): () => void {
   connectionListeners.add(listener);
   listener(connectionState);
   return () => {
@@ -155,7 +157,7 @@ function connectBrowserSocket(url: string, handlers: RemoteSocketHandlers): Remo
   socket.onerror = () => undefined;
   return {
     send: (data: string) => socket.send(data),
-    close: () => socket.close()
+    close: () => socket.close(),
   };
 }
 
@@ -291,7 +293,11 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     if (request.operation && !request.sent) settleRemoteOperation(request.operation);
     if (request.operation && request.sent) markRemoteOperationUncertain(request.operation);
     request.reject(
-      new Error(request.operation && request.sent ? REMOTE_OUTCOME_UNKNOWN_MESSAGE : REMOTE_CONNECTION_LOST_MESSAGE)
+      new Error(
+        request.operation && request.sent
+          ? REMOTE_OUTCOME_UNKNOWN_MESSAGE
+          : REMOTE_CONNECTION_LOST_MESSAGE,
+      ),
     );
   }
 
@@ -378,7 +384,10 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     if (request.operation && frame.operationSettled === true) {
       settleRemoteOperation(request.operation);
     } else if (request.operation) {
-      markRemoteOperationUncertain(request.operation, failure?.sub_code === "REMOTE_OUTCOME_UNKNOWN");
+      markRemoteOperationUncertain(
+        request.operation,
+        failure?.sub_code === "REMOTE_OUTCOME_UNKNOWN",
+      );
     }
     if ("error" in frame) {
       request.reject(remoteFailure(frame.error));
@@ -387,7 +396,10 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     request.resolve(frame.ok);
   }
 
-  async function fetchTranscript(request: PendingRequest, startedGeneration: number): Promise<void> {
+  async function fetchTranscript(
+    request: PendingRequest,
+    startedGeneration: number,
+  ): Promise<void> {
     const controller = request.fallbackController;
     if (!controller) return;
     let timedOut = false;
@@ -400,10 +412,10 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
         method: "POST",
         headers: {
           Authorization: `Bearer ${token ?? ""}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: request.transcriptBody,
-        signal: controller.signal
+        signal: controller.signal,
       });
       if (response.status === 401) {
         throw remoteFailure({ code: "UNAUTHORIZED", message: "Pair with your Mac again." });
@@ -412,7 +424,7 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
         throw remoteFailure({
           code: "SERVICE_ERROR",
           sub_code: "REMOTE_HTTP_ERROR",
-          message: `Argmax remote transcript request failed (${response.status}).`
+          message: `Argmax remote transcript request failed (${response.status}).`,
         });
       }
       const envelope = asFrame(await response.json());
@@ -437,11 +449,13 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
           remoteFailure({
             code: "SERVICE_ERROR",
             sub_code: "REMOTE_RESPONSE_TIMEOUT",
-            message: "The Mac did not confirm this request in time."
-          })
+            message: "The Mac did not confirm this request in time.",
+          }),
         );
       } else {
-        request.reject(controller.signal.aborted ? new Error(REMOTE_CONNECTION_LOST_MESSAGE) : error);
+        request.reject(
+          controller.signal.aborted ? new Error(REMOTE_CONNECTION_LOST_MESSAGE) : error,
+        );
       }
     } finally {
       clearTimeout(timeout);
@@ -586,7 +600,9 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
    */
   function dropSilentSocket(): void {
     pongDeadline = null;
-    logger.warn("renderer.remote-bridge", "no pong before the deadline; dropping the socket", { url });
+    logger.warn("renderer.remote-bridge", "no pong before the deadline; dropping the socket", {
+      url,
+    });
     const dead = socket;
     generation += 1;
     dead?.close();
@@ -635,12 +651,15 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
       onClose: () => {
         if (mine !== generation) return;
         handleClose();
-      }
+      },
     });
     socket = current;
   }
 
-  function invoke<C extends IpcChannel>(channel: C, ...args: IpcArguments<C>): Promise<IpcOutput<C>> {
+  function invoke<C extends IpcChannel>(
+    channel: C,
+    ...args: IpcArguments<C>
+  ): Promise<IpcOutput<C>> {
     const input = args[0] ?? {};
     return new Promise<IpcOutput<C>>((resolve, reject) => {
       const id = nextRequestId++;
@@ -657,7 +676,7 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
         channel,
         transcriptBody: JSON.stringify({ channel, input }),
         fallbackAttempted: false,
-        fallbackController: null
+        fallbackController: null,
       };
       request.queueTimer = setTimeout(() => expireQueued(request), QUEUE_TIMEOUT_MS);
       queued.push(request);
@@ -673,7 +692,7 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
 
   function subscribe<C extends keyof PushPayloads>(
     channel: C,
-    listener: (payload: PushPayloads[C]) => void
+    listener: (payload: PushPayloads[C]) => void,
   ): EventSubscription {
     // Payloads are host-typed per channel exactly as with Tauri's `listen`.
     const erased = listener as (payload: unknown) => void;

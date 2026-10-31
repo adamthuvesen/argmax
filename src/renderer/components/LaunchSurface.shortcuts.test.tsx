@@ -87,13 +87,19 @@ describe("LaunchSurface picker shortcuts", () => {
 
     fireEvent.keyDown(document, { key: "b", metaKey: true });
     fireEvent.click(await screen.findByRole("button", { name: "Expand panel" }));
-    expect(screen.getByRole("button", { name: "Restore panel size" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Restore panel size" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("button", { name: "Restore panel size" })).not.toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "b", metaKey: true });
-    expect(await screen.findByRole("button", { name: "Expand panel" })).toHaveAttribute("aria-pressed", "false");
+    expect(await screen.findByRole("button", { name: "Expand panel" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 
   it("closes the browser panel with Escape when the launcher has no project", async () => {
@@ -102,8 +108,8 @@ describe("LaunchSurface picker shortcuts", () => {
         project: null,
         projects: [],
         sideChatMode: true,
-        onLaunchSideChat: () => Promise.resolve()
-      })
+        onLaunchSideChat: () => Promise.resolve(),
+      }),
     );
     await act(async () => {});
 

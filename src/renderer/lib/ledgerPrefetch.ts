@@ -8,7 +8,7 @@ import {
   requestUsageRemaining,
   requestUsageSummary,
   recordUsageRemainingFailure,
-  usageRemainingHasSettled
+  usageRemainingHasSettled,
 } from "./ledgerPageState.js";
 
 /** The zone day buckets are cut on. Must match the panels' hostTimeZone(). */
@@ -40,8 +40,8 @@ export async function prefetchLedgerPages(api: ArgmaxApi): Promise<void> {
   if (!getCachedUsageSummary(usageUi.usageWindow, usageUi.provider, timeZone)) {
     tasks.push(
       requestUsageSummary(usageUi.usageWindow, usageUi.provider, timeZone, () =>
-        api.usage.summary({ window: usageUi.usageWindow, provider: usageUi.provider, timeZone })
-      ).then(() => undefined)
+        api.usage.summary({ window: usageUi.usageWindow, provider: usageUi.provider, timeZone }),
+      ).then(() => undefined),
     );
   }
 
@@ -51,9 +51,9 @@ export async function prefetchLedgerPages(api: ArgmaxApi): Promise<void> {
         api.activity.summary({
           window: activityUi.activityWindow,
           projectId: activityUi.projectId,
-          timeZone
-        })
-      ).then(() => undefined)
+          timeZone,
+        }),
+      ).then(() => undefined),
     );
   }
 
@@ -64,9 +64,10 @@ export async function prefetchLedgerPages(api: ArgmaxApi): Promise<void> {
       requestUsageRemaining(() => api.usage.remaining())
         .then(() => undefined)
         .catch((cause) => {
-          const message = cause instanceof Error ? cause.message : "Could not read remaining usage.";
+          const message =
+            cause instanceof Error ? cause.message : "Could not read remaining usage.";
           recordUsageRemainingFailure(message, Date.now());
-        })
+        }),
     );
   }
 

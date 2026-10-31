@@ -55,5 +55,9 @@ function forkBarVisibleSnapshot(): boolean {
 }
 
 export function useForkBarVisible(): boolean {
-  return useSyncExternalStore(subscribeForkBarVisible, forkBarVisibleSnapshot, forkBarVisibleSnapshot);
+  return useSyncExternalStore(
+    subscribeForkBarVisible,
+    forkBarVisibleSnapshot,
+    forkBarVisibleSnapshot,
+  );
 }

@@ -9,9 +9,17 @@ import {
   GitPullRequestClosed,
   MoreHorizontal,
   SquareTerminal,
-  X
+  X,
 } from "lucide-react";
-import { Fragment, useEffect, useRef, useState, type JSX, type MouseEvent, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type JSX,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { prActions } from "../data/bridgeActions.js";
 import { errorMessage } from "../../shared/error.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
@@ -26,7 +34,7 @@ import {
   primaryWorkspacePr,
   refreshSessionPrs,
   workspaceSessionPrs,
-  type WorkspaceSessionPr
+  type WorkspaceSessionPr,
 } from "../lib/sessionPrs.js";
 import { AgentEmblem } from "./AgentEmblem.js";
 import { WorkingNest } from "./WorkingNest.js";
@@ -68,7 +76,7 @@ export function WorkspaceCard({
   subagents,
   projectFolderChanges = [],
   workingFolderName,
-  workspace
+  workspace,
 }: {
   /** Null until the changed-file list has loaded for this workspace. */
   changeSummary: { fileCount: number; additions: number; deletions: number } | null;
@@ -94,9 +102,10 @@ export function WorkspaceCard({
   const [branchCopyFlash, copyBranch] = useCopyToClipboard();
   const hasChanges = changeSummary !== null && changeSummary.fileCount > 0;
   const changedFolders = projectFolderChanges.filter(
-    (group) => group.folder.enabled && !group.error && group.files.length > 0
+    (group) => group.folder.enabled && !group.error && group.files.length > 0,
   );
-  const changesLabel = changesState === "error" ? "unavailable" : changesState === "ready" ? null : "…";
+  const changesLabel =
+    changesState === "error" ? "unavailable" : changesState === "ready" ? null : "…";
   const prs = workspaceSessionPrs(workspace);
   const primaryPr = primaryWorkspacePr(workspace);
   const visiblePrs = visibleWorkspacePrs(prs, primaryPr);
@@ -220,7 +229,10 @@ export function WorkspaceCard({
           // are not yet a verdict — loading, failed — say so in the meta slot.
           meta={
             hasChanges ? (
-              <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
+              <ChangeCount
+                additions={changeSummary.additions}
+                deletions={changeSummary.deletions}
+              />
             ) : changesLabel ? (
               <span className="workspace-card-quiet">{changesLabel}</span>
             ) : null
@@ -294,7 +306,9 @@ export function WorkspaceCard({
                 <ChevronDown size={12} aria-hidden="true" />
                 {hiddenPrs.length} more
               </button>
-              {isPrHistoryOpen ? <div className="workspace-card-pr-more-list">{hiddenPrs.map(prRow)}</div> : null}
+              {isPrHistoryOpen ? (
+                <div className="workspace-card-pr-more-list">{hiddenPrs.map(prRow)}</div>
+              ) : null}
             </div>
           ) : null}
         </section>
@@ -307,7 +321,7 @@ export function WorkspaceCard({
 
 function visibleWorkspacePrs(
   prs: readonly WorkspaceSessionPr[],
-  primary: WorkspaceSessionPr | null
+  primary: WorkspaceSessionPr | null,
 ): readonly WorkspaceSessionPr[] {
   const visible: WorkspaceSessionPr[] = [];
   if (primary) visible.push(primary);
@@ -326,7 +340,7 @@ function WorkspacePrRow({
   onDismiss,
   onSetPrimary,
   onUseAutomatic,
-  pr
+  pr,
 }: {
   busy: boolean;
   onCleanup: () => void;
@@ -340,7 +354,9 @@ function WorkspacePrRow({
   useDismissOnOutsideOrEscape(actionsRef, actionsOpen, () => setActionsOpen(false));
   const state = pr.prState?.toLowerCase() ?? "unknown";
   const stateLabel = `${state.charAt(0).toUpperCase()}${state.slice(1)}`;
-  const details = [pr.relationship === "referenced" ? "Referenced" : null, pr.headRefName].filter(Boolean).join(" · ");
+  const details = [pr.relationship === "referenced" ? "Referenced" : null, pr.headRefName]
+    .filter(Boolean)
+    .join(" · ");
   const rowTitle = pr.url
     ? `Open pull request #${pr.prNumber} on GitHub (${state})`
     : `Pull request #${pr.prNumber} (${state}) has no URL. Refresh its GitHub state to open it.`;
@@ -392,7 +408,11 @@ function WorkspacePrRow({
           <MoreHorizontal size={13} aria-hidden="true" />
         </button>
         {actionsOpen ? (
-          <div className="workspace-card-pr-actions-menu" role="menu" aria-label={`PR #${pr.prNumber} actions`}>
+          <div
+            className="workspace-card-pr-actions-menu"
+            role="menu"
+            aria-label={`PR #${pr.prNumber} actions`}
+          >
             {!pr.isPinned ? (
               <button
                 type="button"
@@ -463,15 +483,21 @@ function WorkspacePrRow({
  */
 function SubagentsSection({
   cluster,
-  onOpenAgents
+  onOpenAgents,
 }: {
   cluster: SubagentCluster;
   onOpenAgents?: () => void;
 }): JSX.Element {
   const visible = cluster.entries.slice(0, SUBAGENT_AVATAR_LIMIT);
   const overflow = cluster.entries.length - visible.length;
-  const roster = cluster.entries.map((entry) => `${entry.codename} — ${agentStatusLabel(entry.status)}`).join(", ");
-  const noun = cluster.hasMultitask ? "running alongside" : cluster.entries.length === 1 ? "subagent" : "subagents";
+  const roster = cluster.entries
+    .map((entry) => `${entry.codename} — ${agentStatusLabel(entry.status)}`)
+    .join(", ");
+  const noun = cluster.hasMultitask
+    ? "running alongside"
+    : cluster.entries.length === 1
+      ? "subagent"
+      : "subagents";
   const title = `${cluster.entries.length} ${noun}: ${roster}`;
   const firstRunning = cluster.entries.find((entry) => entry.status === "running");
   const label = cluster.hasMultitask ? "Alongside" : "Agents";
@@ -483,6 +509,7 @@ function SubagentsSection({
           <span
             key={entry.toolUseId}
             className="workspace-card-agent"
+            data-testid="workspace-card-agent"
             data-icon-color={entry.iconColor}
             data-status={entry.status}
           >
@@ -494,9 +521,18 @@ function SubagentsSection({
             />
           </span>
         ))}
-        {overflow > 0 ? <span className="workspace-card-agent workspace-card-agent-more">+{overflow}</span> : null}
+        {overflow > 0 ? (
+          <span
+            className="workspace-card-agent workspace-card-agent-more"
+            data-testid="workspace-card-agent"
+          >
+            +{overflow}
+          </span>
+        ) : null}
       </span>
-      {cluster.running > 0 ? <WorkingNest active size={12} phaseKey={firstRunning?.toolUseId} /> : null}
+      {cluster.running > 0 ? (
+        <WorkingNest active size={12} phaseKey={firstRunning?.toolUseId} />
+      ) : null}
     </>
   );
 
@@ -515,7 +551,11 @@ function SubagentsSection({
           {content}
         </button>
       ) : (
-        <div className="workspace-card-subagents agent-emblem-tint" data-hue={firstRunning?.emblem?.hue} title={title}>
+        <div
+          className="workspace-card-subagents agent-emblem-tint"
+          data-hue={firstRunning?.emblem?.hue}
+          title={title}
+        >
           {content}
         </div>
       )}
@@ -548,8 +588,11 @@ function PrStateIcon({ state }: { state: string | null }): JSX.Element {
   if (state !== "OPEN" && state !== "MERGED" && state !== "CLOSED") {
     return <GithubIcon size={13} aria-hidden="true" />;
   }
-  const Icon = state === "MERGED" ? GitMerge : state === "OPEN" ? GitPullRequest : GitPullRequestClosed;
-  return <Icon size={13} aria-hidden="true" className="workspace-card-pr-state" data-pr-state={state} />;
+  const Icon =
+    state === "MERGED" ? GitMerge : state === "OPEN" ? GitPullRequest : GitPullRequestClosed;
+  return (
+    <Icon size={13} aria-hidden="true" className="workspace-card-pr-state" data-pr-state={state} />
+  );
 }
 
 function WorkspaceCardRow({
@@ -560,7 +603,7 @@ function WorkspaceCardRow({
   meta = null,
   onClick,
   pressed,
-  title
+  title,
 }: {
   ariaLabel?: string;
   disabled?: boolean;

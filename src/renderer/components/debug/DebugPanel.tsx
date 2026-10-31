@@ -5,14 +5,23 @@ import {
   useState,
   useSyncExternalStore,
   type JSX,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
 } from "react";
-import type { RawProviderOutput, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../../shared/types.js";
+import type {
+  RawProviderOutput,
+  SessionSummary,
+  TimelineEvent,
+  WorkspaceSummary,
+} from "../../../shared/types.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
 import { formatSessionIds } from "../../lib/sessionIds.js";
 import { useDebugSnapshot } from "../../hooks/useDebugSnapshot.js";
 import { usePersistedSetting } from "../../hooks/usePersistedSetting.js";
-import { clearRendererLog, rendererLogSnapshot, subscribeRendererLog } from "../../lib/rendererLogRing.js";
+import {
+  clearRendererLog,
+  rendererLogSnapshot,
+  subscribeRendererLog,
+} from "../../lib/rendererLogRing.js";
 
 import { DebugIpcTab } from "./DebugIpcTab.js";
 import { DebugLogsTab } from "./DebugLogsTab.js";
@@ -24,7 +33,7 @@ const DEBUG_TAB_KEY = "argmax.debugPanel.tab";
 const TABS = [
   { id: "trace", label: "Trace" },
   { id: "logs", label: "Logs" },
-  { id: "ipc", label: "IPC" }
+  { id: "ipc", label: "IPC" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -60,7 +69,7 @@ export function DebugPanel({
   session,
   workspace,
   onClose,
-  onResizePanelMouseDown
+  onResizePanelMouseDown,
 }: {
   events: TimelineEvent[];
   rawOutputs: RawProviderOutput[];
@@ -79,13 +88,17 @@ export function DebugPanel({
   // than crossing it twice. Merged by timestamp: both sides stamp ISO-8601
   // UTC, so the reader sees one chronology and the tab's existing level/scope/
   // text filters cover both.
-  const breadcrumbs = useSyncExternalStore(subscribeRendererLog, rendererLogSnapshot, rendererLogSnapshot);
+  const breadcrumbs = useSyncExternalStore(
+    subscribeRendererLog,
+    rendererLogSnapshot,
+    rendererLogSnapshot,
+  );
   const logs = useMemo(
     () =>
       breadcrumbs.length === 0
         ? snapshot.logs
         : [...snapshot.logs, ...breadcrumbs].sort((a, b) => a.timestamp.localeCompare(b.timestamp)),
-    [breadcrumbs, snapshot.logs]
+    [breadcrumbs, snapshot.logs],
   );
   const clearLogs = useCallback((): void => {
     snapshot.clear();
@@ -95,7 +108,11 @@ export function DebugPanel({
   return (
     <aside className="debug-panel" aria-label="Debug panel">
       {onResizePanelMouseDown ? (
-        <div className="panel-col-resize-handle" aria-hidden="true" onMouseDown={onResizePanelMouseDown} />
+        <div
+          className="panel-col-resize-handle"
+          aria-hidden="true"
+          onMouseDown={onResizePanelMouseDown}
+        />
       ) : null}
       <div className="debug-header">
         <div className="debug-tabs" role="tablist" aria-label="Debug views">
@@ -126,7 +143,9 @@ export function DebugPanel({
       </div>
 
       {tab === "trace" ? <DebugTraceTab events={events} rawOutputs={rawOutputs} /> : null}
-      {tab === "logs" ? <DebugLogsTab logs={logs} error={snapshot.error} onClear={clearLogs} /> : null}
+      {tab === "logs" ? (
+        <DebugLogsTab logs={logs} error={snapshot.error} onClear={clearLogs} />
+      ) : null}
       {tab === "ipc" ? <DebugIpcTab stats={snapshot.ipcStats} error={snapshot.error} /> : null}
 
       <DebugIdentity session={session} workspace={workspace} />
@@ -136,7 +155,7 @@ export function DebugPanel({
 
 function DebugIdentity({
   session,
-  workspace
+  workspace,
 }: {
   session: SessionSummary | null;
   workspace: WorkspaceSummary | null;
@@ -160,7 +179,12 @@ function DebugIdentity({
           <span>No session</span>
         )}
       </span>
-      <button type="button" onClick={() => void copy(ids)} title={ids} aria-label="Copy session and workspace ids">
+      <button
+        type="button"
+        onClick={() => void copy(ids)}
+        title={ids}
+        aria-label="Copy session and workspace ids"
+      >
         {flash === "copied" ? "Copied ids" : flash === "failed" ? "Couldn't copy" : "Copy ids"}
       </button>
     </footer>

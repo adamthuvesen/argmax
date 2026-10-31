@@ -12,11 +12,18 @@ function renderLauncher(check: ProjectCheck) {
   const current = primaryProject();
   const other = { ...current, id: "project-argmax", name: "argmax", repoPath: "/tmp/argmax" };
   vi.mocked(window.argmax!.projects.checkPrompt).mockResolvedValue(check);
-  const launchLocal = vi.fn().mockResolvedValue({ sessionId: "session-new", workspaceId: "workspace-new" });
+  const launchLocal = vi
+    .fn()
+    .mockResolvedValue({ sessionId: "session-new", workspaceId: "workspace-new" });
   render(
     <LaunchSurface
       autoRouting
-      model={{ provider: "claude", modelId: "claude-fable-5-1", label: "Fable 5.1", reasoningEffort: "medium" }}
+      model={{
+        provider: "claude",
+        modelId: "claude-fable-5-1",
+        label: "Fable 5.1",
+        reasoningEffort: "medium",
+      }}
       onAddProject={vi.fn()}
       onBranchSwitch={vi.fn()}
       onLaunchTask={launchLocal}
@@ -24,7 +31,7 @@ function renderLauncher(check: ProjectCheck) {
       onSelectProject={vi.fn()}
       project={current}
       projects={[current, other]}
-    />
+    />,
   );
   return { current, other, launchLocal };
 }
@@ -42,7 +49,7 @@ function checkWith(decision: "suggest" | "switch"): ProjectCheck {
     suggestedProjectId: "project-argmax",
     suggestedProbability: 0.98,
     currentProbability: 0.01,
-    reasons: ["Mentions argmax", "Jev 98% sure"]
+    reasons: ["Mentions argmax", "Jev 98% sure"],
   };
 }
 
@@ -80,8 +87,8 @@ describe("Project check in the launcher", () => {
       expect(window.argmax!.projects.resolveCheck).toHaveBeenCalledWith({
         checkId: "check-1",
         outcome: "accepted",
-        sessionId: "session-new"
-      })
+        sessionId: "session-new",
+      }),
     );
   });
 
@@ -96,7 +103,9 @@ describe("Project check in the launcher", () => {
     await waitFor(() => expect(launchLocal).toHaveBeenCalledOnce());
     expect(launchLocal.mock.calls[0]?.[6]).toBeUndefined();
     await waitFor(() =>
-      expect(window.argmax!.projects.resolveCheck).toHaveBeenCalledWith(expect.objectContaining({ outcome: "stayed" }))
+      expect(window.argmax!.projects.resolveCheck).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: "stayed" }),
+      ),
     );
   });
 
@@ -111,7 +120,7 @@ describe("Project check in the launcher", () => {
     expect(screen.getByLabelText("Task prompt")).toHaveValue(PROMPT);
     expect(launchLocal).not.toHaveBeenCalled();
     expect(window.argmax!.projects.resolveCheck).toHaveBeenCalledWith(
-      expect.objectContaining({ outcome: "cancelled" })
+      expect.objectContaining({ outcome: "cancelled" }),
     );
   });
 
@@ -133,7 +142,9 @@ describe("Project check in the launcher", () => {
     expect(archive).toHaveBeenCalledWith({ workspaceId: "workspace-new", force: true });
     expect(launchLocal.mock.calls[1]?.[0]).toBe(PROMPT);
     expect(launchLocal.mock.calls[1]?.[6]).toBe(current.id);
-    expect(window.argmax!.projects.resolveCheck).toHaveBeenCalledWith(expect.objectContaining({ outcome: "undone" }));
+    expect(window.argmax!.projects.resolveCheck).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "undone" }),
+    );
   });
 
   it("keeps the picked branch for the launch it was picked for, through a switch and its Undo", async () => {
@@ -141,20 +152,20 @@ describe("Project check in the launcher", () => {
     vi.mocked(window.argmax!.projects.listBranches).mockResolvedValue(["main", "feature"]);
     vi.mocked(window.argmax!.projects.listCheckouts).mockResolvedValue([
       { branch: "main", path: current.repoPath, isMain: true },
-      { branch: "feature", path: "/tmp/worktrees/feature", isMain: false }
+      { branch: "feature", path: "/tmp/worktrees/feature", isMain: false },
     ]);
     fireEvent.click(await screen.findByRole("button", { name: "Switch branch" }));
     fireEvent.click(
       within(await screen.findByRole("listbox", { name: "Select branch" })).getByRole("button", {
-        name: "feature"
-      })
+        name: "feature",
+      }),
     );
     const pick = {
       projectId: current.id,
       projectFolderId: `${current.id}:primary`,
       branch: "feature",
       path: "/tmp/worktrees/feature",
-      isMain: false
+      isMain: false,
     };
 
     await submit();

@@ -54,7 +54,7 @@ function run(command, args, options = {}) {
     const child = spawn(command, args, {
       cwd: repoRoot,
       stdio: ["ignore", "pipe", "pipe"],
-      ...options
+      ...options,
     });
     let stdout = "";
     let stderr = "";
@@ -951,10 +951,14 @@ async function main() {
   try {
     const port = await freePort();
     const fixtureUrl = `http://127.0.0.1:${port}/${path.basename(fixtureDir)}/index.html`;
-    vite = spawn(process.execPath, [viteEntry, "--host", "127.0.0.1", "--port", String(port), "--strictPort"], {
-      cwd: repoRoot,
-      stdio: ["ignore", "ignore", "pipe"]
-    });
+    vite = spawn(
+      process.execPath,
+      [viteEntry, "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
+      {
+        cwd: repoRoot,
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    );
     let viteErrors = "";
     vite.stderr.on("data", (chunk) => {
       viteErrors += String(chunk);
@@ -984,7 +988,7 @@ async function main() {
       "--settle",
       "0",
       "--eval",
-      expression
+      expression,
     ]);
     if (shot.code !== 0) {
       fail(`browser check could not run:\n${shot.stderr || shot.stdout || viteErrors}`);
@@ -1004,13 +1008,13 @@ async function main() {
               scrollTopBefore: failure.before?.scrollTop ?? null,
               scrollTopAfter: failure.after?.scrollTop ?? null,
               scrollHeightBefore: failure.before?.scrollHeight ?? null,
-              scrollHeightAfter: failure.after?.scrollHeight ?? null
+              scrollHeightAfter: failure.after?.scrollHeight ?? null,
             })),
-            results
+            results,
           },
           null,
-          2
-        )
+          2,
+        ),
       );
       if (failures.length > 0) process.exitCode = 1;
     }

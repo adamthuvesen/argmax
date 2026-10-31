@@ -41,7 +41,7 @@ export function useReviewDiff(args: {
     enabled = true,
     preloadFirstFile = false,
     autoSelectFirstFile,
-    onOpenChanges
+    onOpenChanges,
   } = args;
 
   const [files, setFiles] = useState<ChangedFileSummary[]>([]);
@@ -58,7 +58,8 @@ export function useReviewDiff(args: {
     filePath: string;
     lines: number;
   } | null>(null);
-  const contextLines = expandedContext && expandedContext.filePath === selectedFilePath ? expandedContext.lines : null;
+  const contextLines =
+    expandedContext && expandedContext.filePath === selectedFilePath ? expandedContext.lines : null;
 
   const fileLoadToken = useRef(0);
   const diffLoadToken = useRef(0);
@@ -110,7 +111,13 @@ export function useReviewDiff(args: {
     }
 
     if (!enabled) return;
-    const requestKey = JSON.stringify([sourceKind, sourceId, comparison, changedFilesKey, actionRevision]);
+    const requestKey = JSON.stringify([
+      sourceKind,
+      sourceId,
+      comparison,
+      changedFilesKey,
+      actionRevision,
+    ]);
     if (loadedFilesKey.current === requestKey) return;
     loadedFilesKey.current = null;
 
@@ -141,7 +148,7 @@ export function useReviewDiff(args: {
         // Keep the open file selected if it survived the refresh. Opening the
         // Changes view selects a replacement in the effect below.
         setSelectedFilePath((currentPath) =>
-          currentPath && sorted.some((file) => file.path === currentPath) ? currentPath : null
+          currentPath && sorted.some((file) => file.path === currentPath) ? currentPath : null,
         );
       })
       .catch((error) => {
@@ -154,7 +161,16 @@ export function useReviewDiff(args: {
       });
     // Opening Changes retries a failed speculative load. A completed request
     // is reused above, so a successful preload never causes a second Git read.
-  }, [enabled, autoSelectFirstFile, sourceId, sourceKind, changedFilesKey, comparison, dispatch, actionRevision]);
+  }, [
+    enabled,
+    autoSelectFirstFile,
+    sourceId,
+    sourceKind,
+    changedFilesKey,
+    comparison,
+    dispatch,
+    actionRevision,
+  ]);
 
   useEffect(() => {
     setSelectedFilePath((currentPath) => {
@@ -165,7 +181,8 @@ export function useReviewDiff(args: {
     });
   }, [autoSelectFirstFile, files]);
 
-  const requestedFilePath = selectedFilePath ?? (preloadFirstFile ? (files[0]?.path ?? null) : null);
+  const requestedFilePath =
+    selectedFilePath ?? (preloadFirstFile ? (files[0]?.path ?? null) : null);
   useEffect(() => {
     const token = ++diffLoadToken.current;
     if (!sourceId || !sourceKind || !requestedFilePath || !dispatch || !window.argmax) {
@@ -186,7 +203,7 @@ export function useReviewDiff(args: {
       changedFilesKey,
       actionRevision,
       requestedFilePath,
-      contextLines
+      contextLines,
     ]);
     if (loadedDiffKey.current === requestKey) return;
     loadedDiffKey.current = null;
@@ -234,7 +251,10 @@ export function useReviewDiff(args: {
         }
         while (
           diffCache.current.size > 12 ||
-          [...diffCache.current.values()].reduce((size, entry) => size + entry.content.length * 2, 0) >
+          [...diffCache.current.values()].reduce(
+            (size, entry) => size + entry.content.length * 2,
+            0,
+          ) >
             8 * 1_024 * 1_024
         ) {
           const oldest = diffCache.current.keys().next().value;
@@ -262,7 +282,7 @@ export function useReviewDiff(args: {
     comparison,
     contextLines,
     dispatch,
-    actionRevision
+    actionRevision,
   ]);
 
   const openFile = useCallback(
@@ -270,7 +290,7 @@ export function useReviewDiff(args: {
       setSelectedFilePath(filePath);
       onOpenChanges();
     },
-    [onOpenChanges]
+    [onOpenChanges],
   );
 
   const refreshChanges = useCallback((): void => {
@@ -297,6 +317,6 @@ export function useReviewDiff(args: {
     openFile,
     refreshChanges,
     resetForSourceChange,
-    expandDiffContext
+    expandDiffContext,
   };
 }

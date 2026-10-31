@@ -1,6 +1,21 @@
 import { ChevronRight } from "lucide-react";
-import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
-import type { NativeAgentIdentity, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+} from "react";
+import type {
+  NativeAgentIdentity,
+  SessionSummary,
+  TimelineEvent,
+  WorkspaceSummary,
+} from "../../shared/types.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useConversationScroll } from "../hooks/useConversationScroll.js";
 import { ScrollToLatestButton } from "./ScrollToLatestButton.js";
@@ -8,7 +23,7 @@ import {
   buildAgentActivity,
   persistentAgentRuns,
   type AgentActivity as AgentActivityModel,
-  type AgentModel
+  type AgentModel,
 } from "../lib/agentActivity.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import { importChunk } from "../lib/importChunk.js";
@@ -21,15 +36,20 @@ import {
   coalesceAssistantGroups,
   lastThinkingGroupId,
   preToolNarrationGroupIds,
-  type AssistantGroup
+  type AssistantGroup,
 } from "../lib/sessionTurnView.js";
-import { buildToolCallGroup, isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
+import {
+  buildToolCallGroup,
+  isAgentToolName,
+  type ToolCall,
+  type TurnToolItem,
+} from "../lib/toolCalls.js";
 import { collectTurnFileChanges } from "../lib/turnFileChanges.js";
 import {
   foldActivityRunsToSummaries,
   foldToolRunsToSummaries,
   type ActivityRun,
-  type TurnBodyChild
+  type TurnBodyChild,
 } from "../lib/turnChildren.js";
 import { foldTurnToolItems, latestToolCreatedAt } from "../lib/turnToolItems.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
@@ -47,7 +67,9 @@ import { TurnChangesCard } from "./TurnChangesCard.js";
 import { TurnBlock } from "./TurnBlock.js";
 
 const HtmlVisualization = lazy(() =>
-  importChunk(async () => ({ default: (await import("./HtmlVisualization.js")).HtmlVisualization }))
+  importChunk(async () => ({
+    default: (await import("./HtmlVisualization.js")).HtmlVisualization,
+  })),
 );
 
 /**
@@ -63,7 +85,7 @@ function AgentHeader({
   codename,
   subagentType,
   model,
-  phaseKey
+  phaseKey,
 }: {
   title: string;
   status: AgentActivityModel["status"];
@@ -76,7 +98,7 @@ function AgentHeader({
   // `general-purpose`); the line reads as prose, so they get a capital.
   const role = subagentType ? subagentType.charAt(0).toUpperCase() + subagentType.slice(1) : null;
   const facts = [codename, role, model?.label, model?.effort].filter(
-    (fact): fact is string => typeof fact === "string" && fact.length > 0
+    (fact): fact is string => typeof fact === "string" && fact.length > 0,
   );
   const emblem = emblemForCodename(codename ?? fallbackCodename(phaseKey));
   const statusLabel = AGENT_STATUS_LABEL[status];
@@ -92,7 +114,12 @@ function AgentHeader({
             identity, sitting above a transcript that already streams and beside
             a tab strip that already carries the status. Even a still nest here
             reads as a second status ticker. */}
-        <AgentEmblem shape={emblem.shape} hue={emblem.hue} size={18} status={status === "error" ? "error" : "done"} />
+        <AgentEmblem
+          shape={emblem.shape}
+          hue={emblem.hue}
+          size={18}
+          status={status === "error" ? "error" : "done"}
+        />
       </span>
       <div className="agent-activity-heading">
         <h2 className="agent-activity-title" title={title}>
@@ -127,7 +154,7 @@ const AGENT_STATUS_LABEL: Record<AgentActivityModel["status"], string | null> = 
   running: "Working",
   done: "Done",
   error: "Failed",
-  missing: null
+  missing: null,
 };
 
 function renderAssistantGroup({
@@ -140,7 +167,7 @@ function renderAssistantGroup({
   agentKey,
   workspace,
   onOpenFile,
-  restoring
+  restoring,
 }: {
   group: AssistantGroup;
   thinkingLive: boolean;
@@ -219,7 +246,7 @@ function renderAssistantGroup({
 function AgentResult({
   finalOutput,
   workspace,
-  onOpenFile
+  onOpenFile,
 }: {
   finalOutput: string;
   workspace: WorkspaceSummary | null;
@@ -230,7 +257,12 @@ function AgentResult({
     // the pane already say "this is the answer", and subagent output usually
     // opens with its own heading. `aria-label` carries the name instead.
     <section className="agent-activity-final" aria-label="Agent result">
-      <StreamingMarkdown text={finalOutput} streaming={false} workspace={workspace} onOpenFile={onOpenFile} />
+      <StreamingMarkdown
+        text={finalOutput}
+        streaming={false}
+        workspace={workspace}
+        onOpenFile={onOpenFile}
+      />
     </section>
   );
 }
@@ -252,7 +284,7 @@ function AgentBrief({
   expanded,
   onExpand,
   workspace,
-  onOpenFile
+  onOpenFile,
 }: {
   prompt: string;
   expanded: boolean;
@@ -275,7 +307,9 @@ function AgentBrief({
       }
       const lineHeight = parseFloat(getComputedStyle(node).lineHeight);
       const overflow = node.scrollHeight - node.clientHeight;
-      setHiddenLines(overflow > 1 && lineHeight > 0 ? Math.max(1, Math.round(overflow / lineHeight)) : 0);
+      setHiddenLines(
+        overflow > 1 && lineHeight > 0 ? Math.max(1, Math.round(overflow / lineHeight)) : 0,
+      );
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -311,7 +345,12 @@ function AgentBrief({
             : undefined
         }
       >
-        <StreamingMarkdown text={prompt} streaming={false} workspace={workspace} onOpenFile={onOpenFile} />
+        <StreamingMarkdown
+          text={prompt}
+          streaming={false}
+          workspace={workspace}
+          onOpenFile={onOpenFile}
+        />
       </div>
       {clipped ? (
         <button type="button" className="agent-activity-brief-more" onClick={onExpand}>
@@ -343,7 +382,7 @@ function AgentActivityRun({
   providerInvocationId = null,
   nativeIdentity = null,
   historyHydrated,
-  ownsScroll = true
+  ownsScroll = true,
 }: {
   events: TimelineEvent[];
   codename?: string;
@@ -359,7 +398,7 @@ function AgentActivityRun({
   onLoadAgentEvents?: (
     sessionId: string,
     parentToolUseId: string,
-    identity?: NativeAgentIdentity
+    identity?: NativeAgentIdentity,
   ) => Promise<void | { hasMore: boolean }>;
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onOpenAgent?: (tool: ToolCall) => void;
@@ -381,7 +420,7 @@ function AgentActivityRun({
   const parentSessionId = parentSession?.id ?? null;
   const visibleEvents = useMemo(
     () => (parentSessionId ? events.filter((event) => event.sessionId === parentSessionId) : []),
-    [events, parentSessionId]
+    [events, parentSessionId],
   );
   const activity = useMemo(
     () =>
@@ -392,8 +431,9 @@ function AgentActivityRun({
         nativeIdentity,
         events: visibleEvents,
         sessionRunning: parentSession?.state === "running",
-        sessionInterrupted: parentSession?.state === "failed" || parentSession?.state === "cancelled",
-        provider: parentSession?.provider
+        sessionInterrupted:
+          parentSession?.state === "failed" || parentSession?.state === "cancelled",
+        provider: parentSession?.provider,
       }),
     [
       agentRunId,
@@ -402,8 +442,8 @@ function AgentActivityRun({
       parentSession?.state,
       parentToolUseId,
       providerInvocationId,
-      visibleEvents
-    ]
+      visibleEvents,
+    ],
   );
   const finalOutput = activity.finalOutput;
   // Per-agent state needs no reset when the run changes: the dock mounts one
@@ -416,7 +456,9 @@ function AgentActivityRun({
   // the chip folds it away for a run whose brief is already known.
   const [briefShown, setBriefShown] = useState(true);
   const [briefExpanded, setBriefExpanded] = useState(false);
-  const agentKey = parentSessionId ? `${parentSessionId}:${parentToolUseId}:${agentRunId ?? "legacy"}` : null;
+  const agentKey = parentSessionId
+    ? `${parentSessionId}:${parentToolUseId}:${agentRunId ?? "legacy"}`
+    : null;
   const [loadedAgentKey, setLoadedAgentKey] = useState<string | null>(null);
   const [failedAgentKey, setFailedAgentKey] = useState<string | null>(null);
   const [loadingAgentKey, setLoadingAgentKey] = useState<string | null>(null);
@@ -424,7 +466,7 @@ function AgentActivityRun({
   const agentEventsInFlightKeysRef = useRef(new Set<string>());
   const followItems = useMemo(
     () => [...activity.items, finalOutput, activity.status],
-    [activity.items, finalOutput, activity.status]
+    [activity.items, finalOutput, activity.status],
   );
   const streaming = parentSession?.state === "running" && activity.status === "running";
   // A subagent run is one turn, so it plays the part the chat's *latest* turn
@@ -434,7 +476,8 @@ function AgentActivityRun({
   // result until the chip is opened.
   const minimalActivity = defaultToolCallsDisplay === "single-line";
   const compactThinkingDisplay = thinkingDisplay ?? "collapsed";
-  const compactToolSummaries = defaultToolCallsDisplay === "collapsed" && defaultToolCallGroupsExpanded !== true;
+  const compactToolSummaries =
+    defaultToolCallsDisplay === "collapsed" && defaultToolCallGroupsExpanded !== true;
   const compactActivity = compactToolSummaries && compactThinkingDisplay === "collapsed";
   const activityExpandedDefault =
     !minimalActivity && (defaultToolCallGroupsExpanded ?? defaultToolCallsDisplay === "expanded");
@@ -443,43 +486,54 @@ function AgentActivityRun({
   // Detailed opens individual rows as well as groups. A nested
   // launch row follows that rather than the group level, because what its
   // chevron reveals is the raw launch receipt, not the grandchild's work.
-  const toolRowsExpanded = !minimalActivity && (activityExpandOverride ?? defaultToolCallsDisplay === "expanded");
+  const toolRowsExpanded =
+    !minimalActivity && (activityExpandOverride ?? defaultToolCallsDisplay === "expanded");
   // `loadedAgentKey` is set in the load's `finally`, so this clears whether the
   // read succeeded or failed — a pane that never settled would keep motion
   // suppressed for good.
-  const initialAgentEventsLoadPending = Boolean(agentKey && onLoadAgentEvents && loadedAgentKey !== agentKey);
+  const initialAgentEventsLoadPending = Boolean(
+    agentKey && onLoadAgentEvents && loadedAgentKey !== agentKey,
+  );
   // Restored turns must not replay their entrance animation on every reopen,
   // and the run's trace only arrives once `loadAgentEvents` has answered — so
   // the window runs from there, not from mount. Timed from mount it expired
   // first, and the whole run then animated and typed itself out as if it had
   // just happened.
-  const restoringTranscript = useRestoreWithoutMotion(historyHydrated ?? !initialAgentEventsLoadPending);
+  const restoringTranscript = useRestoreWithoutMotion(
+    historyHydrated ?? !initialAgentEventsLoadPending,
+  );
   const { activityChildren, toolItems, assistantTimestamps, silentSinceMs } = useMemo((): {
     activityChildren: TurnBodyChild[];
     toolItems: TurnToolItem[];
     assistantTimestamps: number[];
     silentSinceMs: number | null;
   } => {
-    const assistantEvents = activity.items.flatMap((item) => (item.kind === "message" ? [item.event] : []));
+    const assistantEvents = activity.items.flatMap((item) =>
+      item.kind === "message" ? [item.event] : [],
+    );
     const tools = activity.items.flatMap((item) => (item.kind === "tool" ? [item.tool] : []));
     // Attach child calls before interleaving individual tools with prose.
     const folded = foldTurnToolItems(
-      foldConversationItems([], tools).flatMap((item): TurnToolItem[] => (item.kind === "message" ? [] : [item]))
+      foldConversationItems([], tools).flatMap((item): TurnToolItem[] =>
+        item.kind === "message" ? [] : [item],
+      ),
     );
     const assistantGroups = coalesceAssistantGroups(assistantEvents, {
       splitAt: tools.map((tool) => tool.createdAt).sort(),
-      streaming
+      streaming,
     });
-    const hasAnswerText = assistantGroups.some((group) => !group.thinking && assistantGroupHasVisibleChat(group));
+    const hasAnswerText = assistantGroups.some(
+      (group) => !group.thinking && assistantGroupHasVisibleChat(group),
+    );
     const thinkingLive = streaming && !hasAnswerText;
     const latestGroup = assistantGroups.at(-1);
     const latestToolAt = tools.reduce(
       (latest, tool) => Math.max(latest, Date.parse(tool.completedAt ?? tool.createdAt)),
-      0
+      0,
     );
     const latestAssistantEvent = assistantEvents.reduce<TimelineEvent | undefined>(
       (latest, event) => (!latest || event.createdAt >= latest.createdAt ? event : latest),
-      undefined
+      undefined,
     );
     const latestMessage = latestAssistantEvent ? decodeTimelineEvent(latestAssistantEvent) : null;
     // Groups keep `streaming` for the text reveal after message.completed.
@@ -500,7 +554,11 @@ function AgentActivityRun({
       !(thinkingLive && assistantGroups.some((group) => group.thinking))
         ? Math.max(
             latestToolAt,
-            latestGroup ? Date.parse(latestGroup.thinking ? latestGroup.createdAt : latestGroup.lastActivityAt) : 0
+            latestGroup
+              ? Date.parse(
+                  latestGroup.thinking ? latestGroup.createdAt : latestGroup.lastActivityAt,
+                )
+              : 0,
           )
         : null;
     // Only the run's newest reasoning burst is live: tool boundaries flush a
@@ -513,86 +571,90 @@ function AgentActivityRun({
       minimalActivity && !streaming && !activityExpanded ? latestToolCreatedAt(folded) : null,
       // The pane renders the run's answer as its own result panel, so there is
       // no last prose group worth keeping to stand in for one.
-      { separateAnswer: finalOutput !== null }
+      { separateAnswer: finalOutput !== null },
     );
-    const assistantChildren = assistantGroups.flatMap<TurnBodyChild & { createdAt: string; sortAt: string }>(
-      (group) => {
-        const groupLive = thinkingLive && group.id === liveThoughtGroupId;
-        // Minimal folds settled Thought blocks away entirely — only the live
-        // "Thinking" indicator survives.
-        if (minimalActivity && group.thinking && !groupLive) return [];
-        if (hiddenNarrationIds.has(group.id)) {
-          return [
-            {
-              kind: "assistant" as const,
-              id: `assistant-${group.id}`,
-              createdAt: group.createdAt,
-              sortAt: group.lastActivityAt,
-              node: null
-            }
-          ];
-        }
-        const node = renderAssistantGroup({
-          group,
-          thinkingLive: groupLive,
-          thoughtExpanded: activityExpandOverride ?? false,
-          autoExpandWhileLive: !compactActivity,
-          thinkingDisplay,
-          // Keyed on the group, not on `groupLive`: the hold has to outlast live
-          // so the newest block is still open when the answer lands under it.
-          holdThoughtOpen: activityExpandOverride !== false && group.id === liveThoughtGroupId,
-          agentKey,
-          workspace,
-          onOpenFile,
-          restoring: restoringTranscript
-        });
-        if (node === null) return [];
+    const assistantChildren = assistantGroups.flatMap<
+      TurnBodyChild & { createdAt: string; sortAt: string }
+    >((group) => {
+      const groupLive = thinkingLive && group.id === liveThoughtGroupId;
+      // Minimal folds settled Thought blocks away entirely — only the live
+      // "Thinking" indicator survives.
+      if (minimalActivity && group.thinking && !groupLive) return [];
+      if (hiddenNarrationIds.has(group.id)) {
         return [
           {
             kind: "assistant" as const,
             id: `assistant-${group.id}`,
             createdAt: group.createdAt,
             sortAt: group.lastActivityAt,
-            node,
-            activity: group.thinking,
-            ...(compactActivity && group.thinking
-              ? {
-                  activityMember: {
-                    kind: "thought" as const,
-                    id: group.id,
-                    node,
-                    live: groupLive
-                  }
-                }
-              : {})
-          }
+            node: null,
+          },
         ];
       }
-    );
-    const toolChildren: (TurnBodyChild & { createdAt: string; sortAt: string; runTools?: ToolCall[] })[] = folded.map(
-      (item) => {
-        return {
-          kind: "tool" as const,
-          id: `tool-${item.tool.id}`,
-          createdAt: item.tool.createdAt,
-          sortAt: item.tool.createdAt,
-          // A nested launch stays its own row at every verbosity, Compact
-          // included: it is the pane's only handle on the grandchild's work.
-          runTools: isAgentToolName(item.tool.name) ? undefined : [item.tool, ...(item.children ?? [])],
-          node: (
-            <ToolCallRow
-              key={item.tool.id}
-              tool={item.tool}
-              childTools={item.children}
-              defaultExpanded={toolRowsExpanded}
-              workspaceCwd={workspace?.path ?? null}
-              onOpenFile={onOpenFile}
-              onOpenAgent={onOpenAgent}
-            />
-          )
-        };
-      }
-    );
+      const node = renderAssistantGroup({
+        group,
+        thinkingLive: groupLive,
+        thoughtExpanded: activityExpandOverride ?? false,
+        autoExpandWhileLive: !compactActivity,
+        thinkingDisplay,
+        // Keyed on the group, not on `groupLive`: the hold has to outlast live
+        // so the newest block is still open when the answer lands under it.
+        holdThoughtOpen: activityExpandOverride !== false && group.id === liveThoughtGroupId,
+        agentKey,
+        workspace,
+        onOpenFile,
+        restoring: restoringTranscript,
+      });
+      if (node === null) return [];
+      return [
+        {
+          kind: "assistant" as const,
+          id: `assistant-${group.id}`,
+          createdAt: group.createdAt,
+          sortAt: group.lastActivityAt,
+          node,
+          activity: group.thinking,
+          ...(compactActivity && group.thinking
+            ? {
+                activityMember: {
+                  kind: "thought" as const,
+                  id: group.id,
+                  node,
+                  live: groupLive,
+                },
+              }
+            : {}),
+        },
+      ];
+    });
+    const toolChildren: (TurnBodyChild & {
+      createdAt: string;
+      sortAt: string;
+      runTools?: ToolCall[];
+    })[] = folded.map((item) => {
+      return {
+        kind: "tool" as const,
+        id: `tool-${item.tool.id}`,
+        createdAt: item.tool.createdAt,
+        sortAt: item.tool.createdAt,
+        // A nested launch stays its own row at every verbosity, Compact
+        // included: it is the pane's only handle on the grandchild's work.
+        runTools: isAgentToolName(item.tool.name)
+          ? undefined
+          : [item.tool, ...(item.children ?? [])],
+        node: (
+          <ToolCallRow
+            key={item.tool.id}
+            tool={item.tool}
+            childTools={item.children}
+            defaultExpanded={toolRowsExpanded}
+            workspaceCwd={workspace?.path ?? null}
+            onOpenFile={onOpenFile}
+            onOpenAgent={onOpenAgent}
+          />
+        ),
+      };
+    });
     const sorted = [...assistantChildren, ...toolChildren].sort((a, b) => {
       const cmp = a.sortAt.localeCompare(b.sortAt);
       if (cmp !== 0) return cmp;
@@ -615,7 +677,9 @@ function AgentActivityRun({
     const bodySource = (
       compactActivity
         ? foldActivityRunsToSummaries(sorted, renderActivityGroup)
-        : foldToolRunsToSummaries(sorted, (runTools) => renderActivityGroup({ tools: runTools, members: [] }))
+        : foldToolRunsToSummaries(sorted, (runTools) =>
+            renderActivityGroup({ tools: runTools, members: [] }),
+          )
     ).filter((child) => child.node !== null);
     return {
       activityChildren: bodySource.map(({ kind, id, node }) => ({ kind, id, node })),
@@ -623,7 +687,7 @@ function AgentActivityRun({
       silentSinceMs,
       assistantTimestamps: assistantEvents
         .map((event) => Date.parse(event.createdAt))
-        .filter((ms) => Number.isFinite(ms))
+        .filter((ms) => Number.isFinite(ms)),
     };
   }, [
     activity.items,
@@ -641,16 +705,21 @@ function AgentActivityRun({
     restoringTranscript,
     streaming,
     toolRowsExpanded,
-    workspace
+    workspace,
   ]);
   const { scrollRef, contentRef, follow, scrollToBottom } = useConversationScroll({
     sessionId: agentKey,
     items: followItems,
-    enabled: ownsScroll
+    enabled: ownsScroll,
   });
   const loadAgentEventsGuarded = useCallback(async (): Promise<void> => {
     const loadKey = agentKey;
-    if (!parentSessionId || !onLoadAgentEvents || !loadKey || agentEventsInFlightKeysRef.current.has(loadKey)) {
+    if (
+      !parentSessionId ||
+      !onLoadAgentEvents ||
+      !loadKey ||
+      agentEventsInFlightKeysRef.current.has(loadKey)
+    ) {
       return;
     }
     agentEventsInFlightKeysRef.current.add(loadKey);
@@ -658,14 +727,17 @@ function AgentActivityRun({
     try {
       const identity =
         nativeIdentity ??
-        (activity.parentTool?.providerParentConversationId && activity.parentTool.providerChildSessionId
+        (activity.parentTool?.providerParentConversationId &&
+        activity.parentTool.providerChildSessionId
           ? {
               providerParentConversationId: activity.parentTool.providerParentConversationId,
-              providerChildSessionId: activity.parentTool.providerChildSessionId
+              providerChildSessionId: activity.parentTool.providerChildSessionId,
             }
           : undefined);
       const result = await onLoadAgentEvents(parentSessionId, parentToolUseId, identity);
-      setLimitedHistoryKey(result?.hasMore ? loadKey : (currentKey) => (currentKey === loadKey ? null : currentKey));
+      setLimitedHistoryKey(
+        result?.hasMore ? loadKey : (currentKey) => (currentKey === loadKey ? null : currentKey),
+      );
       setFailedAgentKey((currentKey) => (currentKey === loadKey ? null : currentKey));
     } catch {
       setFailedAgentKey(loadKey);
@@ -681,7 +753,7 @@ function AgentActivityRun({
     nativeIdentity,
     onLoadAgentEvents,
     parentSessionId,
-    parentToolUseId
+    parentToolUseId,
   ]);
 
   // Both load effects below run for *this agent*, not for whatever identity
@@ -740,16 +812,20 @@ function AgentActivityRun({
   }, [activity.parentTool?.createdAt]);
   // Minimal collapses the whole body away, so a run with tools but no visible
   // child is still a rendered run, not a pane still waiting for one.
-  const hasRenderedActivity = activityChildren.length > 0 || toolItems.length > 0 || finalOutput !== null;
+  const hasRenderedActivity =
+    activityChildren.length > 0 || toolItems.length > 0 || finalOutput !== null;
   // Key on the agent's own status, not the parent's: a follow-up turn sets the
   // parent running again while an agent the cancelled turn left behind is dead.
   const waitingForRunningAgentActivity = activity.status === "running" && activity.limited;
   const showLoadFailureNotice = failedAgentKey === agentKey;
   const showAgentActivityThinking =
-    (loadingAgentKey === agentKey || initialAgentEventsLoadPending || waitingForRunningAgentActivity) &&
+    (loadingAgentKey === agentKey ||
+      initialAgentEventsLoadPending ||
+      waitingForRunningAgentActivity) &&
     !hasRenderedActivity &&
     !showLoadFailureNotice;
-  const showLimitedNotice = activity.limited && !showAgentActivityThinking && !showLoadFailureNotice;
+  const showLimitedNotice =
+    activity.limited && !showAgentActivityThinking && !showLoadFailureNotice;
   const hasRun = activityChildren.length > 0 || toolItems.length > 0;
   // The brief's toggle joins the run's header row rather than drawing a
   // second hairline above it: one band, the control on the left and the
@@ -781,7 +857,7 @@ function AgentActivityRun({
             workspace={workspace}
             {...(onOpenFile ? { onOpenFile } : {})}
           />
-        ) : null
+        ) : null,
       }
     : null;
   const runChanges = useMemo(() => collectTurnFileChanges(toolItems), [toolItems]);
@@ -790,7 +866,11 @@ function AgentActivityRun({
     <VisualizationSessionContext.Provider value={parentSession?.id ?? null}>
       <section
         className="agent-activity"
-        aria-label={codename ? `Agent activity: ${codename} — ${activity.title}` : `Agent activity: ${activity.title}`}
+        aria-label={
+          codename
+            ? `Agent activity: ${codename} — ${activity.title}`
+            : `Agent activity: ${activity.title}`
+        }
         data-focused={isFocused ? "true" : undefined}
       >
         <AgentHeader
@@ -821,7 +901,10 @@ function AgentActivityRun({
 
               {showAgentActivityThinking ? (
                 <div className="agent-activity-empty" role="status">
-                  <ThinkingLabel phaseKey={agentKey ?? parentToolUseId} startedAtMs={launchedAtMs ?? undefined} />
+                  <ThinkingLabel
+                    phaseKey={agentKey ?? parentToolUseId}
+                    startedAtMs={launchedAtMs ?? undefined}
+                  />
                 </div>
               ) : null}
 
@@ -852,7 +935,9 @@ function AgentActivityRun({
                   isTurnActive={streaming}
                   toolsExpanded={activityExpanded}
                   onToggleTools={() => setActivityExpandOverride(!activityExpanded)}
-                  hasCollapsibleActivity={compactActivity && activityChildren.some((child) => child.kind === "tool")}
+                  hasCollapsibleActivity={
+                    compactActivity && activityChildren.some((child) => child.kind === "tool")
+                  }
                   hideWorkingWhenCollapsed={minimalActivity}
                   body={activityChildren}
                   {...(brief ? { brief } : {})}
@@ -872,7 +957,11 @@ function AgentActivityRun({
               ) : null}
 
               {finalOutput !== null ? (
-                <AgentResult finalOutput={finalOutput} workspace={workspace} onOpenFile={onOpenFile} />
+                <AgentResult
+                  finalOutput={finalOutput}
+                  workspace={workspace}
+                  onOpenFile={onOpenFile}
+                />
               ) : null}
               {!streaming && runChanges.length > 0 ? (
                 <TurnChangesCard
@@ -903,16 +992,22 @@ export function AgentActivity(props: Parameters<typeof AgentActivityRun>[0]): JS
         setHistoryHydrated(true);
       }
     },
-    [onLoadAgentEventsProp]
+    [onLoadAgentEventsProp],
   );
   const onLoadAgentEvents = onLoadAgentEventsProp ? loadAgentEvents : undefined;
   const parentSessionId = props.parentSession?.id ?? null;
-  const visibleEvents = parentSessionId ? props.events.filter((event) => event.sessionId === parentSessionId) : [];
-  const runs = persistentAgentRuns(visibleEvents, props.parentToolUseId, props.nativeIdentity ?? null);
+  const visibleEvents = parentSessionId
+    ? props.events.filter((event) => event.sessionId === parentSessionId)
+    : [];
+  const runs = persistentAgentRuns(
+    visibleEvents,
+    props.parentToolUseId,
+    props.nativeIdentity ?? null,
+  );
   const { scrollRef, contentRef, follow, scrollToBottom } = useConversationScroll({
     sessionId: `${parentSessionId}:${props.parentToolUseId}`,
     items: visibleEvents,
-    enabled: runs.length > 1
+    enabled: runs.length > 1,
   });
   if (runs.length <= 1) {
     return (
@@ -941,7 +1036,9 @@ export function AgentActivity(props: Parameters<typeof AgentActivityRun>[0]): JS
               agentRunId={run.agentRunId}
               providerInvocationId={run.providerInvocationId}
               onLoadAgentEvents={index === runs.length - 1 ? onLoadAgentEvents : undefined}
-              onLoadSessionEvents={index === runs.length - 1 ? props.onLoadSessionEvents : undefined}
+              onLoadSessionEvents={
+                index === runs.length - 1 ? props.onLoadSessionEvents : undefined
+              }
               historyHydrated={historyHydrated}
               ownsScroll={false}
             />

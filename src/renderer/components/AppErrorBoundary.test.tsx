@@ -16,7 +16,7 @@ describe("AppErrorBoundary", () => {
       render(
         <AppErrorBoundary>
           <ExplodingChild />
-        </AppErrorBoundary>
+        </AppErrorBoundary>,
       );
     } catch {
       // React 19's StrictMode-free mode lets the boundary catch; outer throw should not bubble.

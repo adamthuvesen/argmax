@@ -11,7 +11,7 @@ const PASSED_RUN: CheckRun = {
   exitCode: 0,
   summary: "ok\n2 tests passed",
   startedAt: "2026-05-12T10:00:00.000Z",
-  completedAt: "2026-05-12T10:00:12.500Z"
+  completedAt: "2026-05-12T10:00:12.500Z",
 };
 
 const FAILED_RUN: CheckRun = {
@@ -22,7 +22,7 @@ const FAILED_RUN: CheckRun = {
   exitCode: 1,
   summary: "lint error: missing semicolon",
   startedAt: "2026-05-12T10:00:30.000Z",
-  completedAt: "2026-05-12T10:00:34.000Z"
+  completedAt: "2026-05-12T10:00:34.000Z",
 };
 
 describe("ChangedFilesCard checks list", () => {
@@ -37,7 +37,7 @@ describe("ChangedFilesCard checks list", () => {
         checkCommands={["npm test", "npm run lint"]}
         checks={[PASSED_RUN, FAILED_RUN]}
         onRunCheck={vi.fn<(workspaceId: string, command: string) => Promise<void>>()}
-      />
+      />,
     );
 
     const passedRow = screen.getByLabelText("Check npm test");
@@ -51,15 +51,22 @@ describe("ChangedFilesCard checks list", () => {
 
   it("invokes onRunCheck with the workspace and command and disables the button while in flight", async () => {
     const resolvers: Array<() => void> = [];
-    const onRunCheck = vi.fn<(workspaceId: string, command: string) => Promise<void>>().mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          resolvers.push(resolve);
-        })
-    );
+    const onRunCheck = vi
+      .fn<(workspaceId: string, command: string) => Promise<void>>()
+      .mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolvers.push(resolve);
+          }),
+      );
 
     render(
-      <ChangedFilesCard workspaceId="workspace-1" checkCommands={["npm test"]} checks={[]} onRunCheck={onRunCheck} />
+      <ChangedFilesCard
+        workspaceId="workspace-1"
+        checkCommands={["npm test"]}
+        checks={[]}
+        onRunCheck={onRunCheck}
+      />,
     );
 
     const runButton = screen.getByRole("button", { name: "Run check npm test" });
@@ -80,7 +87,7 @@ describe("ChangedFilesCard checks list", () => {
         checkCommands={["npm test"]}
         checks={[PASSED_RUN]}
         onRunCheck={vi.fn<(workspaceId: string, command: string) => Promise<void>>()}
-      />
+      />,
     );
 
     expect(screen.queryByLabelText("Log for npm test")).not.toBeInTheDocument();

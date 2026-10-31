@@ -42,7 +42,7 @@ const DIST = join(ROOT, "dist/renderer");
 // `openrouter/<vendor>/<model>` ids (+148 bytes, 1,919,081, 2026-10-04).
 const ENTRIES = [
   { html: "index.html", label: "desktop", budgetBytes: 1.84 * 1024 * 1024 },
-  { html: "mobile.html", label: "mobile", budgetBytes: 1.62 * 1024 * 1024 }
+  { html: "mobile.html", label: "mobile", budgetBytes: 1.62 * 1024 * 1024 },
 ];
 
 function fail(message) {
@@ -70,7 +70,7 @@ for (const entry of ENTRIES) {
 
   const hrefs = [
     ...[...html.matchAll(ENTRY_SCRIPT)].map((match) => match[1]),
-    ...[...html.matchAll(MODULE_PRELOAD)].map((match) => match[1])
+    ...[...html.matchAll(MODULE_PRELOAD)].map((match) => match[1]),
   ];
   if (hrefs.length === 0) {
     fail(`no <script type="module"> entry found in ${htmlPath}.`);
@@ -96,12 +96,12 @@ for (const entry of ENTRIES) {
         `${hrefs.length} eager chunks, over the ${mib(entry.budgetBytes)} MiB budget. ` +
         `Largest: ${largest.href} at ${mib(largest.bytes)} MiB. ` +
         `Move the new weight behind a lazy import (see SessionPane.tsx) or a vendor chunk ` +
-        `(see vite.config.ts manualChunks).`
+        `(see vite.config.ts manualChunks).`,
     );
   }
 
   console.log(
     `ok: ${entry.label} entry (${entry.html}) loads ${mib(total)} MiB across ${hrefs.length} eager ` +
-      `chunks, within the ${mib(entry.budgetBytes)} MiB budget.`
+      `chunks, within the ${mib(entry.budgetBytes)} MiB budget.`,
   );
 }

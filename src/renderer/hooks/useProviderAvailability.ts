@@ -15,7 +15,7 @@ export function useProviderAvailability(): {
 } {
   const { data: discovered } = useBridgeQuery<DiscoveredProvider[]>({
     key: ["providers.discover"],
-    read: (api) => api.providers.discover()
+    read: (api) => api.providers.discover(),
   });
   const availability = useMemo<ProviderAvailability | undefined>(() => {
     if (!discovered) return undefined;

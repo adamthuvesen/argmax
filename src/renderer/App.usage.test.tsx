@@ -8,7 +8,7 @@ import {
   usageRemaining,
   usageRemainingFixture,
   usageSummary,
-  usageSummaryFixture
+  usageSummaryFixture,
 } from "../test/appTestHarness.js";
 
 /** Chooses an entry in an open picker menu. The row is the option; its button takes the click. */
@@ -31,8 +31,18 @@ function leavePage(): void {
  * numbers the same way ("vs the previous 30 days"), so anything that reads a
  * date or a comparison has to say which page it means.
  */
+function listItemWith(scope: HTMLElement, text: string): HTMLElement {
+  const items = within(scope)
+    .getAllByRole("listitem")
+    .filter((item) => within(item).queryByText(text) !== null);
+  expect(items).toHaveLength(1);
+  return items[0];
+}
+
 function usagePage(): HTMLElement {
-  return screen.getByRole("heading", { name: "Usage" }).closest(".usage-page") as HTMLElement;
+  const page = screen.getByTestId("usage-page");
+  expect(page).toContainElement(screen.getByRole("heading", { name: "Usage" }));
+  return page;
 }
 
 async function openUsage(): Promise<void> {
@@ -72,7 +82,7 @@ describe("App usage", () => {
   it("asks the backend for the window the user picked and relabels the range", async () => {
     await openUsage();
     expect(usageSummary).toHaveBeenCalledWith(
-      expect.objectContaining({ window: "30d", timeZone: expect.any(String) as unknown as string })
+      expect.objectContaining({ window: "30d", timeZone: expect.any(String) as unknown as string }),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Time range" }));
@@ -102,9 +112,9 @@ describe("App usage", () => {
           filesTotal: 5312,
           filesDone: 1974,
           lastCompletedAt: null,
-          pricingAsOf: "2026-09-01"
-        }
-      })
+          pricingAsOf: "2026-09-01",
+        },
+      }),
     );
     await openUsage();
 
@@ -151,7 +161,9 @@ describe("App usage", () => {
 
     fireEvent.click(claude);
 
-    expect(usageSummary).toHaveBeenCalledWith(expect.objectContaining({ window: "30d", provider: "claude" }));
+    expect(usageSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ window: "30d", provider: "claude" }),
+    );
     expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$60.00");
     expect(claude).toHaveAttribute("aria-pressed", "true");
     // The rows are the filter, so they keep every provider and their whole-window shares.
@@ -167,7 +179,10 @@ describe("App usage", () => {
 
     expect(usageSummary).toHaveBeenLastCalledWith(expect.objectContaining({ provider: null }));
     expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$100.00");
-    expect(within(rows).getByRole("button", { name: /Claude/ })).toHaveAttribute("aria-pressed", "false");
+    expect(within(rows).getByRole("button", { name: /Claude/ })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 
   it("narrows the page from the provider picker, and the picker follows a row press", async () => {
@@ -184,7 +199,10 @@ describe("App usage", () => {
     expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$40.00");
     expect(picker).toHaveTextContent("Codex");
     const rows = screen.getByRole("list", { name: "Usage by provider" });
-    expect(within(rows).getByRole("button", { name: /Codex/ })).toHaveAttribute("aria-pressed", "true");
+    expect(within(rows).getByRole("button", { name: /Codex/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
 
     fireEvent.click(within(rows).getByRole("button", { name: /Claude/ }));
 
@@ -199,7 +217,9 @@ describe("App usage", () => {
     // $100 against the previous window's $74.50. The chip is the parent of
     // the "vs …" clause; the direction is a word for a reader who cannot see
     // the caret.
-    const chip = (await within(usagePage()).findByText(/vs the previous 30 days/)).parentElement;
+    const vsClause = await within(usagePage()).findByText(/vs the previous 30 days/);
+    const chip = within(usagePage()).getByTestId("usage-hero-delta");
+    expect(chip).toContainElement(vsClause);
     expect(chip).toHaveTextContent("34%");
     expect(chip).toHaveTextContent("up");
   });
@@ -237,10 +257,9 @@ describe("App usage", () => {
     await openUsage();
 
     const rows = await screen.findByRole("list", { name: "Usage by provider" });
-    const cursor = within(rows).getByText("Cursor").closest("li");
-    expect(cursor).not.toBeNull();
-    expect(within(cursor as HTMLElement).getByText("No local usage data")).toBeInTheDocument();
-    expect(within(cursor as HTMLElement).queryByText("$0.00")).not.toBeInTheDocument();
+    const cursor = listItemWith(rows, "Cursor");
+    expect(within(cursor).getByText("No local usage data")).toBeInTheDocument();
+    expect(within(cursor).queryByText("$0.00")).not.toBeInTheDocument();
   });
 
   it("marks Cursor's figures as estimates and says how much of the total they are", async () => {
@@ -252,9 +271,9 @@ describe("App usage", () => {
         providers: base.providers.map((row) =>
           row.provider === "cursor"
             ? { ...row, available: true, sessions: 3, costUsd: 2.4, costSource: "estimated" }
-            : row
-        )
-      })
+            : row,
+        ),
+      }),
     );
     await openUsage();
 
@@ -271,10 +290,9 @@ describe("App usage", () => {
     expect(within(remaining).getByText("85% left")).toBeInTheDocument();
     expect(within(remaining).getAllByText("5-hour").length).toBeGreaterThan(0);
 
-    const cursor = within(remaining).getByText("Cursor").closest("li");
-    expect(cursor).not.toBeNull();
-    expect(within(cursor as HTMLElement).getByText("Teams")).toBeInTheDocument();
-    expect(within(cursor as HTMLElement).queryByText(/% left/)).not.toBeInTheDocument();
+    const cursor = listItemWith(remaining, "Cursor");
+    expect(within(cursor).getByText("Teams")).toBeInTheDocument();
+    expect(within(cursor).queryByText(/% left/)).not.toBeInTheDocument();
   });
 
   it("holds the skeleton until both reads land, so the page arrives in one piece", async () => {
@@ -283,7 +301,7 @@ describe("App usage", () => {
       () =>
         new Promise((resolve) => {
           landRemaining = () => resolve(usageRemainingFixture());
-        })
+        }),
     );
     await openUsage();
     await waitFor(() => {
@@ -295,7 +313,9 @@ describe("App usage", () => {
 
     expect(screen.getByRole("status", { name: "Loading usage" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Total cost")).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Remaining on your plans" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Remaining on your plans" }),
+    ).not.toBeInTheDocument();
 
     landRemaining();
 
@@ -310,7 +330,9 @@ describe("App usage", () => {
 
     expect(await screen.findByLabelText("Total cost")).toHaveTextContent("$100.00");
     const remaining = await screen.findByRole("region", { name: "Remaining on your plans" });
-    expect(within(remaining).getByText("Claude remaining usage returned HTTP 429.")).toBeInTheDocument();
+    expect(
+      within(remaining).getByText("Claude remaining usage returned HTTP 429."),
+    ).toBeInTheDocument();
   });
 
   it("opens the ledger without skeleton when boot prefetch warmed the cache", async () => {
@@ -328,17 +350,17 @@ describe("App usage", () => {
 
   it("reopens with the last numbers instead of skeletoning again", async () => {
     await openUsage();
-    const usagePage = screen.getByRole("heading", { name: "Usage" }).closest(".usage-page") as HTMLElement;
-    expect(await within(usagePage).findByText("Aug 4 to Sep 2")).toBeInTheDocument();
+    expect(await within(usagePage()).findByText("Aug 4 to Sep 2")).toBeInTheDocument();
 
     leavePage();
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "Usage" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Usage" })).not.toBeInTheDocument(),
+    );
 
     usageSummary.mockClear();
     crossToUsage();
 
-    const reopened = screen.getByRole("heading", { name: "Usage" }).closest(".usage-page") as HTMLElement;
-    expect(within(reopened).getByText("Aug 4 to Sep 2")).toBeInTheDocument();
+    expect(within(usagePage()).getByText("Aug 4 to Sep 2")).toBeInTheDocument();
     expect(screen.queryByRole("status", { name: "Loading usage" })).not.toBeInTheDocument();
     await waitFor(() => {
       expect(usageSummary).toHaveBeenCalledTimes(1);

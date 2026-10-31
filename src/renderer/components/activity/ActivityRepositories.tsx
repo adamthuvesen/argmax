@@ -1,7 +1,18 @@
 import type { JSX } from "react";
 import type { ActivityRepository, ActivitySummary } from "./activityContract.js";
-import { formatAdded, formatCount, formatPercent, formatRemoved, formatSince } from "./activityFormat.js";
-import { barWidth, metricValue, repositorySlots, type ActivityMetric } from "./activityPresentation.js";
+import {
+  formatAdded,
+  formatCount,
+  formatPercent,
+  formatRemoved,
+  formatSince,
+} from "./activityFormat.js";
+import {
+  barWidth,
+  metricValue,
+  repositorySlots,
+  type ActivityMetric,
+} from "./activityPresentation.js";
 
 /**
  * Every repository the ledger knows, ranked by the active metric. This is the
@@ -28,7 +39,9 @@ const SPARK_INSET = 3;
 const SPARK_POINTS = 12;
 
 /** A repository's own curve over the window, as a polyline in the spark's box. */
-function sparkPath(values: readonly number[]): { line: string; area: string; lastX: number; lastY: number } | null {
+function sparkPath(
+  values: readonly number[],
+): { line: string; area: string; lastX: number; lastY: number } | null {
   if (values.length < 2) return null;
   const max = Math.max(...values);
   const span = SPARK_WIDTH - SPARK_INSET * 2;
@@ -44,7 +57,7 @@ function sparkPath(values: readonly number[]): { line: string; area: string; las
     line,
     area: `${line} L${last[0]} ${SPARK_HEIGHT} L${points[0][0]} ${SPARK_HEIGHT} Z`,
     lastX: last[0],
-    lastY: last[1]
+    lastY: last[1],
   };
 }
 
@@ -62,11 +75,15 @@ function pool(values: readonly number[]): number[] {
 }
 
 /** Per-repository values per bucket, in the series' own bucket order. */
-function seriesByRepository(summary: ActivitySummary, metric: ActivityMetric): Map<string, number[]> {
+function seriesByRepository(
+  summary: ActivitySummary,
+  metric: ActivityMetric,
+): Map<string, number[]> {
   const byRepository = new Map<string, number[]>();
   summary.series.forEach((point, index) => {
     for (const slice of point.byRepository) {
-      const values = byRepository.get(slice.projectId) ?? new Array<number>(summary.series.length).fill(0);
+      const values =
+        byRepository.get(slice.projectId) ?? new Array<number>(summary.series.length).fill(0);
       values[index] += metricValue(slice, metric);
       byRepository.set(slice.projectId, values);
     }
@@ -78,7 +95,7 @@ export function ActivityRepositories({
   summary,
   metric,
   selected,
-  onSelect
+  onSelect,
 }: {
   summary: ActivitySummary;
   metric: ActivityMetric;
@@ -87,7 +104,9 @@ export function ActivityRepositories({
 }): JSX.Element {
   const slots = repositorySlots(summary.repositories);
   const withCommits = summary.repositories.filter((repo) => repo.commits > 0);
-  const ranked = [...withCommits].sort((left, right) => metricValue(right, metric) - metricValue(left, metric));
+  const ranked = [...withCommits].sort(
+    (left, right) => metricValue(right, metric) - metricValue(left, metric),
+  );
   const rows = ranked.slice(0, VISIBLE_ROWS);
   const leader = rows.length > 0 ? metricValue(rows[0], metric) : 0;
   // The trend column follows the *window's* series, which the repository
@@ -161,7 +180,7 @@ function RepositoryRow({
   spark,
   timeZone,
   now,
-  onSelect
+  onSelect,
 }: {
   repo: ActivityRepository;
   metric: ActivityMetric;
@@ -179,7 +198,11 @@ function RepositoryRow({
   const path = spark ? sparkPath(pool(spark)) : null;
 
   return (
-    <li className="activity-repo-row activity-series" data-slot={slot} data-selected={pressed ? "true" : "false"}>
+    <li
+      className="activity-repo-row activity-series"
+      data-slot={slot}
+      data-selected={pressed ? "true" : "false"}
+    >
       <button
         type="button"
         className="activity-repo-toggle"
@@ -229,7 +252,9 @@ function RepositoryRow({
           <span className="activity-plus">{formatAdded(repo.linesAdded)}</span>{" "}
           <span className="activity-minus">{formatRemoved(repo.linesRemoved)}</span>
         </span>
-        <span className="activity-repo-last activity-num">{formatSince(repo.lastCommitAt, timeZone, now)}</span>
+        <span className="activity-repo-last activity-num">
+          {formatSince(repo.lastCommitAt, timeZone, now)}
+        </span>
         {/* The share rides in the row's accessible name rather than in a
             column of its own: the bar already says it, and a sixth column
             pushed the repository name to an ellipsis. */}

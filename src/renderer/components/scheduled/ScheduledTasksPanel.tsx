@@ -7,7 +7,7 @@ import {
   type Dispatch,
   type JSX,
   type ReactNode,
-  type SetStateAction
+  type SetStateAction,
 } from "react";
 import { Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { bridgeAvailable, routineActions, systemActions } from "../../data/bridgeActions.js";
@@ -17,7 +17,7 @@ import {
   type ArcRecord,
   type ProjectSummary,
   type ProviderId,
-  type Routine
+  type Routine,
 } from "../../../shared/types.js";
 import {
   PROVIDER_DISPLAY_NAMES,
@@ -25,7 +25,7 @@ import {
   PROVIDER_MODELS,
   modelLabelFor,
   resolveModelId,
-  type ResolvedModelId
+  type ResolvedModelId,
 } from "../../../shared/providerModels.js";
 import {
   buildSchedule,
@@ -37,7 +37,7 @@ import {
   parseSchedule,
   WEEKDAY_PICKER_OPTIONS,
   type ScheduleControls,
-  type ScheduleKind
+  type ScheduleKind,
 } from "../../lib/schedule.js";
 import { LoadingLine } from "../LoadingLine.js";
 import { SettingsListPicker } from "../settings/settingsPrimitives.js";
@@ -84,7 +84,7 @@ function newDraft(projectId: string): DraftState {
     arcId: null,
     enabled: true,
     kind: "daily",
-    controls: { ...DEFAULT_SCHEDULE_CONTROLS }
+    controls: { ...DEFAULT_SCHEDULE_CONTROLS },
   };
 }
 
@@ -101,7 +101,7 @@ function draftFromRoutine(routine: Routine): DraftState {
     arcId: routine.arcId,
     enabled: routine.enabled,
     kind,
-    controls
+    controls,
   };
 }
 
@@ -110,7 +110,7 @@ const SCHEDULE_KIND_OPTIONS: ReadonlyArray<{ value: ScheduleKind; label: string 
   { value: "hourly", label: "Hourly" },
   { value: "daily", label: "Daily" },
   { value: "weekly", label: "Weekly" },
-  { value: "custom", label: "Custom" }
+  { value: "custom", label: "Custom" },
 ];
 
 /** Where each scheduled run lands. Named by outcome, not by the legacy boolean. */
@@ -118,7 +118,7 @@ const RUN_TARGET_OPTIONS: ReadonlyArray<{ value: RoutineRunTarget; label: string
   { value: "new_session", label: "New chat" },
   { value: "same_session", label: "Same chat" },
   { value: "worktree", label: "Isolated worktree" },
-  { value: "arc_coordinator", label: "Arc coordinator" }
+  { value: "arc_coordinator", label: "Arc coordinator" },
 ];
 
 function runTargetLabel(target: RoutineRunTarget): string {
@@ -145,7 +145,7 @@ function routineState(routine: Routine): "failed" | "paused" | "scheduled" {
 
 export function ScheduledTasksPanel({
   projects,
-  onOpenSession
+  onOpenSession,
 }: {
   projects: ProjectSummary[];
   onOpenSession?: (sessionId: string) => void;
@@ -171,7 +171,7 @@ export function ScheduledTasksPanel({
       const message = errorMessage(error, "Could not load scheduled tasks.");
       if (explicitReload.current) showErrorToast(message);
       else setLoadError(message);
-    }
+    },
   });
   const reload = useCallback(
     async (explicit = false): Promise<void> => {
@@ -182,7 +182,7 @@ export function ScheduledTasksPanel({
       explicitReload.current = explicit;
       await refetchRoutines();
     },
-    [refetchRoutines]
+    [refetchRoutines],
   );
 
   useEffect(() => {
@@ -202,7 +202,7 @@ export function ScheduledTasksPanel({
     onError: (error) => {
       setArcs([]);
       setArcsError(errorMessage(error, "Could not load Arcs."));
-    }
+    },
   });
 
   // The scheduler fires in Rust, so "next run" goes stale on its own. Rather
@@ -216,7 +216,7 @@ export function ScheduledTasksPanel({
     if (dueTimes.length === 0) return;
     const delay = Math.min(
       MAX_REFRESH_DELAY_MS,
-      Math.max(SCHEDULER_TICK_MS, Math.min(...dueTimes) - Date.now() + SCHEDULER_TICK_MS)
+      Math.max(SCHEDULER_TICK_MS, Math.min(...dueTimes) - Date.now() + SCHEDULER_TICK_MS),
     );
     const timer = window.setTimeout(() => void reload(), delay);
     return () => window.clearTimeout(timer);
@@ -230,16 +230,24 @@ export function ScheduledTasksPanel({
 
   // `App` hands over the real repositories already; the filter is a guard so
   // the scratch side-chats project can never become a task's target.
-  const repositories = useMemo(() => projects.filter((project) => project.id !== SCRATCH_PROJECT_ID), [projects]);
+  const repositories = useMemo(
+    () => projects.filter((project) => project.id !== SCRATCH_PROJECT_ID),
+    [projects],
+  );
 
   const modelOptions = useMemo(
-    () => PROVIDER_MODELS[draft?.provider ?? "claude"].map((model) => ({ value: model.modelId, label: model.label })),
-    [draft?.provider]
+    () =>
+      PROVIDER_MODELS[draft?.provider ?? "claude"].map((model) => ({
+        value: model.modelId,
+        label: model.label,
+      })),
+    [draft?.provider],
   );
 
   const projectName = useCallback(
-    (projectId: string): string => repositories.find((project) => project.id === projectId)?.name ?? projectId,
-    [repositories]
+    (projectId: string): string =>
+      repositories.find((project) => project.id === projectId)?.name ?? projectId,
+    [repositories],
   );
 
   /** Every action starts from a clean slate, so a stale success line never
@@ -302,7 +310,7 @@ export function ScheduledTasksPanel({
         arcId: draft.runTarget === "arc_coordinator" ? draft.arcId : null,
         cronExpr: schedule.cronExpr,
         runOnceAt: schedule.runOnceAt,
-        enabled: draft.enabled
+        enabled: draft.enabled,
       });
       setStatus(draft.routineId ? "Task updated." : "Task created.");
       setDraft(null);
@@ -326,7 +334,7 @@ export function ScheduledTasksPanel({
         showErrorToast(errorMessage(error, "Could not update the task."));
       }
     },
-    [beginAction, reload]
+    [beginAction, reload],
   );
 
   const runNow = useCallback(
@@ -345,7 +353,7 @@ export function ScheduledTasksPanel({
         setBusy(false);
       }
     },
-    [beginAction, reload]
+    [beginAction, reload],
   );
 
   const removeRoutine = useCallback(
@@ -357,7 +365,9 @@ export function ScheduledTasksPanel({
       beginAction();
       setBusy(true);
       try {
-        const confirmed = await system.confirm(`Delete “${name}”? Chats it already started stay in the sidebar.`);
+        const confirmed = await system.confirm(
+          `Delete “${name}”? Chats it already started stay in the sidebar.`,
+        );
         if (!confirmed) return;
         await routines.delete(id);
         setStatus("Task deleted.");
@@ -368,7 +378,7 @@ export function ScheduledTasksPanel({
         setBusy(false);
       }
     },
-    [beginAction, reload]
+    [beginAction, reload],
   );
 
   const resetSharedChat = useCallback(
@@ -384,7 +394,7 @@ export function ScheduledTasksPanel({
         showErrorToast(errorMessage(error, "Could not reset the shared chat."));
       }
     },
-    [beginAction, reload]
+    [beginAction, reload],
   );
 
   if (draft) {
@@ -415,7 +425,9 @@ export function ScheduledTasksPanel({
         routines !== null && total > 0 ? (
           <p className="sched-count">
             {total} {total === 1 ? "task" : "tasks"}
-            {pausedCount > 0 ? <span className="sched-count-sep">, {pausedCount} paused</span> : null}
+            {pausedCount > 0 ? (
+              <span className="sched-count-sep">, {pausedCount} paused</span>
+            ) : null}
           </p>
         ) : null
       }
@@ -450,7 +462,11 @@ export function ScheduledTasksPanel({
             headline="Nothing scheduled"
             body="Put a prompt on a clock and Argmax runs it as a normal agent chat — a morning triage, an hourly check, a one-off at a set time."
             action={
-              <button type="button" className="sched-button sched-button-primary" onClick={startNew}>
+              <button
+                type="button"
+                className="sched-button sched-button-primary"
+                onClick={startNew}
+              >
                 <Plus size={13} aria-hidden="true" />
                 New task
               </button>
@@ -460,7 +476,8 @@ export function ScheduledTasksPanel({
           <ul className="sched-list" aria-label="Scheduled tasks">
             {routines.map((routine) => {
               const state = routineState(routine);
-              const sharedChatId = routine.runTarget === "same_session" ? routine.lastSessionId : null;
+              const sharedChatId =
+                routine.runTarget === "same_session" ? routine.lastSessionId : null;
               return (
                 <li key={routine.id} className="sched-row" data-state={state}>
                   <span className="sched-marker" aria-hidden="true" />
@@ -487,7 +504,9 @@ export function ScheduledTasksPanel({
                       ) : state === "paused" ? (
                         "Paused"
                       ) : routine.nextRunAt ? (
-                        <span title={formatTimestamp(routine.nextRunAt)}>{formatRelative(routine.nextRunAt)}</span>
+                        <span title={formatTimestamp(routine.nextRunAt)}>
+                          {formatRelative(routine.nextRunAt)}
+                        </span>
                       ) : (
                         "—"
                       )}
@@ -496,7 +515,11 @@ export function ScheduledTasksPanel({
 
                   <div className="sched-row-actions">
                     {sharedChatId && onOpenSession ? (
-                      <button type="button" className="sched-text-button" onClick={() => onOpenSession(sharedChatId)}>
+                      <button
+                        type="button"
+                        className="sched-text-button"
+                        onClick={() => onOpenSession(sharedChatId)}
+                      >
                         Open chat
                       </button>
                     ) : null}
@@ -542,7 +565,9 @@ export function ScheduledTasksPanel({
                     <label className="settings-toggle sched-row-toggle">
                       <input
                         type="checkbox"
-                        aria-label={routine.enabled ? `Pause ${routine.name}` : `Resume ${routine.name}`}
+                        aria-label={
+                          routine.enabled ? `Pause ${routine.name}` : `Resume ${routine.name}`
+                        }
                         checked={routine.enabled}
                         onChange={() => void toggleEnabled(routine)}
                       />
@@ -564,7 +589,7 @@ export function ScheduledTasksPanel({
 function SchedulePage({
   children,
   summary,
-  action
+  action,
 }: {
   children: ReactNode;
   summary?: ReactNode;
@@ -587,7 +612,15 @@ function SchedulePage({
   );
 }
 
-function EmptyState({ headline, body, action }: { headline: string; body: string; action?: JSX.Element }): JSX.Element {
+function EmptyState({
+  headline,
+  body,
+  action,
+}: {
+  headline: string;
+  body: string;
+  action?: JSX.Element;
+}): JSX.Element {
   return (
     <div className="sched-empty">
       <p className="sched-empty-headline">{headline}</p>
@@ -607,7 +640,7 @@ function ScheduledTaskEditor({
   saveError,
   busy,
   onSave,
-  onCancel
+  onCancel,
 }: {
   draft: DraftState;
   setDraft: Dispatch<SetStateAction<DraftState | null>>;
@@ -633,14 +666,14 @@ function ScheduledTaskEditor({
   // home drops the selection rather than saving a mismatched pair.
   const projectArcs = useMemo(
     () => arcs.filter((arc) => arc.homeProjectId === draft.projectId),
-    [arcs, draft.projectId]
+    [arcs, draft.projectId],
   );
   const arcOptions = useMemo(
     () =>
       projectArcs.length > 0
         ? projectArcs.map((arc) => ({ value: arc.id, label: arc.name }))
         : [{ value: "", label: "No Arcs in this repository" }],
-    [projectArcs]
+    [projectArcs],
   );
 
   const patchControls = (changes: Partial<ScheduleControls>): void => {
@@ -760,7 +793,7 @@ function ScheduledTaskEditor({
                 const [hour, minute] = event.target.value.split(":").map(Number);
                 patchControls({
                   hour: Number.isInteger(hour) ? hour : draft.controls.hour,
-                  minute: Number.isInteger(minute) ? minute : draft.controls.minute
+                  minute: Number.isInteger(minute) ? minute : draft.controls.minute,
                 });
               }}
             />
@@ -794,7 +827,8 @@ function ScheduledTaskEditor({
               onChange={(event) => patchControls({ custom: event.target.value })}
             />
             <p className="sched-help">
-              Six fields — second minute hour day month weekday. <code>0 30 8 * * 1-5</code> is weekdays at 08:30.
+              Six fields — second minute hour day month weekday. <code>0 30 8 * * 1-5</code> is
+              weekdays at 08:30.
             </p>
           </div>
         ) : null}
@@ -809,7 +843,9 @@ function ScheduledTaskEditor({
             </>
           ) : (
             <span className="sched-readback-empty">
-              {draft.kind === "custom" ? "Runs on your cron expression." : "Pick a time to finish the schedule."}
+              {draft.kind === "custom"
+                ? "Runs on your cron expression."
+                : "Pick a time to finish the schedule."}
             </span>
           )}
         </p>
@@ -828,7 +864,9 @@ function ScheduledTaskEditor({
                 // An Arc chosen for the old repository is almost never
                 // right for a new one — the CHECK constraint would reject
                 // it outright, so drop it rather than save a mismatch.
-                const stillHomed = arcs.some((arc) => arc.id === draft.arcId && arc.homeProjectId === projectId);
+                const stillHomed = arcs.some(
+                  (arc) => arc.id === draft.arcId && arc.homeProjectId === projectId,
+                );
                 patch({ projectId, arcId: stillHomed ? draft.arcId : null });
               }}
               options={projects.map((project) => ({ value: project.id, label: project.name }))}
@@ -846,17 +884,19 @@ function ScheduledTaskEditor({
                   ariaLabel="Agent"
                   value={draft.provider}
                   onChange={(provider) => {
-                    const known = PROVIDER_MODELS[provider].some((model) => model.modelId === draft.modelId);
+                    const known = PROVIDER_MODELS[provider].some(
+                      (model) => model.modelId === draft.modelId,
+                    );
                     patch({
                       provider,
                       modelId: known
                         ? draft.modelId
-                        : resolveModelId(provider, PROVIDER_MODEL_DEFAULTS[provider].modelId)
+                        : resolveModelId(provider, PROVIDER_MODEL_DEFAULTS[provider].modelId),
                     });
                   }}
                   options={(Object.keys(PROVIDER_MODELS) as ProviderId[]).map((provider) => ({
                     value: provider,
-                    label: PROVIDER_DISPLAY_NAMES[provider]
+                    label: PROVIDER_DISPLAY_NAMES[provider],
                   }))}
                 />
               </div>
@@ -867,7 +907,9 @@ function ScheduledTaskEditor({
                 <SettingsListPicker
                   ariaLabel="Model"
                   value={draft.modelId}
-                  onChange={(modelId) => patch({ modelId: resolveModelId(draft.provider, modelId) })}
+                  onChange={(modelId) =>
+                    patch({ modelId: resolveModelId(draft.provider, modelId) })
+                  }
                   options={modelOptions}
                 />
               </div>
@@ -889,8 +931,8 @@ function ScheduledTaskEditor({
         </div>
         {draft.runTarget === "same_session" ? (
           <p className="sched-help">
-            Every run sends the prompt as a follow-up in the same chat. A long-running schedule keeps one growing
-            conversation — pick New chat if you want a clean slate each time.
+            Every run sends the prompt as a follow-up in the same chat. A long-running schedule
+            keeps one growing conversation — pick New chat if you want a clean slate each time.
           </p>
         ) : null}
         {draft.runTarget === "arc_coordinator" ? (
@@ -915,9 +957,10 @@ function ScheduledTaskEditor({
               </div>
             )}
             <p className="sched-help">
-              Every run sends the prompt to the Arc's coordinator chat instead of launching one of its own, on the
-              coordinator's own model. A paused or done Arc skips the occurrence rather than fail; an Arc with no
-              coordinator running yet records an error and backs off like a failed launch.
+              Every run sends the prompt to the Arc's coordinator chat instead of launching one of
+              its own, on the coordinator's own model. A paused or done Arc skips the occurrence
+              rather than fail; an Arc with no coordinator running yet records an error and backs
+              off like a failed launch.
             </p>
           </>
         ) : null}

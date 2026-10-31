@@ -45,7 +45,7 @@ export async function verifyBrowserSession(options) {
     agentExpectedTexts = null,
     agentMustSucceed = false,
     theme = null,
-    timeoutMs = 30_000
+    timeoutMs = 30_000,
   } = options;
   const screenshot = path.join(outputDir, `${name}.png`);
   const url = `http://127.0.0.1:${port}/?remote#token=${token}`;
@@ -105,16 +105,17 @@ export async function verifyBrowserSession(options) {
             return {ok: false, error: "persistent dock did not show two successful runs in one tab", text: document.body.innerText.slice(-4000)};
           })()`
         : sessionProbe({ titleIncludes, expectedTexts, timeoutMs: 15_000 }),
-      ...(theme ? ["--theme", theme] : [])
+      ...(theme ? ["--theme", theme] : []),
     ],
-    { cwd: repoRoot, timeoutMs }
+    { cwd: repoRoot, timeoutMs },
   );
   const lines = result.stdout.trim().split("\n").filter(Boolean);
   const payload = JSON.parse(lines.at(-1));
-  if (!payload.eval?.ok) throw new Error(`browser UI assertion failed: ${JSON.stringify(payload.eval)}`);
+  if (!payload.eval?.ok)
+    throw new Error(`browser UI assertion failed: ${JSON.stringify(payload.eval)}`);
   return {
     ok: true,
     screenshot,
-    uiState: payload.eval
+    uiState: payload.eval,
   };
 }

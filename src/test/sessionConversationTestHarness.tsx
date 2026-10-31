@@ -7,7 +7,7 @@ import type {
   ProjectSummary,
   SessionSummary,
   TimelineEvent,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../shared/types.js";
 import { SessionConversation } from "../renderer/components/SessionConversation.js";
 import type { ReviewState } from "../renderer/hooks/useReviewState.js";
@@ -41,7 +41,7 @@ export function baseSession(overrides: Partial<SessionSummary> = {}): SessionSum
     contextTokens: 0,
     imported: false,
     launchKind: "agent",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -68,7 +68,7 @@ export const workspace: WorkspaceSummary = {
   prCreatedAt: null,
   prMergedAt: null,
   prCheckState: null,
-  prActivityAt: null
+  prActivityAt: null,
 };
 
 export const project: ProjectSummary = {
@@ -81,10 +81,10 @@ export const project: ProjectSummary = {
     mergeCleanup: "off",
     worktreeLocation: "/tmp/worktrees",
     setupCommand: "",
-    checkCommands: []
+    checkCommands: [],
   },
   counts: { active: 1, blocked: 0, failed: 0, reviewReady: 0 },
-  latestActivityAt: "2026-05-12T15:54:00.000Z"
+  latestActivityAt: "2026-05-12T15:54:00.000Z",
 };
 
 export function event(
@@ -92,7 +92,7 @@ export function event(
   type: TimelineEvent["type"],
   message: string,
   createdAt: string,
-  payload: Record<string, unknown> = {}
+  payload: Record<string, unknown> = {},
 ): TimelineEvent {
   return {
     id,
@@ -100,7 +100,7 @@ export function event(
     type,
     message,
     payload,
-    createdAt
+    createdAt,
   };
 }
 
@@ -109,7 +109,7 @@ export function cursorAssistantPayload(text: string): Record<string, unknown> {
     type: "assistant",
     message: { role: "assistant", content: [{ type: "text", text }] },
     session_id: "cursor-uuid-1",
-    timestamp_ms: 1778771186474
+    timestamp_ms: 1778771186474,
   };
 }
 
@@ -156,7 +156,7 @@ type ConversationOptions = {
 export function conversationElement(
   session: SessionSummary,
   events: TimelineEvent[],
-  options: ConversationOptions
+  options: ConversationOptions,
 ): JSX.Element {
   return (
     <SessionConversation
@@ -174,7 +174,9 @@ export function conversationElement(
       onSendQueuedMessageNow={options.onSendQueuedMessageNow ?? vi.fn(() => Promise.resolve())}
       pendingMessages={options.pendingMessages ?? []}
       onToggleLog={vi.fn()}
-      {...(options.thinkingDisplay !== undefined ? { thinkingDisplay: options.thinkingDisplay } : {})}
+      {...(options.thinkingDisplay !== undefined
+        ? { thinkingDisplay: options.thinkingDisplay }
+        : {})}
       {...(options.defaultToolCallsDisplay !== undefined
         ? { defaultToolCallsDisplay: options.defaultToolCallsDisplay }
         : {})}
@@ -192,7 +194,9 @@ export function conversationElement(
       onOpenAgent={options.onOpenAgent ?? vi.fn()}
       {...(options.onOpenSideChat ? { onOpenSideChat: options.onOpenSideChat } : {})}
       {...(options.onOpenDetails ? { onOpenDetails: options.onOpenDetails } : {})}
-      {...(options.registerAnnotationSink ? { registerAnnotationSink: options.registerAnnotationSink } : {})}
+      {...(options.registerAnnotationSink
+        ? { registerAnnotationSink: options.registerAnnotationSink }
+        : {})}
       project={project}
       rawOutputs={[]}
       review={options.review ?? reviewStub()}
@@ -206,7 +210,7 @@ export function conversationElement(
 export function renderConversation(
   session: SessionSummary,
   events: TimelineEvent[] = [],
-  options: ConversationOptions = {}
+  options: ConversationOptions = {},
 ) {
   return render(conversationElement(session, events, options));
 }
@@ -217,7 +221,7 @@ export function rerenderConversation(
   rerender: RenderResult["rerender"],
   session: SessionSummary,
   events: TimelineEvent[] = [],
-  options: ConversationOptions = {}
+  options: ConversationOptions = {},
 ): void {
   rerender(conversationElement(session, events, options));
 }

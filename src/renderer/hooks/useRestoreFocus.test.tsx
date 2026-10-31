@@ -1,4 +1,4 @@
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { useEffect, useRef, type JSX } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { useRestoreFocus } from "./useRestoreFocus.js";
@@ -25,7 +25,7 @@ describe("useRestoreFocus", () => {
 
     try {
       const { unmount } = render(<FocusSurface />);
-      expect(document.activeElement).toHaveTextContent("Inside");
+      expect(screen.getByRole("button", { name: "Inside" })).toHaveFocus();
 
       unmount();
       expect(trigger).toHaveFocus();

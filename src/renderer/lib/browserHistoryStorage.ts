@@ -53,8 +53,10 @@ export const indexedDbBrowserHistoryStorage: BrowserHistoryStorage = {
           value = request.result;
         };
         transaction.oncomplete = () => resolve(value);
-        transaction.onerror = () => reject(transaction.error ?? new Error("Could not read browser history."));
-        transaction.onabort = () => reject(transaction.error ?? new Error("Could not read browser history."));
+        transaction.onerror = () =>
+          reject(transaction.error ?? new Error("Could not read browser history."));
+        transaction.onabort = () =>
+          reject(transaction.error ?? new Error("Could not read browser history."));
       });
     } finally {
       database.close();
@@ -68,11 +70,13 @@ export const indexedDbBrowserHistoryStorage: BrowserHistoryStorage = {
         const transaction = database.transaction(STORE_NAME, "readwrite");
         transaction.objectStore(STORE_NAME).put(entries, ENTRIES_KEY);
         transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error ?? new Error("Could not save browser history."));
-        transaction.onabort = () => reject(transaction.error ?? new Error("Could not save browser history."));
+        transaction.onerror = () =>
+          reject(transaction.error ?? new Error("Could not save browser history."));
+        transaction.onabort = () =>
+          reject(transaction.error ?? new Error("Could not save browser history."));
       });
     } finally {
       database.close();
     }
-  }
+  },
 };

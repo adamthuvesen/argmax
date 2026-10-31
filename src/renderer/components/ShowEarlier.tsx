@@ -13,7 +13,7 @@ import { ChevronUp } from "lucide-react";
 export function ShowEarlier({
   noun,
   count,
-  onClick
+  onClick,
 }: {
   /** What is hidden, as it reads after "Show earlier": "activity", "messages". */
   noun: string;

@@ -79,7 +79,7 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
  * the write, so nothing reached the clipboard.
  */
 export function useCopyToClipboard(
-  flashMs: number = DEFAULT_FLASH_MS
+  flashMs: number = DEFAULT_FLASH_MS,
 ): [CopyFlash, (text: string) => Promise<boolean>] {
   const [flash, setFlash] = useState<CopyFlash>("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,7 +108,7 @@ export function useCopyToClipboard(
       settle(copied ? "copied" : "failed");
       return copied;
     },
-    [flashMs]
+    [flashMs],
   );
 
   return [flash, copy];

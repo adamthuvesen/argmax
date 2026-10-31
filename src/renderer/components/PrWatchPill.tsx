@@ -11,7 +11,7 @@ import { openWebUrl } from "../lib/openWebUrl.js";
  */
 export function PrWatchPill({
   prs,
-  chatFontSize
+  chatFontSize,
 }: {
   prs: readonly SessionPrSummary[];
   /** The composer's type scale, so the pill sizes with its chips. */
@@ -31,7 +31,11 @@ export function PrWatchPill({
           type="button"
           className="pr-watch-pill"
           disabled={!pr.url}
-          title={pr.title ? `Babysitting PR #${pr.prNumber}: ${pr.title}` : `Babysitting PR #${pr.prNumber}`}
+          title={
+            pr.title
+              ? `Babysitting PR #${pr.prNumber}: ${pr.title}`
+              : `Babysitting PR #${pr.prNumber}`
+          }
           onClick={(event) => {
             if (pr.url) openWebUrl(pr.url, { flip: event.metaKey || event.ctrlKey });
           }}

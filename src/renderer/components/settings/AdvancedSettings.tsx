@@ -2,7 +2,11 @@ import { ChevronRight, ClipboardCopy, ExternalLink, FolderOpen } from "lucide-re
 import { systemActions } from "../../data/bridgeActions.js";
 import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import { useEffect, useState, type JSX } from "react";
-import type { DiagnosticsReport, PerformanceStatus, ProjectSummary } from "../../../shared/types.js";
+import type {
+  DiagnosticsReport,
+  PerformanceStatus,
+  ProjectSummary,
+} from "../../../shared/types.js";
 import { APP_VERSION_LABEL } from "../../../shared/appVersion.js";
 import { ISSUES_URL, REPO_URL } from "../../../shared/appLinks.js";
 import { formatBytes } from "../../lib/formatBytes.js";
@@ -21,7 +25,7 @@ import {
   SettingNote,
   SettingRow,
   SettingValueRow,
-  Toggle
+  Toggle,
 } from "./settingsPrimitives.js";
 
 export function AdvancedSettings({
@@ -34,7 +38,7 @@ export function AdvancedSettings({
   openArchiveRecovery,
   vacuumDatabase,
   developerToolsEnabled,
-  onDeveloperToolsEnabledChange
+  onDeveloperToolsEnabledChange,
 }: {
   projects: ProjectSummary[];
   diagnostics: DiagnosticsReport | null;
@@ -50,7 +54,9 @@ export function AdvancedSettings({
   const [performanceOpen, setPerformanceOpen] = useState(false);
   const [performanceStatus, setPerformanceStatus] = useState<PerformanceStatus | null>(null);
   const stats = diagnostics?.databaseStats;
-  const readyPhase = diagnostics?.startupPhases.find((phase) => phase.phase === "window.ready-to-show");
+  const readyPhase = diagnostics?.startupPhases.find(
+    (phase) => phase.phase === "window.ready-to-show",
+  );
 
   const { refetch: refetchPerformanceStatus } = useBridgeQuery({
     key: ["system.performanceStatus"],
@@ -58,7 +64,9 @@ export function AdvancedSettings({
     read: (api) => api.system.performanceStatus(),
     onData: setPerformanceStatus,
     onError: (error) =>
-      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not read performance status.")
+      setDiagnosticsStatus(
+        error instanceof Error ? error.message : "Could not read performance status.",
+      ),
   });
   useEffect(() => {
     if (!performanceOpen) return undefined;
@@ -82,7 +90,9 @@ export function AdvancedSettings({
       setPerformanceStatus(status);
       setDiagnosticsStatus("Performance recording started. Samples stay in memory only.");
     } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : "Could not start performance recording.");
+      showErrorToast(
+        error instanceof Error ? error.message : "Could not start performance recording.",
+      );
     }
   };
 
@@ -96,11 +106,13 @@ export function AdvancedSettings({
         startedAt: capture.startedAt,
         sampleCount: capture.samples.length,
         droppedSamples: capture.droppedSamples,
-        latest: capture.samples.at(-1) ?? null
+        latest: capture.samples.at(-1) ?? null,
       });
       setDiagnosticsStatus(`Performance recording stopped with ${capture.samples.length} samples.`);
     } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : "Could not stop performance recording.");
+      showErrorToast(
+        error instanceof Error ? error.message : "Could not stop performance recording.",
+      );
     }
   };
 
@@ -108,9 +120,15 @@ export function AdvancedSettings({
     try {
       const system = systemActions();
       if (!system) throw new Error("Argmax runtime is unavailable.");
-      savePerformanceCapture(await system.performanceCapture(), setDiagnosticsStatus, showErrorToast);
+      savePerformanceCapture(
+        await system.performanceCapture(),
+        setDiagnosticsStatus,
+        showErrorToast,
+      );
     } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : "Could not load performance capture.");
+      showErrorToast(
+        error instanceof Error ? error.message : "Could not load performance capture.",
+      );
     }
   };
 
@@ -200,7 +218,9 @@ export function AdvancedSettings({
             <button
               type="button"
               className="settings-button"
-              onClick={() => saveLogsFile(diagnostics?.recentLogs ?? [], setDiagnosticsStatus, showErrorToast)}
+              onClick={() =>
+                saveLogsFile(diagnostics?.recentLogs ?? [], setDiagnosticsStatus, showErrorToast)
+              }
               disabled={!diagnostics || diagnostics.recentLogs.length === 0}
               aria-label="Save log file"
             >
@@ -225,7 +245,11 @@ export function AdvancedSettings({
                 onClick={() => setPerformanceOpen((open) => !open)}
               >
                 <span>{performanceOpen ? "Hide details" : "Show details"}</span>
-                <ChevronRight size={13} aria-hidden="true" data-rotated={performanceOpen ? "true" : undefined} />
+                <ChevronRight
+                  size={13}
+                  aria-hidden="true"
+                  data-rotated={performanceOpen ? "true" : undefined}
+                />
               </button>
             }
           />
@@ -256,8 +280,8 @@ export function AdvancedSettings({
           <div className="settings-card">
             <h4 className="settings-card-title">Performance recorder</h4>
             <p className="settings-note">
-              Opt-in, one-second samples of the Argmax process tree, active chats, provider output, IPC, SQLite reader
-              pressure, and renderer stalls. The last 30 minutes stay in memory.
+              Opt-in, one-second samples of the Argmax process tree, active chats, provider output,
+              IPC, SQLite reader pressure, and renderer stalls. The last 30 minutes stay in memory.
             </p>
             <div className="settings-performance-recorder">
               <span className="settings-note" role="status">
@@ -269,11 +293,19 @@ export function AdvancedSettings({
               </span>
               <div className="settings-performance-actions">
                 {performanceStatus?.recording ? (
-                  <button type="button" className="settings-button" onClick={() => void stopPerformanceRecording()}>
+                  <button
+                    type="button"
+                    className="settings-button"
+                    onClick={() => void stopPerformanceRecording()}
+                  >
                     Stop
                   </button>
                 ) : (
-                  <button type="button" className="settings-button" onClick={() => void startPerformanceRecording()}>
+                  <button
+                    type="button"
+                    className="settings-button"
+                    onClick={() => void startPerformanceRecording()}
+                  >
                     Start
                   </button>
                 )}
@@ -332,7 +364,7 @@ export function AdvancedSettings({
                       ["Approvals", stats.rowCounts.approvals],
                       ["Checks", stats.rowCounts.checks],
                       ["Learnings", stats.rowCounts.learnings],
-                      ["Usage events", stats.rowCounts.usageEvents]
+                      ["Usage events", stats.rowCounts.usageEvents],
                     ] as const
                   ).map(([label, count]) => (
                     <div key={label}>
@@ -346,8 +378,8 @@ export function AdvancedSettings({
               <div className="settings-card">
                 <h4 className="settings-card-title">SQLite readers</h4>
                 <p className="settings-note">
-                  {stats.readers.active} active of {stats.readers.maxConcurrent} · peak {stats.readers.peakActive} ·{" "}
-                  {stats.readers.idle} idle
+                  {stats.readers.active} active of {stats.readers.maxConcurrent} · peak{" "}
+                  {stats.readers.peakActive} · {stats.readers.idle} idle
                 </p>
                 <dl className="settings-metric-grid">
                   <div>
@@ -389,7 +421,9 @@ export function AdvancedSettings({
                 </thead>
                 <tbody>
                   {diagnostics.startupPhases.map((phase) => {
-                    const overBudget = phase.phase === "window.ready-to-show" && phase.elapsedMs > COLD_START_BUDGET_MS;
+                    const overBudget =
+                      phase.phase === "window.ready-to-show" &&
+                      phase.elapsedMs > COLD_START_BUDGET_MS;
                     return (
                       <tr key={phase.phase} data-over-budget={overBudget || undefined}>
                         <td>
@@ -415,7 +449,8 @@ export function AdvancedSettings({
             <div className="settings-card">
               <h4 className="settings-card-title">IPC latency</h4>
               <p className="settings-note">
-                Per-channel p50 / p99 across the last 100 invocations. Refreshes when this page re-opens.
+                Per-channel p50 / p99 across the last 100 invocations. Refreshes when this page
+                re-opens.
               </p>
               <table className="settings-startup-table" aria-label="IPC channel latency">
                 <thead>
@@ -447,7 +482,11 @@ export function AdvancedSettings({
               <h4 className="settings-card-title">Recent logs</h4>
               <ul className="settings-logs-list" aria-label="Recent log entries">
                 {diagnostics.recentLogs.map((entry, index) => (
-                  <li key={`${entry.timestamp}-${index}`} data-log-level={entry.level} className="settings-logs-entry">
+                  <li
+                    key={`${entry.timestamp}-${index}`}
+                    data-log-level={entry.level}
+                    className="settings-logs-entry"
+                  >
                     <span className="settings-logs-dot" aria-hidden="true" />
                     <span className="settings-logs-timestamp">{entry.timestamp}</span>
                     <span className="settings-logs-level">{entry.level}</span>
@@ -482,8 +521,9 @@ export function AdvancedSettings({
           }
         />
         <SettingNote>
-          Argmax is pre-1.0 and under active development, so expect rough edges. It sends no telemetry — the only
-          traffic it makes on its own is to GitHub, for the pull request and check status on your own branches.
+          Argmax is pre-1.0 and under active development, so expect rough edges. It sends no
+          telemetry — the only traffic it makes on its own is to GitHub, for the pull request and
+          check status on your own branches.
         </SettingNote>
         <SettingNote>© 2026 Adam Thuvesen</SettingNote>
       </SettingGroup>

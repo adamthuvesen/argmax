@@ -37,8 +37,8 @@ const server = await createServer({
     host: "127.0.0.1",
     port: PORT,
     strictPort: true,
-    proxy: { "/api": { target, ws: true, changeOrigin: true } }
-  }
+    proxy: { "/api": { target, ws: true, changeOrigin: true } },
+  },
 });
 await server.listen();
 console.log(`http://127.0.0.1:${PORT}/mobile.html#token=${remote.token}`);

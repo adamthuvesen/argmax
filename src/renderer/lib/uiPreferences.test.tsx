@@ -6,7 +6,7 @@ import {
   TOOL_CALLS_EXPANDED_KEY,
   TOOL_CALL_GROUPS_EXPANDED_KEY,
   useChatVerbosityPreference,
-  type ChatVerbosity
+  type ChatVerbosity,
 } from "./uiPreferences.js";
 
 afterEach(() => {
@@ -21,13 +21,16 @@ describe("chat verbosity preference", () => {
     expect(result.current[0]).toBe(2);
   });
 
-  it.each([1, 2, 3, 4] satisfies ChatVerbosity[])("retains saved verbosity level %i", (verbosity) => {
-    window.localStorage.setItem(CHAT_VERBOSITY_KEY, String(verbosity));
+  it.each([1, 2, 3, 4] satisfies ChatVerbosity[])(
+    "retains saved verbosity level %i",
+    (verbosity) => {
+      window.localStorage.setItem(CHAT_VERBOSITY_KEY, String(verbosity));
 
-    const { result } = renderHook(() => useChatVerbosityPreference());
+      const { result } = renderHook(() => useChatVerbosityPreference());
 
-    expect(result.current[0]).toBe(verbosity);
-  });
+      expect(result.current[0]).toBe(verbosity);
+    },
+  );
 
   it("migrates the removed Full trace level to Detailed", () => {
     window.localStorage.setItem(CHAT_VERBOSITY_KEY, "5");
@@ -43,17 +46,20 @@ describe("chat verbosity preference", () => {
     { display: "collapsed", groupsExpanded: null, expected: 2 },
     { display: "collapsed", groupsExpanded: "false", expected: 2 },
     { display: "collapsed", groupsExpanded: "true", expected: 3 },
-    { display: "expanded", groupsExpanded: null, expected: 4 }
-  ] as const)("migrates legacy $display preferences to level $expected", ({ display, groupsExpanded, expected }) => {
-    window.localStorage.setItem(TOOL_CALLS_DISPLAY_KEY, display);
-    if (groupsExpanded !== null) {
-      window.localStorage.setItem(TOOL_CALL_GROUPS_EXPANDED_KEY, groupsExpanded);
-    }
+    { display: "expanded", groupsExpanded: null, expected: 4 },
+  ] as const)(
+    "migrates legacy $display preferences to level $expected",
+    ({ display, groupsExpanded, expected }) => {
+      window.localStorage.setItem(TOOL_CALLS_DISPLAY_KEY, display);
+      if (groupsExpanded !== null) {
+        window.localStorage.setItem(TOOL_CALL_GROUPS_EXPANDED_KEY, groupsExpanded);
+      }
 
-    const { result } = renderHook(() => useChatVerbosityPreference());
+      const { result } = renderHook(() => useChatVerbosityPreference());
 
-    expect(result.current[0]).toBe(expected);
-  });
+      expect(result.current[0]).toBe(expected);
+    },
+  );
 
   it("migrates the oldest expanded boolean to Detailed", () => {
     window.localStorage.setItem(TOOL_CALLS_EXPANDED_KEY, "true");

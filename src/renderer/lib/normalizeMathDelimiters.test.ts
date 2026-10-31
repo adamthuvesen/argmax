@@ -10,32 +10,38 @@ describe("normalizeMathDelimiters", () => {
     ["Price $50 and formula $x$.", "Price \\$50 and formula $x$."],
     ["Price $50 ($x$ after adjustment).", "Price \\$50 ($x$ after adjustment)."],
     ["Price $50 ($\\alpha$ after adjustment).", "Price \\$50 ($\\alpha$ after adjustment)."],
-    ["Price $50 ($ x = \\alpha $ after adjustment).", "Price \\$50 ($ x = \\alpha $ after adjustment)."],
+    [
+      "Price $50 ($ x = \\alpha $ after adjustment).",
+      "Price \\$50 ($ x = \\alpha $ after adjustment).",
+    ],
     ["Price $50 ($-x$ after adjustment).", "Price \\$50 ($-x$ after adjustment)."],
     ["$2x$, then $y$", "$2x$, then $y$"],
     ["$x$meters", "$x$meters"],
     ["$5,$10", "\\$5,\\$10"],
     ["$2 + 1$ and $3y$", "$2 + 1$ and $3y$"],
     ["$ x = \\alpha $", "$ x = \\alpha $"],
-    ["$2$", "$2$"]
+    ["$2$", "$2$"],
   ])("preserves numeric math alongside currency: %s", (input, expected) => {
     expect(normalizeMathDelimiters(input)).toBe(expected);
   });
 
   it.each([
-    ["Standard pricing is $1.25/1M in and $4.25/1M out.", "Standard pricing is \\$1.25/1M in and \\$4.25/1M out."],
+    [
+      "Standard pricing is $1.25/1M in and $4.25/1M out.",
+      "Standard pricing is \\$1.25/1M in and \\$4.25/1M out.",
+    ],
     ["vs ~$5/$25 for Opus 5.", "vs ~\\$5/\\$25 for Opus 5."],
     ["is $0.10/$0.20 in exchange.", "is \\$0.10/\\$0.20 in exchange."],
     ["Between $5-$10 per seat.", "Between \\$5-\\$10 per seat."],
     ["Tokens: $3/M input, $15/M output.", "Tokens: \\$3/M input, \\$15/M output."],
-    ["Raised from $1M to $10M.", "Raised from \\$1M to \\$10M."]
+    ["Raised from $1M to $10M.", "Raised from \\$1M to \\$10M."],
   ])("keeps per-unit prices out of math: %s", (input, expected) => {
     expect(normalizeMathDelimiters(input)).toBe(expected);
   });
 
   it.each([
     ["Export $PATH and $HOME before running.", "Export \\$PATH and \\$HOME before running."],
-    ["The var $foo is set from $bar.", "The var \\$foo is set from \\$bar."]
+    ["The var $foo is set from $bar.", "The var \\$foo is set from \\$bar."],
   ])("does not pair shell variables into math: %s", (input, expected) => {
     expect(normalizeMathDelimiters(input)).toBe(expected);
   });
@@ -48,7 +54,9 @@ describe("normalizeMathDelimiters", () => {
   it("converts LaTeX block math \\[ ... \\] to $$ ... $$", () => {
     const input = "\\[ \\text{margin} = P(\\text{best family}) - P(\\text{second-best family}) \\]";
     const output = normalizeMathDelimiters(input);
-    expect(output).toContain("$$\n\\text{margin} = P(\\text{best family}) - P(\\text{second-best family})\n$$");
+    expect(output).toContain(
+      "$$\n\\text{margin} = P(\\text{best family}) - P(\\text{second-best family})\n$$",
+    );
   });
 
   it("converts LaTeX inline math \\( ... \\) to $ ... $", () => {
@@ -83,7 +91,7 @@ describe("normalizeMathDelimiters", () => {
       "PRICE=$50",
       'echo "\\[ escaped \\] and \\( inline \\)"',
       "```",
-      "And math outside: \\(x + y\\)"
+      "And math outside: \\(x + y\\)",
     ].join("\n");
 
     const output = normalizeMathDelimiters(input);
@@ -99,7 +107,14 @@ describe("normalizeMathDelimiters", () => {
   });
 
   it("wraps bare LaTeX environments in $$ blocks", () => {
-    const input = ["Formula:", "\\begin{align}", "a &= b + c \\\\", "d &= e + f", "\\end{align}", "Done."].join("\n");
+    const input = [
+      "Formula:",
+      "\\begin{align}",
+      "a &= b + c \\\\",
+      "d &= e + f",
+      "\\end{align}",
+      "Done.",
+    ].join("\n");
 
     const output = normalizeMathDelimiters(input);
     expect(output).toContain("$$\n\\begin{align}\na &= b + c \\\\\nd &= e + f\n\\end{align}\n$$");
@@ -108,13 +123,17 @@ describe("normalizeMathDelimiters", () => {
   it("converts bare Greek letter commands in prose to math spans", () => {
     const input = '\\tau ("tau") is the threshold. Then \\alpha and \\beta are weights.';
     const output = normalizeMathDelimiters(input);
-    expect(output).toBe('$\\tau$ ("tau") is the threshold. Then $\\alpha$ and $\\beta$ are weights.');
+    expect(output).toBe(
+      '$\\tau$ ("tau") is the threshold. Then $\\alpha$ and $\\beta$ are weights.',
+    );
   });
 
   it("converts bracketed equations like [ \\text{...} ] to display math", () => {
     const input = "[ \\text{margin} = P(\\text{best family}) - P(\\text{second-best family}) ]";
     const output = normalizeMathDelimiters(input);
-    expect(output).toContain("$$\n\\text{margin} = P(\\text{best family}) - P(\\text{second-best family})\n$$");
+    expect(output).toContain(
+      "$$\n\\text{margin} = P(\\text{best family}) - P(\\text{second-best family})\n$$",
+    );
   });
 
   it("leaves Greek letters inside existing display math alone", () => {
@@ -122,10 +141,14 @@ describe("normalizeMathDelimiters", () => {
   });
 
   it("leaves Greek letters inside existing inline math alone", () => {
-    expect(normalizeMathDelimiters("Given $x = \\alpha + 1$ we win.")).toBe("Given $x = \\alpha + 1$ we win.");
+    expect(normalizeMathDelimiters("Given $x = \\alpha + 1$ we win.")).toBe(
+      "Given $x = \\alpha + 1$ we win.",
+    );
   });
 
   it("does not re-wrap Greek letters in math it just converted", () => {
-    expect(normalizeMathDelimiters("\\[ \\alpha + \\beta \\]")).toContain("$$\n\\alpha + \\beta\n$$");
+    expect(normalizeMathDelimiters("\\[ \\alpha + \\beta \\]")).toContain(
+      "$$\n\\alpha + \\beta\n$$",
+    );
   });
 });

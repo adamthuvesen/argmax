@@ -6,9 +6,12 @@ import {
   isNoisyProviderTracing,
   matchTracingRecord,
   parseLogDump,
-  splitLogSegments
+  splitLogSegments,
 } from "./logDump.js";
-import { collectAskUserQuestionState, type ResolvedAskUserQuestionTool } from "./turnInteractiveCards.js";
+import {
+  collectAskUserQuestionState,
+  type ResolvedAskUserQuestionTool,
+} from "./turnInteractiveCards.js";
 import type { TurnToolItem } from "./toolCalls.js";
 
 export type AssistantGroup = {
@@ -37,7 +40,13 @@ export type AssistantGroup = {
   // Claude extended-thinking content, decoded as thinking instead of answer
   // text. Rendered as a separate collapsible "Thought" block.
   thinking?: boolean;
-  visualization?: { artifactId: string; sessionId: string; title: string; summary: string; mode: "wide" | null };
+  visualization?: {
+    artifactId: string;
+    sessionId: string;
+    title: string;
+    summary: string;
+    mode: "wide" | null;
+  };
   // Stderr and other `error` timeline events. Rendered as a log block, not
   // an assistant bubble. Consecutive errors coalesce into one group.
   error?: boolean;
@@ -117,7 +126,7 @@ function isClosingRemark(candidateLength: number, tailLength: number): boolean {
 export function preToolNarrationGroupIds(
   groups: readonly AssistantGroup[],
   lastToolCreatedAt: string | null,
-  options: { separateAnswer?: boolean } = {}
+  options: { separateAnswer?: boolean } = {},
 ): ReadonlySet<string> {
   const hidden = new Set<string>();
   if (lastToolCreatedAt === null) return hidden;
@@ -143,7 +152,9 @@ export function preToolNarrationGroupIds(
 
 function cursorAssistantSnapshot(event: TimelineEvent): string | null {
   const canonical = decodeTimelineEvent(event);
-  return canonical.kind === "message" && canonical.phase === "delta" ? canonical.cumulativeText : null;
+  return canonical.kind === "message" && canonical.phase === "delta"
+    ? canonical.cumulativeText
+    : null;
 }
 
 function deltaTextForBuffer(event: TimelineEvent, currentText: string): string {
@@ -190,7 +201,11 @@ function deltaTextForBuffer(event: TimelineEvent, currentText: string): string {
  * produces them on its own. Whitespace on either side already separates the
  * two, so a normal stream is left byte for byte as it arrived.
  */
-function appendThinking(current: string, incoming: string, payload: TimelineEvent["payload"]): string {
+function appendThinking(
+  current: string,
+  incoming: string,
+  payload: TimelineEvent["payload"],
+): string {
   // Older Codex streams lost summary-part separators, then replayed the whole
   // item. Match that saved suffix even after live fragments already gained
   // paragraph breaks, and restore the completed item's own spacing.
@@ -296,7 +311,7 @@ export function coalesceAssistantGroups(
     hardSplitAt?: readonly string[];
     splitAt?: readonly string[];
     streaming?: boolean;
-  } = {}
+  } = {},
 ): AssistantGroup[] {
   const assistantGroups: AssistantGroup[] = [];
   type Buffer = {
@@ -326,7 +341,8 @@ export function coalesceAssistantGroups(
   // drops and regrows. The boundary event only changes when the group really
   // is a different group.
   let boundaryEventId = "start";
-  const nextGroupId = (kind: "answer" | "thinking"): string => `assistant-${kind}-after-${boundaryEventId}`;
+  const nextGroupId = (kind: "answer" | "thinking"): string =>
+    `assistant-${kind}-after-${boundaryEventId}`;
   // Groups folded from deltas, as opposed to built from one completed message.
   // A completed message that follows a delta group in a live turn is a fresh
   // block (Cursor narrates before a tool, then answers), never a duplicate or
@@ -343,7 +359,7 @@ export function coalesceAssistantGroups(
       lastActivityAt: answerBuffer.lastCreatedAt,
       text: answerBuffer.text,
       streaming,
-      growing: streaming
+      growing: streaming,
     });
     deltaGroupIds.add(answerBuffer.id);
     boundaryEventId = answerBuffer.lastEventId;
@@ -358,7 +374,7 @@ export function coalesceAssistantGroups(
       lastActivityAt: thinkingBuffer.lastCreatedAt,
       text: thinkingBuffer.text,
       streaming: false,
-      thinking: true
+      thinking: true,
     });
     boundaryEventId = thinkingBuffer.lastEventId;
     thinkingBuffer = null;
@@ -369,7 +385,9 @@ export function coalesceAssistantGroups(
   };
   const hardSplitBefore = (event: TimelineEvent): boolean => {
     const previous = previousEventCreatedAt;
-    return previous !== null && hardSplitAt.some((time) => time > previous && time <= event.createdAt);
+    return (
+      previous !== null && hardSplitAt.some((time) => time > previous && time <= event.createdAt)
+    );
   };
   const pushErrorLine = (event: TimelineEvent, message: string, canJoinPrevious = true): void => {
     const last = assistantGroups[assistantGroups.length - 1];
@@ -386,7 +404,7 @@ export function coalesceAssistantGroups(
       lastActivityAt: event.createdAt,
       text: message,
       streaming: false,
-      error: true
+      error: true,
     });
     boundaryEventId = event.id;
   };
@@ -406,8 +424,8 @@ export function coalesceAssistantGroups(
           sessionId: event.sessionId,
           title: canonical.title,
           summary: canonical.summary,
-          mode: canonical.mode
-        }
+          mode: canonical.mode,
+        },
       });
       boundaryEventId = event.id;
       previousEventCreatedAt = event.createdAt;
@@ -419,7 +437,10 @@ export function coalesceAssistantGroups(
       flushAnswer();
     }
     const tracing = matchTracingRecord(event.message);
-    if (canonical.kind === "error" || (canonical.kind === "message" && canonical.phase === "delta" && tracing)) {
+    if (
+      canonical.kind === "error" ||
+      (canonical.kind === "message" && canonical.phase === "delta" && tracing)
+    ) {
       flushThinking();
       flushAnswer();
       if (
@@ -440,7 +461,12 @@ export function coalesceAssistantGroups(
       previousEventCreatedAt = event.createdAt;
       continue;
     }
-    if (canonical.kind === "message" && canonical.phase === "delta" && canonical.rawStream && dropRawContinuations) {
+    if (
+      canonical.kind === "message" &&
+      canonical.phase === "delta" &&
+      canonical.rawStream &&
+      dropRawContinuations
+    ) {
       previousEventCreatedAt = event.createdAt;
       continue;
     }
@@ -454,7 +480,11 @@ export function coalesceAssistantGroups(
       }
     }
     dropRawContinuations = false;
-    if (canonical.kind === "message" && canonical.phase === "delta" && canonical.content === "thinking") {
+    if (
+      canonical.kind === "message" &&
+      canonical.phase === "delta" &&
+      canonical.content === "thinking"
+    ) {
       flushAnswer();
       if (!thinkingBuffer) {
         thinkingBuffer = {
@@ -463,7 +493,7 @@ export function coalesceAssistantGroups(
           createdAt: event.createdAt,
           lastCreatedAt: event.createdAt,
           lastEventId: event.id,
-          text: ""
+          text: "",
         };
       }
       thinkingBuffer.lastCreatedAt = event.createdAt;
@@ -481,7 +511,7 @@ export function coalesceAssistantGroups(
           createdAt: event.createdAt,
           lastCreatedAt: event.createdAt,
           lastEventId: event.id,
-          text: ""
+          text: "",
         };
       }
       answerBuffer.lastCreatedAt = event.createdAt;
@@ -538,7 +568,7 @@ export function coalesceAssistantGroups(
       createdAt: event.createdAt,
       lastActivityAt: event.createdAt,
       text: event.message,
-      streaming
+      streaming,
     });
     boundaryEventId = event.id;
     previousEventCreatedAt = event.createdAt;
@@ -561,7 +591,7 @@ export function coalesceAssistantGroups(
 }
 
 export function assistantGroupHasVisibleChat(
-  group: Pick<AssistantGroup, "text" | "error" | "thinking" | "visualization">
+  group: Pick<AssistantGroup, "text" | "error" | "thinking" | "visualization">,
 ): boolean {
   if (group.visualization) return true;
   if (group.thinking) return group.text.trim().length > 0;
@@ -681,11 +711,10 @@ export function buildTurnRenderState(params: {
   const assistantGroups = coalesceAssistantGroups(params.assistantEvents, {
     hardSplitAt: params.assistantHardSplitAt,
     splitAt: toolStartTimes(params.toolItems),
-    streaming: params.isStreamingTurn ?? true
+    streaming: params.isStreamingTurn ?? true,
   });
-  const { tool: askUserQuestionTool, hiddenToolIds: askUserQuestionHiddenToolIds } = collectAskUserQuestionState(
-    params.toolItems
-  );
+  const { tool: askUserQuestionTool, hiddenToolIds: askUserQuestionHiddenToolIds } =
+    collectAskUserQuestionState(params.toolItems);
   const hasQuestionCard = askUserQuestionTool !== null;
   const hasBlockingQuestion = hasQuestionCard && askUserQuestionTool.delivery !== "async";
   const cardCutoff = hasBlockingQuestion ? askUserQuestionTool.createdAt : null;
@@ -705,8 +734,8 @@ export function buildTurnRenderState(params: {
     turnStartedAtMs: computeTurnStartedAtMs({
       priorItem: params.priorItem,
       assistantTimestamps: params.assistantTimestamps,
-      toolItems: params.toolItems
+      toolItems: params.toolItems,
     }),
-    isPausedOnUserInput: hasBlockingQuestion
+    isPausedOnUserInput: hasBlockingQuestion,
   };
 }

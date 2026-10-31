@@ -13,12 +13,16 @@ function commitMsg(message: string) {
 
 describe(".githooks/commit-msg", () => {
   it("refuses an AI attribution trailer", () => {
-    const result = commitMsg("fix(chat): keep focus\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n");
+    const result = commitMsg(
+      "fix(chat): keep focus\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n",
+    );
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("remove the AI attribution line");
   });
 
   it("accepts a plain message", () => {
-    expect(commitMsg("fix(chat): keep focus\n\nCo-Authored-By: Adam <a@example.com>\n").status).toBe(0);
+    expect(
+      commitMsg("fix(chat): keep focus\n\nCo-Authored-By: Adam <a@example.com>\n").status,
+    ).toBe(0);
   });
 });

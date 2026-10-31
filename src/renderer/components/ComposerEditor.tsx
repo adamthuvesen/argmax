@@ -42,7 +42,7 @@ export function ComposerEditor(props: ComposerEditorProps): JSX.Element {
   // The view is a component, so a bare function here would be called as the
   // state initializer (with no props) when the chunk is already warm.
   const [Loaded, setLoaded] = useState<EditorModule["ComposerEditorView"] | null>(
-    () => editorModule?.ComposerEditorView ?? null
+    () => editorModule?.ComposerEditorView ?? null,
   );
   const handoff = useRef<ComposerEditorHandoff | undefined>(undefined);
   const { fieldRef } = props;
@@ -59,12 +59,12 @@ export function ComposerEditor(props: ComposerEditorProps): JSX.Element {
           handoff.current = {
             selectionStart: field.selectionStart ?? 0,
             selectionEnd: field.selectionEnd ?? field.selectionStart ?? 0,
-            focused: field.contains(document.activeElement)
+            focused: field.contains(document.activeElement),
           };
         }
         setLoaded(() => loaded.ComposerEditorView);
       },
-      () => undefined
+      () => undefined,
     );
     return () => {
       current = false;

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { WorkspaceTree } from "./WorkspaceTree.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import type { WorkspaceFileEntry } from "../../shared/types.js";
@@ -34,7 +34,7 @@ function makeState(entries: WorkspaceFileEntry[]): WorkspaceFilesState {
     editFile: () => undefined,
     saveFile: () => Promise.resolve(),
     reloadFile: () => undefined,
-    dismissExternalChange: () => undefined
+    dismissExternalChange: () => undefined,
   };
 }
 
@@ -50,7 +50,7 @@ describe("WorkspaceTree virtualization", () => {
     // expanding any directories — exercises the worst case for row count.
     const entries: WorkspaceFileEntry[] = Array.from({ length: 10_000 }, (_, i) => ({
       path: `file-${String(i).padStart(5, "0")}.ts`,
-      size: 0
+      size: 0,
     }));
 
     render(<WorkspaceTree state={makeState(entries)} height={600} />);
@@ -63,7 +63,11 @@ describe("WorkspaceTree virtualization", () => {
   });
 
   it("maps filenames and extensions to distinct icons without changing row labels", () => {
-    const entries: WorkspaceFileEntry[] = [{ path: "app.ts" }, { path: "README.md" }, { path: "CLAUDE.md" }];
+    const entries: WorkspaceFileEntry[] = [
+      { path: "app.ts" },
+      { path: "README.md" },
+      { path: "CLAUDE.md" },
+    ];
 
     render(<WorkspaceTree state={makeState(entries)} height={400} />);
 
@@ -79,8 +83,16 @@ describe("WorkspaceTree virtualization", () => {
   });
 
   it("preserves scroll when entries refresh without shape change (audit M19)", () => {
-    const entriesA: WorkspaceFileEntry[] = [{ path: "src/a.ts" }, { path: "src/b.ts" }, { path: "src/z.ts" }];
-    const entriesB: WorkspaceFileEntry[] = [{ path: "src/a.ts" }, { path: "src/c.ts" }, { path: "src/z.ts" }];
+    const entriesA: WorkspaceFileEntry[] = [
+      { path: "src/a.ts" },
+      { path: "src/b.ts" },
+      { path: "src/z.ts" },
+    ];
+    const entriesB: WorkspaceFileEntry[] = [
+      { path: "src/a.ts" },
+      { path: "src/c.ts" },
+      { path: "src/z.ts" },
+    ];
 
     const { rerender } = render(<WorkspaceTree state={makeState(entriesA)} height={600} />);
     const scroller = screen.getByRole("tree");
@@ -94,28 +106,27 @@ describe("WorkspaceTree virtualization", () => {
   it("pins the enclosing folders once their rows scroll out of the window", () => {
     // One deep chain plus enough leaves under it to scroll past the ancestors.
     const entries: WorkspaceFileEntry[] = Array.from({ length: 40 }, (_, i) => ({
-      path: `src/renderer/components/File${String(i).padStart(2, "0")}.tsx`
+      path: `src/renderer/components/File${String(i).padStart(2, "0")}.tsx`,
     }));
     const state = { ...makeState(entries), selectedPath: entries[0]?.path ?? null };
 
     render(<WorkspaceTree state={state} height={240} />);
     const scroller = screen.getByRole("tree");
     // No sticky block at rest: the first row has no ancestor above it.
-    expect(document.querySelector(".workspace-tree-sticky")).toBeNull();
+    expect(screen.queryByTestId("workspace-tree-sticky")).not.toBeInTheDocument();
 
     scroller.scrollTop = 240;
     fireEvent.scroll(scroller);
 
-    const sticky = document.querySelector(".workspace-tree-sticky");
-    expect(sticky).not.toBeNull();
+    const sticky = screen.getByTestId("workspace-tree-sticky");
     // src › renderer › components, outermost first, and hidden from AT because
     // the canonical rows are still in the tree above.
-    expect([...(sticky?.querySelectorAll(".workspace-tree-label") ?? [])].map((el) => el.textContent)).toEqual([
-      "src",
-      "renderer",
-      "components"
-    ]);
-    expect(sticky?.getAttribute("aria-hidden")).toBe("true");
+    expect(
+      within(sticky)
+        .getAllByTestId("workspace-tree-label")
+        .map((el) => el.textContent),
+    ).toEqual(["src", "renderer", "components"]);
+    expect(sticky).toHaveAttribute("aria-hidden", "true");
   });
 
   it("folds every open directory from the toolbar's collapse-all", () => {
@@ -139,7 +150,11 @@ describe("WorkspaceTree virtualization", () => {
     const refreshList = vi.fn();
 
     const { rerender } = render(
-      <WorkspaceTree state={{ ...makeState(entries), refreshList }} height={400} toolbar={{ onRefresh: refreshList }} />
+      <WorkspaceTree
+        state={{ ...makeState(entries), refreshList }}
+        height={400}
+        toolbar={{ onRefresh: refreshList }}
+      />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Refresh file list" }));
     expect(refreshList).toHaveBeenCalledTimes(1);
@@ -152,9 +167,12 @@ describe("WorkspaceTree virtualization", () => {
     const entries: WorkspaceFileEntry[] = [
       { path: "src/renderer/components/FilePreview.tsx" },
       { path: "src/renderer/components/SessionPane.tsx" },
-      { path: "README.md" }
+      { path: "README.md" },
     ];
-    const state = { ...makeState(entries), selectedPath: "src/renderer/components/FilePreview.tsx" };
+    const state = {
+      ...makeState(entries),
+      selectedPath: "src/renderer/components/FilePreview.tsx",
+    };
 
     render(<WorkspaceTree state={state} height={600} />);
 
@@ -173,7 +191,10 @@ describe("WorkspaceTree virtualization", () => {
       constructor(private readonly callback: ResizeObserverCallback) {}
       observe(target: Element): void {
         observed.push(target);
-        this.callback([{ target, contentRect: { height: 1200 } } as unknown as ResizeObserverEntry], this);
+        this.callback(
+          [{ target, contentRect: { height: 1200 } } as unknown as ResizeObserverEntry],
+          this,
+        );
       }
       unobserve(): void {}
       disconnect(): void {}
@@ -185,7 +206,7 @@ describe("WorkspaceTree virtualization", () => {
     expect(observed).toHaveLength(0);
 
     const entries: WorkspaceFileEntry[] = Array.from({ length: 200 }, (_, i) => ({
-      path: `file-${String(i).padStart(3, "0")}.ts`
+      path: `file-${String(i).padStart(3, "0")}.ts`,
     }));
     rerender(<WorkspaceTree state={makeState(entries)} />);
 
@@ -199,7 +220,7 @@ describe("WorkspaceTree virtualization", () => {
     const entries: WorkspaceFileEntry[] = [
       ...Array.from({ length: 8 }, (_, i) => ({ path: `docs/file-${i}.md` })),
       { path: "scripts/build.ts" },
-      { path: "AGENTS.md" }
+      { path: "AGENTS.md" },
     ];
     const state = { ...makeState(entries), selectedPath: "AGENTS.md" };
 
@@ -224,13 +245,21 @@ describe("WorkspaceTree row menu", () => {
   it("reveals a file in Finder and opens it in the default IDE, scoped to the root", async () => {
     const openFileIn = vi.fn().mockResolvedValue({ ok: true });
     const listDetectedIdes = vi.fn().mockResolvedValue([
-      { id: "terminal", label: "Terminal", appPath: "/System/Applications/Utilities/Terminal.app", hasCli: false },
-      { id: "zed", label: "Zed", appPath: "/Applications/Zed.app", hasCli: true }
+      {
+        id: "terminal",
+        label: "Terminal",
+        appPath: "/System/Applications/Utilities/Terminal.app",
+        hasCli: false,
+      },
+      { id: "zed", label: "Zed", appPath: "/Applications/Zed.app", hasCli: true },
     ]);
     (window as { argmax?: unknown }).argmax = { system: { openFileIn, listDetectedIdes } };
     // A terminal default cannot open a file; the only installed editor stands in.
     window.localStorage.setItem("argmax.defaultIde", "terminal");
-    const state = { ...makeState([{ path: "docs/report.pdf" }, { path: "uv.lock" }]), rootPath: "/repo" };
+    const state = {
+      ...makeState([{ path: "docs/report.pdf" }, { path: "uv.lock" }]),
+      rootPath: "/repo",
+    };
 
     render(<WorkspaceTree state={state} height={200} />);
 

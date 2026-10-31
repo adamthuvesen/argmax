@@ -39,7 +39,9 @@ describe("ImageLightbox", () => {
 
   it("dismisses from anywhere outside the image, including beside it", () => {
     const onClose = vi.fn();
-    render(<ImageLightbox src="data:image/png;base64,preview" alt="Attached image" onClose={onClose} />);
+    render(
+      <ImageLightbox src="data:image/png;base64,preview" alt="Attached image" onClose={onClose} />,
+    );
 
     const image = screen.getByRole("img", { name: "Attached image" });
     fireEvent.mouseDown(image);
@@ -60,7 +62,7 @@ describe("ImageLightbox", () => {
         <div style={{ overflow: "hidden", width: 160 }}>
           <LightboxHarness />
         </div>
-      </div>
+      </div>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Open preview" }));
 

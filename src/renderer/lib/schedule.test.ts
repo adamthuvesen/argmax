@@ -5,7 +5,7 @@ import {
   describeSchedule,
   formatRelative,
   parseSchedule,
-  type ScheduleControls
+  type ScheduleControls,
 } from "./schedule.js";
 
 const controls: ScheduleControls = {
@@ -13,30 +13,30 @@ const controls: ScheduleControls = {
   minute: 30,
   hour: 9,
   weekday: 3,
-  custom: "0 0 12 * * *"
+  custom: "0 0 12 * * *",
 };
 
 describe("buildSchedule", () => {
   it("generates the six-field cron dialect from friendly controls", () => {
     expect(buildSchedule("daily", controls)).toEqual({
       cronExpr: "0 30 9 * * *",
-      runOnceAt: null
+      runOnceAt: null,
     });
     expect(buildSchedule("hourly", controls)).toEqual({
       cronExpr: "0 30 * * * *",
-      runOnceAt: null
+      runOnceAt: null,
     });
     // cron dow: 1 = Sunday, so weekday 3 = Tuesday.
     expect(buildSchedule("weekly", controls)).toEqual({
       cronExpr: "0 30 9 * * Tue",
-      runOnceAt: null
+      runOnceAt: null,
     });
   });
 
   it("passes the naive local once-time through for Rust to normalize", () => {
     expect(buildSchedule("once", controls)).toEqual({
       cronExpr: null,
-      runOnceAt: "2026-09-01T09:30"
+      runOnceAt: "2026-09-01T09:30",
     });
   });
 
@@ -95,10 +95,14 @@ describe("describeSchedule", () => {
   });
 
   it("shows the raw cron string for custom expressions", () => {
-    expect(describeSchedule({ cronExpr: "*/15 * * * * *", runOnceAt: null })).toBe("*/15 * * * * *");
+    expect(describeSchedule({ cronExpr: "*/15 * * * * *", runOnceAt: null })).toBe(
+      "*/15 * * * * *",
+    );
     // A quarter-hourly run must not read as "Daily at 09:00": the row would
     // then describe a cadence the task does not have.
-    expect(describeSchedule({ cronExpr: "0 */15 9 * * *", runOnceAt: null })).toBe("0 */15 9 * * *");
+    expect(describeSchedule({ cronExpr: "0 */15 9 * * *", runOnceAt: null })).toBe(
+      "0 */15 9 * * *",
+    );
   });
 });
 

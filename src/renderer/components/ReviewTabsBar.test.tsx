@@ -7,7 +7,7 @@ function props(overrides: Partial<ReviewTabsBarProps> = {}): ReviewTabsBarProps 
     items: [
       { id: "changes", kind: "changes", label: "Changes" },
       { id: "browser-1", kind: "browser", label: "App preview", title: "http://localhost:3000" },
-      { id: "file-1", kind: "file", label: "index.ts", title: "src/index.ts", dirty: true }
+      { id: "file-1", kind: "file", label: "index.ts", title: "src/index.ts", dirty: true },
     ],
     activeId: "changes",
     visibleIds: ["changes"],
@@ -22,7 +22,7 @@ function props(overrides: Partial<ReviewTabsBarProps> = {}): ReviewTabsBarProps 
     hasBrowser: true,
     hasTerminal: true,
     artifactsEnabled: false,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -45,7 +45,7 @@ describe("ReviewTabsBar", () => {
     Object.defineProperties(strip, {
       clientWidth: { configurable: true, value: 300 },
       scrollWidth: { configurable: true, value: 700 },
-      scrollLeft: { configurable: true, writable: true, value: 0 }
+      scrollLeft: { configurable: true, writable: true, value: 0 },
     });
     const scrollBy = vi.fn();
     strip.scrollBy = scrollBy;
@@ -85,7 +85,12 @@ describe("ReviewTabsBar", () => {
   });
 
   it("opens only available tools and the optional artifacts shortcut", () => {
-    const callbacks = props({ hasAgents: false, hasTerminal: false, artifactsEnabled: true, canReopen: true });
+    const callbacks = props({
+      hasAgents: false,
+      hasTerminal: false,
+      artifactsEnabled: true,
+      canReopen: true,
+    });
     render(<ReviewTabsBar {...callbacks} />);
     fireEvent.click(screen.getByRole("button", { name: "New workspace tab" }));
     const menu = screen.getByRole("menu", { name: "Open workspace tab" });
@@ -100,7 +105,10 @@ describe("ReviewTabsBar", () => {
   it("splits the right-clicked tab and exposes bounded reorder actions", () => {
     const callbacks = props();
     render(<ReviewTabsBar {...callbacks} />);
-    fireEvent.contextMenu(screen.getByRole("tab", { name: "http://localhost:3000" }), { clientX: 80, clientY: 60 });
+    fireEvent.contextMenu(screen.getByRole("tab", { name: "http://localhost:3000" }), {
+      clientX: 80,
+      clientY: 60,
+    });
     const menu = screen.getByRole("menu", { name: "App preview tab actions" });
     expect(within(menu).getByRole("menuitem", { name: "Move Left" })).toBeEnabled();
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Show Below" }));
@@ -144,7 +152,7 @@ describe("ReviewTabsBar", () => {
     render(
       <div onDragStart={onPanelDrag}>
         <ReviewTabsBar {...callbacks} />
-      </div>
+      </div>,
     );
     const changes = screen.getByRole("tab", { name: "Changes" });
     const browser = screen.getByRole("tab", { name: "http://localhost:3000" });

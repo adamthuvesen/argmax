@@ -12,7 +12,7 @@ const lineage: ForkLineage = {
   sourceLabel: "Parser rewrite",
   boundaryEventId: "u2",
   workspace: "shared",
-  lastMergedThroughEventId: null
+  lastMergedThroughEventId: null,
 };
 
 function preview(overrides: Partial<ForkMergePreview> = {}): ForkMergePreview {
@@ -33,7 +33,7 @@ function preview(overrides: Partial<ForkMergePreview> = {}): ForkMergePreview {
     sourceBusy: false,
     unconfirmedMergeId: null,
     lastMergedThroughEventId: null,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -48,10 +48,10 @@ function stubSession(overrides: Record<string, unknown>): void {
         merged: true,
         queued: false,
         mergeId: "merge-1",
-        throughEventId: "evt-9"
+        throughEventId: "evt-9",
       }),
-      ...overrides
-    }
+      ...overrides,
+    },
   } as typeof window.argmax;
 }
 
@@ -78,7 +78,8 @@ describe("ForkBar", () => {
   });
 
   it("follows a rename of the source chat", async () => {
-    let onDelta: ((delta: { workspaces: { id: string; taskLabel: string }[] }) => void) | null = null;
+    let onDelta: ((delta: { workspaces: { id: string; taskLabel: string }[] }) => void) | null =
+      null;
     stubSession({ forkLineage: vi.fn().mockResolvedValue(lineage) });
     window.argmax = {
       ...window.argmax,
@@ -87,8 +88,8 @@ describe("ForkBar", () => {
         onDelta: vi.fn((listener: typeof onDelta) => {
           onDelta = listener;
           return () => undefined;
-        })
-      }
+        }),
+      },
     } as unknown as typeof window.argmax;
     render(<ForkBar sessionId="child-1" onOpenSession={vi.fn()} />);
     await screen.findByRole("button", { name: "Parser rewrite" });
@@ -114,15 +115,19 @@ describe("ForkBar", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Bring findings back" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Bring findings back" });
-    expect(await screen.findByText(/2 new messages from this fork go to Parser rewrite/)).toBeVisible();
-    expect(screen.getByLabelText("Message the source will receive")).toHaveTextContent("Assistant: found it");
+    expect(
+      await screen.findByText(/2 new messages from this fork go to Parser rewrite/),
+    ).toBeVisible();
+    expect(screen.getByLabelText("Message the source will receive")).toHaveTextContent(
+      "Assistant: found it",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Send to source" }));
     await waitFor(() =>
       expect(window.argmax!.session.forkMerge).toHaveBeenCalledWith({
         sessionId: "child-1",
-        throughEventId: "evt-9"
-      })
+        throughEventId: "evt-9",
+      }),
     );
     await waitFor(() => expect(dialog).not.toBeInTheDocument());
   });
@@ -130,7 +135,7 @@ describe("ForkBar", () => {
   it("says the message will queue when the source is mid-turn", async () => {
     stubSession({
       forkLineage: vi.fn().mockResolvedValue(lineage),
-      forkMergePreview: vi.fn().mockResolvedValue(preview({ sourceBusy: true }))
+      forkMergePreview: vi.fn().mockResolvedValue(preview({ sourceBusy: true })),
     });
     render(<ForkBar sessionId="child-1" />);
     fireEvent.click(await screen.findByRole("button", { name: "Bring findings back" }));
@@ -141,7 +146,7 @@ describe("ForkBar", () => {
   it("offers nothing to send once every finding has been brought back", async () => {
     stubSession({
       forkLineage: vi.fn().mockResolvedValue(lineage),
-      forkMergePreview: vi.fn().mockResolvedValue(preview({ nothingNew: true, text: "" }))
+      forkMergePreview: vi.fn().mockResolvedValue(preview({ nothingNew: true, text: "" })),
     });
     render(<ForkBar sessionId="child-1" />);
     fireEvent.click(await screen.findByRole("button", { name: "Bring findings back" }));
@@ -153,7 +158,7 @@ describe("ForkBar", () => {
   it("keeps the dialog open and surfaces a refused send", async () => {
     stubSession({
       forkLineage: vi.fn().mockResolvedValue(lineage),
-      forkMerge: vi.fn().mockRejectedValue(new Error("The source chat is archived."))
+      forkMerge: vi.fn().mockRejectedValue(new Error("The source chat is archived.")),
     });
     render(<ForkBar sessionId="child-1" />);
     fireEvent.click(await screen.findByRole("button", { name: "Bring findings back" }));

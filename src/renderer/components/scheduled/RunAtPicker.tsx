@@ -37,17 +37,22 @@ function monthCells(month: Date): Array<Date | null> {
   const lead = (first.getDay() + 6) % 7;
   const length = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const cells: Array<Date | null> = Array.from({ length: lead }, () => null);
-  for (let day = 1; day <= length; day += 1) cells.push(new Date(month.getFullYear(), month.getMonth(), day));
+  for (let day = 1; day <= length; day += 1)
+    cells.push(new Date(month.getFullYear(), month.getMonth(), day));
   return cells;
 }
 
 function triggerLabel(date: Date | null, time: string): string | null {
   if (!date) return null;
-  const day = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const day = date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
   const [hour, minute] = time.split(":").map(Number);
   const clock = new Date(2000, 0, 1, hour, minute).toLocaleTimeString(undefined, {
     hour: "numeric",
-    minute: "2-digit"
+    minute: "2-digit",
   });
   return `${day} · ${clock}`;
 }
@@ -55,7 +60,7 @@ function triggerLabel(date: Date | null, time: string): string | null {
 export function RunAtPicker({
   id,
   value,
-  onChange
+  onChange,
 }: {
   id?: string;
   value: string;
@@ -81,7 +86,8 @@ export function RunAtPicker({
     setOpen(!open);
   };
   const choose = (date: Date): void => onChange(`${dateKey(date)}T${time}`);
-  const shiftMonth = (by: number): void => setMonth(new Date(month.getFullYear(), month.getMonth() + by, 1));
+  const shiftMonth = (by: number): void =>
+    setMonth(new Date(month.getFullYear(), month.getMonth() + by, 1));
 
   // Arrow keys walk the days and carry the view across month edges.
   const onGridKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
@@ -94,12 +100,15 @@ export function RunAtPicker({
     setFocusKey(dateKey(next));
     setMonth(next);
     requestAnimationFrame(() => {
-      popover.popoverRef.current?.querySelector<HTMLButtonElement>(`[data-day="${dateKey(next)}"]`)?.focus();
+      popover.popoverRef.current
+        ?.querySelector<HTMLButtonElement>(`[data-day="${dateKey(next)}"]`)
+        ?.focus();
     });
   };
 
   const label = triggerLabel(selected, time);
-  const isCurrentMonth = month.getFullYear() === today.getFullYear() && month.getMonth() === today.getMonth();
+  const isCurrentMonth =
+    month.getFullYear() === today.getFullYear() && month.getMonth() === today.getMonth();
 
   const panel = open ? (
     <div
@@ -122,7 +131,12 @@ export function RunAtPicker({
         >
           <ChevronLeft size={14} aria-hidden="true" />
         </button>
-        <button type="button" className="run-at-nav" aria-label="Next month" onClick={() => shiftMonth(1)}>
+        <button
+          type="button"
+          className="run-at-nav"
+          aria-label="Next month"
+          onClick={() => shiftMonth(1)}
+        >
           <ChevronRight size={14} aria-hidden="true" />
         </button>
       </div>
@@ -170,7 +184,11 @@ export function RunAtPicker({
             onChange(`${datePart || todayKey}T${event.target.value}`);
           }}
         />
-        <button type="button" className="sched-button sched-button-primary run-at-done" onClick={() => setOpen(false)}>
+        <button
+          type="button"
+          className="sched-button sched-button-primary run-at-done"
+          onClick={() => setOpen(false)}
+        >
           Done
         </button>
       </div>

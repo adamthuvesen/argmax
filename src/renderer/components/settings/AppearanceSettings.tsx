@@ -3,7 +3,7 @@ import {
   FONT_HEAVINESS_MIN,
   FONT_HEAVINESS_MAX,
   toFontHeaviness,
-  type FontHeaviness
+  type FontHeaviness,
 } from "../../lib/fontHeaviness.js";
 import type { JSX } from "react";
 import { ACCENT_OPTIONS, type AccentId } from "../../lib/accent.js";
@@ -13,15 +13,20 @@ import {
   setActivityMark,
   setSessionUnderline,
   useActivityMark,
-  useSessionUnderline
+  useSessionUnderline,
 } from "../../lib/activityMark.js";
 import {
   ACTIVITY_ICON_COLOR_MODE_OPTIONS,
   isActivityIconColorMode,
   setActivityIconColorMode,
-  useActivityIconColorMode
+  useActivityIconColorMode,
 } from "../../lib/activityIconColorMode.js";
-import { CHAT_WIDTH_HINTS, CHAT_WIDTH_MAX, CHAT_WIDTH_MIN, type ChatWidth } from "../../lib/chatWidth.js";
+import {
+  CHAT_WIDTH_HINTS,
+  CHAT_WIDTH_MAX,
+  CHAT_WIDTH_MIN,
+  type ChatWidth,
+} from "../../lib/chatWidth.js";
 import {
   FONT_OPTIONS,
   FONT_SIZE_MAX,
@@ -29,30 +34,36 @@ import {
   fontSizeBasePx,
   toFontSize,
   type FontFamilyId,
-  type FontSize
+  type FontSize,
 } from "../../lib/fonts.js";
 import {
   INK_STRENGTH_HINTS,
   INK_STRENGTH_MAX,
   INK_STRENGTH_MIN,
   toInkStrength,
-  type InkStrength
+  type InkStrength,
 } from "../../lib/inkStrength.js";
 import {
   backgroundIntensityHint,
   BACKGROUND_INTENSITY_MAX,
   BACKGROUND_INTENSITY_MIN,
   toBackgroundIntensity,
-  type BackgroundIntensity
+  type BackgroundIntensity,
 } from "../../lib/backgroundIntensity.js";
 import {
   sidebarIntensityHint,
   SIDEBAR_INTENSITY_MAX,
   SIDEBAR_INTENSITY_MIN,
   toSidebarIntensity,
-  type SidebarIntensity
+  type SidebarIntensity,
 } from "../../lib/sidebarIntensity.js";
-import { contrastHint, CONTRAST_MAX, CONTRAST_MIN, toContrast, type Contrast } from "../../lib/contrast.js";
+import {
+  contrastHint,
+  CONTRAST_MAX,
+  CONTRAST_MIN,
+  toContrast,
+  type Contrast,
+} from "../../lib/contrast.js";
 import { setSidebarChatsNested, useSidebarChatNesting } from "../../lib/sidebarChatNesting.js";
 import { setForkBarVisible, useForkBarVisible } from "../../lib/forkBarVisibility.js";
 import { setMascotVisible, useMascotVisible } from "../../lib/mascotVisibility.js";
@@ -71,7 +82,7 @@ import {
   SettingRow,
   Slider,
   ThemePicker,
-  Toggle
+  Toggle,
 } from "./settingsPrimitives.js";
 
 export function AppearanceSettings({
@@ -120,7 +131,7 @@ export function AppearanceSettings({
   sidebarIntensity,
   onSidebarIntensityChange,
   contrast,
-  onContrastChange
+  onContrastChange,
 }: {
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
@@ -280,7 +291,10 @@ export function AppearanceSettings({
         />
         <SettingRow
           label="Activity icons"
-          description={ACTIVITY_ICON_COLOR_MODE_OPTIONS.find((option) => option.id === activityIconColorMode)?.hint}
+          description={
+            ACTIVITY_ICON_COLOR_MODE_OPTIONS.find((option) => option.id === activityIconColorMode)
+              ?.hint
+          }
           control={
             <SegmentedControl
               ariaLabel="Activity icons"
@@ -291,7 +305,7 @@ export function AppearanceSettings({
               }}
               options={ACTIVITY_ICON_COLOR_MODE_OPTIONS.map((option) => ({
                 value: option.id,
-                label: option.label
+                label: option.label,
               }))}
             />
           }
@@ -301,12 +315,18 @@ export function AppearanceSettings({
           description={ACTIVITY_MARK_OPTIONS.find((option) => option.id === activityMark)?.hint}
           htmlFor="settings-activity-mark"
           control={
-            <ActivityMarkPicker inputId="settings-activity-mark" value={activityMark} onChange={setActivityMark} />
+            <ActivityMarkPicker
+              inputId="settings-activity-mark"
+              value={activityMark}
+              onChange={setActivityMark}
+            />
           }
         />
         <SettingRow
           label="Running row underline"
-          description={SESSION_UNDERLINE_OPTIONS.find((option) => option.id === sessionUnderline)?.hint}
+          description={
+            SESSION_UNDERLINE_OPTIONS.find((option) => option.id === sessionUnderline)?.hint
+          }
           htmlFor="settings-session-underline"
           control={
             <SessionUnderlinePicker
@@ -329,7 +349,7 @@ export function AppearanceSettings({
               }}
               options={[
                 { value: "accent", label: "Accent" },
-                { value: "neutral", label: "Neutral" }
+                { value: "neutral", label: "Neutral" },
               ]}
             />
           }
@@ -341,7 +361,13 @@ export function AppearanceSettings({
           label="Font family"
           description="Interface and code."
           htmlFor="settings-font-family"
-          control={<FontFamilyPicker inputId="settings-font-family" value={fontFamily} onChange={onFontFamilyChange} />}
+          control={
+            <FontFamilyPicker
+              inputId="settings-font-family"
+              value={fontFamily}
+              onChange={onFontFamilyChange}
+            />
+          }
         />
         {/* The one preview worth keeping: a name cannot show what a face looks like. */}
         <p className="settings-font-specimen" aria-hidden="true" style={{ fontFamily: fontStack }}>
@@ -438,7 +464,7 @@ export function AppearanceSettings({
               onChange={(v) => onReviewPanelSideChange(v === "left" ? "left" : "right")}
               options={[
                 { value: "left", label: "Left" },
-                { value: "right", label: "Right" }
+                { value: "right", label: "Right" },
               ]}
             />
           }
@@ -454,7 +480,7 @@ export function AppearanceSettings({
               onChange={(value) => setSidebarChatsNested(value === "nested")}
               options={[
                 { value: "nested", label: "Nested" },
-                { value: "separate", label: "Separate" }
+                { value: "separate", label: "Separate" },
               ]}
             />
           }
@@ -462,7 +488,13 @@ export function AppearanceSettings({
         <SettingRow
           label="Show arcs"
           description="Show New arc and the Arcs section in the sidebar."
-          control={<Toggle ariaLabel="Show arcs" checked={sidebarArcsVisible} onChange={onSidebarArcsVisibleChange} />}
+          control={
+            <Toggle
+              ariaLabel="Show arcs"
+              checked={sidebarArcsVisible}
+              onChange={onSidebarArcsVisibleChange}
+            />
+          }
         />
         <SettingRow
           label="Show archived chats"
@@ -503,7 +535,11 @@ export function AppearanceSettings({
           label="Translucent window"
           description="Let the desktop show through the app's background, blurred the way Finder's sidebar is. Cards, panels and the composer stay solid."
           control={
-            <Toggle ariaLabel="Translucent window" checked={windowTranslucent} onChange={onWindowTranslucentChange} />
+            <Toggle
+              ariaLabel="Translucent window"
+              checked={windowTranslucent}
+              onChange={onWindowTranslucentChange}
+            />
           }
         />
         <SettingRow
@@ -536,13 +572,19 @@ export function AppearanceSettings({
           label="Fork bar in forked chats"
           description="Name the chat a fork came from, with a link back to it and Bring findings back."
           control={
-            <Toggle ariaLabel="Fork bar in forked chats" checked={forkBarVisible} onChange={setForkBarVisible} />
+            <Toggle
+              ariaLabel="Fork bar in forked chats"
+              checked={forkBarVisible}
+              onChange={setForkBarVisible}
+            />
           }
         />
         <SettingRow
           label="Fox mascot"
           description="Draw the fox on the launch screen, the empty state, and the mobile new-chat screen."
-          control={<Toggle ariaLabel="Fox mascot" checked={mascotVisible} onChange={setMascotVisible} />}
+          control={
+            <Toggle ariaLabel="Fox mascot" checked={mascotVisible} onChange={setMascotVisible} />
+          }
         />
         <SettingRow
           label="Context indicator in composer"

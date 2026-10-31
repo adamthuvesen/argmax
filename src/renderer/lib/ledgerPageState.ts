@@ -3,7 +3,7 @@ import type {
   UsageProviderRemaining,
   UsageRemaining,
   UsageSummary,
-  UsageWindow
+  UsageWindow,
 } from "../../shared/types.js";
 import type { ActivityMetric } from "../components/activity/activityPresentation.js";
 import type { ActivitySummary, ActivityWindow } from "../components/activity/activityContract.js";
@@ -25,13 +25,13 @@ type ActivityUiState = {
 let usageUi: UsageUiState = {
   usageWindow: "30d",
   metric: "cost",
-  provider: null
+  provider: null,
 };
 
 let activityUi: ActivityUiState = {
   activityWindow: "30d",
   metric: "commits",
-  projectId: null
+  projectId: null,
 };
 
 const usageSummaries = new Map<string, UsageSummary>();
@@ -50,11 +50,19 @@ const activitySummaryRequests = new Map<string, Promise<ActivitySummary>>();
 /** Ledger summaries are large enough that filter exploration needs a hard bound. */
 const SUMMARY_CACHE_LIMIT = 8;
 
-function usageSummaryKey(window: UsageWindow, provider: ProviderId | null, timeZone: string): string {
+function usageSummaryKey(
+  window: UsageWindow,
+  provider: ProviderId | null,
+  timeZone: string,
+): string {
   return `${window}\0${provider ?? "all"}\0${timeZone}`;
 }
 
-function activitySummaryKey(window: ActivityWindow, projectId: string | null, timeZone: string): string {
+function activitySummaryKey(
+  window: ActivityWindow,
+  projectId: string | null,
+  timeZone: string,
+): string {
   return `${window}\0${projectId ?? "all"}\0${timeZone}`;
 }
 
@@ -83,7 +91,11 @@ function setRecent<V>(cache: Map<string, V>, key: string, value: V): void {
   }
 }
 
-function clearMatchingRequest<T>(requests: Map<string, Promise<T>>, key: string, request: Promise<T>): void {
+function clearMatchingRequest<T>(
+  requests: Map<string, Promise<T>>,
+  key: string,
+  request: Promise<T>,
+): void {
   if (requests.get(key) === request) requests.delete(key);
 }
 
@@ -98,7 +110,7 @@ export function patchUsageUiState(patch: Partial<UsageUiState>): void {
 export function getCachedUsageSummary(
   window: UsageWindow,
   provider: ProviderId | null,
-  timeZone: string
+  timeZone: string,
 ): UsageSummary | null {
   return getRecent(usageSummaries, usageSummaryKey(window, provider, timeZone));
 }
@@ -107,7 +119,7 @@ export function setCachedUsageSummary(
   window: UsageWindow,
   provider: ProviderId | null,
   timeZone: string,
-  summary: UsageSummary
+  summary: UsageSummary,
 ): void {
   setRecent(usageSummaries, usageSummaryKey(window, provider, timeZone), summary);
 }
@@ -117,7 +129,7 @@ export function requestUsageSummary(
   window: UsageWindow,
   provider: ProviderId | null,
   timeZone: string,
-  fetch: () => Promise<UsageSummary>
+  fetch: () => Promise<UsageSummary>,
 ): Promise<UsageSummary> {
   const key = usageSummaryKey(window, provider, timeZone);
   const active = usageSummaryRequests.get(key);
@@ -130,7 +142,7 @@ export function requestUsageSummary(
   usageSummaryRequests.set(key, request);
   void request.then(
     () => clearMatchingRequest(usageSummaryRequests, key, request),
-    () => clearMatchingRequest(usageSummaryRequests, key, request)
+    () => clearMatchingRequest(usageSummaryRequests, key, request),
   );
   return request;
 }
@@ -157,12 +169,15 @@ export function usageRemainingHasSettled(): boolean {
 const lastGoodRows = new Map<ProviderId, { row: UsageProviderRemaining; fetchedAt: string }>();
 
 export function getLastGoodProviderRow(
-  provider: ProviderId
+  provider: ProviderId,
 ): { row: UsageProviderRemaining; fetchedAt: string } | null {
   return lastGoodRows.get(provider) ?? null;
 }
 
-export function setCachedUsageRemaining(remaining: UsageRemaining | null, error: string | null): void {
+export function setCachedUsageRemaining(
+  remaining: UsageRemaining | null,
+  error: string | null,
+): void {
   usageRemaining = remaining;
   usageRemainingError = error;
   for (const row of remaining?.providers ?? []) {
@@ -177,7 +192,9 @@ export function setCachedUsageRemaining(remaining: UsageRemaining | null, error:
 }
 
 /** Remaining is one account-wide read, so every caller can share it. */
-export function requestUsageRemaining(fetch: () => Promise<UsageRemaining>): Promise<UsageRemaining> {
+export function requestUsageRemaining(
+  fetch: () => Promise<UsageRemaining>,
+): Promise<UsageRemaining> {
   if (usageRemainingRequest) return usageRemainingRequest;
 
   const request = fetch().then((remaining) => {
@@ -191,7 +208,7 @@ export function requestUsageRemaining(fetch: () => Promise<UsageRemaining>): Pro
     },
     () => {
       if (usageRemainingRequest === request) usageRemainingRequest = null;
-    }
+    },
   );
   return request;
 }
@@ -226,7 +243,7 @@ export function patchActivityUiState(patch: Partial<ActivityUiState>): void {
 export function getCachedActivitySummary(
   window: ActivityWindow,
   projectId: string | null,
-  timeZone: string
+  timeZone: string,
 ): ActivitySummary | null {
   return getRecent(activitySummaries, activitySummaryKey(window, projectId, timeZone));
 }
@@ -235,7 +252,7 @@ export function setCachedActivitySummary(
   window: ActivityWindow,
   projectId: string | null,
   timeZone: string,
-  summary: ActivitySummary
+  summary: ActivitySummary,
 ): void {
   setRecent(activitySummaries, activitySummaryKey(window, projectId, timeZone), summary);
 }
@@ -245,7 +262,7 @@ export function requestActivitySummary(
   window: ActivityWindow,
   projectId: string | null,
   timeZone: string,
-  fetch: () => Promise<ActivitySummary>
+  fetch: () => Promise<ActivitySummary>,
 ): Promise<ActivitySummary> {
   const key = activitySummaryKey(window, projectId, timeZone);
   const active = activitySummaryRequests.get(key);
@@ -258,7 +275,7 @@ export function requestActivitySummary(
   activitySummaryRequests.set(key, request);
   void request.then(
     () => clearMatchingRequest(activitySummaryRequests, key, request),
-    () => clearMatchingRequest(activitySummaryRequests, key, request)
+    () => clearMatchingRequest(activitySummaryRequests, key, request),
   );
   return request;
 }

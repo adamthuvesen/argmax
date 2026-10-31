@@ -12,7 +12,7 @@ describe("diagnostic downloads", () => {
     vi.stubGlobal("URL", {
       createObjectURL: () => {
         throw new Error("Download unavailable");
-      }
+      },
     });
     const setStatus = vi.fn();
     const onError = vi.fn();
@@ -22,7 +22,7 @@ describe("diagnostic downloads", () => {
       level: "info",
       scope: "test",
       message: "hello",
-      fields: {}
+      fields: {},
     };
 
     saveLogsFile([entry], setStatus, onError);

@@ -13,9 +13,13 @@ const editEvents: TimelineEvent[] = [
     payload: {
       id: "edit-1",
       name: "Edit",
-      input: { file_path: "/tmp/worktrees/dashboard/CHANGELOG.md", old_string: "2025", new_string: "2026" }
+      input: {
+        file_path: "/tmp/worktrees/dashboard/CHANGELOG.md",
+        old_string: "2025",
+        new_string: "2026",
+      },
     },
-    createdAt: "2026-05-08T15:54:02.000Z"
+    createdAt: "2026-05-08T15:54:02.000Z",
   },
   {
     id: "edit-done",
@@ -23,7 +27,7 @@ const editEvents: TimelineEvent[] = [
     type: "command.completed",
     message: "Edit",
     payload: { id: "edit-1", name: "Edit", output: "ok" },
-    createdAt: "2026-05-08T15:54:03.000Z"
+    createdAt: "2026-05-08T15:54:03.000Z",
   },
   {
     id: "answer",
@@ -31,8 +35,8 @@ const editEvents: TimelineEvent[] = [
     type: "message.completed",
     message: "Fixed the date.",
     payload: {},
-    createdAt: "2026-05-08T15:54:04.000Z"
-  }
+    createdAt: "2026-05-08T15:54:04.000Z",
+  },
 ] as TimelineEvent[];
 
 /** The turn's activity rows name the same file, so reach the row through the

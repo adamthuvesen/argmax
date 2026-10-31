@@ -39,8 +39,7 @@ describe("KeyboardCheatSheet", () => {
     const onClose = vi.fn();
     render(<KeyboardCheatSheet open={true} onClose={onClose} />);
     // mousedown on the overlay backdrop (outside the inner .cheat-sheet ref)
-    const overlay = document.querySelector(".cheat-sheet-overlay") as HTMLElement;
-    expect(overlay).not.toBeNull();
+    const overlay = screen.getByRole("dialog", { name: "Keyboard shortcuts" });
     fireEvent.mouseDown(overlay);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -69,7 +68,7 @@ describe("KeyboardCheatSheet", () => {
         key: "Tab",
         shiftKey: true,
         bubbles: true,
-        cancelable: true
+        cancelable: true,
       });
       document.dispatchEvent(shiftEvent);
       expect(shiftEvent.defaultPrevented).toBe(true);

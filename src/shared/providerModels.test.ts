@@ -13,7 +13,7 @@ import {
   PROVIDER_TITLE_MODEL,
   reasoningEffortsForModel,
   resolveModelId,
-  type UsageCounts
+  type UsageCounts,
 } from "./providerModels.js";
 
 const million: UsageCounts = { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -24,7 +24,10 @@ afterEach(() => {
 
 describe("PROVIDER_MODEL_DEFAULTS", () => {
   it("keeps historical DeepSeek pricing after the snapshot upgrade", () => {
-    for (const modelId of ["openrouter/deepseek/deepseek-v4.1-flash", "openrouter/deepseek/deepseek-v4.1-flash-1017"]) {
+    for (const modelId of [
+      "openrouter/deepseek/deepseek-v4.1-flash",
+      "openrouter/deepseek/deepseek-v4.1-flash-1017",
+    ]) {
       expect(costOf(million, modelId)).toBe(0.15);
       expect(contextWindowForModel(modelId)).toBe(1_048_576);
     }
@@ -35,49 +38,55 @@ describe("PROVIDER_MODEL_DEFAULTS", () => {
   it("matches the documented launch defaults", () => {
     expect(PROVIDER_MODEL_DEFAULTS.claude).toMatchObject({
       modelId: "claude-opus-5-5",
-      supportsReasoningEffort: true
+      supportsReasoningEffort: true,
     });
     expect(PROVIDER_MODEL_DEFAULTS.claude.reasoningEffort).toBeUndefined();
     expect(PROVIDER_MODEL_DEFAULTS.codex).toMatchObject({
       modelId: "gpt-6.1-sol",
-      supportsReasoningEffort: true
+      supportsReasoningEffort: true,
     });
     expect(PROVIDER_MODEL_DEFAULTS.codex.reasoningEffort).toBeUndefined();
     expect(PROVIDER_MODEL_DEFAULTS.cursor).toMatchObject({
       modelId: "grok-4.7-medium",
-      supportsReasoningEffort: true
+      supportsReasoningEffort: true,
     });
     expect(PROVIDER_MODEL_DEFAULTS.opencode).toMatchObject({
       modelId: "openrouter/z-ai/glm-5.3-flash",
       supportsReasoningEffort: true,
-      reasoningEffort: "high"
+      reasoningEffort: "high",
     });
   });
 });
 
 describe("reasoningEffortsForModel", () => {
   it("offers Max for Cursor GPT-5.6 and Opus 5 Thinking", () => {
-    expect(reasoningEffortsForModel("cursor", "gpt-5.6-sol-medium")).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(reasoningEffortsForModel("cursor", "gpt-5.6-sol-medium")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
     expect(reasoningEffortsForModel("cursor", "claude-opus-5-thinking-medium")).toEqual([
       "low",
       "medium",
       "high",
       "xhigh",
-      "max"
+      "max",
     ]);
     expect(reasoningEffortsForModel("cursor", "claude-opus-5-5-medium")).toEqual([
       "low",
       "medium",
       "high",
       "xhigh",
-      "max"
+      "max",
     ]);
     expect(reasoningEffortsForModel("cursor", "claude-sonnet-5-5-medium")).toEqual([
       "low",
       "medium",
       "high",
       "xhigh",
-      "max"
+      "max",
     ]);
   });
 
@@ -85,18 +94,40 @@ describe("reasoningEffortsForModel", () => {
   // "unknown effort level 'max'; use one of: xhigh, high, medium, low".
   it("caps Grok Build at xhigh for every model", () => {
     for (const model of PROVIDER_MODELS.grok) {
-      expect(reasoningEffortsForModel("grok", model.modelId)).toEqual(["low", "medium", "high", "xhigh"]);
+      expect(reasoningEffortsForModel("grok", model.modelId)).toEqual([
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+      ]);
     }
   });
 
   it("offers Extra High for Cursor Grok 4.7", () => {
-    expect(reasoningEffortsForModel("cursor", "grok-4.7-medium")).toEqual(["low", "medium", "high", "xhigh"]);
+    expect(reasoningEffortsForModel("cursor", "grok-4.7-medium")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
   });
 
   it("caps Cursor Grok 4.6/4.5 and Gemini 3.8 at High", () => {
-    expect(reasoningEffortsForModel("cursor", "cursor-grok-4.6-medium")).toEqual(["low", "medium", "high"]);
-    expect(reasoningEffortsForModel("cursor", "cursor-grok-4.5-medium")).toEqual(["low", "medium", "high"]);
-    expect(reasoningEffortsForModel("cursor", "gemini-3.8-flash-medium")).toEqual(["low", "medium", "high"]);
+    expect(reasoningEffortsForModel("cursor", "cursor-grok-4.6-medium")).toEqual([
+      "low",
+      "medium",
+      "high",
+    ]);
+    expect(reasoningEffortsForModel("cursor", "cursor-grok-4.5-medium")).toEqual([
+      "low",
+      "medium",
+      "high",
+    ]);
+    expect(reasoningEffortsForModel("cursor", "gemini-3.8-flash-medium")).toEqual([
+      "low",
+      "medium",
+      "high",
+    ]);
   });
 
   it("offers Max and Ultra for Codex Astra/Sol/Terra, Max only for Luna", () => {
@@ -106,7 +137,7 @@ describe("reasoningEffortsForModel", () => {
       "high",
       "xhigh",
       "max",
-      "ultra"
+      "ultra",
     ]);
     expect(reasoningEffortsForModel("codex", "gpt-6.1-sol")).toEqual([
       "low",
@@ -114,7 +145,7 @@ describe("reasoningEffortsForModel", () => {
       "high",
       "xhigh",
       "max",
-      "ultra"
+      "ultra",
     ]);
     expect(reasoningEffortsForModel("codex", "gpt-5.6-terra")).toEqual([
       "low",
@@ -122,9 +153,15 @@ describe("reasoningEffortsForModel", () => {
       "high",
       "xhigh",
       "max",
-      "ultra"
+      "ultra",
     ]);
-    expect(reasoningEffortsForModel("codex", "gpt-6-luna")).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(reasoningEffortsForModel("codex", "gpt-6-luna")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
   });
 });
 
@@ -139,7 +176,7 @@ describe("resolveModelId", () => {
   it("gives a retired id its successor's effort ladder", () => {
     const retired = "openrouter/deepseek/deepseek-v4.1-flash";
     expect(reasoningEffortsForModel("opencode", retired)).toEqual(
-      reasoningEffortsForModel("opencode", resolveModelId("opencode", retired))
+      reasoningEffortsForModel("opencode", resolveModelId("opencode", retired)),
     );
   });
 });
@@ -168,7 +205,7 @@ describe("costOf — golden fixtures", () => {
       input: 1_000_000,
       output: 1_000_000,
       cacheRead: 1_000_000,
-      cacheWrite: 1_000_000
+      cacheWrite: 1_000_000,
     };
     // 5 + 25 + 0.5 + 6.25 = 36.75
     expect(costOf(usage, "claude-opus-5")).toBeCloseTo(36.75, 9);
@@ -179,7 +216,7 @@ describe("costOf — golden fixtures", () => {
       input: 1_000_000,
       output: 1_000_000,
       cacheRead: 1_000_000,
-      cacheWrite: 1_000_000
+      cacheWrite: 1_000_000,
     };
     // 4 + 20 + 0.2 + 5 = 29.2
     expect(costOf(usage, "claude-opus-5-5")).toBeCloseTo(29.2, 9);
@@ -190,7 +227,7 @@ describe("costOf — golden fixtures", () => {
       input: 1_000_000,
       output: 1_000_000,
       cacheRead: 1_000_000,
-      cacheWrite: 1_000_000
+      cacheWrite: 1_000_000,
     };
     expect(MODEL_PRICING["claude-opus-4-8"]).toBeUndefined();
     expect(costOf(usage, "claude-opus-4-8")).toBeCloseTo(36.75, 9);
@@ -204,7 +241,10 @@ describe("costOf — golden fixtures", () => {
 
   it("prices GPT-6 Astra at its current list rates", () => {
     expect(
-      costOf({ input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheWrite: 1_000_000 }, "gpt-6-astra")
+      costOf(
+        { input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheWrite: 1_000_000 },
+        "gpt-6-astra",
+      ),
     ).toBeCloseTo(73.5, 9);
   });
 
@@ -248,7 +288,7 @@ describe("costOf — unknown model", () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith("pricing", "unknown model id", {
       modelId: "gpt-99-ultra",
-      normalized: "gpt-99-ultra"
+      normalized: "gpt-99-ultra",
     });
   });
 });
@@ -302,8 +342,16 @@ describe("Grok Build pricing", () => {
       ["grok-4.6", { input: 248, output: 19, cacheRead: 24_192, cacheWrite: 0 }, 0.00432004],
       ["grok-4.5", { input: 24_140, output: 28, cacheRead: 128, cacheWrite: 0 }, 0.016485376],
       ["grok-4.5", { input: 130, output: 16, cacheRead: 24_192, cacheWrite: 0 }, 0.002588624],
-      ["grok-4.7-build-fast", { input: 25_303, output: 32, cacheRead: 0, cacheWrite: 0 }, 0.03454264],
-      ["grok-4.7-build-fast", { input: 320, output: 19, cacheRead: 25_216, cacheWrite: 0 }, 0.00908616]
+      [
+        "grok-4.7-build-fast",
+        { input: 25_303, output: 32, cacheRead: 0, cacheWrite: 0 },
+        0.03454264,
+      ],
+      [
+        "grok-4.7-build-fast",
+        { input: 320, output: 19, cacheRead: 25_216, cacheWrite: 0 },
+        0.00908616,
+      ],
     ];
     for (const [modelId, usage, reported] of cases) {
       expect(costOf(usage, modelId), modelId).toBeCloseTo(reported, 9);
@@ -321,12 +369,16 @@ describe("Grok Build pricing", () => {
   it("prices Grok 4.7 Fast at twice the standard 4.7 SKU rate", () => {
     expect(MODEL_PRICING["grok-4.7-build-fast"].input).toBe(MODEL_PRICING["grok-4.7"].input * 2);
     expect(MODEL_PRICING["grok-4.7-build-fast"].output).toBe(MODEL_PRICING["grok-4.7"].output * 2);
-    expect(MODEL_PRICING["grok-4.7-build-fast"].cacheRead).toBe(MODEL_PRICING["grok-4.7"].cacheRead * 2);
+    expect(MODEL_PRICING["grok-4.7-build-fast"].cacheRead).toBe(
+      MODEL_PRICING["grok-4.7"].cacheRead * 2,
+    );
   });
 
   it("offers Fast only where the provider has it", () => {
     const fast = (provider: keyof typeof PROVIDER_MODELS) =>
-      PROVIDER_MODELS[provider].filter((model) => model.supportsFastMode).map((model) => model.modelId);
+      PROVIDER_MODELS[provider]
+        .filter((model) => model.supportsFastMode)
+        .map((model) => model.modelId);
     expect(fast("grok")).toEqual(["grok-4.7"]);
     // Turning Fast on for any other Claude model switches the chat to Opus.
     expect(fast("claude")).toEqual(["claude-opus-5-5"]);
@@ -337,7 +389,7 @@ describe("Grok Build pricing", () => {
       "gpt-5.6-sol-medium",
       "gpt-5.6-terra-medium",
       "gpt-5.6-luna-medium",
-      "claude-opus-5-5-medium"
+      "claude-opus-5-5-medium",
     ]);
   });
 });

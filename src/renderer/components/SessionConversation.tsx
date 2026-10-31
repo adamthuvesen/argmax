@@ -4,7 +4,17 @@ import { VisualizationSessionContext } from "../lib/visualizationSession.js";
 import { TurnExhale } from "./TurnExhale.js";
 import { showErrorToast } from "../state/toast.js";
 import { GitBranch, MessageSquarePlus, MessagesSquare, X } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+} from "react";
 import type {
   AgentMode,
   AgentReference,
@@ -20,7 +30,7 @@ import type {
   RawProviderOutput,
   SessionSummary,
   TimelineEvent,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../../shared/types.js";
 import type { SendInputResult } from "../../shared/bindings.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
@@ -44,7 +54,7 @@ import {
   latestClearEvent,
   openRunMarkerAt,
   outputsAfterClear,
-  subAgentToolUseIds
+  subAgentToolUseIds,
 } from "../lib/sessionConversationModel.js";
 import { assignAgentCodenames, nativeAgentReferences } from "../lib/agentNames.js";
 import { multitaskTabId } from "../lib/agentTabs.js";
@@ -61,11 +71,15 @@ import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
 import { ScrollToLatestButton } from "./ScrollToLatestButton.js";
 import { ShowEarlier } from "./ShowEarlier.js";
 import { SessionNote } from "./SessionNote.js";
-import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
+import {
+  foldConversationItems,
+  foldRenderItems,
+  type RenderItem,
+} from "../lib/foldConversation.js";
 import {
   collectAskUserQuestionState,
   hasOutstandingCardAsk as sessionHasOutstandingCardAsk,
-  isAskUserQuestionToolName
+  isAskUserQuestionToolName,
 } from "../lib/turnInteractiveCards.js";
 import { liveThoughtOwnsProgress } from "../lib/sessionTurnView.js";
 import type { FollowUpDelivery, ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
@@ -78,7 +92,9 @@ import type { QuestionAnswers } from "../lib/questions.js";
 import { postToNative } from "../mobile/nativeHost.js";
 import { SessionComposer, type NewSessionSeed } from "./SessionComposer.js";
 import { importChunk } from "../lib/importChunk.js";
-const GoalStatus = lazy(() => importChunk(async () => ({ default: (await import("./GoalStatus.js")).GoalStatus })));
+const GoalStatus = lazy(() =>
+  importChunk(async () => ({ default: (await import("./GoalStatus.js")).GoalStatus })),
+);
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
 import { WorkingNest } from "./WorkingNest.js";
 import { ActivityBeatContext } from "../lib/activityBeat.js";
@@ -89,10 +105,16 @@ import { dismissMultitask, readDismissedMultitasks } from "../lib/multitaskDismi
 import { recordChatCue, type ChatCueReason } from "../lib/chatCueLog.js";
 import { uuidV4 } from "../lib/uuid.js";
 import { parseUserMessageAttachments, sendAfterTerminate } from "./sessionConversationHelpers.js";
-import { SessionConversationTurn, SessionConversationUserMessage } from "./SessionConversationTurn.js";
+import {
+  SessionConversationTurn,
+  SessionConversationUserMessage,
+} from "./SessionConversationTurn.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { showPromoteArcDialog } from "../state/overlays.js";
-import { readCheckpointUnavailableReason, useTurnCheckpoints } from "../hooks/useTurnCheckpoints.js";
+import {
+  readCheckpointUnavailableReason,
+  useTurnCheckpoints,
+} from "../hooks/useTurnCheckpoints.js";
 
 // How many transcript items are mounted at once.
 //
@@ -140,7 +162,10 @@ function thinkingGapDelayMs(gaps: readonly number[]): number {
   if (gaps.length === 0) return THINKING_GAP_DELAY_MS;
   const sorted = [...gaps].sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)] ?? THINKING_GAP_DELAY_MS;
-  return Math.min(THINKING_GAP_DELAY_MAX_MS, Math.max(THINKING_GAP_DELAY_MIN_MS, median * THINKING_GAP_MEDIAN_FACTOR));
+  return Math.min(
+    THINKING_GAP_DELAY_MAX_MS,
+    Math.max(THINKING_GAP_DELAY_MIN_MS, median * THINKING_GAP_MEDIAN_FACTOR),
+  );
 }
 
 interface OptimisticUserMessage {
@@ -224,7 +249,7 @@ export function SessionConversation({
   session,
   workspaceCardEnabled = true,
   contextIndicatorEnabled = false,
-  workspace
+  workspace,
 }: {
   checks?: CheckRun[];
   /** Settings → Appearance: the font scale shared by the transcript and composer. */
@@ -300,14 +325,23 @@ export function SessionConversation({
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
     agentReferences?: AgentReference[],
-    delivery?: FollowUpDelivery
+    delivery?: FollowUpDelivery,
   ) => Promise<SendInputResult>;
   /** Follow-ups composed while the agent was running. Render as cancellable
       chips above the composer; cleared from the parent as the queue drains. */
   pendingMessages?: PendingMessage[];
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
-  onSendQueuedMessageNow?: (sessionId: string, messageId: string, delivery?: QueuedMessageDelivery) => Promise<void>;
-  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId, pendingMessageId?: string) => Promise<void>;
+  onSendQueuedMessageNow?: (
+    sessionId: string,
+    messageId: string,
+    delivery?: QueuedMessageDelivery,
+  ) => Promise<void>;
+  onMultitask?: (
+    sessionId: string,
+    prompt: string,
+    provider: ProviderId,
+    pendingMessageId?: string,
+  ) => Promise<void>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
   onForkSession?: (sessionId: string, options?: ForkSessionOptions) => Promise<void>;
@@ -352,7 +386,7 @@ export function SessionConversation({
     addAnnotation,
     removeAnnotation,
     clearAnnotations,
-    openFilePaths
+    openFilePaths,
   } = useSessionComposerState({ session, isFocused, review, registerAnnotationSink });
   const eventsRef = useRef(events);
   eventsRef.current = events;
@@ -371,8 +405,8 @@ export function SessionConversation({
     });
     const acknowledgedEventIds = new Set(
       currentSessionMessages.flatMap(({ acknowledgedByEventId }) =>
-        acknowledgedByEventId ? [acknowledgedByEventId] : []
-      )
+        acknowledgedByEventId ? [acknowledgedByEventId] : [],
+      ),
     );
     // Match oldest-first so one persisted row can acknowledge only the send
     // that produced it when identical follow-ups are submitted in sequence.
@@ -386,7 +420,7 @@ export function SessionConversation({
             !pending.eventIdsAtSend.has(event.id) &&
             event.sessionId === pending.event.sessionId &&
             event.type === "user.message" &&
-            event.message === pending.event.message
+            event.message === pending.event.message,
         );
       if (!acknowledgement) return pending;
       changed = true;
@@ -399,7 +433,7 @@ export function SessionConversation({
     const unacknowledgedMessages = new Set(
       reconciledOldestFirst
         .filter(({ acknowledgedByEventId }) => acknowledgedByEventId === null)
-        .map(({ event }) => event.message)
+        .map(({ event }) => event.message),
     );
     const retained = reconciledOldestFirst.filter(({ event, acknowledgedByEventId }) => {
       const keep = acknowledgedByEventId === null || unacknowledgedMessages.has(event.message);
@@ -413,14 +447,23 @@ export function SessionConversation({
     setOptimisticUserMessages(reconciledOptimisticUserMessages);
   }, [optimisticUserMessages, reconciledOptimisticUserMessages]);
   const visibleOptimisticUserMessages = useMemo(
-    () => reconciledOptimisticUserMessages.filter(({ acknowledgedByEventId }) => acknowledgedByEventId === null),
-    [reconciledOptimisticUserMessages]
+    () =>
+      reconciledOptimisticUserMessages.filter(
+        ({ acknowledgedByEventId }) => acknowledgedByEventId === null,
+      ),
+    [reconciledOptimisticUserMessages],
   );
   const liveEvents = useMemo(
-    () => [...visibleOptimisticUserMessages.map(({ event }) => event), ...eventsAfterLatestClear(events)],
-    [events, visibleOptimisticUserMessages]
+    () => [
+      ...visibleOptimisticUserMessages.map(({ event }) => event),
+      ...eventsAfterLatestClear(events),
+    ],
+    [events, visibleOptimisticUserMessages],
   );
-  const liveRawOutputs = useMemo(() => outputsAfterClear(rawOutputs, latestClearEvent(events)), [events, rawOutputs]);
+  const liveRawOutputs = useMemo(
+    () => outputsAfterClear(rawOutputs, latestClearEvent(events)),
+    [events, rawOutputs],
+  );
   const conversationEvents = useMemo(() => buildConversationEvents(liveEvents), [liveEvents]);
   const openRunAt = useMemo(() => openRunMarkerAt(liveEvents), [liveEvents]);
   // Child session state and title by id: a multitask row believes these over
@@ -441,8 +484,8 @@ export function SessionConversation({
         child.workspace?.taskLabel ?? "",
         child.session.attention,
         child.pendingApproval?.command ?? "",
-        child.session.startedAt ?? ""
-      ].join("\u0000")
+        child.session.startedAt ?? "",
+      ].join("\u0000"),
     )
     .join("\u0001");
   const multitaskLive = useMemo(
@@ -452,7 +495,8 @@ export function SessionConversation({
           .split("\u0001")
           .filter((entry) => entry.length > 0)
           .map((entry) => {
-            const [id, state, taskLabel, attention, approvalCommand, startedAt] = entry.split("\u0000");
+            const [id, state, taskLabel, attention, approvalCommand, startedAt] =
+              entry.split("\u0000");
             return [
               id,
               {
@@ -460,18 +504,18 @@ export function SessionConversation({
                 taskLabel,
                 attention: attention as SessionSummary["attention"],
                 approvalCommand: approvalCommand || null,
-                startedAt: startedAt || null
-              }
+                startedAt: startedAt || null,
+              },
             ] as const;
-          })
+          }),
       ),
-    [multitaskLiveKey]
+    [multitaskLiveKey],
   );
   const stopMultitask = useCallback(
     (sessionId: string): void => {
       void onTerminateSession(sessionId);
     },
-    [onTerminateSession]
+    [onTerminateSession],
   );
   const askSideChat = useMemo(() => {
     if (!onOpenSideChat) return undefined;
@@ -487,9 +531,11 @@ export function SessionConversation({
       void onOpenDetails(buildDetailsSeed(selection.text, conversationEvents), {
         // The popup hides the seed excerpt; this closure lets its header
         // button attach that excerpt to this composer instead.
-        attachToChat: () => addAnnotation(selection)
+        attachToChat: () => addAnnotation(selection),
       }).catch((error) => {
-        showErrorToast(error instanceof Error ? error.message : "Could not open the details popup.");
+        showErrorToast(
+          error instanceof Error ? error.message : "Could not open the details popup.",
+        );
       });
     };
   }, [addAnnotation, conversationEvents, onOpenDetails]);
@@ -503,8 +549,9 @@ export function SessionConversation({
   // is still in its pre-answer thinking phase.
   const hasRenderableContent = hasRenderableSessionContent(conversationEvents, liveEvents);
   const terminalTranscript = useMemo(
-    () => (hasRenderableContent ? "" : buildTerminalTranscript(liveRawOutputs, session?.id ?? null)),
-    [liveRawOutputs, session?.id, hasRenderableContent]
+    () =>
+      hasRenderableContent ? "" : buildTerminalTranscript(liveRawOutputs, session?.id ?? null),
+    [liveRawOutputs, session?.id, hasRenderableContent],
   );
 
   // A running session or one waiting on user input can hold a genuinely
@@ -518,16 +565,16 @@ export function SessionConversation({
       buildSessionToolCalls(
         liveEvents,
         sessionProviderActive,
-        session?.state === "failed" || session?.state === "cancelled"
+        session?.state === "failed" || session?.state === "cancelled",
       ),
-    [liveEvents, session?.state, sessionProviderActive]
+    [liveEvents, session?.state, sessionProviderActive],
   );
   const agentCodenames = useMemo(() => assignAgentCodenames(toolCalls), [toolCalls]);
   // The workspace card's Subagents section reads the same tool list the agent
   // tabs do, so its avatars and counts can never disagree with the tabs.
   const subagentCluster = useMemo(
     () => buildSubagentCluster(toolCalls, agentCodenames, multitasks ?? []),
-    [toolCalls, agentCodenames, multitasks]
+    [toolCalls, agentCodenames, multitasks],
   );
 
   // The card counts what the dock's tab strip counts, so opening it must show
@@ -542,7 +589,9 @@ export function SessionConversation({
     const tabIdFor = (entry: { toolUseId: string; multitask: boolean }): string =>
       entry.multitask ? multitaskTabId(entry.toolUseId) : entry.toolUseId;
     const clusterTabIds = new Set(subagentCluster.entries.map(tabIdFor));
-    const preferred = subagentCluster.entries.find((entry) => entry.status === "running") ?? subagentCluster.entries[0];
+    const preferred =
+      subagentCluster.entries.find((entry) => entry.status === "running") ??
+      subagentCluster.entries[0];
     if (!preferred) {
       review.openAgents();
       return;
@@ -590,16 +639,16 @@ export function SessionConversation({
 
   const conversationItems = useMemo(
     () => foldConversationItems(conversationEvents, toolCalls),
-    [conversationEvents, toolCalls]
+    [conversationEvents, toolCalls],
   );
 
   const renderItems = useMemo(
     (): RenderItem[] => foldRenderItems(conversationItems, session),
-    [conversationItems, session]
+    [conversationItems, session],
   );
   const { checkpointIds, refresh: refreshCheckpoints } = useTurnCheckpoints(
     revertEnabled ? workspace?.id : undefined,
-    session?.state
+    session?.state,
   );
   // A turn whose before-turn checkpoint failed carries the reason on its own
   // user message, keyed the same way `checkpointIds` is. Without this the
@@ -634,7 +683,7 @@ export function SessionConversation({
           const status = multitaskDisplayStatus(live?.state ?? notice.state, live?.attention);
           return status === "running" || status === "needs-you";
         }),
-    [renderItems, dismissedMultitasks, multitaskLive]
+    [renderItems, dismissedMultitasks, multitaskLive],
   );
   const dismissMultitaskRow = useCallback((sessionId: string): void => {
     setDismissedMultitasks((current) => dismissMultitask(current, sessionId));
@@ -647,9 +696,9 @@ export function SessionConversation({
           item.assistantEvents.length > 0 ||
           item.steerEvents.length > 0 ||
           item.todo !== undefined ||
-          item.toolItems.length > 0
+          item.toolItems.length > 0,
       ),
-    [renderItems]
+    [renderItems],
   );
   const latestConversationIndex = useMemo(() => {
     for (let index = transcriptRenderItems.length - 1; index >= 0; index -= 1) {
@@ -672,7 +721,10 @@ export function SessionConversation({
   // A different session starts from the bottom again.
   useEffect(() => setVisibleCount(CONVERSATION_WINDOW), [sessionId]);
   const windowStart = Math.max(0, transcriptRenderItems.length - visibleCount);
-  const windowedItems = useMemo(() => transcriptRenderItems.slice(windowStart), [transcriptRenderItems, windowStart]);
+  const windowedItems = useMemo(
+    () => transcriptRenderItems.slice(windowStart),
+    [transcriptRenderItems, windowStart],
+  );
   const lastTurnPromptId = useMemo(() => {
     for (let i = transcriptRenderItems.length - 1; i >= 0; i -= 1) {
       const item = transcriptRenderItems[i];
@@ -726,7 +778,7 @@ export function SessionConversation({
           // pane too narrow to hold it.
           setStatus({
             kind: "info",
-            message: "Workspace card is on. It shows up on chats that have a git worktree."
+            message: "Workspace card is on. It shows up on chats that have a git worktree.",
           });
           return;
         }
@@ -734,7 +786,7 @@ export function SessionConversation({
           setStatus({
             kind: "info",
             message:
-              "Workspace card is on, but this pane is too narrow to show it. Widen the pane or pick a narrower chat width in Settings."
+              "Workspace card is on, but this pane is too narrow to show it. Widen the pane or pick a narrower chat width in Settings.",
           });
         }
       });
@@ -750,9 +802,15 @@ export function SessionConversation({
       additions: totals.additions,
       deletions: totals.deletions,
       isOpen: review.isPanelOpen && review.layout.modes.includes("changes"),
-      onOpen: review.toggleChangesPanel
+      onOpen: review.toggleChangesPanel,
     };
-  }, [review.files, review.filesState, review.isPanelOpen, review.layout.modes, review.toggleChangesPanel]);
+  }, [
+    review.files,
+    review.filesState,
+    review.isPanelOpen,
+    review.layout.modes,
+    review.toggleChangesPanel,
+  ]);
   // Composer is enabled whenever the session is alive. During `running`,
   // typed messages get queued in main and drain when the current turn
   // finishes. `complete` and `cancelled` are also enabled because main's
@@ -765,7 +823,7 @@ export function SessionConversation({
   const canSend = Boolean(
     session &&
     workspace?.state !== "archived" &&
-    ["complete", "waiting", "running", "cancelled", "failed"].includes(session.state)
+    ["complete", "waiting", "running", "cancelled", "failed"].includes(session.state),
   );
   // Currently running → the next submit goes onto the queue rather than
   // straight to the agent. Used to tweak placeholder and Send tooltip copy.
@@ -776,9 +834,11 @@ export function SessionConversation({
   const childToolUseIds = useMemo(() => subAgentToolUseIds(toolCalls), [toolCalls]);
   const lastSignificantEvent = useMemo(
     () => lastSignificantSessionEvent(liveEvents, childToolUseIds),
-    [childToolUseIds, liveEvents]
+    [childToolUseIds, liveEvents],
   );
-  const canonicalLastSignificantEvent = lastSignificantEvent ? decodeTimelineEvent(lastSignificantEvent) : null;
+  const canonicalLastSignificantEvent = lastSignificantEvent
+    ? decodeTimelineEvent(lastSignificantEvent)
+    : null;
   // A send from this pane proves a turn is starting, whether or not the
   // backend has flipped the session to `running` and whether or not the new
   // `user.message` has reached the renderer yet. Without this the chat sat
@@ -789,7 +849,7 @@ export function SessionConversation({
   // state releases the instant the provider says anything of its own.
   const lastAgentResponseId = useMemo(
     () => lastAgentResponseEvent(liveEvents, childToolUseIds)?.id ?? null,
-    [childToolUseIds, liveEvents]
+    [childToolUseIds, liveEvents],
   );
   const lastAgentResponseIdRef = useRef<string | null>(lastAgentResponseId);
   useEffect(() => {
@@ -818,7 +878,7 @@ export function SessionConversation({
       mode: AgentMode,
       attachments?: ComposerAttachment[],
       _agentReferences?: AgentReference[],
-      delivery: FollowUpDelivery = "queue"
+      delivery: FollowUpDelivery = "queue",
     ): Promise<void> => {
       const optimisticId = `optimistic:${targetSessionId}:${uuidV4()}`;
       const echoed = sessionStateRef.current !== "running";
@@ -831,22 +891,24 @@ export function SessionConversation({
               type: "user.message",
               message: text,
               payload: { source: "composer" },
-              createdAt: new Date().toISOString()
+              createdAt: new Date().toISOString(),
             },
             eventIdsAtSend: new Set(eventsRef.current.map((event) => event.id)),
-            acknowledgedByEventId: null
+            acknowledgedByEventId: null,
           },
-          ...current
+          ...current,
         ]);
       }
       turnSawLiveStateRef.current = false;
       setTurnStartBaseline({
         agentResponseId: lastAgentResponseIdRef.current,
         state: sessionStateRef.current,
-        sentAtMs: Date.now()
+        sentAtMs: Date.now(),
       });
       const dropOptimisticSend = (): void => {
-        setOptimisticUserMessages((current) => current.filter(({ event }) => event.id !== optimisticId));
+        setOptimisticUserMessages((current) =>
+          current.filter(({ event }) => event.id !== optimisticId),
+        );
         setTurnStartBaseline(null);
       };
       let result: SendInputResult;
@@ -870,9 +932,11 @@ export function SessionConversation({
             (model.provider === "cursor" && model.modelId !== "composer-2.5")) &&
           model.provider === session?.provider &&
           targetSessionId === session?.id
-            ? nativeAgentReferences(toolCalls, agentCodenames, session?.providerConversationId).filter((reference) =>
-                mentionedNames.has(reference.name.toLowerCase())
-              )
+            ? nativeAgentReferences(
+                toolCalls,
+                agentCodenames,
+                session?.providerConversationId,
+              ).filter((reference) => mentionedNames.has(reference.name.toLowerCase()))
             : [];
         if (references.length > 0) {
           if (delivery === "steer") {
@@ -883,10 +947,17 @@ export function SessionConversation({
               mode,
               attachments,
               references,
-              delivery
+              delivery,
             );
           } else {
-            result = await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, references);
+            result = await onSendSessionInput(
+              targetSessionId,
+              text,
+              deliveryModel,
+              mode,
+              attachments,
+              references,
+            );
           }
         } else {
           if (delivery === "steer") {
@@ -897,10 +968,16 @@ export function SessionConversation({
               mode,
               attachments,
               undefined,
-              delivery
+              delivery,
             );
           } else {
-            result = await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments);
+            result = await onSendSessionInput(
+              targetSessionId,
+              text,
+              deliveryModel,
+              mode,
+              attachments,
+            );
           }
         }
       } catch (error) {
@@ -924,8 +1001,8 @@ export function SessionConversation({
       session?.modelId,
       session?.reasoningEffort,
       toolCalls,
-      agentCodenames
-    ]
+      agentCodenames,
+    ],
   );
   const isTurnStarting = turnStartBaseline !== null;
   // Whether the session reached a live state after the send. A follow-up sent
@@ -936,7 +1013,11 @@ export function SessionConversation({
   const turnSawLiveStateRef = useRef(false);
   useEffect(() => {
     if (turnStartBaseline === null) return;
-    if (session?.state === "running" || session?.state === "waiting" || session?.state === "blocked") {
+    if (
+      session?.state === "running" ||
+      session?.state === "waiting" ||
+      session?.state === "blocked"
+    ) {
       turnSawLiveStateRef.current = true;
     }
     const agentTookOver = lastAgentResponseId !== turnStartBaseline.agentResponseId;
@@ -949,7 +1030,9 @@ export function SessionConversation({
     // "New" therefore means either a terminal state the send did not start
     // from, or any terminal state after the session verifiably went live.
     const turnCannotStart =
-      (session?.state === "failed" || session?.state === "cancelled" || session?.state === "complete") &&
+      (session?.state === "failed" ||
+        session?.state === "cancelled" ||
+        session?.state === "complete") &&
       (session.state !== turnStartBaseline.state || turnSawLiveStateRef.current);
     if (agentTookOver || turnCannotStart) {
       turnSawLiveStateRef.current = false;
@@ -990,9 +1073,9 @@ export function SessionConversation({
           // reports its own terminal state. Reading the receipt itself as
           // visible progress silences this cue throughout the child's work.
           !tool.backgroundLaunch &&
-          !isAskUserQuestionToolName(tool.name)
+          !isAskUserQuestionToolName(tool.name),
       ),
-    [toolCalls]
+    [toolCalls],
   );
   // An outstanding question means the agent has
   // handed the turn over to the user — even if the probe is still alive
@@ -1002,7 +1085,7 @@ export function SessionConversation({
   // the tool's `createdAt`).
   const hasOutstandingCardAsk = useMemo(
     () => sessionHasOutstandingCardAsk(liveEvents, toolCalls),
-    [liveEvents, toolCalls]
+    [liveEvents, toolCalls],
   );
   // The turn is live and nothing visible is progressing this instant. True both
   // for the pre-answer beat (nothing emitted yet) and for mid-turn pauses (the
@@ -1022,11 +1105,15 @@ export function SessionConversation({
       toolItems: latest.toolItems,
       isLatestTurn: true,
       sessionRunning,
-      isPausedOnUserInput: hasOutstandingCardAsk
+      isPausedOnUserInput: hasOutstandingCardAsk,
     });
   }, [hasOutstandingCardAsk, isTurnStarting, renderItems, sessionRunning]);
   const agentWorkingSilently =
-    sessionRunning && !anyVisibleToolRunning && !hasOutstandingCardAsk && !liveThoughtVisible && !isStreamingText;
+    sessionRunning &&
+    !anyVisibleToolRunning &&
+    !hasOutstandingCardAsk &&
+    !liveThoughtVisible &&
+    !isStreamingText;
   // The most recent visible call, which keeps the beat while the cue waits out
   // its adaptive gap. Three of the five providers report a call's start and its
   // finish in the same instant (see lib/activityBeat.ts), so a rule that only
@@ -1078,7 +1165,10 @@ export function SessionConversation({
   const isAnswerSettling = answerBeatId !== null && settledAnswerId !== answerBeatId;
   useEffect(() => {
     if (answerBeatId === null) return;
-    const remaining = remainingDelayMs(THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS, lastSignificantEventAtMs);
+    const remaining = remainingDelayMs(
+      THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS,
+      lastSignificantEventAtMs,
+    );
     if (remaining === 0) {
       setSettledAnswerId(answerBeatId);
       return;
@@ -1130,11 +1220,14 @@ export function SessionConversation({
     isTurnStarting ||
     lastSignificantEvent === undefined ||
     (canonicalLastSignificantEvent?.kind === "message" &&
-      (canonicalLastSignificantEvent.role === "user" || canonicalLastSignificantEvent.phase === "completed"));
+      (canonicalLastSignificantEvent.role === "user" ||
+        canonicalLastSignificantEvent.phase === "completed"));
   const [isThinkingVisible, setIsThinkingVisible] = useState(false);
   /// The line on its way out, or null. It carries its own anchor so the
   /// dissolving line is the one that was just live rather than a remount.
-  const [leavingThinking, setLeavingThinking] = useState<{ anchorMs: number | undefined } | null>(null);
+  const [leavingThinking, setLeavingThinking] = useState<{ anchorMs: number | undefined } | null>(
+    null,
+  );
   const thinkingShowTimerRef = useRef<number | null>(null);
   /// Which beat the pending wait was scheduled for, so a beat that starts
   /// mid-countdown gets its own wait instead of the previous one's remainder.
@@ -1144,10 +1237,14 @@ export function SessionConversation({
   // consecutive significant events. Per turn, because a previous turn's pace
   // says nothing about this one's — a read-only question and a twelve-file
   // edit are not the same turn twice.
-  const thinkingGapsRef = useRef<{ turnId: string | null; previousAtMs: number | null; gaps: number[] }>({
+  const thinkingGapsRef = useRef<{
+    turnId: string | null;
+    previousAtMs: number | null;
+    gaps: number[];
+  }>({
     turnId: null,
     previousAtMs: null,
-    gaps: []
+    gaps: [],
   });
 
   useEffect(() => {
@@ -1202,7 +1299,8 @@ export function SessionConversation({
       // No anchor at all — a running session whose transcript is still empty,
       // sent from somewhere other than this pane — leaves nothing to smooth,
       // and serving the wait there is what made a reopened chat sit blank.
-      const remaining = thinkingAnchorMs === undefined ? 0 : remainingDelayMs(delayMs, thinkingAnchorMs);
+      const remaining =
+        thinkingAnchorMs === undefined ? 0 : remainingDelayMs(delayMs, thinkingAnchorMs);
       if (remaining === 0) {
         setIsThinkingVisible(true);
         return;
@@ -1244,7 +1342,13 @@ export function SessionConversation({
       thinkingHideTimerRef.current = null;
       setLeavingThinking(null);
     }, THINKING_FADE_OUT_MS);
-  }, [anyVisibleToolRunning, isInitialThinkingBeat, isThinking, isThinkingVisible, thinkingAnchorMs]);
+  }, [
+    anyVisibleToolRunning,
+    isInitialThinkingBeat,
+    isThinking,
+    isThinkingVisible,
+    thinkingAnchorMs,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -1290,7 +1394,7 @@ export function SessionConversation({
       sessionId,
       provider: session?.provider ?? null,
       visible: isThinkingVisible,
-      reason: cueReason
+      reason: cueReason,
     });
   }, [cueReason, isThinkingVisible, isTurnStarting, session?.provider, sessionId, sessionRunning]);
 
@@ -1300,13 +1404,14 @@ export function SessionConversation({
     scrollRef: conversationListRef,
     contentRef: conversationContentRef,
     follow: conversationFollow,
-    scrollToBottom: scrollConversationToBottom
+    scrollToBottom: scrollConversationToBottom,
   } = useConversationScroll({ sessionId, items: conversationItems, resetKey: lastTurnPromptId });
   // The scroll controller preserves the reading anchor across this prepend.
   const showEarlierItems = (): void => {
     setVisibleCount((current) => current + CONVERSATION_WINDOW_STEP);
   };
-  const floatingHeading = headingLabel ?? project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
+  const floatingHeading =
+    headingLabel ?? project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
 
   const { milestone: prMilestone, finish: finishPrMilestone } = usePrMilestone(workspace);
 
@@ -1330,7 +1435,9 @@ export function SessionConversation({
   // would queue behind that turn and never drain, so its answer goes back
   // through the question request whatever the provider.
   const blockingQuestionRequest =
-    liveQuestion?.tool.delivery === "blocking" && liveQuestion.tool.requestId ? liveQuestion.tool.requestId : null;
+    liveQuestion?.tool.delivery === "blocking" && liveQuestion.tool.requestId
+      ? liveQuestion.tool.requestId
+      : null;
   const questionDocked =
     liveQuestion !== null &&
     liveQuestion.tool.id !== dismissedQuestionId &&
@@ -1361,7 +1468,7 @@ export function SessionConversation({
     () => () => {
       if (questionPostedRef.current) postToNative({ type: "question", open: false });
     },
-    []
+    [],
   );
   const answerLiveQuestion = useCallback(
     async (answerText: string, answers: QuestionAnswers): Promise<boolean> => {
@@ -1377,7 +1484,7 @@ export function SessionConversation({
           await resolveQuestion({
             sessionId: session.id,
             requestId: blockingQuestionRequest,
-            answers
+            answers,
           });
           setDismissedQuestionId(liveQuestion.tool.id);
           return true;
@@ -1390,7 +1497,7 @@ export function SessionConversation({
         session.state === "running",
         onTerminateSession,
         () => sendSessionInput(session.id, answerText, selectedModel, "auto"),
-        () => undefined
+        () => undefined,
       );
     },
     [
@@ -1401,8 +1508,8 @@ export function SessionConversation({
       sendSessionInput,
       session,
       setStatus,
-      shouldRefocusInput
-    ]
+      shouldRefocusInput,
+    ],
   );
   const dismissLiveQuestion = useCallback(async (): Promise<boolean> => {
     if (!liveQuestion) return false;
@@ -1420,7 +1527,7 @@ export function SessionConversation({
         sessionId: session.id,
         requestId: blockingQuestionRequest,
         answers: {},
-        dismissed: true
+        dismissed: true,
       });
       setDismissedQuestionId(liveQuestion.tool.id);
       return true;
@@ -1503,7 +1610,7 @@ export function SessionConversation({
                           run: () => showPromoteArcDialog(session.id),
                           disabledReason: ["created", "running", "blocked"].includes(session.state)
                             ? "Wait for this turn to finish"
-                            : null
+                            : null,
                         }
                       : undefined
                   }
@@ -1551,11 +1658,17 @@ export function SessionConversation({
             data-loading={eventsBackfilled || historyLoadFailed ? undefined : "true"}
           >
             {eventsBackfilled || historyLoadFailed ? null : (
-              <div className="conversation-loading loading-line" role="status" aria-label="Loading chat">
+              <div
+                className="conversation-loading loading-line"
+                role="status"
+                aria-label="Loading chat"
+              >
                 <WorkingNest active size={16} />
               </div>
             )}
-            {prMilestone ? <TurnExhale key={prMilestone} weight={1} onDone={finishPrMilestone} /> : null}
+            {prMilestone ? (
+              <TurnExhale key={prMilestone} weight={1} onDone={finishPrMilestone} />
+            ) : null}
             {workspaceCardMounted && workspace ? (
               <WorkspaceCard
                 changeSummary={changeSummary}
@@ -1619,7 +1732,13 @@ export function SessionConversation({
                       return <ProviderSwitchNotice key={item.id} notice={item.notice} />;
                     }
                     if (item.kind === "session-note") {
-                      return <SessionNote key={item.id} message={item.message} sourceActivity={item.sourceActivity} />;
+                      return (
+                        <SessionNote
+                          key={item.id}
+                          message={item.message}
+                          sourceActivity={item.sourceActivity}
+                        />
+                      );
                     }
                     return (
                       <SessionConversationTurn
@@ -1681,7 +1800,10 @@ export function SessionConversation({
                 </div>
               </div>
             </div>
-            <ScrollToLatestButton follow={conversationFollow} onClick={scrollConversationToBottom} />
+            <ScrollToLatestButton
+              follow={conversationFollow}
+              onClick={scrollConversationToBottom}
+            />
           </div>
           <SelectionToolbar
             containerRef={conversationScrollRef}

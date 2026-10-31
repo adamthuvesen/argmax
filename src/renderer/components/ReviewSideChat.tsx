@@ -1,7 +1,21 @@
-import { useEffect, useId, useMemo, useRef, useState, type ComponentProps, type FormEvent, type JSX } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type FormEvent,
+  type JSX,
+} from "react";
 import { MessageSquarePlus, Paperclip, Play, Plus, X } from "lucide-react";
 import { errorMessage } from "../../shared/error.js";
-import type { ComposerAttachment, PendingMessage, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import type {
+  ComposerAttachment,
+  PendingMessage,
+  SessionSummary,
+  WorkspaceSummary,
+} from "../../shared/types.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
@@ -45,7 +59,7 @@ export type ReviewSideChatContext = Pick<
     options?: {
       model?: ModelPickerSelection;
       attachments?: ComposerAttachment[];
-    }
+    },
   ) => Promise<ReviewSideChatSession>;
   selectedModel?: ModelPickerSelection;
   onModelChange?: (model: ModelPickerSelection) => void;
@@ -65,7 +79,7 @@ export function ReviewSideChat({
   isFocused = true,
   formState: controlledFormState,
   onFormStateChange,
-  onLaunched
+  onLaunched,
 }: {
   context: ReviewSideChatContext;
   draftKey?: string;
@@ -78,13 +92,15 @@ export function ReviewSideChat({
 }): JSX.Element {
   const fallbackDraftId = useId();
   const attachmentDraftKey = `side-chat-${(draftKey ?? fallbackDraftId).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-  const [localModel, setLocalModel] = useState(() => context.selectedModel ?? preferredLaunchModel([]));
+  const [localModel, setLocalModel] = useState(
+    () => context.selectedModel ?? preferredLaunchModel([]),
+  );
   const selectedModel = context.selectedModel ?? localModel;
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [localFormState, setLocalFormState] = useState<ReviewSideChatFormState>({
     prompt: "",
     launching: false,
-    error: null
+    error: null,
   });
   const { prompt, launching, error } = controlledFormState ?? localFormState;
   const updateForm = (patch: Partial<ReviewSideChatFormState>): void => {
@@ -102,9 +118,9 @@ export function ReviewSideChat({
         if (!chat) return null;
         return { title: context.workspacesById.get(chat.workspaceId)?.taskLabel || chat.prompt };
       },
-      open: (id: string) => context.onOpenFullChat?.(id)
+      open: (id: string) => context.onOpenFullChat?.(id),
     }),
-    [context]
+    [context],
   );
   const {
     pendingAttachments,
@@ -119,13 +135,13 @@ export function ReviewSideChat({
     onComposerPaste,
     onAttachmentInputChange,
     openFilePicker,
-    clearAttachments
+    clearAttachments,
   } = useComposerAttachments({
     draftKey: attachmentDraftKey,
     workspacePath: null,
     fieldRef: promptRef,
     setInput: (updater) => updateForm({ prompt: updater(promptRef.current?.value ?? prompt) }),
-    persist: !launching
+    persist: !launching,
   });
 
   useEffect(() => {
@@ -139,10 +155,12 @@ export function ReviewSideChat({
     launchPending.current = true;
     updateForm({ launching: true, error: null });
     try {
-      const references = pendingAttachments.map((attachment) => imageAttachmentReference(attachment.filePath));
+      const references = pendingAttachments.map((attachment) =>
+        imageAttachmentReference(attachment.filePath),
+      );
       const launched = await context.launch(appendReferencesToPrompt(trimmed, references), {
         model: selectedModel,
-        attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined
+        attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined,
       });
       clearDraft(attachmentDraftKey);
       clearAttachments();
@@ -196,7 +214,9 @@ export function ReviewSideChat({
       <form
         ref={formRef}
         className="session-composer-stack review-side-chat-composer"
-        data-font-size={context.chatFontSize === undefined ? undefined : String(context.chatFontSize)}
+        data-font-size={
+          context.chatFontSize === undefined ? undefined : String(context.chatFontSize)
+        }
         data-type-scale={context.chatFontSize === undefined ? "composer" : undefined}
         onSubmit={(event) => {
           void submit(event);
@@ -225,7 +245,8 @@ export function ReviewSideChat({
             <div className="composer-attachments" aria-label="Attached images">
               {pendingAttachments.map((attachment) => {
                 const src =
-                  pendingAttachmentPreviews[attachment.filePath] ?? attachmentProtocolUrl(attachment.filePath);
+                  pendingAttachmentPreviews[attachment.filePath] ??
+                  attachmentProtocolUrl(attachment.filePath);
                 return (
                   <div key={attachment.filePath} className="composer-attachment-chip">
                     <button

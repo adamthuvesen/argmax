@@ -5,7 +5,7 @@ import {
   attachTerminalTab,
   detachTerminalTab,
   syncTerminalSize,
-  type TerminalTabRuntime
+  type TerminalTabRuntime,
 } from "../lib/terminalRuntime.js";
 
 /**
@@ -20,7 +20,7 @@ export function TerminalInstance({
   tabId,
   workspaceId,
   terminalId,
-  visible
+  visible,
 }: {
   tabId: string;
   workspaceId: string;
@@ -62,5 +62,12 @@ export function TerminalInstance({
     runtime.term.focus();
   }, [visible]);
 
-  return <div ref={containerRef} className="terminal-surface" role="region" aria-label="Integrated terminal" />;
+  return (
+    <div
+      ref={containerRef}
+      className="terminal-surface"
+      role="region"
+      aria-label="Integrated terminal"
+    />
+  );
 }

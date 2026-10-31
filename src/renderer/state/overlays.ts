@@ -1,7 +1,10 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { PaletteScope } from "../components/CommandPalette.js";
 import type { SettingsNavigationTarget } from "../components/SettingsPanel.js";
-import { DEFAULT_SETTINGS_GROUP, type SettingsGroupId } from "../components/settings/settingsMeta.js";
+import {
+  DEFAULT_SETTINGS_GROUP,
+  type SettingsGroupId,
+} from "../components/settings/settingsMeta.js";
 import { hideFullLauncher } from "./launcherSurface.js";
 
 // What is stacked over the shell: a full-screen page, the command palette, or
@@ -45,7 +48,7 @@ const INITIAL: OverlaysSnapshot = {
   promoteArcSessionId: null,
   paletteOpen: false,
   paletteScope: "all",
-  cheatSheetOpen: false
+  cheatSheetOpen: false,
 };
 
 let state: OverlaysSnapshot = INITIAL;
@@ -68,7 +71,7 @@ function publish(next: OverlaysSnapshot): void {
 export function showSettings(
   group: SettingsGroupId = state.settingsGroup,
   sectionId?: string,
-  projectId?: string
+  projectId?: string,
 ): void {
   navigationRequests += 1;
   hideFullLauncher();
@@ -81,9 +84,9 @@ export function showSettings(
       group,
       ...(sectionId ? { sectionId } : {}),
       ...(projectId ? { projectId } : {}),
-      requestId: navigationRequests
+      requestId: navigationRequests,
     },
-    paletteOpen: false
+    paletteOpen: false,
   });
 }
 

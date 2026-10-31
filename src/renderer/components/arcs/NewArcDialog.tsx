@@ -35,7 +35,7 @@ export function NewArcDialog({
   open,
   onClose,
   projects,
-  promote = null
+  promote = null,
 }: {
   open: boolean;
   onClose: () => void;
@@ -47,7 +47,9 @@ export function NewArcDialog({
   const [homeProjectId, setHomeProjectId] = useState<string>(projects[0]?.id ?? "");
   const [folder, setFolder] = useState("");
   const [folderOpen, setFolderOpen] = useState(false);
-  const [model, setModel] = useState<ModelPickerSelection>(() => readStoredManualLaunchModel() ?? factoryLaunchModel());
+  const [model, setModel] = useState<ModelPickerSelection>(
+    () => readStoredManualLaunchModel() ?? factoryLaunchModel(),
+  );
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [effortPickerOpen, setEffortPickerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -91,7 +93,7 @@ export function NewArcDialog({
       if (!briefTouched.current) setBrief(draft.brief);
       setDraftState("drafted");
     },
-    onError: () => setDraftState("failed")
+    onError: () => setDraftState("failed"),
   });
 
   useRestoreFocus(open);
@@ -117,7 +119,10 @@ export function NewArcDialog({
   // the backend makes the final call on that folder.
   const briefMissing = brief.trim().length === 0 && folder.trim().length === 0;
   const submitDisabled =
-    submitting || trimmedName.length === 0 || (!promote && homeProjectId.length === 0) || briefMissing;
+    submitting ||
+    trimmedName.length === 0 ||
+    (!promote && homeProjectId.length === 0) ||
+    briefMissing;
 
   const handlePromote = async (source: ArcPromoteSource): Promise<void> => {
     const arcs = arcActions();
@@ -128,7 +133,7 @@ export function NewArcDialog({
         sessionId: source.sessionId,
         name: trimmedName,
         brief: brief.trim(),
-        dir: folder.trim() ? folder.trim() : null
+        dir: folder.trim() ? folder.trim() : null,
       });
       onClose();
     } catch (promoteError) {
@@ -159,7 +164,7 @@ export function NewArcDialog({
         name: trimmedName,
         brief: brief.trim(),
         homeProjectId,
-        dir: folder.trim() ? folder.trim() : null
+        dir: folder.trim() ? folder.trim() : null,
       });
       onClose();
       showArcPage(arc.id);
@@ -169,12 +174,14 @@ export function NewArcDialog({
           provider: model.provider,
           modelLabel: model.label,
           modelId: model.modelId,
-          reasoningEffort: model.reasoningEffort ?? null
+          reasoningEffort: model.reasoningEffort ?? null,
         });
       } catch (launchError) {
         // The arc still exists — the page shows "Start coordinator" for a
         // retry, so a launch failure is a toast rather than a blocked dialog.
-        showErrorToast(errorMessage(launchError, "The arc was created, but its coordinator could not start."));
+        showErrorToast(
+          errorMessage(launchError, "The arc was created, but its coordinator could not start."),
+        );
       }
     } catch (createError) {
       showErrorToast(errorMessage(createError, "Could not create the arc."));
@@ -183,7 +190,10 @@ export function NewArcDialog({
     }
   };
 
-  const projectOptions = projects.map((candidate) => ({ value: candidate.id, label: candidate.name }));
+  const projectOptions = projects.map((candidate) => ({
+    value: candidate.id,
+    label: candidate.name,
+  }));
 
   return createPortal(
     <div
@@ -209,7 +219,13 @@ export function NewArcDialog({
       >
         <header className="new-arc-dialog-header">
           <h2>{promote ? "Start an arc from this chat" : "New arc"}</h2>
-          <button type="button" className="small-icon" aria-label="Close" onClick={onClose} disabled={submitting}>
+          <button
+            type="button"
+            className="small-icon"
+            aria-label="Close"
+            onClick={onClose}
+            disabled={submitting}
+          >
             <X size={15} aria-hidden="true" />
           </button>
         </header>
@@ -218,8 +234,8 @@ export function NewArcDialog({
           {promote ? (
             <div className="new-arc-promote-intro">
               <p>
-                This chat becomes the arc&rsquo;s coordinator. It keeps its history and model, and from here on it plans
-                and delegates instead of doing the work itself.
+                This chat becomes the arc&rsquo;s coordinator. It keeps its history and model, and
+                from here on it plans and delegates instead of doing the work itself.
               </p>
               <ul className="new-arc-promote-facts">
                 <li>
@@ -242,8 +258,8 @@ export function NewArcDialog({
                   <li data-tone="warning">
                     <TriangleAlert size={13} aria-hidden="true" />
                     <span>
-                      It runs in its own worktree, so archiving that worktree ends the coordinator. You can start a new
-                      one from the arc page.
+                      It runs in its own worktree, so archiving that worktree ends the coordinator.
+                      You can start a new one from the arc page.
                     </span>
                   </li>
                 ) : null}
@@ -322,7 +338,9 @@ export function NewArcDialog({
                     value={homeProjectId}
                     onChange={setHomeProjectId}
                     options={
-                      projectOptions.length > 0 ? projectOptions : [{ value: "", label: "No projects registered" }]
+                      projectOptions.length > 0
+                        ? projectOptions
+                        : [{ value: "", label: "No projects registered" }]
                     }
                     disabled={projectOptions.length === 0}
                   />
@@ -367,8 +385,8 @@ export function NewArcDialog({
                 onChange={(event) => setFolder(event.target.value)}
               />
               <p className="sched-help">
-                Must already exist. If it has a BRIEF.md, leave the brief above empty to use it. Left blank, Argmax
-                creates and owns a new folder for this arc.
+                Must already exist. If it has a BRIEF.md, leave the brief above empty to use it.
+                Left blank, Argmax creates and owns a new folder for this arc.
               </p>
             </div>
           </details>
@@ -379,11 +397,17 @@ export function NewArcDialog({
             Cancel
           </button>
           <button type="submit" className="new-arc-dialog-submit" disabled={submitDisabled}>
-            {submitting ? (promote ? "Starting…" : "Creating…") : promote ? "Start arc" : "Create arc"}
+            {submitting
+              ? promote
+                ? "Starting…"
+                : "Creating…"
+              : promote
+                ? "Start arc"
+                : "Create arc"}
           </button>
         </footer>
       </form>
     </div>,
-    document.body
+    document.body,
   );
 }

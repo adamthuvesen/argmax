@@ -11,7 +11,7 @@ import type { ChangeCounts } from "../lib/fileChange.js";
  */
 export function ActivityStat({
   counts,
-  showFiles = true
+  showFiles = true,
 }: {
   counts: ChangeCounts;
   showFiles?: boolean;

@@ -10,21 +10,33 @@ type SortKey = "channel" | "count" | "totalRecorded" | "p50" | "p99";
 
 const COLUMNS: ReadonlyArray<{ key: SortKey; label: string; title: string }> = [
   { key: "channel", label: "Channel", title: "IPC channel name" },
-  { key: "count", label: "n", title: "Samples in the 100-deep ring the percentiles are taken from" },
+  {
+    key: "count",
+    label: "n",
+    title: "Samples in the 100-deep ring the percentiles are taken from",
+  },
   { key: "totalRecorded", label: "calls", title: "Total invocations since launch" },
   { key: "p50", label: "p50", title: "Median latency over the ring" },
-  { key: "p99", label: "p99", title: "99th percentile latency over the ring" }
+  { key: "p99", label: "p99", title: "99th percentile latency over the ring" },
 ];
 
-export function DebugIpcTab({ stats, error }: { stats: IpcChannelStats[]; error: string | null }): JSX.Element {
+export function DebugIpcTab({
+  stats,
+  error,
+}: {
+  stats: IpcChannelStats[];
+  error: string | null;
+}): JSX.Element {
   const [sort, setSort] = useState<SortKey>("p99");
   const [query, setQuery] = useState("");
 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const filtered = needle ? stats.filter((stat) => stat.channel.toLowerCase().includes(needle)) : stats;
+    const filtered = needle
+      ? stats.filter((stat) => stat.channel.toLowerCase().includes(needle))
+      : stats;
     return [...filtered].sort((left, right) =>
-      sort === "channel" ? left.channel.localeCompare(right.channel) : right[sort] - left[sort]
+      sort === "channel" ? left.channel.localeCompare(right.channel) : right[sort] - left[sort],
     );
   }, [stats, sort, query]);
 
@@ -56,7 +68,11 @@ export function DebugIpcTab({ stats, error }: { stats: IpcChannelStats[]; error:
             <thead>
               <tr>
                 {COLUMNS.map((column) => (
-                  <th key={column.key} scope="col" aria-sort={sort === column.key ? "descending" : "none"}>
+                  <th
+                    key={column.key}
+                    scope="col"
+                    aria-sort={sort === column.key ? "descending" : "none"}
+                  >
                     <button type="button" title={column.title} onClick={() => setSort(column.key)}>
                       {column.label}
                     </button>

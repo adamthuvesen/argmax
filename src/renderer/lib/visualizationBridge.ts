@@ -1,7 +1,7 @@
 import type {
   VisualizationControl,
   VisualizationControlGroup,
-  VisualizationRuntimeMessage
+  VisualizationRuntimeMessage,
 } from "../../shared/visualization/types.js";
 import type { JsonValue, VisualizationWidgetState } from "../../shared/bindings.js";
 
@@ -45,7 +45,8 @@ function control(value: unknown): value is VisualizationControl {
       typeof value.max === "number" &&
       Number.isFinite(value.max) &&
       value.min < value.max &&
-      (value.step === undefined || (typeof value.step === "number" && Number.isFinite(value.step) && value.step > 0)) &&
+      (value.step === undefined ||
+        (typeof value.step === "number" && Number.isFinite(value.step) && value.step > 0)) &&
       (value.unit === undefined || (typeof value.unit === "string" && value.unit.length <= 30))
     );
   return (
@@ -54,7 +55,9 @@ function control(value: unknown): value is VisualizationControl {
     Array.isArray(value.options) &&
     value.options.length > 0 &&
     value.options.length <= 12 &&
-    value.options.every((option) => record(option) && text(option.label, 250) && text(option.value, 250))
+    value.options.every(
+      (option) => record(option) && text(option.label, 250) && text(option.value, 250),
+    )
   );
 }
 function group(value: unknown): value is VisualizationControlGroup {
@@ -70,7 +73,10 @@ function group(value: unknown): value is VisualizationControlGroup {
 }
 
 /** Validate the untrusted frame protocol before it reaches host capabilities. */
-export function decodeVisualizationMessage(value: unknown, instanceId: string): DecodedMessage | null {
+export function decodeVisualizationMessage(
+  value: unknown,
+  instanceId: string,
+): DecodedMessage | null {
   if (!record(value) || value.instanceId !== instanceId) return null;
   if (
     value.type === "argmax:visualization-height" &&
@@ -92,7 +98,10 @@ export function decodeVisualizationMessage(value: unknown, instanceId: string): 
       type: value.type,
       instanceId,
       requestId: value.requestId,
-      state: { modelContent: value.state.modelContent ?? null, privateContent: value.state.privateContent ?? null }
+      state: {
+        modelContent: value.state.modelContent ?? null,
+        privateContent: value.state.privateContent ?? null,
+      },
     };
   }
   if (
@@ -101,9 +110,19 @@ export function decodeVisualizationMessage(value: unknown, instanceId: string): 
     text(value.prompt, 32_000) &&
     (value.title === undefined || text(value.title, 250))
   ) {
-    return { type: value.type, instanceId, requestId: value.requestId, prompt: value.prompt, title: value.title };
+    return {
+      type: value.type,
+      instanceId,
+      requestId: value.requestId,
+      prompt: value.prompt,
+      title: value.title,
+    };
   }
-  if (value.type === "argmax:visualization-link" && text(value.url, 4096) && /^https?:\/\//i.test(value.url)) {
+  if (
+    value.type === "argmax:visualization-link" &&
+    text(value.url, 4096) &&
+    /^https?:\/\//i.test(value.url)
+  ) {
     return { type: value.type, instanceId, url: value.url };
   }
   if (

@@ -15,14 +15,19 @@ describe("ProjectTarget", () => {
 
   it("sends no wire key for the primary folder", () => {
     expect(projectFolderInput({ projectFolderId: null })).toEqual({});
-    expect(projectFolderInput({ projectFolderId: "folder-2" })).toEqual({ projectFolderId: "folder-2" });
+    expect(projectFolderInput({ projectFolderId: "folder-2" })).toEqual({
+      projectFolderId: "folder-2",
+    });
   });
 
   it("reads files from the picked folder when there is one", () => {
-    expect(projectFileSource({ project, projectFolderId: null })).toEqual({ kind: "project", id: "project-1" });
+    expect(projectFileSource({ project, projectFolderId: null })).toEqual({
+      kind: "project",
+      id: "project-1",
+    });
     expect(projectFileSource({ project, projectFolderId: "folder-2" })).toEqual({
       kind: "projectFolder",
-      id: "folder-2"
+      id: "folder-2",
     });
   });
 });

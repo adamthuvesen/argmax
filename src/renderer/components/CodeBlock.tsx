@@ -1,5 +1,14 @@
 import { Check, Code2, Copy, WrapText } from "lucide-react";
-import { Children, useContext, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
+import {
+  Children,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type ReactNode,
+} from "react";
 import {
   highlightCode,
   peekHighlightedCode,
@@ -9,7 +18,7 @@ import {
   useHighlightThemeAppearance,
   useHighlighterReady,
   type HighlightAppearance,
-  type HighlightToken
+  type HighlightToken,
 } from "../lib/highlighter.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { StreamingCodeContext } from "./streamingCodeContext.js";
@@ -51,7 +60,7 @@ const FENCE_LABELS: Record<string, string> = {
   sql: "SQL",
   yaml: "YAML",
   yml: "YAML",
-  toml: "TOML"
+  toml: "TOML",
 };
 
 // Non-streaming: highlight synchronously, exactly as before. Streaming: show
@@ -65,7 +74,7 @@ function useCodeHighlight(
   code: string,
   lang: string | null,
   streaming: boolean,
-  appearance: HighlightAppearance
+  appearance: HighlightAppearance,
 ): HighlightToken[][] {
   // A settled fence colored before paints colored; one that has not been
   // paints plain and queues its highlight, so a chat full of code opens at
@@ -100,15 +109,19 @@ function useCodeHighlight(
     pending.current = window.setTimeout(() => {
       pending.current = null;
       const current = latest.current;
-      if (current.code.split("\n", LIVE_HIGHLIGHT_MAX_LINES + 1).length > LIVE_HIGHLIGHT_MAX_LINES) return;
-      setDeferred({ ...current, lines: highlightCode(current.code, current.lang, current.appearance, false) });
+      if (current.code.split("\n", LIVE_HIGHLIGHT_MAX_LINES + 1).length > LIVE_HIGHLIGHT_MAX_LINES)
+        return;
+      setDeferred({
+        ...current,
+        lines: highlightCode(current.code, current.lang, current.appearance, false),
+      });
     }, LIVE_HIGHLIGHT_INTERVAL_MS);
   }, [streaming, code, lang, appearance]);
   useEffect(
     () => () => {
       if (pending.current !== null) window.clearTimeout(pending.current);
     },
-    []
+    [],
   );
 
   if (!streaming) return syncLines as HighlightToken[][];
@@ -163,10 +176,19 @@ function formatFenceLabel(fenceTag: string | null): string | null {
     return null;
   }
   const normalized = fenceTag.toLowerCase();
-  return FENCE_LABELS[normalized] ?? fenceTag.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return (
+    FENCE_LABELS[normalized] ??
+    fenceTag.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+  );
 }
 
-export function CodeBlock({ className, children }: { className?: string; children?: ReactNode }): JSX.Element {
+export function CodeBlock({
+  className,
+  children,
+}: {
+  className?: string;
+  children?: ReactNode;
+}): JSX.Element {
   const fenceTag = useMemo(() => extractFenceTag(className), [className]);
   const codeText = useMemo(() => collectText(children).replace(/\n$/, ""), [children]);
   const [copyFlash, copy] = useCopyToClipboard();
@@ -212,10 +234,20 @@ export function CodeBlock({ className, children }: { className?: string; childre
             type="button"
             className="code-block-action code-block-copy"
             aria-label="Copy code"
-            title={copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy code"}
+            title={
+              copyFlash === "copied"
+                ? "Copied"
+                : copyFlash === "failed"
+                  ? "Couldn't copy"
+                  : "Copy code"
+            }
             onClick={handleCopy}
           >
-            {copyFlash === "copied" ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+            {copyFlash === "copied" ? (
+              <Check size={15} aria-hidden="true" />
+            ) : (
+              <Copy size={15} aria-hidden="true" />
+            )}
           </button>
         </div>
       </div>
@@ -228,7 +260,11 @@ export function CodeBlock({ className, children }: { className?: string; childre
               ) : (
                 <>
                   {line.map((token, tIndex) => (
-                    <span className="hl-token" key={tIndex} style={token.color ? { color: token.color } : undefined}>
+                    <span
+                      className="hl-token"
+                      key={tIndex}
+                      style={token.color ? { color: token.color } : undefined}
+                    >
                       {token.content}
                     </span>
                   ))}
@@ -240,7 +276,11 @@ export function CodeBlock({ className, children }: { className?: string; childre
         </code>
       </pre>
       <span className="code-block-status" role="status" aria-live="polite">
-        {copyFlash === "copied" ? "Code copied." : copyFlash === "failed" ? "Could not copy code." : ""}
+        {copyFlash === "copied"
+          ? "Code copied."
+          : copyFlash === "failed"
+            ? "Could not copy code."
+            : ""}
       </span>
     </div>
   );

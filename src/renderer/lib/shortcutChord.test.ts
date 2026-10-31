@@ -20,7 +20,9 @@ describe("shortcut chords", () => {
 
   it("matches the exact modifier set and ignores key case", () => {
     expect(matchesChord(key({ key: "Enter", altKey: true }), "Alt+Enter")).toBe(true);
-    expect(matchesChord(key({ key: "Enter", altKey: true, shiftKey: true }), "Alt+Enter")).toBe(false);
+    expect(matchesChord(key({ key: "Enter", altKey: true, shiftKey: true }), "Alt+Enter")).toBe(
+      false,
+    );
     expect(matchesChord(key({ key: "Enter" }), "Alt+Enter")).toBe(false);
     expect(matchesChord(key({ key: "k", metaKey: true }), "CmdOrCtrl+K")).toBe(true);
     expect(matchesChord(key({ key: "k", ctrlKey: true }), "CmdOrCtrl+K")).toBe(true);
@@ -36,7 +38,9 @@ describe("shortcut chords", () => {
   it("reads a chord off an event only when it is a valid one", () => {
     expect(chordFromEvent(key({ key: "Shift", shiftKey: true }))).toBeNull();
     expect(chordFromEvent(key({ key: "Enter" }))).toBeNull();
-    expect(chordFromEvent(key({ key: "Enter", metaKey: true, altKey: true }))).toBe("CmdOrCtrl+Alt+Enter");
+    expect(chordFromEvent(key({ key: "Enter", metaKey: true, altKey: true }))).toBe(
+      "CmdOrCtrl+Alt+Enter",
+    );
     expect(chordFromEvent(key({ key: "ArrowUp", altKey: true }))).toBe("Alt+Up");
   });
 

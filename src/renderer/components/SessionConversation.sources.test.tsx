@@ -1,13 +1,17 @@
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { baseSession, event, renderConversation } from "../../test/sessionConversationTestHarness.js";
+import {
+  baseSession,
+  event,
+  renderConversation,
+} from "../../test/sessionConversationTestHarness.js";
 
 const architectureSource = {
   id: "source-1",
   title: "Architecture",
   kind: "file",
   location: "docs/architecture.md",
-  guidance: "Before runtime edits"
+  guidance: "Before runtime edits",
 };
 
 describe("SessionConversation project source session note", () => {
@@ -17,19 +21,34 @@ describe("SessionConversation project source session note", () => {
     renderConversation(
       baseSession({ state: "running" }),
       [
-        event("note", "session.note", "Read project source: Architecture", "2026-05-12T15:00:02.000Z", {
-          operation: "project-source",
-          action: "read",
-          source: architectureSource
-        }),
-        event("thought", "message.delta", "Checking the current architecture", "2026-05-12T15:00:01.000Z", {
-          thinking: true
-        }),
-        event("prompt", "user.message", "Check the architecture", "2026-05-12T15:00:00.000Z")
+        event(
+          "note",
+          "session.note",
+          "Read project source: Architecture",
+          "2026-05-12T15:00:02.000Z",
+          {
+            operation: "project-source",
+            action: "read",
+            source: architectureSource,
+          },
+        ),
+        event(
+          "thought",
+          "message.delta",
+          "Checking the current architecture",
+          "2026-05-12T15:00:01.000Z",
+          {
+            thinking: true,
+          },
+        ),
+        event("prompt", "user.message", "Check the architecture", "2026-05-12T15:00:00.000Z"),
       ],
-      { thinkingDisplay: "collapsed" }
+      { thinkingDisplay: "collapsed" },
     );
-    expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     expect(screen.getByText("Checking the current architecture")).toBeInTheDocument();
   });
 
@@ -41,9 +60,9 @@ describe("SessionConversation project source session note", () => {
         source: architectureSource,
         readAt: "2026-05-12T15:02:00.000Z",
         location: "/checkout/docs/architecture.md",
-        truncated: true
+        truncated: true,
       }),
-      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z")
+      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z"),
     ]);
 
     const summary = screen.getByLabelText("Read project source: Architecture");
@@ -61,9 +80,9 @@ describe("SessionConversation project source session note", () => {
         operation: "project-source",
         action: "added",
         source: architectureSource,
-        at: "2026-05-12T15:02:00.000Z"
+        at: "2026-05-12T15:02:00.000Z",
       }),
-      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z")
+      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z"),
     ]);
 
     expect(screen.getByLabelText("Added project source: Architecture")).toBeTruthy();
@@ -72,13 +91,19 @@ describe("SessionConversation project source session note", () => {
 
   it("does not draw linked-repository read notes in the chat", () => {
     renderConversation(baseSession({ state: "complete" }), [
-      event("note", "session.note", "Read linked repository file: shared/README.md", "2026-05-12T15:02:00.000Z", {
-        operation: "linked-repo",
-        action: "read",
-        linkedRepo: "shared",
-        path: "README.md"
-      }),
-      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z")
+      event(
+        "note",
+        "session.note",
+        "Read linked repository file: shared/README.md",
+        "2026-05-12T15:02:00.000Z",
+        {
+          operation: "linked-repo",
+          action: "read",
+          linkedRepo: "shared",
+          path: "README.md",
+        },
+      ),
+      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z"),
     ]);
 
     expect(screen.getByText("Done")).toBeTruthy();
@@ -93,11 +118,11 @@ describe("SessionConversation project source session note", () => {
         source: {
           title: "Architecture",
           kind: "file",
-          location: "docs/architecture.md"
+          location: "docs/architecture.md",
         },
-        readAt: "2026-05-12T15:02:00.000Z"
+        readAt: "2026-05-12T15:02:00.000Z",
       }),
-      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z")
+      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z"),
     ]);
 
     expect(screen.queryByLabelText("Read project source: Architecture")).toBeNull();

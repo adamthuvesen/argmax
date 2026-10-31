@@ -25,33 +25,34 @@ const RULES = [
     pattern:
       /"\s*(?:SELECT|INSERT|UPDATE|DELETE|REPLACE|PRAGMA|CREATE|DROP|ALTER|VACUUM|WITH)\s|\.(?:prepare|prepare_cached|execute_batch|query_row|pragma_update|pragma_query_value)\(/g,
     allowed: (path) => !APP_ONLY(path),
-    fix: "Add a query function in src-tauri/crates/argmax-store/src/ and call it from here."
+    fix: "Add a query function in src-tauri/crates/argmax-store/src/ and call it from here.",
   },
   {
     id: "git-outside-exec",
     pattern: /Command::new\(\s*"git"\s*\)/g,
     allowed: (path) => path.startsWith("git/") || path.startsWith("crates/argmax-process/"),
-    fix: "Run git through src-tauri/crates/argmax-process/src/git_exec.rs, which sets GIT_LITERAL_PATHSPECS and the environment."
+    fix: "Run git through src-tauri/crates/argmax-process/src/git_exec.rs, which sets GIT_LITERAL_PATHSPECS and the environment.",
   },
   {
     id: "turn-end-outside-owner",
     pattern: /SessionStateInput::transition\(\s*SessionState::(?:Complete|Failed|Cancelled)\b/g,
     allowed: (path) => path === "providers/session_service_turn_end.rs",
-    fix: "End a turn through commit_turn_end in src-tauri/src/providers/session_service_turn_end.rs."
+    fix: "End a turn through commit_turn_end in src-tauri/src/providers/session_service_turn_end.rs.",
   },
   {
     id: "lower-layer-imports-ipc",
     pattern: /crate::ipc\b|^\s+ipc::/gm,
     // The remote bridge is a second transport over the same catalogue.
-    allowed: (path) => !APP_ONLY(path) || path.startsWith("ipc/") || path.startsWith("remote/") || path === "lib.rs",
-    fix: "ipc is the transport edge. Move the shared type or function out of ipc so both sides import it from below."
+    allowed: (path) =>
+      !APP_ONLY(path) || path.startsWith("ipc/") || path.startsWith("remote/") || path === "lib.rs",
+    fix: "ipc is the transport edge. Move the shared type or function out of ipc so both sides import it from below.",
   },
   {
     id: "person-attestation-outside-ipc",
     pattern: /\bminted_by_ipc\s*\(|\battest_person\s*\(/g,
     allowed: (path) => path.startsWith("ipc/") || path === "crates/argmax-store/src/authorship.rs",
-    fix: "Only the person IPC handlers mint a PersonAttestation. A chat reference is a read grant only when a person wrote it."
-  }
+    fix: "Only the person IPC handlers mint a PersonAttestation. A chat reference is a read grant only when a person wrote it.",
+  },
 ];
 
 function rustFiles(dir) {
@@ -71,7 +72,7 @@ function productionSource(path, source) {
 
 const sources = [
   ...rustFiles(APP_ROOT).map((file) => [relative(APP_ROOT, file), file]),
-  ...rustFiles(CRATES_ROOT).map((file) => [join("crates", relative(CRATES_ROOT, file)), file])
+  ...rustFiles(CRATES_ROOT).map((file) => [join("crates", relative(CRATES_ROOT, file)), file]),
 ];
 
 const found = Object.fromEntries(RULES.map((rule) => [rule.id, {}]));
@@ -86,7 +87,10 @@ for (const [path, file] of sources) {
 
 if (process.argv.includes("--update")) {
   const sorted = Object.fromEntries(
-    Object.entries(found).map(([id, files]) => [id, Object.fromEntries(Object.entries(files).sort())])
+    Object.entries(found).map(([id, files]) => [
+      id,
+      Object.fromEntries(Object.entries(files).sort()),
+    ]),
   );
   writeFileSync(BASELINE_PATH, `${JSON.stringify(sorted, null, 2)}\n`);
   process.exit(0);
@@ -94,18 +98,21 @@ if (process.argv.includes("--update")) {
 
 const baseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
 const problems = [];
-const display = (path) => (path.startsWith("crates/") ? `src-tauri/${path}` : `${APP_ROOT}/${path}`);
+const display = (path) =>
+  path.startsWith("crates/") ? `src-tauri/${path}` : `${APP_ROOT}/${path}`;
 for (const rule of RULES) {
   const known = baseline[rule.id] ?? {};
   for (const [path, count] of Object.entries(found[rule.id])) {
     if (count > (known[path] ?? 0)) {
-      problems.push(`${display(path)}: ${rule.id}, ${count} use(s), ${known[path] ?? 0} allowed. ${rule.fix}`);
+      problems.push(
+        `${display(path)}: ${rule.id}, ${count} use(s), ${known[path] ?? 0} allowed. ${rule.fix}`,
+      );
     }
   }
   for (const [path, count] of Object.entries(known)) {
     if ((found[rule.id][path] ?? 0) < count) {
       problems.push(
-        `${display(path)}: ${rule.id} fell below the baseline. Run node scripts/check-rust-boundaries.mjs --update and commit the result.`
+        `${display(path)}: ${rule.id} fell below the baseline. Run node scripts/check-rust-boundaries.mjs --update and commit the result.`,
       );
     }
   }
@@ -115,5 +122,7 @@ if (problems.length) {
   console.error(problems.join("\n"));
   process.exit(1);
 }
-const remaining = RULES.map((rule) => `${rule.id} ${Object.keys(found[rule.id]).length}`).join(", ");
+const remaining = RULES.map((rule) => `${rule.id} ${Object.keys(found[rule.id]).length}`).join(
+  ", ",
+);
 console.log(`ok: Rust boundaries. Files on the baseline: ${remaining}.`);

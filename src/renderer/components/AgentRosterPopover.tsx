@@ -1,5 +1,14 @@
 import { ChevronDown } from "lucide-react";
-import { Fragment, useCallback, useId, useMemo, useRef, useState, type JSX, type MouseEvent } from "react";
+import {
+  Fragment,
+  useCallback,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type MouseEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
@@ -13,18 +22,20 @@ import { WorkingNest } from "./WorkingNest.js";
 const GROUPS: ReadonlyArray<{ status: AgentRosterStatus; label: string }> = [
   { status: "running", label: "Running" },
   { status: "error", label: "Failed" },
-  { status: "done", label: "Completed" }
+  { status: "done", label: "Completed" },
 ];
 
 function orderedEntries(entries: readonly AgentRosterEntry[]): AgentRosterEntry[] {
-  return GROUPS.flatMap(({ status }) => entries.filter((entry) => entry.status === status).sort(newestAgentFirst));
+  return GROUPS.flatMap(({ status }) =>
+    entries.filter((entry) => entry.status === status).sort(newestAgentFirst),
+  );
 }
 
 export function AgentRosterPopover({
   activeOverflow,
   activeTabId,
   entries,
-  onSelect
+  onSelect,
 }: {
   activeOverflow: number;
   activeTabId: string | null;
@@ -43,7 +54,7 @@ export function AgentRosterPopover({
       onSelect(entry.id);
       setOpen(false);
     },
-    [onSelect]
+    [onSelect],
   );
   const filter = useTypeToFilter({
     open,
@@ -52,9 +63,9 @@ export function AgentRosterPopover({
     listRef,
     initialIndex: Math.max(
       0,
-      ordered.findIndex((entry) => entry.id === activeTabId)
+      ordered.findIndex((entry) => entry.id === activeTabId),
     ),
-    onPick: select
+    onPick: select,
   });
   const openFrom = (event: MouseEvent<HTMLButtonElement>): void => {
     if (open) {
@@ -105,7 +116,11 @@ export function AgentRosterPopover({
               style={popover.floatingStyles}
               onKeyDown={filter.onKeyDown}
             >
-              <PickerFilterRow query={filter.query} matchCount={filter.matches.length} totalCount={ordered.length} />
+              <PickerFilterRow
+                query={filter.query}
+                matchCount={filter.matches.length}
+                totalCount={ordered.length}
+              />
               {GROUPS.map((group) => {
                 const matches = filter.matches.filter((entry) => entry.status === group.status);
                 if (matches.length === 0) return null;
@@ -119,10 +134,16 @@ export function AgentRosterPopover({
                       <li
                         role="option"
                         aria-selected={entry.id === activeTabId}
-                        data-active={filter.matches[filter.activeIndex]?.id === entry.id ? "true" : undefined}
+                        data-active={
+                          filter.matches[filter.activeIndex]?.id === entry.id ? "true" : undefined
+                        }
                         key={entry.id}
                       >
-                        <button type="button" className="agent-roster-item" onClick={() => select(entry)}>
+                        <button
+                          type="button"
+                          className="agent-roster-item"
+                          onClick={() => select(entry)}
+                        >
                           <span
                             className="agent-roster-mark agent-emblem-tint"
                             data-hue={entry.emblem.hue}
@@ -155,7 +176,7 @@ export function AgentRosterPopover({
                 </li>
               ) : null}
             </ul>,
-            document.body
+            document.body,
           )
         : null}
     </div>

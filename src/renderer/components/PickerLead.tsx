@@ -7,7 +7,13 @@ import type { JSX, ReactNode } from "react";
  * row has neither), so labels sit on one column across the menu — the macOS
  * menu convention. Styled by `.picker-lead` in chat-chrome.css.
  */
-export function PickerLead({ selected = false, children }: { selected?: boolean; children?: ReactNode }): JSX.Element {
+export function PickerLead({
+  selected = false,
+  children,
+}: {
+  selected?: boolean;
+  children?: ReactNode;
+}): JSX.Element {
   return (
     <span className="picker-lead" aria-hidden="true">
       {selected ? <Check size={13} strokeWidth={2.4} /> : children}

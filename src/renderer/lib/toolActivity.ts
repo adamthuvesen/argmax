@@ -24,7 +24,7 @@ const ACTIVITY_KINDS = [
   "memory-save",
   "git",
   "browser",
-  "plan"
+  "plan",
 ] as const;
 export type ToolActivityKind = (typeof ACTIVITY_KINDS)[number];
 export type ToolActivity = {
@@ -50,22 +50,34 @@ export function decodeToolActivity(value: unknown): ToolActivity | null {
     return null;
   if (
     value.operation !== undefined &&
-    (typeof value.operation !== "string" || !["create", "edit", "delete", "move"].includes(value.operation))
+    (typeof value.operation !== "string" ||
+      !["create", "edit", "delete", "move"].includes(value.operation))
   )
     return null;
   if (
     value.toolCount !== undefined &&
-    (typeof value.toolCount !== "number" || !Number.isSafeInteger(value.toolCount) || value.toolCount < 0)
+    (typeof value.toolCount !== "number" ||
+      !Number.isSafeInteger(value.toolCount) ||
+      value.toolCount < 0)
   )
     return null;
   return value as ToolActivity;
 }
 
-export function mergeToolActivity(start: ToolActivity | null, end: ToolActivity | null): ToolActivity | undefined {
+export function mergeToolActivity(
+  start: ToolActivity | null,
+  end: ToolActivity | null,
+): ToolActivity | undefined {
   if (!end) return start ?? undefined;
   if (start && end.kind === "tool")
-    return start.kind === "discovery" && end.toolCount !== undefined ? { ...start, toolCount: end.toolCount } : start;
-  if (start && end.kind === "image" && ["image-capture", "image-generate", "computer", "browser"].includes(start.kind))
+    return start.kind === "discovery" && end.toolCount !== undefined
+      ? { ...start, toolCount: end.toolCount }
+      : start;
+  if (
+    start &&
+    end.kind === "image" &&
+    ["image-capture", "image-generate", "computer", "browser"].includes(start.kind)
+  )
     return start;
   return { ...start, ...end, targets: end.targets.length ? end.targets : (start?.targets ?? []) };
 }
@@ -88,9 +100,10 @@ function activityLabel(
   state: ActivityState,
   plural = false,
   target?: string,
-  count = 0
+  count = 0,
 ): string {
-  const counted = (noun: string): string => (state === "succeeded" && count > 1 ? `${count} ${noun}` : noun);
+  const counted = (noun: string): string =>
+    state === "succeeded" && count > 1 ? `${count} ${noun}` : noun;
   const file = target || (plural ? counted("files") : "a file");
   const image = target || (plural ? counted("images") : "an image");
   const operation = activity.operation;
@@ -137,41 +150,59 @@ function activityLabel(
     case "discovery":
       verbs = [
         "Searching for tools",
-        activity.toolCount ? `Loaded ${activity.toolCount === 1 && !plural ? "a tool" : "tools"}` : "Searched tools",
-        "Tool discovery"
+        activity.toolCount
+          ? `Loaded ${activity.toolCount === 1 && !plural ? "a tool" : "tools"}`
+          : "Searched tools",
+        "Tool discovery",
       ];
       break;
     case "command":
       verbs = [
         plural ? "Running commands" : "Running a command",
         plural ? `Ran ${counted("commands")}` : "Ran a command",
-        "Command"
+        "Command",
       ];
       break;
     case "computer":
       verbs = ["Using a computer", "Used a computer", "Computer use"];
       break;
     case "agent":
-      verbs = ["Starting an agent", plural ? `Started ${counted("agents")}` : "Started an agent", "Agent launch"];
+      verbs = [
+        "Starting an agent",
+        plural ? `Started ${counted("agents")}` : "Started an agent",
+        "Agent launch",
+      ];
       break;
     case "agent-message":
-      verbs = ["Messaging an agent", plural ? `Messaged ${counted("agents")}` : "Messaged an agent", "Agent message"];
+      verbs = [
+        "Messaging an agent",
+        plural ? `Messaged ${counted("agents")}` : "Messaged an agent",
+        "Agent message",
+      ];
       break;
     case "agent-wait":
       verbs = [
         "Waiting for an agent",
         plural ? `Waited for ${counted("agents")}` : "Waited for an agent",
-        "Agent wait"
+        "Agent wait",
       ];
       break;
     case "agent-stop":
-      verbs = ["Stopping an agent", plural ? `Stopped ${counted("agents")}` : "Stopped an agent", "Agent stop"];
+      verbs = [
+        "Stopping an agent",
+        plural ? `Stopped ${counted("agents")}` : "Stopped an agent",
+        "Agent stop",
+      ];
       break;
     case "memory-recall":
       verbs = ["Recalling memory", "Recalled memory", "Memory recall"];
       break;
     case "memory-save":
-      verbs = ["Saving a memory", plural ? `Saved ${counted("memories")}` : "Saved a memory", "Memory save"];
+      verbs = [
+        "Saving a memory",
+        plural ? `Saved ${counted("memories")}` : "Saved a memory",
+        "Memory save",
+      ];
       break;
     case "git": {
       const subcommand = target ? `git ${target}` : "git commands";
@@ -193,7 +224,7 @@ function activityLabel(
       verbs = [
         plural ? "Using tools" : "Using a tool",
         plural ? `Used ${counted("tools")}` : "Used a tool",
-        "Tool call"
+        "Tool call",
       ];
       break;
   }
@@ -207,17 +238,22 @@ export function describeActivity(tool: ToolCall): string | null {
   if (!activity) return null;
   const raw = activity.targets.length === 1 ? activity.targets[0] : undefined;
   const target =
-    raw === undefined ? undefined : activity.kind === "skill" ? skillTargetName(raw) : raw.split(/[\\/]/).pop();
+    raw === undefined
+      ? undefined
+      : activity.kind === "skill"
+        ? skillTargetName(raw)
+        : raw.split(/[\\/]/).pop();
   const label = activityLabel(
     activity,
     toolActivityState(tool),
     activity.targets.length > 1,
     target,
-    activity.targets.length
+    activity.targets.length,
   );
   // Rust prefixes the repository to the target; the basename alone would read
   // as a file in this checkout.
-  const repo = activity.kind === "read" || activity.kind === "list" ? linkedRepoName(tool.inputFull) : null;
+  const repo =
+    activity.kind === "read" || activity.kind === "list" ? linkedRepoName(tool.inputFull) : null;
   return repo ? `${label} in ${repo}` : label;
 }
 
@@ -243,7 +279,7 @@ function skillTargetName(target: string): string | undefined {
  */
 export function summarizeActivities(
   tools: ToolCall[],
-  counting = true
+  counting = true,
 ): { headline: string; iconKind: ToolActivityKind } {
   const groups = new Map<
     string,
@@ -265,13 +301,14 @@ export function summarizeActivities(
   const settled = counting && ![...groups.values()].some(({ state }) => state === "running");
   const labels = [...groups.values()].map(({ activity, state, count, targets }) => {
     const plural = targets.size ? targets.size > 1 : count > 1;
-    const raw = activity.kind === "skill" && !plural && targets.size === 1 ? [...targets][0] : undefined;
+    const raw =
+      activity.kind === "skill" && !plural && targets.size === 1 ? [...targets][0] : undefined;
     const target = raw === undefined ? undefined : skillTargetName(raw);
     return activityLabel(activity, state, plural, target, settled ? targets.size || count : 0);
   });
   return {
     headline: joinClauses(labels),
-    iconKind: groups.values().next().value?.activity.kind ?? "tool"
+    iconKind: groups.values().next().value?.activity.kind ?? "tool",
   };
 }
 

@@ -13,14 +13,15 @@ const artifact = {
   format: "html" as const,
   mode: null,
   runtimeVersion: 1,
-  externalDependencies: []
+  externalDependencies: [],
 };
 const value = (): VisualizationRead => ({
   artifact,
   source: "<p>Counter source</p>",
-  document: '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src none"><p>Counter</p>',
+  document:
+    '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src none"><p>Counter</p>',
   state: { modelContent: null, privateContent: null },
-  controlValues: {}
+  controlValues: {},
 });
 const read = vi.fn<ArgmaxApi["visualization"]["read"]>();
 const ingest = vi.fn<ArgmaxApi["visualization"]["import"]>();
@@ -43,22 +44,39 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-function post(frame: HTMLIFrameElement, data: Record<string, unknown>, source = frame.contentWindow): void {
-  fireEvent(window, new MessageEvent("message", { source, data: { instanceId: artifact.id, ...data } }));
+function post(
+  frame: HTMLIFrameElement,
+  data: Record<string, unknown>,
+  source = frame.contentWindow,
+): void {
+  fireEvent(
+    window,
+    new MessageEvent("message", { source, data: { instanceId: artifact.id, ...data } }),
+  );
 }
 
 describe("durable visualization host", () => {
   it("reads the owning artifact and confines scripts to an opaque iframe", async () => {
     render(<HtmlVisualization sessionId="session-1" artifactId="artifact-1" />);
     const frame = await screen.findByTitle("Counter");
-    expect(read).toHaveBeenCalledExactlyOnceWith({ sessionId: "session-1", artifactId: "artifact-1" });
+    expect(read).toHaveBeenCalledExactlyOnceWith({
+      sessionId: "session-1",
+      artifactId: "artifact-1",
+    });
     expect(ingest).not.toHaveBeenCalled();
     expect(frame).toHaveAttribute("sandbox", "allow-scripts");
     expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
     expect(frame).toHaveAttribute("srcdoc", expect.stringContaining("Content-Security-Policy"));
   });
   it("imports a historical marker then reads its saved snapshot", async () => {
-    render(<HtmlVisualization sessionId="session-1" path="/checkout/chart.html" title="Counter" mode="wide" />);
+    render(
+      <HtmlVisualization
+        sessionId="session-1"
+        path="/checkout/chart.html"
+        title="Counter"
+        mode="wide"
+      />,
+    );
     await screen.findByTitle("Counter");
     expect(ingest).toHaveBeenCalledExactlyOnceWith({
       sessionId: "session-1",
@@ -66,7 +84,7 @@ describe("durable visualization host", () => {
       title: "Counter",
       summary: null,
       mode: "wide",
-      sourceEventId: null
+      sourceEventId: null,
     });
     expect(read).toHaveBeenCalledWith({ sessionId: "session-1", artifactId: "artifact-1" });
   });
@@ -82,7 +100,11 @@ describe("durable visualization host", () => {
     render(<HtmlVisualization sessionId="session-1" artifactId="artifact-1" />);
     const frame = await screen.findByTitle<HTMLIFrameElement>("Counter");
     post(frame, { type: "argmax:visualization-height", height: 200 }, window);
-    post(frame, { type: "argmax:visualization-height", instanceId: "another-artifact", height: 200 });
+    post(frame, {
+      type: "argmax:visualization-height",
+      instanceId: "another-artifact",
+      height: 200,
+    });
     expect(frame.style.height).toBe("480px");
     post(frame, { type: "argmax:visualization-height", height: 200 });
     expect(frame.style.height).toBe("200px");
@@ -100,23 +122,23 @@ describe("durable visualization host", () => {
     post(frame, {
       type: "argmax:visualization-state",
       requestId: "first",
-      state: { modelContent: { selected: 1 }, privateContent: null }
+      state: { modelContent: { selected: 1 }, privateContent: null },
     });
     post(frame, {
       type: "argmax:visualization-state",
       requestId: "second",
-      state: { modelContent: { selected: 2 }, privateContent: null }
+      state: { modelContent: { selected: 2 }, privateContent: null },
     });
     await waitFor(() => expect(saveState).toHaveBeenCalledTimes(2));
     expect(saveState.mock.calls[1][0]).toEqual({
       sessionId: "session-1",
       artifactId: "artifact-1",
-      state: { modelContent: { selected: 2 }, privateContent: null }
+      state: { modelContent: { selected: 2 }, privateContent: null },
     });
     post(frame, {
       type: "argmax:visualization-state",
       requestId: "oversized",
-      state: { privateContent: "x".repeat(17000) }
+      state: { privateContent: "x".repeat(17000) },
     });
     post(frame, { type: "argmax:visualization-state", requestId: "foreign", state: {} }, window);
     await act(async () => {});
@@ -126,19 +148,23 @@ describe("durable visualization host", () => {
     read.mockResolvedValue({
       ...value(),
       artifact: { ...artifact, format: "image" },
-      source: "data:image/png;base64,AA=="
+      source: "data:image/png;base64,AA==",
     });
     render(<HtmlVisualization sessionId="session-1" artifactId="artifact-1" />);
     expect(await screen.findByRole("img", { name: artifact.summary })).toHaveAttribute(
       "src",
-      "data:image/png;base64,AA=="
+      "data:image/png;base64,AA==",
     );
     expect(screen.queryByTitle("Counter")).toBeNull();
   });
   it("requires the host action before preparing a widget follow-up", async () => {
     render(<HtmlVisualization sessionId="session-1" artifactId="artifact-1" />);
     const frame = await screen.findByTitle<HTMLIFrameElement>("Counter");
-    post(frame, { type: "argmax:visualization-follow-up", requestId: "ask", prompt: "Explain selection" });
+    post(frame, {
+      type: "argmax:visualization-follow-up",
+      requestId: "ask",
+      prompt: "Explain selection",
+    });
     expect(readDraft("session-1").text).toBe("");
     fireEvent.click(screen.getByRole("button", { name: "Prepare follow-up" }));
     expect(readDraft("session-1").text).toBe("Explain selection");
@@ -150,8 +176,8 @@ describe("durable visualization host", () => {
       {
         id: "design",
         label: "Design",
-        controls: [{ id: "radius", kind: "slider", label: "Radius", value: 10, min: 0, max: 30 }]
-      }
+        controls: [{ id: "radius", kind: "slider", label: "Radius", value: 10, min: 0, max: 30 }],
+      },
     ];
     post(frame, { type: "argmax:visualization-controls", groups });
     fireEvent.click(screen.getByRole("button", { name: "Design controls" }));
@@ -160,8 +186,8 @@ describe("durable visualization host", () => {
       expect(saveControls).toHaveBeenCalledExactlyOnceWith({
         sessionId: "session-1",
         artifactId: "artifact-1",
-        controlValues: { radius: 22 }
-      })
+        controlValues: { radius: 22 },
+      }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Preview original" }));
     post(frame, { type: "argmax:visualization-controls", groups });
@@ -177,7 +203,7 @@ describe("durable visualization host", () => {
       (input) =>
         new Promise((resolve) => {
           complete = () => resolve(input.state);
-        })
+        }),
     );
     const exportArtifact = vi
       .fn<ArgmaxApi["visualization"]["export"]>()
@@ -188,14 +214,17 @@ describe("durable visualization host", () => {
     post(frame, {
       type: "argmax:visualization-state",
       requestId: "save",
-      state: { modelContent: { selected: 4 }, privateContent: null }
+      state: { modelContent: { selected: 4 }, privateContent: null },
     });
     await waitFor(() => expect(saveState).toHaveBeenCalledOnce());
     fireEvent.click(screen.getByRole("button", { name: "Download visualization" }));
     expect(exportArtifact).not.toHaveBeenCalled();
     complete?.();
     await waitFor(() =>
-      expect(exportArtifact).toHaveBeenCalledExactlyOnceWith({ sessionId: "session-1", artifactId: "artifact-1" })
+      expect(exportArtifact).toHaveBeenCalledExactlyOnceWith({
+        sessionId: "session-1",
+        artifactId: "artifact-1",
+      }),
     );
   });
 });

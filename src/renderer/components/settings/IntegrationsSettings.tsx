@@ -18,8 +18,8 @@ export function IntegrationsSettings(): JSX.Element {
       <EngramSettings provider={provider} onProviderChange={setProvider} />
       <SettingGroup id="settings-mcp" label="Connections">
         <SettingNote>
-          MCP servers, plugins, and provider connectors available to each agent. Authentication is checked by the
-          provider when it exposes that status.
+          MCP servers, plugins, and provider connectors available to each agent. Authentication is
+          checked by the provider when it exposes that status.
         </SettingNote>
         <div className="connection-provider-tabs" role="tablist" aria-label="Connection provider">
           <SlidingTabIndicator activeKey={provider} />
@@ -38,8 +38,16 @@ export function IntegrationsSettings(): JSX.Element {
         <ConnectionCatalog key={provider} provider={provider} />
         <SettingRow
           label={`Add to ${setup.displayName}`}
-          description={<code className="settings-row-code">{setup.mcpCommand ?? "Settings → Tools & MCP"}</code>}
-          control={setup.mcpCommand ? <CopyCommandButton command={setup.mcpCommand} name={setup.displayName} /> : null}
+          description={
+            <code className="settings-row-code">
+              {setup.mcpCommand ?? "Settings → Tools & MCP"}
+            </code>
+          }
+          control={
+            setup.mcpCommand ? (
+              <CopyCommandButton command={setup.mcpCommand} name={setup.displayName} />
+            ) : null
+          }
         />
       </SettingGroup>
 
@@ -57,8 +65,14 @@ function CopyCommandButton({ command, name }: { command: string; name: string })
       onClick={() => void copy(command)}
       aria-label={`Copy ${name} MCP command`}
     >
-      {copyFlash === "copied" ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-      <span>{copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy"}</span>
+      {copyFlash === "copied" ? (
+        <Check size={13} aria-hidden="true" />
+      ) : (
+        <Copy size={13} aria-hidden="true" />
+      )}
+      <span>
+        {copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy"}
+      </span>
     </button>
   );
 }

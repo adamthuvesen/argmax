@@ -21,7 +21,7 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, State> 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     logger.error("renderer.error-boundary", "caught render error", {
       error: error.message,
-      stack: info.componentStack ?? null
+      stack: info.componentStack ?? null,
     });
     // The log buffer is in-memory and reachable only from the desktop debug
     // panel, so on a paired phone the boundary itself is the only place the
@@ -43,7 +43,7 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, State> 
     return [
       `Argmax ${APP_VERSION} — ${navigator.userAgent}`,
       this.state.error?.stack?.trim() ?? this.state.error?.message ?? "",
-      stack ? `Component stack:\n${stack}` : ""
+      stack ? `Component stack:\n${stack}` : "",
     ]
       .filter(Boolean)
       .join("\n\n");

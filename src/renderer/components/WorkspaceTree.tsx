@@ -10,7 +10,7 @@ import {
   type CSSProperties,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { errorMessage } from "../../shared/error.js";
@@ -51,7 +51,12 @@ const STICKY_MAX_ROWS = 4;
 
 /** IDEs that can open a single file. Terminal and iTerm are not among them:
  *  `open -a Terminal <file>` runs the file as a script. */
-const FILE_EDITOR_IDS: ReadonlySet<IdeId> = new Set<IdeId & OpenFileApp>(["vscode", "cursor", "windsurf", "zed"]);
+const FILE_EDITOR_IDS: ReadonlySet<IdeId> = new Set<IdeId & OpenFileApp>([
+  "vscode",
+  "cursor",
+  "windsurf",
+  "zed",
+]);
 
 function isFileEditor(ide: DetectedIde): ide is DetectedIde & { id: IdeId & OpenFileApp } {
   return FILE_EDITOR_IDS.has(ide.id);
@@ -59,10 +64,15 @@ function isFileEditor(ide: DetectedIde): ide is DetectedIde & { id: IdeId & Open
 
 /** Same rule as the sidebar's "Open in IDE": the default IDE from Settings,
  *  else the only editor installed. */
-function editorForFiles(detected: DetectedIde[]): (DetectedIde & { id: IdeId & OpenFileApp }) | null {
+function editorForFiles(
+  detected: DetectedIde[],
+): (DetectedIde & { id: IdeId & OpenFileApp }) | null {
   const editors = detected.filter(isFileEditor);
   const preferred = readStoredDefaultIde();
-  return editors.find((ide) => ide.id === preferred) ?? (editors.length === 1 ? (editors[0] ?? null) : null);
+  return (
+    editors.find((ide) => ide.id === preferred) ??
+    (editors.length === 1 ? (editors[0] ?? null) : null)
+  );
 }
 
 function flattenVisible(root: TreeNode, expanded: Set<string>): VisibleRow[] {
@@ -110,7 +120,10 @@ function subtreeEndIndex(rows: VisibleRow[], index: number): number {
  * row changes which row is covered), plus the negative offset that slides the
  * block out of view as the deepest folder's subtree scrolls past.
  */
-function stickyBlockFor(rows: VisibleRow[], scrollTop: number): { indexes: number[]; offset: number } {
+function stickyBlockFor(
+  rows: VisibleRow[],
+  scrollTop: number,
+): { indexes: number[]; offset: number } {
   if (rows.length === 0) return { indexes: [], offset: 0 };
   const topIndex = Math.min(rows.length - 1, Math.max(0, Math.floor(scrollTop / ROW_HEIGHT)));
   let indexes = ancestorRowIndexes(rows, topIndex).slice(-STICKY_MAX_ROWS);
@@ -130,7 +143,7 @@ function stickyBlockFor(rows: VisibleRow[], scrollTop: number): { indexes: numbe
 export function WorkspaceTree({
   state,
   height,
-  toolbar
+  toolbar,
 }: {
   state: WorkspaceFilesState;
   height?: number;
@@ -176,7 +189,7 @@ export function WorkspaceTree({
       observer.observe(node);
       resizeObserverRef.current = observer;
     },
-    [ownsHeight]
+    [ownsHeight],
   );
 
   const collapseAll = useCallback((): void => {
@@ -228,7 +241,10 @@ export function WorkspaceTree({
 
   useEffect(() => {
     anchorRowMenu(rowMenu?.point ?? null);
-    if (rowMenu) rowMenuRef.current?.querySelector<HTMLButtonElement>("[role=menuitem]:not(:disabled)")?.focus();
+    if (rowMenu)
+      rowMenuRef.current
+        ?.querySelector<HTMLButtonElement>("[role=menuitem]:not(:disabled)")
+        ?.focus();
   }, [anchorRowMenu, rowMenu, rowMenuRef]);
 
   const openRowMenu = useCallback(
@@ -241,7 +257,7 @@ export function WorkspaceTree({
         .then(setDetectedIdes)
         .catch(() => setDetectedIdes([]));
     },
-    [detectedIdes]
+    [detectedIdes],
   );
 
   const openRowIn = (app: OpenFileApp, appLabel: string): void => {
@@ -251,7 +267,9 @@ export function WorkspaceTree({
     if (!menu || rootPath === null || !system) return;
     system
       .openFileIn({ path: menu.path, cwd: rootPath, app })
-      .catch((error: unknown) => showErrorToast(`Couldn't open in ${appLabel}. ${errorMessage(error)}`));
+      .catch((error: unknown) =>
+        showErrorToast(`Couldn't open in ${appLabel}. ${errorMessage(error)}`),
+      );
   };
 
   const effectiveHeight = ownsHeight ? height : measuredHeight;
@@ -269,7 +287,10 @@ export function WorkspaceTree({
   // DOM nodes at default viewport sizes.
   const totalHeight = visibleRows.length * ROW_HEIGHT;
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN_ROWS);
-  const endIndex = Math.min(visibleRows.length, Math.ceil((scrollTop + effectiveHeight) / ROW_HEIGHT) + OVERSCAN_ROWS);
+  const endIndex = Math.min(
+    visibleRows.length,
+    Math.ceil((scrollTop + effectiveHeight) / ROW_HEIGHT) + OVERSCAN_ROWS,
+  );
   const visibleSlice = visibleRows.slice(startIndex, endIndex);
   const topPad = startIndex * ROW_HEIGHT;
   const bottomPad = Math.max(0, totalHeight - endIndex * ROW_HEIGHT);
@@ -360,7 +381,7 @@ export function WorkspaceTree({
               </button>
             </li>
           </ul>,
-          document.body
+          document.body,
         )
       : null;
   const onRowContextMenu = canOpenExternally ? openRowMenu : undefined;
@@ -397,25 +418,37 @@ export function WorkspaceTree({
 
   if (state.listState === "loading") {
     return withToolbar(
-      <div className="workspace-tree workspace-tree-empty" style={bodyStyle} aria-label="Workspace files">
+      <div
+        className="workspace-tree workspace-tree-empty"
+        style={bodyStyle}
+        aria-label="Workspace files"
+      >
         <LoadingLine label="Loading files…" />
-      </div>
+      </div>,
     );
   }
 
   if (state.listState === "error") {
     return withToolbar(
-      <div className="workspace-tree workspace-tree-empty" style={bodyStyle} aria-label="Workspace files">
+      <div
+        className="workspace-tree workspace-tree-empty"
+        style={bodyStyle}
+        aria-label="Workspace files"
+      >
         <p className="review-empty review-error">{state.listError}</p>
-      </div>
+      </div>,
     );
   }
 
   if (state.listState === "ready" && state.entries.length === 0) {
     return withToolbar(
-      <div className="workspace-tree workspace-tree-empty" style={bodyStyle} aria-label="Workspace files">
+      <div
+        className="workspace-tree workspace-tree-empty"
+        style={bodyStyle}
+        aria-label="Workspace files"
+      >
         <p className="review-empty">No files in this workspace.</p>
-      </div>
+      </div>,
     );
   }
 
@@ -433,7 +466,12 @@ export function WorkspaceTree({
           // Duplicates rows that are already in the tree, so it stays out of the
           // accessibility tree and out of the tab order; the pointer still gets
           // the fold-from-here affordance.
-          <div className="workspace-tree-sticky" style={{ top: scrollTop + sticky.offset }} aria-hidden="true">
+          <div
+            className="workspace-tree-sticky"
+            data-testid="workspace-tree-sticky"
+            style={{ top: scrollTop + sticky.offset }}
+            aria-hidden="true"
+          >
             {sticky.indexes.map((index) => {
               const row = visibleRows[index];
               if (!row) return null;
@@ -469,7 +507,7 @@ export function WorkspaceTree({
         <div style={{ height: bottomPad }} aria-hidden="true" />
       </div>
       {rowMenuElement}
-    </div>
+    </div>,
   );
 }
 
@@ -481,7 +519,7 @@ function TreeRow({
   onToggle,
   onSelect,
   onContextMenu,
-  pinned = false
+  pinned = false,
 }: {
   node: TreeNode;
   depth: number;
@@ -496,7 +534,7 @@ function TreeRow({
   const isOpen = expanded.has(node.path);
   const indent: CSSProperties = {
     paddingLeft: INDENT_BASE + depth * INDENT_STEP,
-    height: ROW_HEIGHT
+    height: ROW_HEIGHT,
   };
   const menuHandlers = onContextMenu
     ? {
@@ -509,7 +547,7 @@ function TreeRow({
           event.preventDefault();
           const rect = event.currentTarget.getBoundingClientRect();
           onContextMenu(node.path, { x: rect.left, y: rect.bottom });
-        }
+        },
       }
     : undefined;
   if (node.kind === "dir") {
@@ -526,10 +564,16 @@ function TreeRow({
         {...menuHandlers}
       >
         <ChevronRight size={12} className={`workspace-tree-chevron${isOpen ? " expanded" : ""}`} />
-        <span className="workspace-tree-icon" title={`Folder icon for ${node.name}`} aria-hidden="true">
+        <span
+          className="workspace-tree-icon"
+          title={`Folder icon for ${node.name}`}
+          aria-hidden="true"
+        >
           <FolderIcon folderName={node.name} width={14} height={14} />
         </span>
-        <span className="workspace-tree-label">{node.name}</span>
+        <span className="workspace-tree-label" data-testid="workspace-tree-label">
+          {node.name}
+        </span>
       </button>
     );
   }
@@ -549,9 +593,17 @@ function TreeRow({
     >
       <span className="workspace-tree-chevron-spacer" aria-hidden="true" />
       <span className="workspace-tree-icon" title={`File icon for ${node.name}`} aria-hidden="true">
-        <FileIcon fileName={node.name} autoAssign editFileNameData={SPECIAL_FILE_ICONS} width={14} height={14} />
+        <FileIcon
+          fileName={node.name}
+          autoAssign
+          editFileNameData={SPECIAL_FILE_ICONS}
+          width={14}
+          height={14}
+        />
       </span>
-      <span className="workspace-tree-label">{node.name}</span>
+      <span className="workspace-tree-label" data-testid="workspace-tree-label">
+        {node.name}
+      </span>
     </button>
   );
 }

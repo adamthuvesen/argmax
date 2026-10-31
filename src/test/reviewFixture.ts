@@ -24,7 +24,7 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
       activeTabId: null,
       selectTab: () => {},
       closeTab: () => {},
-      closeAllTabs: () => {}
+      closeAllTabs: () => {},
     },
     openAgent: () => {},
     openAgents: () => {},
@@ -66,7 +66,7 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
       editFile: () => {},
       saveFile: () => Promise.resolve(),
       reloadFile: () => {},
-      dismissExternalChange: () => {}
+      dismissExternalChange: () => {},
     },
     openFile: () => {},
     refreshChanges: () => {},
@@ -77,6 +77,6 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
     closePanel: () => {},
     togglePanel: () => {},
     toggleChangesPanel: () => {},
-    ...overrides
+    ...overrides,
   };
 }

@@ -15,8 +15,8 @@ if (problems.length) {
   console.log(
     JSON.stringify({
       decision: "block",
-      reason: `Checks failed on files you edited. Fix these before you finish:\n${problems.join("\n")}`
-    })
+      reason: `Checks failed on files you edited. Fix these before you finish:\n${problems.join("\n")}`,
+    }),
   );
 } else {
   clearEditedFiles(sessionId);

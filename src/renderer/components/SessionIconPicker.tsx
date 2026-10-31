@@ -8,7 +8,7 @@ import {
   SESSION_ICONS,
   resolveSessionIconColor,
   sessionIconColorLabel,
-  sessionIconLabel
+  sessionIconLabel,
 } from "../lib/sessionIcons.js";
 
 type SessionIconPickerProps = {
@@ -31,7 +31,7 @@ export function SessionIconPicker({
   iconColor,
   anchorPoint,
   onApply,
-  onClose
+  onClose,
 }: SessionIconPickerProps): JSX.Element {
   const [query, setQuery] = useState("");
   const [draftColor, setDraftColor] = useState(() => resolveSessionIconColor(iconColor));
@@ -46,7 +46,9 @@ export function SessionIconPicker({
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return SESSION_ICON_NAMES;
-    return SESSION_ICON_NAMES.filter((name) => sessionIconLabel(name).toLowerCase().includes(needle));
+    return SESSION_ICON_NAMES.filter((name) =>
+      sessionIconLabel(name).toLowerCase().includes(needle),
+    );
   }, [query]);
 
   const selectColor = (color: string): void => {
@@ -65,7 +67,12 @@ export function SessionIconPicker({
       style={panel.floatingStyles}
     >
       <div className="session-icon-picker-header">
-        <button type="button" className="session-icon-picker-back" aria-label="Close icon picker" onClick={onClose}>
+        <button
+          type="button"
+          className="session-icon-picker-back"
+          aria-label="Close icon picker"
+          onClick={onClose}
+        >
           <ArrowLeft size={14} aria-hidden="true" />
         </button>
         <span className="session-icon-picker-title">Edit Icon</span>
@@ -131,7 +138,9 @@ export function SessionIconPicker({
             </button>
           );
         })}
-        {matches.length === 0 ? <p className="session-icon-grid-empty">No icons match that search.</p> : null}
+        {matches.length === 0 ? (
+          <p className="session-icon-grid-empty">No icons match that search.</p>
+        ) : null}
       </div>
     </div>
   );

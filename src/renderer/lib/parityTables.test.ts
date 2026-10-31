@@ -7,8 +7,16 @@ import inlineMathTable from "../../../fixtures/parity/inline-math.json";
 import workspaceChatTable from "../../../fixtures/parity/workspace-chat.json";
 import type { SessionSummary } from "../../shared/types.js";
 import { normalizeMathDelimiters } from "./normalizeMathDelimiters.js";
-import { isProgressNarration, preToolNarrationGroupIds, type AssistantGroup } from "./sessionTurnView.js";
-import { CHAT_VERBOSITY_LABELS, resolveChatVerbosity, type ChatVerbosity } from "./uiPreferences.js";
+import {
+  isProgressNarration,
+  preToolNarrationGroupIds,
+  type AssistantGroup,
+} from "./sessionTurnView.js";
+import {
+  CHAT_VERBOSITY_LABELS,
+  resolveChatVerbosity,
+  type ChatVerbosity,
+} from "./uiPreferences.js";
 import { chatSessionByWorkspace, chatSessionFor } from "./workspaceChat.js";
 
 // The desktop half of fixtures/parity. ios/Argmax/Tests/ParityTableTests.swift
@@ -17,7 +25,7 @@ import { chatSessionByWorkspace, chatSessionFor } from "./workspaceChat.js";
 // tables are imported rather than read, so `vitest --changed` sees a table edit.
 
 function onDesktop<Expected extends object>(
-  row: Expected & { desktop?: Partial<Expected> & { reason: string } }
+  row: Expected & { desktop?: Partial<Expected> & { reason: string } },
 ): Expected {
   return { ...row, ...row.desktop };
 }
@@ -44,7 +52,7 @@ describe("workspace chat table", () => {
   it.each(cases)("$name", ({ sessions, chats }) => {
     const rows = sessions as SessionSummary[];
     const chosen = Object.fromEntries(
-      [...chatSessionByWorkspace(rows)].map(([workspace, chat]) => [workspace, chat.id])
+      [...chatSessionByWorkspace(rows)].map(([workspace, chat]) => [workspace, chat.id]),
     );
     expect(chosen).toEqual(chats);
     for (const [workspaceId, chat] of Object.entries(chats)) {
@@ -55,7 +63,12 @@ describe("workspace chat table", () => {
 
 describe("inline math table", () => {
   const { cases } = inlineMathTable as unknown as {
-    cases: { name: string; input: string; math: string[]; desktop?: { math?: string[]; reason: string } }[];
+    cases: {
+      name: string;
+      input: string;
+      math: string[];
+      desktop?: { math?: string[]; reason: string };
+    }[];
   };
 
   it.each(cases)("$name", (row) => {
@@ -74,7 +87,11 @@ describe("chat detail tables", () => {
     hidesSettledThoughts: boolean;
     desktop?: { reason: string };
   };
-  type TurnItem = { kind: "user" | "steering" | "assistant" | "thought" | "tools"; id: string; text?: string };
+  type TurnItem = {
+    kind: "user" | "steering" | "assistant" | "thought" | "tools";
+    id: string;
+    text?: string;
+  };
   const { levels, narration, turns } = chatDetailTable as unknown as {
     levels: Level[];
     narration: { name: string; text: string; repeatToUtf16?: number; isNarration: boolean }[];
@@ -98,19 +115,21 @@ describe("chat detail tables", () => {
       thoughtDisplay: resolved.thinkingDisplay,
       opensLatestOutputs: resolved.toolCallsDisplay === "expanded",
       // `hidesSettledThoughts` in SessionConversationTurn, chip closed.
-      hidesSettledThoughts: hidesNarration
+      hidesSettledThoughts: hidesNarration,
     }).toEqual({
       label: expected.label,
       foldsActivity: expected.foldsActivity,
       hidesNarration: expected.hidesNarration,
       thoughtDisplay: expected.thoughtDisplay,
       opensLatestOutputs: expected.opensLatestOutputs,
-      hidesSettledThoughts: expected.hidesSettledThoughts
+      hidesSettledThoughts: expected.hidesSettledThoughts,
     });
   });
 
   it.each(narration)("narration: $name", ({ text, repeatToUtf16, isNarration }) => {
-    const input = repeatToUtf16 ? text.repeat(Math.ceil(repeatToUtf16 / text.length)).slice(0, repeatToUtf16) : text;
+    const input = repeatToUtf16
+      ? text.repeat(Math.ceil(repeatToUtf16 / text.length)).slice(0, repeatToUtf16)
+      : text;
     expect(isProgressNarration(input)).toBe(isNarration);
   });
 
@@ -122,7 +141,8 @@ describe("chat detail tables", () => {
       if (item.kind === "user") turnsOf.push([]);
       turnsOf[turnsOf.length - 1]?.push(item);
     }
-    const stamp = (item: TurnItem): string => `2026-01-01T00:00:${String(items.indexOf(item)).padStart(2, "0")}.000Z`;
+    const stamp = (item: TurnItem): string =>
+      `2026-01-01T00:00:${String(items.indexOf(item)).padStart(2, "0")}.000Z`;
     return turnsOf.flatMap((turn, index) => {
       const groups = turn
         .filter((item) => item.kind === "assistant" || item.kind === "thought")
@@ -132,7 +152,7 @@ describe("chat detail tables", () => {
           lastActivityAt: stamp(item),
           text: item.text ?? "",
           streaming: false,
-          thinking: item.kind === "thought"
+          thinking: item.kind === "thought",
         }));
       const lastTool = turn.filter((item) => item.kind === "tools").at(-1);
       const streaming = live && index === turnsOf.length - 1;

@@ -15,10 +15,10 @@ interface KeyBinding {
 export const KEYBOARD_BINDINGS: readonly KeyBinding[] = [
   ...MENU_KEYBINDINGS.filter((entry) => entry.displayAccelerator.length > 0).map((entry) => ({
     accelerator: entry.displayAccelerator,
-    label: entry.label
+    label: entry.label,
   })),
   ...RENDERER_ONLY_KEYBINDINGS.map((entry) => ({
     accelerator: entry.displayAccelerator,
-    label: entry.label
-  }))
+    label: entry.label,
+  })),
 ] as const;

@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it } from "vitest";
-import { CONTRAST_STORAGE_KEY, DEFAULT_CONTRAST, readStoredContrast, toContrast } from "./contrast.js";
+import {
+  CONTRAST_STORAGE_KEY,
+  DEFAULT_CONTRAST,
+  readStoredContrast,
+  toContrast,
+} from "./contrast.js";
 
 afterEach(() => {
   window.localStorage.clear();

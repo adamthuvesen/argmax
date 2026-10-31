@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
   type JSX,
-  type KeyboardEvent as ReactKeyboardEvent
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { ChevronRight, ChevronsUpDown, Plus } from "lucide-react";
 import { type ParsedDiffBlock } from "../lib/diff.js";
@@ -15,13 +15,13 @@ import {
   langFromPath,
   useHighlighterReady,
   useHighlightThemeAppearance,
-  type HighlightToken
+  type HighlightToken,
 } from "../lib/highlighter.js";
 import {
   highlightHunksInSlices,
   hunkLineTokens,
   hunkTokensVersion,
-  subscribeHunkTokens
+  subscribeHunkTokens,
 } from "../lib/diffHighlight.js";
 import type { DiffNoteAnchor } from "../lib/composerAnnotations.js";
 
@@ -51,7 +51,7 @@ export const DiffBlocks = memo(function DiffBlocks({
   onIndexHunk,
   onRevertHunk,
   indexHunkLabel = "Stage",
-  presentation = "card"
+  presentation = "card",
 }: {
   blocks: ParsedDiffBlock[];
   filePath?: string | null;
@@ -86,7 +86,9 @@ export const DiffBlocks = memo(function DiffBlocks({
   }, [blocks, effectiveLang, appearance]);
   // A refreshed diff can reuse hunk ids and line numbers for different code.
   const activeSelection =
-    selection && selection.filePath === filePath && blocks.includes(selection.block) ? selection : null;
+    selection && selection.filePath === filePath && blocks.includes(selection.block)
+      ? selection
+      : null;
   const dragging = activeSelection?.dragging === true;
   useEffect(() => {
     if (!dragging) return;
@@ -113,7 +115,11 @@ export const DiffBlocks = memo(function DiffBlocks({
   // would only drop more. Show the gaps, but stop advertising the action.
   const truncated = blocks.some((block) => block.kind === "truncated");
   return (
-    <div className="diff-blocks" data-presentation={presentation} data-selecting={dragging || undefined}>
+    <div
+      className="diff-blocks"
+      data-presentation={presentation}
+      data-selecting={dragging || undefined}
+    >
       {blocks.map((block, blockIndex) => {
         switch (block.kind) {
           case "hunk":
@@ -125,8 +131,16 @@ export const DiffBlocks = memo(function DiffBlocks({
                 appearance={appearance}
                 filePath={filePath ?? null}
                 onAddComment={onAddComment}
-                onIndexHunk={onIndexHunk ? () => onIndexHunk(Number(block.id.slice("hunk-".length))) : undefined}
-                onRevertHunk={onRevertHunk ? () => onRevertHunk(Number(block.id.slice("hunk-".length))) : undefined}
+                onIndexHunk={
+                  onIndexHunk
+                    ? () => onIndexHunk(Number(block.id.slice("hunk-".length)))
+                    : undefined
+                }
+                onRevertHunk={
+                  onRevertHunk
+                    ? () => onRevertHunk(Number(block.id.slice("hunk-".length)))
+                    : undefined
+                }
                 indexHunkLabel={indexHunkLabel}
                 presentation={presentation}
                 selection={activeSelection?.block === block ? activeSelection : null}
@@ -139,15 +153,17 @@ export const DiffBlocks = memo(function DiffBlocks({
                 key={block.id}
                 count={block.count}
                 onExpand={truncated ? undefined : onExpandContext}
-                direction={blockIndex === 0 ? "up" : blockIndex === blocks.length - 1 ? "down" : "both"}
+                direction={
+                  blockIndex === 0 ? "up" : blockIndex === blocks.length - 1 ? "down" : "both"
+                }
                 presentation={presentation}
               />
             );
           case "truncated":
             return (
               <p key={block.id} className="diff-truncated" role="status">
-                Diff too large to show in full — {formatBytes(block.droppedBytes)} of changes were dropped. Open the
-                file to see the rest.
+                Diff too large to show in full — {formatBytes(block.droppedBytes)} of changes were
+                dropped. Open the file to see the rest.
               </p>
             );
           default: {
@@ -176,7 +192,7 @@ function OmittedLines({
   count,
   onExpand,
   direction,
-  presentation
+  presentation,
 }: {
   count: number;
   onExpand?: () => void;
@@ -219,7 +235,7 @@ function UnifiedHunk({
   indexHunkLabel,
   presentation,
   selection,
-  onSelectionChange
+  onSelectionChange,
 }: {
   block: DiffHunk;
   lang: string | null;
@@ -236,8 +252,11 @@ function UnifiedHunk({
   const tokensKey = `${lang}:${appearance}`;
   // Re-render as this hunk's slices of highlighting land, and only this hunk.
   useSyncExternalStore(
-    useCallback((listener: () => void) => subscribeHunkTokens(block.lines, listener), [block.lines]),
-    () => hunkTokensVersion(block.lines)
+    useCallback(
+      (listener: () => void) => subscribeHunkTokens(block.lines, listener),
+      [block.lines],
+    ),
+    () => hunkTokensVersion(block.lines),
   );
   const start = selection ? Math.min(selection.anchor, selection.focus) : -1;
   const end = selection ? Math.max(selection.anchor, selection.focus) : -1;
@@ -247,7 +266,8 @@ function UnifiedHunk({
   const startLine = firstLine?.newLineNumber ?? firstLine?.oldLineNumber;
   const endLine = lastLine?.newLineNumber ?? lastLine?.oldLineNumber;
   const range = start !== end;
-  const crossesSides = firstLine && lastLine && (firstLine.kind === "deletion") !== (lastLine.kind === "deletion");
+  const crossesSides =
+    firstLine && lastLine && (firstLine.kind === "deletion") !== (lastLine.kind === "deletion");
   const location = crossesSides
     ? `${filePath}:${startLine} (${firstLine.kind === "deletion" ? "removed" : firstLine.kind === "addition" ? "added" : "unchanged"})-${endLine} (${lastLine.kind === "deletion" ? "removed" : lastLine.kind === "addition" ? "added" : "unchanged"})`
     : `${filePath}:${startLine}${range ? `-${endLine}` : ""}`;
@@ -283,7 +303,9 @@ function UnifiedHunk({
                 }
               }}
             >
-              {presentation === "review" ? <span className="diff-line-rail" aria-hidden="true" /> : null}
+              {presentation === "review" ? (
+                <span className="diff-line-rail" aria-hidden="true" />
+              ) : null}
               <span className="diff-line-number">
                 {lineNumber ?? ""}
                 {commentable ? (
@@ -299,7 +321,13 @@ function UnifiedHunk({
                     onMouseDown={(event) => {
                       if (event.button !== 0) return;
                       event.preventDefault();
-                      onSelectionChange({ block, filePath, anchor: index, focus: index, dragging: true });
+                      onSelectionChange({
+                        block,
+                        filePath,
+                        anchor: index,
+                        focus: index,
+                        dragging: true,
+                      });
                     }}
                     onClick={(event) => {
                       // Mouse selection finishes on mouseup. Its following
@@ -308,7 +336,7 @@ function UnifiedHunk({
                       onSelectionChange(
                         selection && start === index && end === index
                           ? null
-                          : { block, filePath, anchor: index, focus: index, dragging: false }
+                          : { block, filePath, anchor: index, focus: index, dragging: false },
                       );
                     }}
                   >
@@ -323,7 +351,12 @@ function UnifiedHunk({
                 />
               </code>
             </div>
-            {commentable && selection && !selection.dragging && index === end && firstLine && lastLine ? (
+            {commentable &&
+            selection &&
+            !selection.dragging &&
+            index === end &&
+            firstLine &&
+            lastLine ? (
               <DiffCommentForm
                 key={`${start}-${end}`}
                 location={location}
@@ -340,11 +373,16 @@ function UnifiedHunk({
                     lineText: selectedLines
                       .map((selected) => {
                         if (!range) return selected.content;
-                        const prefix = selected.kind === "addition" ? "+" : selected.kind === "deletion" ? "-" : " ";
+                        const prefix =
+                          selected.kind === "addition"
+                            ? "+"
+                            : selected.kind === "deletion"
+                              ? "-"
+                              : " ";
                         return `${prefix}${selected.content}`;
                       })
                       .join("\n"),
-                    comment
+                    comment,
                   });
                   onSelectionChange(null);
                 }}
@@ -360,7 +398,7 @@ function UnifiedHunk({
 function DiffCommentForm({
   location,
   onCancel,
-  onSubmit
+  onSubmit,
 }: {
   location: string;
   onCancel: () => void;
@@ -403,7 +441,12 @@ function DiffCommentForm({
         <button type="button" className="diff-comment-cancel" onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" className="diff-comment-submit" disabled={!draft.trim()} onClick={submit}>
+        <button
+          type="button"
+          className="diff-comment-submit"
+          disabled={!draft.trim()}
+          onClick={submit}
+        >
           Comment
         </button>
       </div>
@@ -415,7 +458,7 @@ function DiffCommentForm({
 // in the memo's props because it selects the Shiki theme for each line.
 const DiffLineContent = memo(function DiffLineContent({
   content,
-  tokens
+  tokens,
 }: {
   content: string;
   /** Undefined until this line's slice of the hunk has been highlighted. */
@@ -429,7 +472,11 @@ const DiffLineContent = memo(function DiffLineContent({
   return (
     <>
       {tokens.map((token, index) => (
-        <span className="hl-token" key={index} style={token.color ? { color: token.color } : undefined}>
+        <span
+          className="hl-token"
+          key={index}
+          style={token.color ? { color: token.color } : undefined}
+        >
           {token.content}
         </span>
       ))}

@@ -25,7 +25,7 @@ export function registerServiceWorker(): void {
   const skip = reasonToSkip({
     supported: typeof navigator !== "undefined" && "serviceWorker" in navigator,
     secureContext: typeof window !== "undefined" && window.isSecureContext,
-    dev: import.meta.env.DEV
+    dev: import.meta.env.DEV,
   });
   if (skip !== null) return;
   // After load: registering during startup competes with the first render for

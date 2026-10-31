@@ -9,11 +9,15 @@ import {
   FRESH_RUN_FADE_MS,
   rehypeFreshRuns,
   trackFreshRuns,
-  type FreshRun
+  type FreshRun,
 } from "./streamFreshRuns.js";
 
 function render(markdown: string, runs: readonly FreshRun[]): string {
-  const processor = unified().use(remarkParse).use(remarkGfm).use(remarkRehype).use(rehypeFreshRuns(runs));
+  const processor = unified()
+    .use(remarkParse)
+    .use(remarkGfm)
+    .use(remarkRehype)
+    .use(rehypeFreshRuns(runs));
   return toHtml(processor.runSync(processor.parse(markdown)));
 }
 
@@ -29,11 +33,11 @@ describe("fresh runs", () => {
   it("gives each tick its own span so they fade at their own phases", () => {
     const html = render("abcdef", [
       { start: 2, end: 4, at: AT },
-      { start: 4, end: 6, at: AT + 64 }
+      { start: 4, end: 6, at: AT + 64 },
     ]);
     expect(html).toBe(
       `<p>ab<span class="stream-fresh" data-at="1000">cd</span>` +
-        `<span class="stream-fresh" data-at="1064">ef</span></p>`
+        `<span class="stream-fresh" data-at="1064">ef</span></p>`,
     );
   });
 
@@ -41,7 +45,7 @@ describe("fresh runs", () => {
     const html = render("say **loud** now", [{ start: 4, end: 16, at: AT }]);
     expect(html).toBe(
       `<p>say <strong><span class="stream-fresh" data-at="1000">loud</span></strong>` +
-        `<span class="stream-fresh" data-at="1000"> now</span></p>`
+        `<span class="stream-fresh" data-at="1000"> now</span></p>`,
     );
   });
 

@@ -1,24 +1,27 @@
 import { act, cleanup, fireEvent, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { useState } from "react";
-import { useAppNavigationHistory, type AppNavigationDestination } from "./useAppNavigationHistory.js";
+import {
+  useAppNavigationHistory,
+  type AppNavigationDestination,
+} from "./useAppNavigationHistory.js";
 
 const LAUNCHER: AppNavigationDestination = {
   kind: "launcher",
   sideChatMode: false,
-  projectId: "project-1"
+  projectId: "project-1",
 };
 const SIDE_CHAT_LAUNCHER: AppNavigationDestination = {
   kind: "launcher",
   sideChatMode: true,
-  projectId: null
+  projectId: null,
 };
 const CHAT: AppNavigationDestination = {
   kind: "grid",
   grid: {
     rows: [[{ sessionId: "session-1", workspaceId: "workspace-1" }]],
-    focused: { row: 0, col: 0 }
-  }
+    focused: { row: 0, col: 0 },
+  },
 };
 const SETTINGS: AppNavigationDestination = { kind: "settings", group: "general" };
 const SCHEDULE: AppNavigationDestination = { kind: "schedule" };
@@ -37,7 +40,7 @@ function renderHistory(initial: AppNavigationDestination = LAUNCHER) {
     useAppNavigationHistory({
       destination,
       canRestore: (candidate) => available(candidate),
-      restore: setDestination
+      restore: setDestination,
     });
     return { destination, setDestination };
   });
@@ -46,7 +49,7 @@ function renderHistory(initial: AppNavigationDestination = LAUNCHER) {
     setAvailable: (check: typeof available): void => {
       available = check;
       hook.rerender();
-    }
+    },
   };
 }
 
@@ -90,10 +93,13 @@ describe("useAppNavigationHistory", () => {
       result.current.setDestination({
         kind: "grid",
         grid: {
-          rows: CHAT.kind === "grid" ? CHAT.grid.rows.map((row) => row.map((cell) => ({ ...cell }))) : [],
-          focused: { row: 0, col: 0 }
-        }
-      })
+          rows:
+            CHAT.kind === "grid"
+              ? CHAT.grid.rows.map((row) => row.map((cell) => ({ ...cell })))
+              : [],
+          focused: { row: 0, col: 0 },
+        },
+      }),
     );
     act(() => result.current.setDestination(SETTINGS));
 
@@ -110,7 +116,7 @@ describe("useAppNavigationHistory", () => {
     const otherProjectLauncher: AppNavigationDestination = {
       kind: "launcher",
       sideChatMode: false,
-      projectId: "project-2"
+      projectId: "project-2",
     };
     act(() => result.current.setDestination(otherProjectLauncher));
     act(() => result.current.setDestination(SCHEDULE));

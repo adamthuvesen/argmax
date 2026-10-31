@@ -39,7 +39,11 @@ export function WebLink({ href, children, onClick, ...rest }: WebLinkProps): JSX
             openInBrowserPanel(href, { newTab: true });
           } else if (systemActions()) {
             event.preventDefault();
-            void withToast(() => systemActions()!.openPath({ path: href }), showToast, "Could not open this link.");
+            void withToast(
+              () => systemActions()!.openPath({ path: href }),
+              showToast,
+              "Could not open this link.",
+            );
           }
         }
         // After the link is handed off. A caller can dismiss a dialog here

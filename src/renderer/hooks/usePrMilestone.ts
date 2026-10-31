@@ -8,7 +8,9 @@ export function usePrMilestone(workspace: WorkspaceSummary | null): {
   finish: () => void;
 } {
   const enabled = useContext(PrMilestoneCelebrationContext);
-  const identity = workspace ? JSON.stringify([workspace.projectId, workspace.id, workspace.branch]) : "";
+  const identity = workspace
+    ? JSON.stringify([workspace.projectId, workspace.id, workspace.branch])
+    : "";
   const watch = useRef({ identity, enabled, startedAt: Date.now(), seen: new Set<string>() });
   const [active, setActive] = useState<{ identity: string; milestone: string } | null>(null);
   const number = workspace?.prNumber;
@@ -29,11 +31,15 @@ export function usePrMilestone(workspace: WorkspaceSummary | null): {
     // while disabled too, so turning the setting on never replays old work.
     const created = `${number}:created`;
     const merged = `${number}:merged`;
-    const newCreation = Date.parse(createdAt ?? "") > watch.current.startedAt && !watch.current.seen.has(created);
+    const newCreation =
+      Date.parse(createdAt ?? "") > watch.current.startedAt && !watch.current.seen.has(created);
     const newMerge =
-      state === "MERGED" && Date.parse(mergedAt ?? "") > watch.current.startedAt && !watch.current.seen.has(merged);
+      state === "MERGED" &&
+      Date.parse(mergedAt ?? "") > watch.current.startedAt &&
+      !watch.current.seen.has(merged);
     if (Number.isFinite(Date.parse(createdAt ?? ""))) watch.current.seen.add(created);
-    if (state === "MERGED" && Number.isFinite(Date.parse(mergedAt ?? ""))) watch.current.seen.add(merged);
+    if (state === "MERGED" && Number.isFinite(Date.parse(mergedAt ?? "")))
+      watch.current.seen.add(merged);
     if (enabled && (newMerge || (state === "OPEN" && newCreation))) {
       setActive({ identity, milestone: newMerge ? merged : created });
     }

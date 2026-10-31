@@ -7,8 +7,8 @@ import { importChunk } from "../lib/importChunk.js";
 // chunk, so the entry stays inside its size budget (scripts/check-bundle.mjs).
 const ComposerUsageChip = lazy(() =>
   importChunk(async () => ({
-    default: (await import("./ComposerUsageChip.js")).ComposerUsageChip
-  }))
+    default: (await import("./ComposerUsageChip.js")).ComposerUsageChip,
+  })),
 );
 
 export function ComposerUsageSlot({ provider }: { provider: ProviderId }): JSX.Element {

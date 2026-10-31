@@ -6,8 +6,8 @@ const rules = parseCommandIconRules([
   {
     commandPattern:
       "^(?:uv\\s+run\\s+)?(?:python(?:3(?:\\.\\d+)?)?\\s+)?[\"']?(?:[^\\s\"']*/)?run_(?:only_sql|readonly_sql)(?:\\.py)?[\"']?(?=\\s|$)",
-    server: "snowflake"
-  }
+    server: "snowflake",
+  },
 ]);
 
 function tool(command: string, name = "Bash", key = "command"): ToolCall {
@@ -21,7 +21,7 @@ function tool(command: string, name = "Bash", key = "command"): ToolCall {
     status: "done",
     createdAt: "2026-09-07T10:00:00Z",
     completedAt: null,
-    error: null
+    error: null,
   };
 }
 
@@ -29,7 +29,7 @@ describe("command icons", () => {
   it.each([
     "run_only_sql --query 'select 1'",
     "uv run python \"$HOME/.agents/skills/snow/scripts/run_readonly_sql.py\" <<'SQL'\nselect 1\nSQL",
-    '/bin/zsh -lc "uv run python /a/very/long/path/to/the/personal/snowflake/skill/scripts/run_readonly_sql.py"'
+    '/bin/zsh -lc "uv run python /a/very/long/path/to/the/personal/snowflake/skill/scripts/run_readonly_sql.py"',
   ])("recognizes the configured script in %s", (command) => {
     expect(commandIconServer(tool(command), rules)).toBe("snowflake");
   });
@@ -43,7 +43,7 @@ describe("command icons", () => {
     "cat run_only_sql.py",
     "run_only_sql_backup",
     "python other.py",
-    "echo ok\nrun_only_sql"
+    "echo ok\nrun_only_sql",
   ])("does not match %s", (command) => {
     expect(commandIconServer(tool(command), rules)).toBeNull();
   });
@@ -52,7 +52,7 @@ describe("command icons", () => {
     "gh pr create --fill",
     "gh run watch 42",
     "/opt/homebrew/bin/gh pr view 1158 --json state",
-    "zsh -lc 'gh auth status'"
+    "zsh -lc 'gh auth status'",
   ])("marks the GitHub CLI in %s by default", (command) => {
     expect(commandIconServer(tool(command), DEFAULT_RULES)).toBe("github");
   });
@@ -72,7 +72,7 @@ describe("command icons", () => {
     [{ commandPattern: "", server: "snowflake" }],
     [{ commandPattern: "sql", server: "unknown" }],
     [{ commandPattern: "sql", server: "constructor" }],
-    [{ commandPattern: "sql", server: "snowflake", typo: true }]
+    [{ commandPattern: "sql", server: "snowflake", typo: true }],
   ])("rejects invalid configuration: %j", (value) => {
     expect(() => parseCommandIconRules(value)).toThrow(/argmax-icons.local.json/);
   });

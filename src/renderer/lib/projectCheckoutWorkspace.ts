@@ -11,7 +11,7 @@ function normalizeCheckoutPath(path: string): string {
  */
 export function findSharedCheckoutWorkspace(
   project: ProjectSummary,
-  workspaces: readonly WorkspaceSummary[]
+  workspaces: readonly WorkspaceSummary[],
 ): WorkspaceSummary | null {
   const repoPath = normalizeCheckoutPath(project.repoPath);
   let best: WorkspaceSummary | null = null;

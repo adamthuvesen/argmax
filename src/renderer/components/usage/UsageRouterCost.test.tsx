@@ -6,7 +6,7 @@ import { RouterCostCard } from "./UsageRouterCost.js";
 function stubRouterCost(result: RouterCostSummary | null): ReturnType<typeof vi.fn> {
   const read = vi.fn().mockResolvedValue(result);
   (globalThis.window as unknown as { argmax: ArgmaxApi }).argmax = {
-    usage: { routerCost: read }
+    usage: { routerCost: read },
   } as unknown as ArgmaxApi;
   return read;
 }
@@ -28,7 +28,7 @@ function tier(overrides: Partial<RouterTierCost>): RouterTierCost {
     outputTokensPerSecond: null,
     medianTurnOutputTokens: null,
     pricedOutputTokens: 0,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -62,7 +62,15 @@ describe("RouterCostCard", () => {
           outputTokensPerSecond: 41.6,
           medianTurnOutputTokens: 12_000,
           pricedOutputTokens: 16_000,
-          models: [{ provider: "claude", modelId: "claude-opus-5-5", turns: 4, costUsd: 8, estimated: false }]
+          models: [
+            {
+              provider: "claude",
+              modelId: "claude-opus-5-5",
+              turns: 4,
+              costUsd: 8,
+              estimated: false,
+            },
+          ],
         }),
         tier({ tier: "balanced", turns: 2, measuredCostUsd: 1 }),
         tier({
@@ -72,12 +80,18 @@ describe("RouterCostCard", () => {
           estimatedCostUsd: 0.5,
           unpricedTurns: 1,
           models: [
-            { provider: "cursor", modelId: "composer-2.5", turns: 4, costUsd: 0.5, estimated: true },
-            { provider: "cursor", modelId: "mystery-model", turns: 1, costUsd: 0, estimated: true }
-          ]
+            {
+              provider: "cursor",
+              modelId: "composer-2.5",
+              turns: 4,
+              costUsd: 0.5,
+              estimated: true,
+            },
+            { provider: "cursor", modelId: "mystery-model", turns: 1, costUsd: 0, estimated: true },
+          ],
         }),
-        tier({ tier: "economy", chats: 1, turns: 2, measuredCostUsd: 0.02 })
-      ]
+        tier({ tier: "economy", chats: 1, turns: 2, measuredCostUsd: 0.02 }),
+      ],
     });
 
     render(<RouterCostCard usageWindow="24h" visible />);
@@ -105,7 +119,9 @@ describe("RouterCostCard", () => {
     expect(within(rows[2]).getByText("≈$0.50")).toBeInTheDocument();
     expect(within(rows[2]).getByText("≈$0.13")).toBeInTheDocument();
     // The mix names each model with its share of the tier's turns.
-    expect(within(rows[2]).getByTitle("mystery-model, Cursor: 1 turn")).toHaveTextContent("mystery-model20.0%");
+    expect(within(rows[2]).getByTitle("mystery-model, Cursor: 1 turn")).toHaveTextContent(
+      "mystery-model20.0%",
+    );
     // Only a tier with unpriced turns is flagged.
     expect(within(rows[2]).getByText("1 unpriced")).toHaveAttribute("title", "4/5 turns priced");
     expect(within(rows[0]).queryByText(/unpriced/)).toBeNull();
@@ -141,7 +157,7 @@ describe("RouterCostCard", () => {
               decision: "kept",
               reason: "coding · standard; routes to Composer 2.5 on another provider, staying",
               count: 2,
-              turns: 3
+              turns: 3,
             },
             {
               provider: "claude",
@@ -152,11 +168,11 @@ describe("RouterCostCard", () => {
               decision: "fallback",
               reason: "unrouted: classifier timeout",
               count: 1,
-              turns: 1
-            }
-          ]
-        })
-      ]
+              turns: 1,
+            },
+          ],
+        }),
+      ],
     });
     render(<RouterCostCard usageWindow="7d" visible />);
     const toggle = await screen.findByRole("button", { name: "Balance routing decisions" });
@@ -166,7 +182,9 @@ describe("RouterCostCard", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     const details = screen.getByRole("table", { name: "Balance routing decisions" });
     expect(within(details).getByText("Follow-up · kept")).toBeInTheDocument();
-    expect(within(details).getByText(/routes to Composer 2.5 on another provider, staying/)).toBeInTheDocument();
+    expect(
+      within(details).getByText(/routes to Composer 2.5 on another provider, staying/),
+    ).toBeInTheDocument();
     expect(within(details).getByText(/· medium/)).toBeInTheDocument();
     expect(within(details).getByText(/· high/)).toBeInTheDocument();
     expect(within(details).getByText("Launch · fallback")).toBeInTheDocument();

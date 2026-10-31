@@ -11,7 +11,7 @@ import {
   launchProvider,
   menuCommandListener,
   setupAppTestMocks,
-  snapshot
+  snapshot,
 } from "../test/appTestHarness.js";
 
 describe("App launch navigation", () => {
@@ -24,7 +24,11 @@ describe("App launch navigation", () => {
     act(() => menuCommandListener?.("open-settings"));
     await screen.findByRole("heading", { name: "Notifications" });
 
-    const workspace = { ...snapshot.workspaces[0], id: "notified-workspace", taskLabel: "Notified chat" };
+    const workspace = {
+      ...snapshot.workspaces[0],
+      id: "notified-workspace",
+      taskLabel: "Notified chat",
+    };
     const session = { ...snapshot.sessions[0], id: "notified-session", workspaceId: workspace.id };
     act(() => focusSessionListener?.(session.id));
     act(() => dashboardDeltaListener?.({ workspaces: [workspace], sessions: [session] }));
@@ -37,7 +41,11 @@ describe("App launch navigation", () => {
     it.each([false, true])(
       "keeps the launched chat open after a stale read, hidden grid: %s",
       async (withHiddenGrid) => {
-        const workspace = { ...snapshot.workspaces[0], id: "workspace-new", taskLabel: "Newly launched chat" };
+        const workspace = {
+          ...snapshot.workspaces[0],
+          id: "workspace-new",
+          taskLabel: "Newly launched chat",
+        };
         const session = { ...snapshot.sessions[0], id: "session-new", workspaceId: workspace.id };
         createCurrentWorkspace.mockResolvedValue(workspace);
         createIsolatedWorkspace.mockResolvedValue(workspace);
@@ -47,8 +55,8 @@ describe("App launch navigation", () => {
               setTimeout(() => {
                 if (pushDuringLaunch) dashboardDeltaListener?.({ sessions: [session] });
                 resolve(session);
-              }, 0)
-            )
+              }, 0),
+            ),
         );
         render(<App />);
         await screen.findByLabelText("Task prompt");
@@ -69,7 +77,9 @@ describe("App launch navigation", () => {
         act(() => dashboardDeltaListener?.({ dashboardChanged: true }));
         await waitFor(() => expect(dashboardList).toHaveBeenCalledOnce());
 
-        fireEvent.change(await screen.findByLabelText("Task prompt"), { target: { value: "Newly launched chat" } });
+        fireEvent.change(await screen.findByLabelText("Task prompt"), {
+          target: { value: "Newly launched chat" },
+        });
         fireEvent.click(screen.getByRole("button", { name: "Start agent" }));
         await screen.findByRole("region", { name: "Newly launched chat" });
         await act(async () => {
@@ -83,10 +93,13 @@ describe("App launch navigation", () => {
         act(() => {
           dashboardDeltaListener?.({ workspaces: [workspace], sessions: [session] });
         });
-        expect(screen.getByRole("button", { name: "Newly launched chat" })).toHaveAttribute("aria-current", "true");
+        expect(screen.getByRole("button", { name: "Newly launched chat" })).toHaveAttribute(
+          "aria-current",
+          "true",
+        );
         expect(screen.getByRole("region", { name: "Newly launched chat" })).toBeInTheDocument();
         expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
-      }
+      },
     );
   });
 });

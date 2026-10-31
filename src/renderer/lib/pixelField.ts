@@ -111,6 +111,6 @@ export function mosaicColor(weight: number, accent: Rgb, crest: Rgb): Rgb {
   return {
     r: Math.round(accent.r + (crest.r - accent.r) * mix),
     g: Math.round(accent.g + (crest.g - accent.g) * mix),
-    b: Math.round(accent.b + (crest.b - accent.b) * mix)
+    b: Math.round(accent.b + (crest.b - accent.b) * mix),
   };
 }

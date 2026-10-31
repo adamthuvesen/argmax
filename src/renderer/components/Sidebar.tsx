@@ -20,7 +20,7 @@ import {
   Settings2,
   Shapes,
   Trash2,
-  Workflow
+  Workflow,
 } from "lucide-react";
 import {
   useCallback,
@@ -30,7 +30,7 @@ import {
   useState,
   type DragEvent as ReactDragEvent,
   type JSX,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { browserActions, warmLedgerPrefetch } from "../data/bridgeActions.js";
@@ -67,14 +67,14 @@ import {
   sortProjectsBy,
   sortWorkspaceGroup,
   type ProjectSortMode,
-  type SidebarViewMode
+  type SidebarViewMode,
 } from "../lib/projects.js";
 import { buildSidebarChatTree } from "../lib/sidebarChatTree.js";
 import {
   detachSidebarChat,
   loadCollapsedChatIds,
   saveCollapsedChatIds,
-  useSidebarChatNesting
+  useSidebarChatNesting,
 } from "../lib/sidebarChatNesting.js";
 import { useLauncherSurface } from "../state/launcherSurface.js";
 import {
@@ -82,7 +82,7 @@ import {
   showKeyboardCheatSheet,
   showSchedulePage,
   showSettings,
-  showUsagePage
+  showUsagePage,
 } from "../state/overlays.js";
 import { NewArcDialog } from "./arcs/NewArcDialog.js";
 import { usePaneGrid } from "../state/paneGrid.js";
@@ -92,7 +92,7 @@ import {
   endWorkspaceDrag,
   subscribeWorkspacePointerDrag,
   useDraggingWorkspaceId,
-  workspaceDragSnapshot
+  workspaceDragSnapshot,
 } from "../state/workspaceDrag.js";
 import { computePriorityEntries, workingWorkspaceIds } from "../lib/priority.js";
 import { computeSnoozeShelf, snoozeTimerDelay } from "../lib/snooze.js";
@@ -100,7 +100,11 @@ import { formatSessionIds } from "../lib/sessionIds.js";
 import { useUnreadWorkspaceIds } from "../lib/sessionUnread.js";
 import { chatSessionByWorkspace } from "../lib/workspaceChat.js";
 import { IdentityPlans } from "./IdentityPlans.js";
-import { SidebarSessionRow, type SidebarSessionRowProps, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
+import {
+  SidebarSessionRow,
+  type SidebarSessionRowProps,
+  type WorkspaceClickModifiers,
+} from "./SidebarSessionRow.js";
 
 // Markers stored in sessionStorage (cleared on app quit / window close in
 // Tauri) so each boot seed fires exactly once per real app launch, not on every
@@ -142,7 +146,7 @@ const STATUS_GROUPS = [
   { key: "status-working", label: "Working" },
   { key: "status-attention", label: "Needs attention" },
   { key: "status-completed", label: "Completed" },
-  { key: "status-created", label: "Not started" }
+  { key: "status-created", label: "Not started" },
 ] as const;
 
 // Active and paused sort together, ahead of done; ties break by most recently
@@ -151,12 +155,12 @@ const STATUS_GROUPS = [
 const ARC_STATE_SORT_RANK: Record<"active" | "paused" | "done", number> = {
   active: 0,
   paused: 0,
-  done: 1
+  done: 1,
 };
 const ARC_STATE_LABEL: Record<"active" | "paused" | "done", string> = {
   active: "Active",
   paused: "Paused",
-  done: "Done"
+  done: "Done",
 };
 
 // Per-launch behavior: every session group except Pinned starts collapsed, so a
@@ -168,22 +172,34 @@ const BOOT_COLLAPSED_GROUP_KEYS: readonly string[] = [
   "yesterday",
   "last-7",
   OLDER_GROUP_KEY,
-  ...STATUS_GROUPS.map((group) => group.key)
+  ...STATUS_GROUPS.map((group) => group.key),
 ];
 
-const VIEW_MODE_OPTIONS: ReadonlyArray<{ value: SidebarViewMode; label: string; description: string }> = [
+const VIEW_MODE_OPTIONS: ReadonlyArray<{
+  value: SidebarViewMode;
+  label: string;
+  description: string;
+}> = [
   { value: "projects", label: "Projects", description: "Group chats under their project" },
   { value: "sessions", label: "Date", description: "Flat list of all chats by date" },
-  { value: "status", label: "Status", description: "Group chats by working and completed status" }
+  { value: "status", label: "Status", description: "Group chats by working and completed status" },
 ];
 
-const SORT_MODE_OPTIONS: ReadonlyArray<{ value: ProjectSortMode; label: string; description: string }> = [
+const SORT_MODE_OPTIONS: ReadonlyArray<{
+  value: ProjectSortMode;
+  label: string;
+  description: string;
+}> = [
   { value: "recent", label: "Recent Activity", description: "Most recently active project first" },
   { value: "alphabetical", label: "Alphabetical (A→Z)", description: "Sort by project name" },
-  { value: "manual", label: "Manual", description: "Drag to reorder" }
+  { value: "manual", label: "Manual", description: "Drag to reorder" },
 ];
 
-function visibleSidebarItems<T extends { id: string }>(items: T[], selectedId: string | null, expanded: boolean): T[] {
+function visibleSidebarItems<T extends { id: string }>(
+  items: T[],
+  selectedId: string | null,
+  expanded: boolean,
+): T[] {
   if (expanded || items.length <= SIDEBAR_SESSION_LIMIT) {
     return items;
   }
@@ -206,7 +222,7 @@ const IMPORTED_PROVIDER_LABELS: Record<string, string> = {
   claude: "Claude",
   codex: "Codex",
   cursor: "Cursor",
-  opencode: "OpenCode"
+  opencode: "OpenCode",
 };
 
 // Module scope, so these keep one identity across renders and the memoized
@@ -254,7 +270,7 @@ export function Sidebar({
   selectedArcId,
   snapshot,
   detectedIdes,
-  defaultIde
+  defaultIde,
 }: {
   loadState: "loading" | "ready" | "error";
   onAddProject: () => void;
@@ -323,9 +339,11 @@ export function Sidebar({
       fullLauncherOpen
         ? new Set<string>()
         : new Set(
-            grid.rows.flatMap((row) => row.flatMap((cell) => (cell.kind === "launcher" ? [] : [cell.workspaceId])))
+            grid.rows.flatMap((row) =>
+              row.flatMap((cell) => (cell.kind === "launcher" ? [] : [cell.workspaceId])),
+            ),
           ),
-    [fullLauncherOpen, grid.rows]
+    [fullLauncherOpen, grid.rows],
   );
   const canDragWorkspaceToGrid = snapshot.sessions.length > 0;
   const warmLedgerPages = useCallback((): void => {
@@ -338,7 +356,7 @@ export function Sidebar({
   // process (e.g. hot-reload) respect the persisted state and don't
   // re-collapse projects the user has since expanded.
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() =>
-    readBootSeeded(BOOT_COLLAPSE_SEED_KEY) ? loadCollapsedProjectIds() : new Set()
+    readBootSeeded(BOOT_COLLAPSE_SEED_KEY) ? loadCollapsedProjectIds() : new Set(),
   );
   const startupCollapseInitializedRef = useRef(readBootSeeded(BOOT_COLLAPSE_SEED_KEY));
   if (!startupCollapseInitializedRef.current && snapshot.projects.length > 0) {
@@ -356,17 +374,23 @@ export function Sidebar({
     }
     saveCollapsedProjectIds(collapsedProjectIds);
   }, [snapshot.projects.length, collapsedProjectIds]);
-  const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => loadExpandedProjectIds());
+  const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() =>
+    loadExpandedProjectIds(),
+  );
   const [projectOrder, setProjectOrder] = useState<string[]>(() => loadProjectOrder());
   const [pinnedProjectIds, setPinnedProjectIds] = useState<string[]>(() => loadPinnedProjectIds());
-  const [workspaceOrders, setWorkspaceOrders] = useState<Record<string, string[]>>(() => loadWorkspaceOrders());
+  const [workspaceOrders, setWorkspaceOrders] = useState<Record<string, string[]>>(() =>
+    loadWorkspaceOrders(),
+  );
   const [sortMode, setSortMode] = useState<ProjectSortMode>(() => loadProjectSortMode());
   const [viewMode, setViewMode] = useState<SidebarViewMode>(() => loadSidebarViewMode());
   // Pinned is the only group that survives a launch expanded. Mid-session
   // toggles persist as usual, and the next launch collapses everything but
   // Pinned again.
   const [collapsedDateGroups, setCollapsedDateGroups] = useState<Set<string>>(() =>
-    readBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY) ? loadCollapsedDateGroupIds() : new Set(BOOT_COLLAPSED_GROUP_KEYS)
+    readBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY)
+      ? loadCollapsedDateGroupIds()
+      : new Set(BOOT_COLLAPSED_GROUP_KEYS),
   );
   const [archivedExpanded, setArchivedExpanded] = useState(false);
   const [archivedArcsShown, setArchivedArcsShown] = useState(false);
@@ -379,7 +403,9 @@ export function Sidebar({
     }
     saveCollapsedDateGroupIds(collapsedDateGroups);
   }, [collapsedDateGroups]);
-  const [expandedDateGroups, setExpandedDateGroups] = useState<Set<string>>(() => loadExpandedDateGroupIds());
+  const [expandedDateGroups, setExpandedDateGroups] = useState<Set<string>>(() =>
+    loadExpandedDateGroupIds(),
+  );
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const sortMenuAnchorRef = useRef<HTMLDivElement | null>(null);
   const [identityMenuOpen, setIdentityMenuOpen] = useState(false);
@@ -388,10 +414,14 @@ export function Sidebar({
   // for a "Remove '{name}'?" prompt — no separate modal needed. The popover
   // is portaled to <body> because both `.sidebar` and `.project-list` clip
   // overflow; rendering inside the project row would hide the menu.
-  const [projectMenuState, setProjectMenuState] = useState<{ projectId: string; mode: "menu" | "confirm" } | null>(
-    null
-  );
-  const projectMenu = useAnchoredPopover({ open: projectMenuState !== null, placement: "bottom-end" });
+  const [projectMenuState, setProjectMenuState] = useState<{
+    projectId: string;
+    mode: "menu" | "confirm";
+  } | null>(null);
+  const projectMenu = useAnchoredPopover({
+    open: projectMenuState !== null,
+    placement: "bottom-end",
+  });
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [draggingWorkspaceId, setDraggingWorkspaceId] = useState<string | null>(null);
@@ -417,7 +447,7 @@ export function Sidebar({
     projectMenu.anchorRef,
     projectMenuState !== null,
     closeProjectMenu,
-    projectMenu.popoverRef
+    projectMenu.popoverRef,
   );
 
   const orderedProjects = useMemo(
@@ -428,11 +458,11 @@ export function Sidebar({
         sortProjectsBy(
           snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID),
           sortMode,
-          projectOrder
+          projectOrder,
         ),
-        pinnedProjectIds
+        pinnedProjectIds,
       ),
-    [snapshot.projects, sortMode, projectOrder, pinnedProjectIds]
+    [snapshot.projects, sortMode, projectOrder, pinnedProjectIds],
   );
   const pinnedProjectIdSet = useMemo(() => new Set(pinnedProjectIds), [pinnedProjectIds]);
   const toggleProjectPinned = useCallback(
@@ -443,7 +473,7 @@ export function Sidebar({
       setPinnedProjectIds(next);
       savePinnedProjectIds(next);
     },
-    [pinnedProjectIds]
+    [pinnedProjectIds],
   );
 
   const handleSelectSortMode = useCallback(
@@ -454,7 +484,7 @@ export function Sidebar({
       }
       setSortMenuOpen(false);
     },
-    [sortMode]
+    [sortMode],
   );
 
   const handleSelectViewMode = useCallback(
@@ -465,7 +495,7 @@ export function Sidebar({
       }
       setSortMenuOpen(false);
     },
-    [viewMode]
+    [viewMode],
   );
 
   // Workspaces without any matching session in the snapshot can't be opened
@@ -490,8 +520,8 @@ export function Sidebar({
     return new Map(
       snapshot.workspaces.map((workspace) => [
         workspace.id,
-        formatSessionIds(sessions.get(workspace.id) ?? null, workspace)
-      ])
+        formatSessionIds(sessions.get(workspace.id) ?? null, workspace),
+      ]),
     );
   }, [snapshot.sessions, snapshot.workspaces]);
 
@@ -501,7 +531,10 @@ export function Sidebar({
   // label; a parent that has left the snapshot leaves the row plain.
   const launchedByLabelByWorkspace = useMemo(() => {
     const labelByWorkspaceId = new Map(
-      snapshot.workspaces.map((workspace) => [workspace.id, workspace.taskLabel.trim() || workspace.branch])
+      snapshot.workspaces.map((workspace) => [
+        workspace.id,
+        workspace.taskLabel.trim() || workspace.branch,
+      ]),
     );
     const sessionById = new Map(snapshot.sessions.map((session) => [session.id, session]));
     const labels = new Map<string, string>();
@@ -518,7 +551,10 @@ export function Sidebar({
     const labels = new Map<string, string>();
     for (const session of snapshot.sessions) {
       if (session.imported) {
-        labels.set(session.workspaceId, IMPORTED_PROVIDER_LABELS[session.provider] ?? session.provider);
+        labels.set(
+          session.workspaceId,
+          IMPORTED_PROVIDER_LABELS[session.provider] ?? session.provider,
+        );
       }
     }
     return labels;
@@ -537,7 +573,9 @@ export function Sidebar({
   // Archived arcs leave the list but stay one click away at its foot. The one
   // open in the workspace column keeps its row so the selection stays visible.
   const archivedArcCount = arcs.filter((arc) => arc.archivedAt).length;
-  const listedArcs = arcs.filter((arc) => !arc.archivedAt || archivedArcsShown || arc.id === selectedArcId);
+  const listedArcs = arcs.filter(
+    (arc) => !arc.archivedAt || archivedArcsShown || arc.id === selectedArcId,
+  );
 
   // A chat that belongs to an arc names it on the row, so a member reads as
   // part of a larger body of work rather than a chat someone opened cold.
@@ -562,13 +600,16 @@ export function Sidebar({
   useEffect(() => {
     saveCollapsedChatIds(collapsedChats);
   }, [collapsedChats]);
-  const workingWorkspaces = useMemo(() => workingWorkspaceIds(snapshot.sessions), [snapshot.sessions]);
+  const workingWorkspaces = useMemo(
+    () => workingWorkspaceIds(snapshot.sessions),
+    [snapshot.sessions],
+  );
   const allSidebarWorkspaces = useMemo(
     () =>
       snapshot.workspaces.filter(
-        (workspace) => workspace.kind !== "popup" && workspaceIdsWithSessions.has(workspace.id)
+        (workspace) => workspace.kind !== "popup" && workspaceIdsWithSessions.has(workspace.id),
       ),
-    [workspaceIdsWithSessions, snapshot.workspaces]
+    [workspaceIdsWithSessions, snapshot.workspaces],
   );
   const allSidebarWorkspacesRef = useRef(allSidebarWorkspaces);
   allSidebarWorkspacesRef.current = allSidebarWorkspaces;
@@ -589,7 +630,7 @@ export function Sidebar({
   const [snoozeNow, setSnoozeNow] = useState(() => Date.now());
   const snoozeShelf = useMemo(
     () => computeSnoozeShelf(allSidebarWorkspaces, snapshot.sessions, snoozeNow),
-    [allSidebarWorkspaces, snapshot.sessions, snoozeNow]
+    [allSidebarWorkspaces, snapshot.sessions, snoozeNow],
   );
   const nextSnoozeExpiryAt = snoozeShelf.nextExpiryAt;
   useEffect(() => {
@@ -599,7 +640,10 @@ export function Sidebar({
     const refresh = (): void => setSnoozeNow(Date.now());
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
-    const timerId = window.setTimeout(() => setSnoozeNow(Date.now()), snoozeTimerDelay(nextSnoozeExpiryAt, Date.now()));
+    const timerId = window.setTimeout(
+      () => setSnoozeNow(Date.now()),
+      snoozeTimerDelay(nextSnoozeExpiryAt, Date.now()),
+    );
     return () => {
       window.clearTimeout(timerId);
       window.removeEventListener("focus", refresh);
@@ -608,7 +652,7 @@ export function Sidebar({
   }, [nextSnoozeExpiryAt, snoozeNow]);
   const unsnoozedWorkspaces = useMemo(
     () => allSidebarWorkspaces.filter((workspace) => !snoozeShelf.shelfIds.has(workspace.id)),
-    [allSidebarWorkspaces, snoozeShelf]
+    [allSidebarWorkspaces, snoozeShelf],
   );
   const chatTree = useMemo(
     () =>
@@ -616,36 +660,50 @@ export function Sidebar({
         unsnoozedWorkspaces.filter((workspace) => !isInArchivedSection(workspace)),
         snapshot.sessions,
         detachedIds,
-        nested
+        nested,
       ),
-    [unsnoozedWorkspaces, snapshot.sessions, detachedIds, nested]
+    [unsnoozedWorkspaces, snapshot.sessions, detachedIds, nested],
   );
   const sidebarWorkspaces = useMemo(
     () => unsnoozedWorkspaces.filter((workspace) => !chatTree.parentByWorkspace.has(workspace.id)),
-    [unsnoozedWorkspaces, chatTree]
+    [unsnoozedWorkspaces, chatTree],
   );
   const selectedRootId = selectedWorkspaceId
     ? (chatTree.rootByWorkspace.get(selectedWorkspaceId) ?? selectedWorkspaceId)
     : null;
   // Every listed chat, shelved or not: opening a snoozed chat must still mark
   // it viewed, and a shelved row must still show unread when it returns.
-  const unreadWorkspaces = useUnreadWorkspaceIds(allSidebarWorkspaces, selectedWorkspaceId, workingWorkspaces);
+  const unreadWorkspaces = useUnreadWorkspaceIds(
+    allSidebarWorkspaces,
+    selectedWorkspaceId,
+    workingWorkspaces,
+  );
 
-  const eligiblePriorityIds = [...new Set([...unreadWorkspaces, ...workingWorkspaces])].sort().join("\n");
+  const eligiblePriorityIds = [...new Set([...unreadWorkspaces, ...workingWorkspaces])]
+    .sort()
+    .join("\n");
   const [prioritySelection, setPrioritySelection] = useState({
     selectedId: selectedWorkspaceId,
     eligibleIds: eligiblePriorityIds,
-    retainedId: null as string | null
+    retainedId: null as string | null,
   });
   let retainedId = prioritySelection.retainedId;
-  if (prioritySelection.selectedId !== selectedWorkspaceId || prioritySelection.eligibleIds !== eligiblePriorityIds) {
+  if (
+    prioritySelection.selectedId !== selectedWorkspaceId ||
+    prioritySelection.eligibleIds !== eligiblePriorityIds
+  ) {
     retainedId =
       selectedWorkspaceId &&
-      ((prioritySelection.selectedId === selectedWorkspaceId && prioritySelection.retainedId === selectedWorkspaceId) ||
+      ((prioritySelection.selectedId === selectedWorkspaceId &&
+        prioritySelection.retainedId === selectedWorkspaceId) ||
         prioritySelection.eligibleIds.split("\n").includes(selectedWorkspaceId))
         ? selectedWorkspaceId
         : null;
-    setPrioritySelection({ selectedId: selectedWorkspaceId, eligibleIds: eligiblePriorityIds, retainedId });
+    setPrioritySelection({
+      selectedId: selectedWorkspaceId,
+      eligibleIds: eligiblePriorityIds,
+      retainedId,
+    });
   }
   const priorityUnreadIds = useMemo(() => {
     const ids = new Set(unreadWorkspaces);
@@ -662,12 +720,20 @@ export function Sidebar({
     // Unordered entries keep the selector's attention and activity order.
     return entries.sort(
       (a, b) =>
-        (positions.get(a.workspace.id) ?? manualOrder.length) - (positions.get(b.workspace.id) ?? manualOrder.length)
+        (positions.get(a.workspace.id) ?? manualOrder.length) -
+        (positions.get(b.workspace.id) ?? manualOrder.length),
     );
-  }, [showPriority, viewMode, unsnoozedWorkspaces, snapshot.sessions, priorityUnreadIds, workspaceOrders]);
+  }, [
+    showPriority,
+    viewMode,
+    unsnoozedWorkspaces,
+    snapshot.sessions,
+    priorityUnreadIds,
+    workspaceOrders,
+  ]);
   const rawPriorityByWorkspace = useMemo(
     () => new Map(rawPriorityEntries.map((entry) => [entry.workspace.id, entry])),
-    [rawPriorityEntries]
+    [rawPriorityEntries],
   );
   const priorityEntries = useMemo(() => {
     const byId = new Map(sidebarWorkspaces.map((workspace) => [workspace.id, workspace]));
@@ -679,13 +745,16 @@ export function Sidebar({
       if (!workspace || workspace.pinned || seen.has(rootId)) return [];
       seen.add(rootId);
       const own = rawPriorityByWorkspace.get(rootId);
-      return [{ ...entry, workspace, reason: own?.reason ?? null, attention: own?.attention ?? null }];
+      return [
+        { ...entry, workspace, reason: own?.reason ?? null, attention: own?.attention ?? null },
+      ];
     });
     const manualOrder = workspaceOrders[PRIORITY_GROUP_KEY] ?? [];
     const positions = new Map(manualOrder.map((id, index) => [id, index]));
     return entries.sort(
       (a, b) =>
-        (positions.get(a.workspace.id) ?? manualOrder.length) - (positions.get(b.workspace.id) ?? manualOrder.length)
+        (positions.get(a.workspace.id) ?? manualOrder.length) -
+        (positions.get(b.workspace.id) ?? manualOrder.length),
     );
   }, [
     sidebarWorkspaces,
@@ -694,9 +763,12 @@ export function Sidebar({
     chatTree,
     workspaceOrders,
     viewMode,
-    showPriority
+    showPriority,
   ]);
-  const priorityOrderedIds = useMemo(() => priorityEntries.map((entry) => entry.workspace.id), [priorityEntries]);
+  const priorityOrderedIds = useMemo(
+    () => priorityEntries.map((entry) => entry.workspace.id),
+    [priorityEntries],
+  );
 
   // Project-name subtitles (screenshot-style two-line rows) for rows whose
   // group doesn't already name the project: Priority, Pinned, and the flat
@@ -712,18 +784,20 @@ export function Sidebar({
   const subtitleFor = useCallback(
     (projectId: string): string | null =>
       showPriority || viewMode === "status" ? (projectNameById.get(projectId) ?? null) : null,
-    [showPriority, viewMode, projectNameById]
+    [showPriority, viewMode, projectNameById],
   );
 
   const priorityWorkspaceIds = useMemo(
     () => new Set(priorityEntries.map((entry) => entry.workspace.id)),
-    [priorityEntries]
+    [priorityEntries],
   );
   const dismissablePriorityIds = useMemo(
     () =>
       rawPriorityEntries
         .filter((entry) =>
-          priorityWorkspaceIds.has(chatTree.rootByWorkspace.get(entry.workspace.id) ?? entry.workspace.id)
+          priorityWorkspaceIds.has(
+            chatTree.rootByWorkspace.get(entry.workspace.id) ?? entry.workspace.id,
+          ),
         )
         // Unread chats clear too: leaving Priority does not mark them read, so
         // the unread dot still shows where the chat lives. A rule that skipped
@@ -731,7 +805,7 @@ export function Sidebar({
         .filter((entry) => !entry.working)
         .filter((entry) => entry.attention !== null || entry.workspace.priorityAddedAt)
         .map((entry) => entry.workspace.id),
-    [rawPriorityEntries, priorityWorkspaceIds, chatTree]
+    [rawPriorityEntries, priorityWorkspaceIds, chatTree],
   );
   // "Add to Priority" only makes sense while the section exists.
   const addToPriority = showPriority ? onAddToPriority : undefined;
@@ -748,13 +822,18 @@ export function Sidebar({
       sortWorkspaceGroup(
         sidebarWorkspaces.filter(
           (workspace) =>
-            workspace.pinned && !isInArchivedSection(workspace) && workspaceIdsWithSessions.has(workspace.id)
+            workspace.pinned &&
+            !isInArchivedSection(workspace) &&
+            workspaceIdsWithSessions.has(workspace.id),
         ),
-        workspaceOrders[PINNED_GROUP_KEY] ?? []
+        workspaceOrders[PINNED_GROUP_KEY] ?? [],
       ),
-    [sidebarWorkspaces, workspaceIdsWithSessions, workspaceOrders]
+    [sidebarWorkspaces, workspaceIdsWithSessions, workspaceOrders],
   );
-  const pinnedWorkspaceIds = useMemo(() => pinnedWorkspaces.map((workspace) => workspace.id), [pinnedWorkspaces]);
+  const pinnedWorkspaceIds = useMemo(
+    () => pinnedWorkspaces.map((workspace) => workspace.id),
+    [pinnedWorkspaces],
+  );
 
   // Flat, date-bucketed list for the "sessions" view mode — every non-archived,
   // unpinned workspace that has a session, regardless of project, repo-less
@@ -768,10 +847,10 @@ export function Sidebar({
             !workspace.pinned &&
             !isInArchivedSection(workspace) &&
             !priorityWorkspaceIds.has(workspace.id) &&
-            workspaceIdsWithSessions.has(workspace.id)
-        )
+            workspaceIdsWithSessions.has(workspace.id),
+        ),
       ),
-    [sidebarWorkspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
+    [sidebarWorkspaces, priorityWorkspaceIds, workspaceIdsWithSessions],
   );
 
   const statusGroups = useMemo(() => {
@@ -804,10 +883,10 @@ export function Sidebar({
             !workspace.pinned &&
             !isInArchivedSection(workspace) &&
             !priorityWorkspaceIds.has(workspace.id) &&
-            statusByRoot.get(workspace.id) === index
+            statusByRoot.get(workspace.id) === index,
         ),
-        []
-      )
+        [],
+      ),
     })).filter((group) => group.items.length > 0);
   }, [
     snapshot.sessions,
@@ -816,7 +895,7 @@ export function Sidebar({
     rawPriorityByWorkspace,
     workingWorkspaces,
     sidebarWorkspaces,
-    priorityWorkspaceIds
+    priorityWorkspaceIds,
   ]);
   const listGroups = viewMode === "status" ? statusGroups : dateGroups;
 
@@ -832,13 +911,13 @@ export function Sidebar({
             !workspace.pinned &&
             !isInArchivedSection(workspace) &&
             !priorityWorkspaceIds.has(workspace.id) &&
-            workspaceIdsWithSessions.has(workspace.id)
+            workspaceIdsWithSessions.has(workspace.id),
         )
         .sort((a, b) => {
           if (a.lastActivityAt === b.lastActivityAt) return 0;
           return a.lastActivityAt < b.lastActivityAt ? 1 : -1;
         }),
-    [sidebarWorkspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
+    [sidebarWorkspaces, priorityWorkspaceIds, workspaceIdsWithSessions],
   );
 
   const snoozedWorkspaces = useMemo(
@@ -848,18 +927,21 @@ export function Sidebar({
           (workspace) =>
             snoozeShelf.shelfIds.has(workspace.id) &&
             !isInArchivedSection(workspace) &&
-            workspaceIdsWithSessions.has(workspace.id)
+            workspaceIdsWithSessions.has(workspace.id),
         )
         .sort((a, b) => (a.snoozedUntil ?? "").localeCompare(b.snoozedUntil ?? "")),
-    [allSidebarWorkspaces, snoozeShelf, workspaceIdsWithSessions]
+    [allSidebarWorkspaces, snoozeShelf, workspaceIdsWithSessions],
   );
 
   const archivedWorkspaces = useMemo(
     () =>
       sidebarWorkspaces
-        .filter((workspace) => isInArchivedSection(workspace) && workspaceIdsWithSessions.has(workspace.id))
+        .filter(
+          (workspace) =>
+            isInArchivedSection(workspace) && workspaceIdsWithSessions.has(workspace.id),
+        )
         .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt)),
-    [sidebarWorkspaces, workspaceIdsWithSessions]
+    [sidebarWorkspaces, workspaceIdsWithSessions],
   );
 
   // Functional updates throughout: several of these can run in one commit (two
@@ -898,7 +980,7 @@ export function Sidebar({
       setExpandedProjectIds(next);
       saveExpandedProjectIds(next);
     },
-    [expandedProjectIds]
+    [expandedProjectIds],
   );
 
   const toggleDateGroupVisibility = useCallback((key: string): void => {
@@ -927,7 +1009,10 @@ export function Sidebar({
   // only takes git workspaces, so a running chat stays in its recency bucket
   // or the Chat group. Shared by the two reveal effects below.
   const revealWorkspaceGroup = useCallback(
-    (selectedWorkspace: DashboardSnapshot["workspaces"][number], expandCollapsedAncestors: boolean): void => {
+    (
+      selectedWorkspace: DashboardSnapshot["workspaces"][number],
+      expandCollapsedAncestors: boolean,
+    ): void => {
       if (expandCollapsedAncestors) {
         const ancestors: string[] = [];
         let parentId = chatTree.parentByWorkspace.get(selectedWorkspace.id);
@@ -941,7 +1026,8 @@ export function Sidebar({
         });
       }
       const rootId = chatTree.rootByWorkspace.get(selectedWorkspace.id) ?? selectedWorkspace.id;
-      const workspace = sidebarWorkspaces.find((candidate) => candidate.id === rootId) ?? selectedWorkspace;
+      const workspace =
+        sidebarWorkspaces.find((candidate) => candidate.id === rootId) ?? selectedWorkspace;
       const groupKey = workspace.pinned
         ? PINNED_GROUP_KEY
         : priorityWorkspaceIds.has(workspace.id)
@@ -949,7 +1035,8 @@ export function Sidebar({
           : viewMode === "projects" && workspace.kind === "scratch"
             ? SIDE_CHATS_GROUP_KEY
             : viewMode !== "projects"
-              ? (listGroups.find((group) => group.items.some((item) => item.id === workspace.id))?.key ?? null)
+              ? (listGroups.find((group) => group.items.some((item) => item.id === workspace.id))
+                  ?.key ?? null)
               : null;
       // Older is a history dump, often dozens of rows. Auto-opening it to
       // confirm a launch (or because a stale session is selected in the grid)
@@ -967,7 +1054,14 @@ export function Sidebar({
         expandProjectVisibility(workspace.projectId);
       }
     },
-    [chatTree, sidebarWorkspaces, listGroups, expandProjectVisibility, priorityWorkspaceIds, viewMode]
+    [
+      chatTree,
+      sidebarWorkspaces,
+      listGroups,
+      expandProjectVisibility,
+      priorityWorkspaceIds,
+      viewMode,
+    ],
   );
 
   useEffect(() => {
@@ -976,10 +1070,14 @@ export function Sidebar({
     if (workspace) {
       revealWorkspaceGroup(workspace, true);
       setExpandedProjectIds((current) => new Set([...current, workspace.projectId]));
-      const dateGroup = listGroups.find((group) => group.items.some((item) => item.id === workspace.id));
+      const dateGroup = listGroups.find((group) =>
+        group.items.some((item) => item.id === workspace.id),
+      );
       if (dateGroup) {
         setExpandedDateGroups((current) => new Set([...current, dateGroup.key]));
-        setCollapsedDateGroups((current) => new Set([...current].filter((key) => key !== dateGroup.key)));
+        setCollapsedDateGroups(
+          (current) => new Set([...current].filter((key) => key !== dateGroup.key)),
+        );
       }
     }
     setDetachedToReveal(null);
@@ -994,18 +1092,23 @@ export function Sidebar({
   // chat enters the shelf. The effect depends on this flag, not on the shelf
   // object, which is derived again on every dashboard refresh: keyed on that, a
   // refresh would reopen a shelf the user closed over the selected row.
-  const selectedChatIsShelved = selectedWorkspaceId !== null && snoozeShelf.shelfIds.has(selectedWorkspaceId);
+  const selectedChatIsShelved =
+    selectedWorkspaceId !== null && snoozeShelf.shelfIds.has(selectedWorkspaceId);
   useEffect(() => {
     if (selectedChatIsShelved) setSnoozedExpanded(true);
   }, [selectedWorkspaceId, selectedChatIsShelved]);
-  const selectedRootWorkspace = sidebarWorkspaces.find((workspace) => workspace.id === selectedRootId);
+  const selectedRootWorkspace = sidebarWorkspaces.find(
+    (workspace) => workspace.id === selectedRootId,
+  );
   const selectedGroupKey = selectedRootWorkspace?.pinned
     ? PINNED_GROUP_KEY
     : selectedRootId && priorityWorkspaceIds.has(selectedRootId)
       ? PRIORITY_GROUP_KEY
       : viewMode === "projects"
         ? selectedRootWorkspace?.projectId
-        : listGroups.find((group) => group.items.some((workspace) => workspace.id === selectedRootId))?.key;
+        : listGroups.find((group) =>
+            group.items.some((workspace) => workspace.id === selectedRootId),
+          )?.key;
   const selectedRevealKey = `${selectedWorkspaceId}:${selectedRootId}:${viewMode}:${selectedGroupKey}`;
   useEffect(() => {
     if (!selectedWorkspaceId || lastExpandedForWorkspaceId.current === selectedRevealKey) return;
@@ -1068,7 +1171,7 @@ export function Sidebar({
       setExpandedDateGroups(next);
       saveExpandedDateGroupIds(next);
     },
-    [expandedDateGroups]
+    [expandedDateGroups],
   );
 
   // Every sidebar section header (Pinned, Priority, recency buckets) carries
@@ -1091,22 +1194,32 @@ export function Sidebar({
         <ChevronRight size={14} />
       </button>
     ),
-    [toggleDateGroupVisibility]
+    [toggleDateGroupVisibility],
   );
 
-  const handleDragStart = useCallback((e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
-    setDraggingId(projectId);
-    e.dataTransfer.effectAllowed = "move";
-  }, []);
+  const handleDragStart = useCallback(
+    (e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
+      setDraggingId(projectId);
+      e.dataTransfer.effectAllowed = "move";
+    },
+    [],
+  );
 
-  const handleDragOver = useCallback((e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverId(projectId);
-  }, []);
+  const handleDragOver = useCallback(
+    (e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setDragOverId(projectId);
+    },
+    [],
+  );
 
   const handleDrop = useCallback(
-    (e: ReactDragEvent<HTMLDivElement>, targetId: string, currentOrdered: ProjectSummary[]): void => {
+    (
+      e: ReactDragEvent<HTMLDivElement>,
+      targetId: string,
+      currentOrdered: ProjectSummary[],
+    ): void => {
       e.preventDefault();
       if (draggingId && draggingId !== targetId) {
         const ids = currentOrdered.map((p) => p.id);
@@ -1127,35 +1240,41 @@ export function Sidebar({
       setDraggingId(null);
       setDragOverId(null);
     },
-    [draggingId, sortMode]
+    [draggingId, sortMode],
   );
 
-  const handleDragLeave = useCallback((e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
-    // Only clear when the cursor leaves the row itself, not when it enters a
-    // child element (which also fires dragleave on the parent).
-    const related = e.relatedTarget;
-    if (related instanceof Node && e.currentTarget.contains(related)) return;
-    setDragOverId((current) => (current === projectId ? null : current));
-  }, []);
+  const handleDragLeave = useCallback(
+    (e: ReactDragEvent<HTMLDivElement>, projectId: string): void => {
+      // Only clear when the cursor leaves the row itself, not when it enters a
+      // child element (which also fires dragleave on the parent).
+      const related = e.relatedTarget;
+      if (related instanceof Node && e.currentTarget.contains(related)) return;
+      setDragOverId((current) => (current === projectId ? null : current));
+    },
+    [],
+  );
 
   const handleDragEnd = useCallback((): void => {
     setDraggingId(null);
     setDragOverId(null);
   }, []);
 
-  const handleWorkspaceDragStart = useCallback((event: ReactDragEvent<HTMLDivElement>, workspaceId: string): void => {
-    event.stopPropagation();
-    // Launched chats render inside their root's draggable wrapper. A drag that
-    // starts on one of them would otherwise move the root.
-    if (event.target instanceof Element && event.target.closest(".sidebar-chat-children")) {
-      event.preventDefault();
-      return;
-    }
-    event.dataTransfer.setData(WORKSPACE_DRAG_MIME, workspaceId);
-    event.dataTransfer.effectAllowed = "copyMove";
-    setDraggingWorkspaceId(workspaceId);
-    beginWorkspaceDrag(workspaceId);
-  }, []);
+  const handleWorkspaceDragStart = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>, workspaceId: string): void => {
+      event.stopPropagation();
+      // Launched chats render inside their root's draggable wrapper. A drag that
+      // starts on one of them would otherwise move the root.
+      if (event.target instanceof Element && event.target.closest(".sidebar-chat-children")) {
+        event.preventDefault();
+        return;
+      }
+      event.dataTransfer.setData(WORKSPACE_DRAG_MIME, workspaceId);
+      event.dataTransfer.effectAllowed = "copyMove";
+      setDraggingWorkspaceId(workspaceId);
+      beginWorkspaceDrag(workspaceId);
+    },
+    [],
+  );
 
   const handleWorkspaceDragOver = useCallback(
     (event: ReactDragEvent<HTMLDivElement>): void => {
@@ -1164,11 +1283,16 @@ export function Sidebar({
         event.dataTransfer.dropEffect = "move";
       }
     },
-    [draggingWorkspaceId]
+    [draggingWorkspaceId],
   );
 
   const reorderWorkspace = useCallback(
-    (sourceWorkspaceId: string, projectId: string, targetWorkspaceId: string, orderedIds: string[]): void => {
+    (
+      sourceWorkspaceId: string,
+      projectId: string,
+      targetWorkspaceId: string,
+      orderedIds: string[],
+    ): void => {
       if (sourceWorkspaceId === targetWorkspaceId) return;
       const from = orderedIds.indexOf(sourceWorkspaceId);
       const to = orderedIds.indexOf(targetWorkspaceId);
@@ -1182,17 +1306,22 @@ export function Sidebar({
       setWorkspaceOrders(updated);
       saveWorkspaceOrders(updated);
     },
-    [workspaceOrders]
+    [workspaceOrders],
   );
 
   const handleWorkspaceDrop = useCallback(
-    (event: ReactDragEvent<HTMLDivElement>, groupId: string, targetId: string, orderedIds: string[]): void => {
+    (
+      event: ReactDragEvent<HTMLDivElement>,
+      groupId: string,
+      targetId: string,
+      orderedIds: string[],
+    ): void => {
       event.preventDefault();
       event.stopPropagation();
       if (draggingWorkspaceId) reorderWorkspace(draggingWorkspaceId, groupId, targetId, orderedIds);
       setDraggingWorkspaceId(null);
     },
-    [draggingWorkspaceId, reorderWorkspace]
+    [draggingWorkspaceId, reorderWorkspace],
   );
 
   useEffect(
@@ -1202,18 +1331,29 @@ export function Sidebar({
         drop: ({ clientX, clientY }) => {
           const sourceId = workspaceDragSnapshot();
           if (!sourceId || !priorityOrderedIds.includes(sourceId)) return;
-          const rows = priorityGroupRef.current?.querySelectorAll<HTMLElement>("[data-workspace-id]") ?? [];
+          const rows =
+            priorityGroupRef.current?.querySelectorAll<HTMLElement>("[data-workspace-id]") ?? [];
           for (const row of rows) {
             const rect = row.getBoundingClientRect();
-            if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
-              reorderWorkspace(sourceId, PRIORITY_GROUP_KEY, row.dataset.workspaceId!, priorityOrderedIds);
+            if (
+              clientX >= rect.left &&
+              clientX <= rect.right &&
+              clientY >= rect.top &&
+              clientY <= rect.bottom
+            ) {
+              reorderWorkspace(
+                sourceId,
+                PRIORITY_GROUP_KEY,
+                row.dataset.workspaceId!,
+                priorityOrderedIds,
+              );
               return;
             }
           }
         },
-        cancel: () => {}
+        cancel: () => {},
       }),
-    [priorityOrderedIds, reorderWorkspace]
+    [priorityOrderedIds, reorderWorkspace],
   );
 
   const handleWorkspaceDragEnd = useCallback((): void => {
@@ -1238,7 +1378,7 @@ export function Sidebar({
   }, [unsnoozedWorkspaces, chatTree, workingWorkspaces, rawPriorityByWorkspace, unreadWorkspaces]);
   const renderChat = (
     workspace: DashboardSnapshot["workspaces"][number],
-    overrides: Partial<SidebarSessionRowProps> = {}
+    overrides: Partial<SidebarSessionRowProps> = {},
   ): JSX.Element => {
     const children = chatTree.childrenByWorkspace.get(workspace.id) ?? [];
     const expanded = !collapsedChats.has(workspace.id);
@@ -1280,7 +1420,9 @@ export function Sidebar({
               : undefined
           }
           onRemoveFromPriority={
-            priority && (priority.attention !== null || workspace.priorityAddedAt) ? onRemoveFromPriority : undefined
+            priority && (priority.attention !== null || workspace.priorityAddedAt)
+              ? onRemoveFromPriority
+              : undefined
           }
           priorityReason={priority?.reason ?? undefined}
           onSnooze={onSnoozeWorkspace}
@@ -1302,7 +1444,10 @@ export function Sidebar({
             {children.map((child) => (
               <div key={child.id} className="sidebar-chat-child">
                 {renderChat(child, {
-                  subtitle: child.projectId !== workspace.projectId ? projectNameById.get(child.projectId) : undefined
+                  subtitle:
+                    child.projectId !== workspace.projectId
+                      ? projectNameById.get(child.projectId)
+                      : undefined,
                 })}
               </div>
             ))}
@@ -1315,7 +1460,11 @@ export function Sidebar({
   // The version lives in the menu header; the chip speaks up only while local
   // data is not ready, so a failed load is never silent.
   const identitySubLabel =
-    loadState === "loading" ? "Starting…" : loadState === "error" ? "Couldn't load local data" : null;
+    loadState === "loading"
+      ? "Starting…"
+      : loadState === "error"
+        ? "Couldn't load local data"
+        : null;
   const runIdentityAction = useCallback((action: () => void): void => {
     setIdentityMenuOpen(false);
     action();
@@ -1346,7 +1495,11 @@ export function Sidebar({
           <MoreHorizontal size={14} />
         </button>
         {sortMenuOpen && (
-          <ul className="project-picker-popover rail-sort-popover" role="menu" aria-label="Sidebar view options">
+          <ul
+            className="project-picker-popover rail-sort-popover"
+            role="menu"
+            aria-label="Sidebar view options"
+          >
             <li className="project-picker-group-label" role="presentation">
               Group by
             </li>
@@ -1397,7 +1550,13 @@ export function Sidebar({
           </ul>
         )}
       </div>
-      <button className="small-icon" type="button" title="Add Project" aria-label="Add Project" onClick={onAddProject}>
+      <button
+        className="small-icon"
+        type="button"
+        title="Add Project"
+        aria-label="Add Project"
+        onClick={onAddProject}
+      >
         <Plus size={14} />
       </button>
     </div>
@@ -1407,8 +1566,15 @@ export function Sidebar({
   // and "New arc" stays on the header so it is one click even when collapsed.
   const arcsCollapsed = collapsedDateGroups.has(ARCS_GROUP_KEY);
   const arcsSection = (
-    <div className="project-group session-date-group arcs-group" data-collapsed={arcsCollapsed ? "true" : undefined}>
-      <div className="project-row session-date-row" onClick={() => toggleDateGroupVisibility(ARCS_GROUP_KEY)}>
+    <div
+      className="project-group session-date-group arcs-group"
+      data-collapsed={arcsCollapsed ? "true" : undefined}
+    >
+      <div
+        className="project-row session-date-row"
+        data-testid="sidebar-header-row"
+        onClick={() => toggleDateGroupVisibility(ARCS_GROUP_KEY)}
+      >
         <span className="project-name session-date-label">
           <span className="project-name-text">Arcs</span>
           {renderCollapseButton(ARCS_GROUP_KEY, "Arcs", arcsCollapsed, "arcs")}
@@ -1459,14 +1625,25 @@ export function Sidebar({
   );
   const sideChatsCollapsed = collapsedDateGroups.has(SIDE_CHATS_GROUP_KEY);
   const sideChatsExpanded = expandedDateGroups.has(SIDE_CHATS_GROUP_KEY);
-  const visibleSideChats = visibleSidebarItems(sideChatWorkspaces, selectedRootId, sideChatsExpanded);
+  const visibleSideChats = visibleSidebarItems(
+    sideChatWorkspaces,
+    selectedRootId,
+    sideChatsExpanded,
+  );
   const hiddenSideChatCount = sideChatWorkspaces.length - visibleSideChats.length;
   // Projects view only, below the project groups. The sessions view files
   // chats into the recency buckets like any other row.
   const sideChatsSection =
     viewMode === "projects" && (onNewSideChat || sideChatWorkspaces.length > 0) ? (
-      <div className="project-group session-date-group" data-collapsed={sideChatsCollapsed ? "true" : undefined}>
-        <div className="project-row session-date-row" onClick={() => toggleDateGroupVisibility(SIDE_CHATS_GROUP_KEY)}>
+      <div
+        className="project-group session-date-group"
+        data-collapsed={sideChatsCollapsed ? "true" : undefined}
+      >
+        <div
+          className="project-row session-date-row"
+          data-testid="sidebar-header-row"
+          onClick={() => toggleDateGroupVisibility(SIDE_CHATS_GROUP_KEY)}
+        >
           <span className="project-name session-date-label">
             <span className="project-name-text">Chat</span>
             {renderCollapseButton(SIDE_CHATS_GROUP_KEY, "Chat", sideChatsCollapsed, "chats")}
@@ -1499,7 +1676,9 @@ export function Sidebar({
                 type="button"
                 className="sidebar-show-more"
                 aria-expanded={sideChatsExpanded}
-                aria-label={sideChatsExpanded ? "Show fewer chats" : `Show ${hiddenSideChatCount} more chats`}
+                aria-label={
+                  sideChatsExpanded ? "Show fewer chats" : `Show ${hiddenSideChatCount} more chats`
+                }
                 onClick={() => toggleDateGroupExpansion(SIDE_CHATS_GROUP_KEY)}
               >
                 {sideChatsExpanded ? "Show less" : `Show ${hiddenSideChatCount} more`}
@@ -1514,6 +1693,7 @@ export function Sidebar({
     <>
       <aside
         className="sidebar"
+        data-testid="sidebar"
         data-loading={loadState === "loading" ? "true" : undefined}
         onMouseLeave={peeking ? endSidebarPeek : undefined}
       >
@@ -1622,7 +1802,9 @@ export function Sidebar({
         <div className="project-list-scroll scroll-fade">
           <div className="project-list">
             {viewMode !== "projects" && leadListGroupKey === null ? (
-              <div className="rail-heading">{sidebarActions}</div>
+              <div className="rail-heading" data-testid="rail-heading">
+                {sidebarActions}
+              </div>
             ) : null}
             {/* Arcs sit above everything else: a body of work spanning several
             projects doesn't belong nested under any one of them. */}
@@ -1632,10 +1814,12 @@ export function Sidebar({
             {pinnedWorkspaces.length > 0 ? (
               <div
                 className="project-group session-date-group session-pinned-group"
+                data-testid="sidebar-pinned-group"
                 data-collapsed={pinnedCollapsed ? "true" : undefined}
               >
                 <div
                   className="project-row session-date-row session-pinned-row"
+                  data-testid="sidebar-header-row"
                   onClick={() => toggleDateGroupVisibility(PINNED_GROUP_KEY)}
                 >
                   <span className="project-name session-date-label session-pinned-label">
@@ -1650,11 +1834,17 @@ export function Sidebar({
                       <div
                         key={workspace.id}
                         className={`session-row-wrap${draggingWorkspaceId === workspace.id ? " dragging" : ""}`}
+                        data-testid="sidebar-pinned-row"
                         draggable={Boolean(onToggleWorkspacePinned) && canDragWorkspaceToGrid}
                         onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
                         onDragOver={handleWorkspaceDragOver}
                         onDrop={(event) =>
-                          handleWorkspaceDrop(event, PINNED_GROUP_KEY, workspace.id, pinnedWorkspaceIds)
+                          handleWorkspaceDrop(
+                            event,
+                            PINNED_GROUP_KEY,
+                            workspace.id,
+                            pinnedWorkspaceIds,
+                          )
                         }
                         onDragEnd={handleWorkspaceDragEnd}
                       >
@@ -1667,13 +1857,18 @@ export function Sidebar({
               <div
                 ref={priorityGroupRef}
                 className="project-group session-date-group session-priority-group"
+                data-testid="sidebar-priority-group"
                 data-collapsed={priorityCollapsed ? "true" : undefined}
               >
                 <div
                   className="project-row session-date-row session-priority-row"
+                  data-testid="sidebar-header-row"
                   onClick={() => toggleDateGroupVisibility(PRIORITY_GROUP_KEY)}
                 >
-                  <span className="project-name session-date-label session-priority-label">
+                  <span
+                    className="project-name session-date-label session-priority-label"
+                    data-testid="sidebar-priority-label"
+                  >
                     <span className="project-name-text">Priority</span>
                     {renderCollapseButton(PRIORITY_GROUP_KEY, "Priority", priorityCollapsed)}
                   </span>
@@ -1703,15 +1898,23 @@ export function Sidebar({
                       <div
                         key={entry.workspace.id}
                         className={`session-row-wrap${(draggingWorkspaceId ?? pointerDraggingWorkspaceId) === entry.workspace.id ? " dragging" : ""}`}
+                        data-testid="sidebar-priority-row"
                         draggable={canDragWorkspaceToGrid}
                         onDragStart={(event) => handleWorkspaceDragStart(event, entry.workspace.id)}
                         onDragOver={handleWorkspaceDragOver}
                         onDrop={(event) =>
-                          handleWorkspaceDrop(event, PRIORITY_GROUP_KEY, entry.workspace.id, priorityOrderedIds)
+                          handleWorkspaceDrop(
+                            event,
+                            PRIORITY_GROUP_KEY,
+                            entry.workspace.id,
+                            priorityOrderedIds,
+                          )
                         }
                         onDragEnd={handleWorkspaceDragEnd}
                       >
-                        {renderChat(entry.workspace, { subtitle: subtitleFor(entry.workspace.projectId) })}
+                        {renderChat(entry.workspace, {
+                          subtitle: subtitleFor(entry.workspace.projectId),
+                        })}
                       </div>
                     ))}
               </div>
@@ -1721,7 +1924,10 @@ export function Sidebar({
             switching views doesn't shift the list down. */}
             {viewMode === "projects" ? (
               <div className="project-group session-projects-group">
-                <div className="project-row session-date-row session-projects-row">
+                <div
+                  className="project-row session-date-row session-projects-row"
+                  data-testid="sidebar-header-row"
+                >
                   <span className="project-name session-date-label">
                     <span className="project-name-text">Projects</span>
                   </span>
@@ -1748,6 +1954,7 @@ export function Sidebar({
                     >
                       <div
                         className={`project-row session-date-row${isLead ? " session-date-row-lead" : ""}`}
+                        data-testid="sidebar-header-row"
                         onClick={() => toggleDateGroupVisibility(group.key)}
                       >
                         {/* The label and its collapse chevron are one cluster on the
@@ -1764,7 +1971,9 @@ export function Sidebar({
                         <>
                           {visibleItems.map((workspace) => (
                             <div key={workspace.id} className="session-row-wrap">
-                              {renderChat(workspace, { subtitle: subtitleFor(workspace.projectId) })}
+                              {renderChat(workspace, {
+                                subtitle: subtitleFor(workspace.projectId),
+                              })}
                             </div>
                           ))}
                           {hasOverflow ? (
@@ -1796,15 +2005,19 @@ export function Sidebar({
                         workspace.projectId === project.id &&
                         !isInArchivedSection(workspace) &&
                         !priorityWorkspaceIds.has(workspace.id) &&
-                        workspaceIdsWithSessions.has(workspace.id)
+                        workspaceIdsWithSessions.has(workspace.id),
                     ),
-                    manualOrder
+                    manualOrder,
                   );
                   const orderedWorkspaceIds = projectWorkspaces.map((workspace) => workspace.id);
                   const isCollapsed = collapsedProjectIds.has(project.id);
                   const totalCount = projectWorkspaces.length;
                   const showAll = expandedProjectIds.has(project.id);
-                  const visibleWorkspaces = visibleSidebarItems(projectWorkspaces, selectedRootId, showAll);
+                  const visibleWorkspaces = visibleSidebarItems(
+                    projectWorkspaces,
+                    selectedRootId,
+                    showAll,
+                  );
                   const hiddenCount = totalCount - visibleWorkspaces.length;
                   const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
                   const isDragging = draggingId === project.id;
@@ -1819,6 +2032,7 @@ export function Sidebar({
                     <div
                       className={`project-group${isDragging ? " dragging" : ""}${isDragOver ? " drag-over" : ""}`}
                       data-collapsed={isCollapsed ? "true" : undefined}
+                      data-testid="sidebar-project-group"
                       draggable
                       key={project.id}
                       onDragStart={(e) => handleDragStart(e, project.id)}
@@ -1827,7 +2041,11 @@ export function Sidebar({
                       onDrop={(e) => handleDrop(e, project.id, orderedProjects)}
                       onDragEnd={handleDragEnd}
                     >
-                      <div className="project-row" onClick={() => toggleProjectVisibility(project.id)}>
+                      <div
+                        className="project-row"
+                        data-testid="sidebar-header-row"
+                        onClick={() => toggleProjectVisibility(project.id)}
+                      >
                         <button
                           aria-current={hostsOpenChat ? "true" : undefined}
                           className={hostsOpenChat ? "project-name active" : "project-name"}
@@ -1858,7 +2076,11 @@ export function Sidebar({
                         {onRemoveProject ? (
                           <div className="project-picker-anchor project-actions-anchor">
                             <button
-                              ref={projectMenuState?.projectId === project.id ? projectMenu.setAnchor : null}
+                              ref={
+                                projectMenuState?.projectId === project.id
+                                  ? projectMenu.setAnchor
+                                  : null
+                              }
                               className="small-icon project-actions-trigger"
                               type="button"
                               title={`Actions for ${project.name}`}
@@ -1903,7 +2125,12 @@ export function Sidebar({
                               onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
                               onDragOver={handleWorkspaceDragOver}
                               onDrop={(event) =>
-                                handleWorkspaceDrop(event, project.id, workspace.id, orderedWorkspaceIds)
+                                handleWorkspaceDrop(
+                                  event,
+                                  project.id,
+                                  workspace.id,
+                                  orderedWorkspaceIds,
+                                )
                               }
                               onDragEnd={handleWorkspaceDragEnd}
                             >
@@ -1938,6 +2165,7 @@ export function Sidebar({
               >
                 <div
                   className="project-row session-date-row"
+                  data-testid="sidebar-header-row"
                   title={`${snoozedWorkspaces.length} snoozed ${snoozedWorkspaces.length === 1 ? "chat" : "chats"}`}
                   onClick={() => toggleDateGroupVisibility(SNOOZED_GROUP_KEY)}
                 >
@@ -1957,16 +2185,20 @@ export function Sidebar({
                           onTogglePin: undefined,
                           onAddToPriority: undefined,
                           onSnooze: undefined,
-                          onUnsnooze: onUnsnoozeWorkspace
+                          onUnsnooze: onUnsnoozeWorkspace,
                         })}
                       </div>
                     ))}
               </div>
             ) : null}
             {showArchived && archivedWorkspaces.length > 0 ? (
-              <div className="project-group session-date-group" data-collapsed={archivedCollapsed ? "true" : undefined}>
+              <div
+                className="project-group session-date-group"
+                data-collapsed={archivedCollapsed ? "true" : undefined}
+              >
                 <div
                   className="project-row session-date-row"
+                  data-testid="sidebar-header-row"
                   onClick={() => toggleDateGroupVisibility(ARCHIVED_GROUP_KEY)}
                 >
                   <span className="project-name session-date-label">
@@ -1986,7 +2218,7 @@ export function Sidebar({
                           canDragToGrid: false,
                           onTogglePin: undefined,
                           onAddToPriority: undefined,
-                          onSnooze: undefined
+                          onSnooze: undefined,
                         })}
                       </div>
                     ))}
@@ -1997,7 +2229,9 @@ export function Sidebar({
 
         {projectMenuState
           ? (() => {
-              const activeProject = snapshot.projects.find((p) => p.id === projectMenuState.projectId);
+              const activeProject = snapshot.projects.find(
+                (p) => p.id === projectMenuState.projectId,
+              );
               if (!activeProject || !onRemoveProject) return null;
               return createPortal(
                 <ul
@@ -2024,7 +2258,9 @@ export function Sidebar({
                           ) : (
                             <Pin size={14} aria-hidden="true" />
                           )}
-                          {pinnedProjectIdSet.has(activeProject.id) ? "Unpin Project" : "Pin Project"}
+                          {pinnedProjectIdSet.has(activeProject.id)
+                            ? "Unpin Project"
+                            : "Pin Project"}
                         </button>
                       </li>
                       <li role="none">
@@ -2060,7 +2296,8 @@ export function Sidebar({
                   ) : (
                     <li role="none">
                       <p className="project-actions-confirm-text">
-                        Forget <strong>{activeProject.name}</strong> and all its chats? Files on disk are untouched.
+                        Forget <strong>{activeProject.name}</strong> and all its chats? Files on
+                        disk are untouched.
                       </p>
                       <div className="project-actions-confirm-buttons">
                         <button
@@ -2088,7 +2325,7 @@ export function Sidebar({
                     </li>
                   )}
                 </ul>,
-                document.body
+                document.body,
               );
             })()
           : null}
@@ -2111,7 +2348,11 @@ export function Sidebar({
               <ChevronDown className="identity-menu-chevron" size={14} aria-hidden="true" />
             </button>
             {identityMenuOpen ? (
-              <ul className="project-picker-popover identity-menu-popover" role="menu" aria-label="Argmax menu">
+              <ul
+                className="project-picker-popover identity-menu-popover"
+                role="menu"
+                aria-label="Argmax menu"
+              >
                 <li className="identity-menu-header" role="presentation">
                   <span className="identity-menu-title">Argmax</span>
                   <span className="identity-menu-subtitle">Local workspace · {APP_VERSION}</span>
@@ -2213,7 +2454,11 @@ export function Sidebar({
         </div>
         <div className="sidebar-resizer" aria-hidden="true" onMouseDown={onResizeMouseDown} />
       </aside>
-      <NewArcDialog open={newArcDialogOpen} onClose={() => setNewArcDialogOpen(false)} projects={orderedProjects} />
+      <NewArcDialog
+        open={newArcDialogOpen}
+        onClose={() => setNewArcDialogOpen(false)}
+        projects={orderedProjects}
+      />
     </>
   );
 }

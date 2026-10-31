@@ -16,7 +16,7 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
     createdAt: "2026-01-01T00:00:00.000Z",
     completedAt: "2026-01-01T00:00:01.000Z",
     error: "denied",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -28,19 +28,19 @@ describe("turnInteractiveCards", () => {
         tool: tool({
           id: "q1",
           inputFull: {
-            questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }]
-          }
-        })
+            questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }],
+          },
+        }),
       },
       {
         kind: "tool",
         tool: tool({
           id: "q2",
           inputFull: {
-            questions: [{ question: "Pick two?", header: "Q2", options: [{ label: "B" }] }]
-          }
-        })
-      }
+            questions: [{ question: "Pick two?", header: "Q2", options: [{ label: "B" }] }],
+          },
+        }),
+      },
     ];
 
     const { tool: resolved, hiddenToolIds } = collectAskUserQuestionState(items);
@@ -59,19 +59,23 @@ describe("turnInteractiveCards", () => {
           inputFull: {
             delivery: "blocking",
             requestId: "request-1",
-            questions: [{ id: "scope", question: "Pick one?", header: "Scope", options: [{ label: "A" }] }]
-          }
-        })
-      }
+            questions: [
+              { id: "scope", question: "Pick one?", header: "Scope", options: [{ label: "A" }] },
+            ],
+          },
+        }),
+      },
     ];
 
     expect(collectAskUserQuestionState(blocking("running")).tool).toMatchObject({
       id: "blocking-q",
       delivery: "blocking",
-      requestId: "request-1"
+      requestId: "request-1",
     });
     expect(collectAskUserQuestionState(blocking("done")).tool).toBeNull();
-    expect(collectAskUserQuestionState(blocking("done")).hiddenToolIds).toEqual(new Set(["blocking-q"]));
+    expect(collectAskUserQuestionState(blocking("done")).hiddenToolIds).toEqual(
+      new Set(["blocking-q"]),
+    );
   });
 
   it("hides malformed AskUserQuestion attempts even when no card can render", () => {
@@ -85,12 +89,18 @@ describe("turnInteractiveCards", () => {
               {
                 question: "Too many?",
                 header: "Bad",
-                options: [{ label: "1" }, { label: "2" }, { label: "3" }, { label: "4" }, { label: "5" }]
-              }
-            ]
-          }
-        })
-      }
+                options: [
+                  { label: "1" },
+                  { label: "2" },
+                  { label: "3" },
+                  { label: "4" },
+                  { label: "5" },
+                ],
+              },
+            ],
+          },
+        }),
+      },
     ];
 
     const { tool: resolved, hiddenToolIds } = collectAskUserQuestionState(items);
@@ -106,9 +116,9 @@ describe("turnInteractiveCards", () => {
         tool: tool({
           id: "send-message",
           name: "SendUserMessage",
-          inputFull: { message: "Which path should I take?" }
-        })
-      }
+          inputFull: { message: "Which path should I take?" },
+        }),
+      },
     ];
 
     const { tool: resolved, hiddenToolIds } = collectAskUserQuestionState(items);
@@ -125,9 +135,9 @@ describe("turnInteractiveCards", () => {
           id: "q-alias",
           name: "ask_user_question",
           inputFull: {
-            questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }]
-          }
-        })
+            questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }],
+          },
+        }),
       },
       {
         kind: "tool",
@@ -135,14 +145,18 @@ describe("turnInteractiveCards", () => {
           id: "cursor-q",
           name: "askQuestionToolCall",
           inputFull: {
-            questions: [{ question: "Pick from Cursor?", header: "Cursor", options: [{ label: "C" }] }]
-          }
-        })
-      }
+            questions: [
+              { question: "Pick from Cursor?", header: "Cursor", options: [{ label: "C" }] },
+            ],
+          },
+        }),
+      },
     ];
 
     expect(collectAskUserQuestionState(items).tool?.id).toBe("q-alias");
-    expect(collectAskUserQuestionState(items).hiddenToolIds).toEqual(new Set(["q-alias", "cursor-q"]));
+    expect(collectAskUserQuestionState(items).hiddenToolIds).toEqual(
+      new Set(["q-alias", "cursor-q"]),
+    );
   });
 
   it("treats outstanding card asks as after the latest user message", () => {
@@ -153,17 +167,17 @@ describe("turnInteractiveCards", () => {
         type: "user.message",
         message: "go",
         createdAt: "2026-01-01T00:00:00.000Z",
-        payload: {}
-      }
+        payload: {},
+      },
     ];
     const toolCalls: ToolCall[] = [
       tool({
         name: "AskUserQuestion",
         createdAt: "2026-01-01T00:00:02.000Z",
         inputFull: {
-          questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }]
-        }
-      })
+          questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }],
+        },
+      }),
     ];
 
     expect(hasOutstandingCardAsk(events, toolCalls)).toBe(true);
@@ -173,10 +187,10 @@ describe("turnInteractiveCards", () => {
           name: "AskUserQuestion",
           createdAt: "2025-12-31T00:00:00.000Z",
           inputFull: {
-            questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }]
-          }
-        })
-      ])
+            questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }],
+          },
+        }),
+      ]),
     ).toBe(false);
   });
 });

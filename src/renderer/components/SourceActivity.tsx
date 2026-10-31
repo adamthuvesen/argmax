@@ -23,10 +23,13 @@ export function SourceActivity({ activity }: { activity: ProjectSourceActivity }
           {activity.truncated ? <span>Partial</span> : null}
         </summary>
         <div className="project-source-activity-details">
-          <p>{isWebLink ? <WebLink href={location}>{location}</WebLink> : <code>{location}</code>}</p>
+          <p>
+            {isWebLink ? <WebLink href={location}>{location}</WebLink> : <code>{location}</code>}
+          </p>
           <p>{activity.guidance}</p>
           <p>
-            {isRead ? "Retrieved" : "Added by agent"} <time dateTime={activity.at}>{activity.at.slice(0, 10)}</time>.
+            {isRead ? "Retrieved" : "Added by agent"}{" "}
+            <time dateTime={activity.at}>{activity.at.slice(0, 10)}</time>.
             {isRead
               ? " Retrieval does not verify the source’s claims."
               : " Listed for future reference, not read or verified."}

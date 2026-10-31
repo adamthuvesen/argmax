@@ -1,5 +1,8 @@
 /** Address-bar history, persisted independently of native tab navigation. */
-import { indexedDbBrowserHistoryStorage, type BrowserHistoryStorage } from "./browserHistoryStorage.js";
+import {
+  indexedDbBrowserHistoryStorage,
+  type BrowserHistoryStorage,
+} from "./browserHistoryStorage.js";
 
 export interface BrowserHistoryEntry {
   url: string;
@@ -28,7 +31,9 @@ function isHistoryEntry(entry: unknown): entry is BrowserHistoryEntry {
     Number.isFinite(entry.visitedAt) &&
     entry.visitedAt >= 0 &&
     (!("visitCount" in entry) ||
-      (typeof entry.visitCount === "number" && Number.isSafeInteger(entry.visitCount) && entry.visitCount >= 0))
+      (typeof entry.visitCount === "number" &&
+        Number.isSafeInteger(entry.visitCount) &&
+        entry.visitCount >= 0))
   );
 }
 
@@ -55,7 +60,10 @@ function readLegacyEntries(): BrowserHistoryEntry[] {
   return cachedEntries;
 }
 
-function combineEntries(existing: BrowserHistoryEntry[], additions: BrowserHistoryEntry[]): BrowserHistoryEntry[] {
+function combineEntries(
+  existing: BrowserHistoryEntry[],
+  additions: BrowserHistoryEntry[],
+): BrowserHistoryEntry[] {
   const merged = new Map(existing.map((entry) => [entry.url, entry]));
   for (const entry of additions) {
     const previous = merged.get(entry.url);
@@ -64,7 +72,7 @@ function combineEntries(existing: BrowserHistoryEntry[], additions: BrowserHisto
       ...latest,
       title: latest.title ?? previous?.title ?? entry.title,
       visitedAt: Math.max(previous?.visitedAt ?? 0, entry.visitedAt),
-      visitCount: Math.max(previous ? (previous.visitCount ?? 1) : 0, entry.visitCount ?? 1)
+      visitCount: Math.max(previous ? (previous.visitCount ?? 1) : 0, entry.visitCount ?? 1),
     });
   }
   return [...merged.values()].sort((a, b) => b.visitedAt - a.visitedAt).slice(0, MAX_ENTRIES);
@@ -74,7 +82,7 @@ function enqueueMutation<T>(mutation: () => Promise<T>): Promise<T> {
   const result = mutationQueue.then(mutation, mutation);
   mutationQueue = result.then(
     () => undefined,
-    () => undefined
+    () => undefined,
   );
   return result;
 }
@@ -131,9 +139,12 @@ export async function recordBrowserVisit(url: string, title: string | null): Pro
       url,
       title: title ?? existing?.title ?? null,
       visitedAt: Date.now(),
-      visitCount: (existing?.visitCount ?? (existing ? 1 : 0)) + 1
+      visitCount: (existing?.visitCount ?? (existing ? 1 : 0)) + 1,
     };
-    const entries = [entry, ...cachedEntries.filter((candidate) => candidate.url !== url)].slice(0, MAX_ENTRIES);
+    const entries = [entry, ...cachedEntries.filter((candidate) => candidate.url !== url)].slice(
+      0,
+      MAX_ENTRIES,
+    );
     cachedEntries = entries;
     await historyStorage.save(entries);
   });
@@ -156,7 +167,7 @@ function addressForm(url: string): string {
  */
 export function completeBrowserAddress(
   typed: string,
-  suggestions: readonly BrowserHistoryEntry[]
+  suggestions: readonly BrowserHistoryEntry[],
 ): { entry: BrowserHistoryEntry; completed: string } | null {
   if (typed.length === 0 || /\s/.test(typed)) return null;
   const needle = typed.toLowerCase();

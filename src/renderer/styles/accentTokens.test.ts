@@ -22,7 +22,7 @@ const NEUTRAL_SURFACES = [
   "scrollbar-thumb",
   "scrollbar-thumb-hover",
   "overlay-panel",
-  "overlay-panel-raised"
+  "overlay-panel-raised",
 ];
 
 function readSource(path: string): string {
@@ -31,7 +31,9 @@ function readSource(path: string): string {
 
 function cssRuleBody(source: string, selector: string): string {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = new RegExp(`(?:^|\\n)\\s*${escapedSelector}\\s*\\{(?<body>[^}]+)\\}`, "i").exec(source);
+  const match = new RegExp(`(?:^|\\n)\\s*${escapedSelector}\\s*\\{(?<body>[^}]+)\\}`, "i").exec(
+    source,
+  );
   expect(match?.groups?.body).toBeDefined();
   return match?.groups?.body ?? "";
 }
@@ -61,7 +63,10 @@ function contrast(foreground: string, background: string): number {
 
 function fontWeight(rule: string, tokens = ""): number {
   const token = /font-weight:\s*var\((?<name>--[\w-]+)\)/.exec(rule)?.groups?.name;
-  if (token) return fontWeight(new RegExp(`${token}:[^;]*`).exec(tokens)?.[0].replace(token, "font-weight") ?? "");
+  if (token)
+    return fontWeight(
+      new RegExp(`${token}:[^;]*`).exec(tokens)?.[0].replace(token, "font-weight") ?? "",
+    );
   const match = /font-weight:\s*(?:calc\()?(?<weight>\d+)/.exec(rule);
   expect(match?.groups?.weight).toBeDefined();
   return Number(match?.groups?.weight ?? 0);
@@ -81,7 +86,9 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       const base = cssRuleBody(tokens, theme === "dark" ? ':root[data-theme="dark"]' : ":root");
       for (const activity of ["purple", "blue", "green", "coral", "gold", "red"]) {
         for (const surface of ["bg", "panel"]) {
-          expect(contrast(readHex(base, `activity-${activity}`), readHex(base, surface))).toBeGreaterThanOrEqual(3);
+          expect(
+            contrast(readHex(base, `activity-${activity}`), readHex(base, surface)),
+          ).toBeGreaterThanOrEqual(3);
         }
       }
     }
@@ -96,13 +103,15 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     green: ["read", "list", "git"],
     purple: ["search", "discovery", "web-search", "web-fetch", "browser"],
     gold: ["command", "computer"],
-    blue: ["skill", "plan", "memory-recall", "memory-save", "agent", "agent-message", "agent-wait"]
+    blue: ["skill", "plan", "memory-recall", "memory-save", "agent", "agent-message", "agent-wait"],
   };
 
   it("maps transcript activities to their stable semantic colors", () => {
     const styles = readSource("src/renderer/styles/tool-activity.css");
     const colorFor = (activity: string): string => {
-      const rule = styles.split("}").find((block) => block.includes(`[data-activity="${activity}"]`));
+      const rule = styles
+        .split("}")
+        .find((block) => block.includes(`[data-activity="${activity}"]`));
       const match = /color:\s*var\(--activity-(?<color>[a-z]+)\)/.exec(rule ?? "");
       expect(match?.groups?.color, activity).toBeDefined();
       return match?.groups?.color ?? "";
@@ -112,7 +121,8 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       for (const activity of activities) expect(colorFor(activity), activity).toBe(color);
     }
 
-    const fallback = /\.tool-activity-icon\s*\{[^}]*color:\s*var\(--activity-(?<color>[a-z]+)\)/.exec(styles);
+    const fallback =
+      /\.tool-activity-icon\s*\{[^}]*color:\s*var\(--activity-(?<color>[a-z]+)\)/.exec(styles);
     expect(fallback?.groups?.color).toBe("blue");
   });
 
@@ -121,11 +131,15 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     const swift = readSource("ios/Argmax/Sources/Transcript/TranscriptToolIcon.swift");
     // Anchored on the colour function: the file switches over the same kinds
     // earlier to pick each icon's SF Symbol.
-    const body = /guard colorMode == \.color.*?switch kind \{(?<cases>.*?)\n {4}\}/s.exec(swift)?.groups?.cases ?? "";
+    const body =
+      /guard colorMode == \.color.*?switch kind \{(?<cases>.*?)\n {4}\}/s.exec(swift)?.groups
+        ?.cases ?? "";
     expect(body).not.toBe("");
 
     const colors = new Map<string, string>();
-    for (const match of body.matchAll(/case (?<kinds>[^:]+):\s*(?:\n\s*)?return Theme\.activity(?<color>\w+)Color/g)) {
+    for (const match of body.matchAll(
+      /case (?<kinds>[^:]+):\s*(?:\n\s*)?return Theme\.activity(?<color>\w+)Color/g,
+    )) {
       const color = (match.groups?.color ?? "").toLowerCase();
       for (const kind of (match.groups?.kinds ?? "").split(",")) {
         colors.set(kind.trim().replace(/^\./, ""), color);
@@ -150,13 +164,20 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
         const base = cssRuleBody(tokens, theme === "dark" ? ':root[data-theme="dark"]' : ":root");
         const palette = cssRuleBody(
           tokens,
-          `${theme === "dark" ? ':root[data-theme="dark"]' : ":root"}[data-accent="${accent}"]`
+          `${theme === "dark" ? ':root[data-theme="dark"]' : ":root"}[data-accent="${accent}"]`,
         );
         for (const surface of ["bg", "sidebar", "panel"]) {
-          expect(contrast(readHex(palette, "accent"), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
-          expect(contrast(readHex(palette, "accent-deep"), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
+          expect(
+            contrast(readHex(palette, "accent"), readHex(base, surface)),
+          ).toBeGreaterThanOrEqual(4.5);
+          expect(
+            contrast(readHex(palette, "accent-deep"), readHex(base, surface)),
+          ).toBeGreaterThanOrEqual(4.5);
         }
-        const bubble = readHex(palette, palette.includes("--user-message-bg:") ? "user-message-bg" : "accent");
+        const bubble = readHex(
+          palette,
+          palette.includes("--user-message-bg:") ? "user-message-bg" : "accent",
+        );
         const bubbleInk = palette.includes("--user-message-fg:")
           ? readHex(palette, "user-message-fg")
           : readHex(base, "bubble-on-ink");
@@ -173,7 +194,7 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
           expect(luminance(bubble)).toBeLessThan(luminance(readHex(palette, "accent")));
         }
       }
-    }
+    },
   );
 
   it("registers the terminal length token consumed by the canvas renderer", () => {
@@ -234,8 +255,17 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     // Every ink token has to ride the ladder, or a level would move some of
     // the app's text and leave the rest behind.
     const dark = cssRuleBody(tokens, ':root[data-theme="dark"]');
-    for (const token of ["text", "text-soft", "muted", "muted-strong", "prose-ink", "prose-ink-strong"]) {
-      expect(dark).toMatch(new RegExp(`--${token}: color-mix\\(in oklab, #[0-9a-f]{6}, var\\(--ink-toward\\)`));
+    for (const token of [
+      "text",
+      "text-soft",
+      "muted",
+      "muted-strong",
+      "prose-ink",
+      "prose-ink-strong",
+    ]) {
+      expect(dark).toMatch(
+        new RegExp(`--${token}: color-mix\\(in oklab, #[0-9a-f]{6}, var\\(--ink-toward\\)`),
+      );
     }
   });
 
@@ -246,10 +276,14 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
 
     expect(DEFAULT_BACKGROUND_INTENSITY).toBe(100);
     // The dark formulas are anchored on 70, the original palette, where both pulls are zero.
-    expect(cssRuleBody(ladder, DARK_RULE)).toContain("max(0, 70 - var(--background-intensity)) / 70");
-    expect(cssRuleBody(ladder, DARK_RULE)).toContain("max(0, var(--background-intensity) - 70) / 30 * 67%");
+    expect(cssRuleBody(ladder, DARK_RULE)).toContain(
+      "max(0, 70 - var(--background-intensity)) / 70",
+    );
+    expect(cssRuleBody(ladder, DARK_RULE)).toContain(
+      "max(0, var(--background-intensity) - 70) / 30 * 67%",
+    );
     expect(styles.indexOf('url("./styles/tokens.css")')).toBeLessThan(
-      styles.indexOf('url("./styles/background-intensity.css")')
+      styles.indexOf('url("./styles/background-intensity.css")'),
     );
     expect(cssRuleBody(tokens, ":root")).toContain("--bg: #f7f7f7;");
     expect(cssRuleBody(tokens, ':root[data-theme="dark"]')).toContain("--bg: #141414;");
@@ -261,7 +295,9 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     const darkRule = cssRuleBody(ladder, DARK_RULE);
     for (const surface of ["bg", "panel"]) {
       expect(
-        darkRule.match(new RegExp(`--${surface}: color-mix\\(in oklab, color-mix\\(in oklab, (#[0-9a-f]{6})`))?.[1]
+        darkRule.match(
+          new RegExp(`--${surface}: color-mix\\(in oklab, color-mix\\(in oklab, (#[0-9a-f]{6})`),
+        )?.[1],
       ).toBe(dark.match(new RegExp(`--${surface}: (#[0-9a-f]{6});`))?.[1]);
     }
   });
@@ -273,32 +309,38 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     for (const surface of NEUTRAL_SURFACES) {
       expect(light).toMatch(
         new RegExp(
-          `--${surface}: color-mix\\(in oklab, color-mix\\(in oklab, #[0-9a-f]{6}, #[0-9a-f]{6} var\\(--background-whiteness\\)\\), #000000 var\\(--background-dim\\)\\);`
-        )
+          `--${surface}: color-mix\\(in oklab, color-mix\\(in oklab, #[0-9a-f]{6}, #[0-9a-f]{6} var\\(--background-whiteness\\)\\), #000000 var\\(--background-dim\\)\\);`,
+        ),
       );
       expect(dark).toMatch(
         new RegExp(
-          `--${surface}: color-mix\\(in oklab, color-mix\\(in oklab, #[0-9a-f]{6}, #[0-9a-f]{6} var\\(--background-lift\\)\\), #[0-9a-f]{6} var\\(--background-fall\\)\\);`
-        )
+          `--${surface}: color-mix\\(in oklab, color-mix\\(in oklab, #[0-9a-f]{6}, #[0-9a-f]{6} var\\(--background-lift\\)\\), #[0-9a-f]{6} var\\(--background-fall\\)\\);`,
+        ),
       );
     }
     // Light: soft gray at 0, warm paper at 10, pure white at 100.
-    expect(light).toContain("--background-whiteness: calc(max(0, var(--background-intensity) - 10) / 90 * 100%);");
-    expect(light).toContain("--background-dim: calc(max(0, 10 - var(--background-intensity)) / 10 * 14%);");
+    expect(light).toContain(
+      "--background-whiteness: calc(max(0, var(--background-intensity) - 10) / 90 * 100%);",
+    );
+    expect(light).toContain(
+      "--background-dim: calc(max(0, 10 - var(--background-intensity)) / 10 * 14%);",
+    );
   });
 
   it("layers contrast over the intensity lines and is a no-op at 50", () => {
     const ladder = readSource("src/renderer/styles/background-intensity.css");
     for (const [rule, toward] of [
       [LIGHT_RULE, "#000000"],
-      [DARK_RULE, "#ffffff"]
+      [DARK_RULE, "#ffffff"],
     ]) {
       const body = cssRuleBody(ladder, rule);
       expect(body).toContain("--line-fade: calc(max(0, 50 - var(--contrast, 50)) / 50 * 70%);");
-      expect(body).toMatch(/--line-firm: calc\(max\(0, var\(--contrast, 50\) - 50\) \/ 50 \* \d+%\);/);
+      expect(body).toMatch(
+        /--line-firm: calc\(max\(0, var\(--contrast, 50\) - 50\) \/ 50 \* \d+%\);/,
+      );
       for (const line of ["line", "line-soft", "line-strong"]) {
         expect(body).toContain(
-          `--${line}: color-mix(in oklab, color-mix(in oklab, var(--${line}-at-intensity), var(--bg) var(--line-fade)), ${toward} var(--line-firm));`
+          `--${line}: color-mix(in oklab, color-mix(in oklab, var(--${line}-at-intensity), var(--bg) var(--line-fade)), ${toward} var(--line-firm));`,
         );
       }
     }
@@ -310,7 +352,7 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     const dark = cssRuleBody(ladder, DARK_RULE);
 
     for (const [, surface, cream, white] of light.matchAll(
-      /--([a-z-]+): color-mix\(in oklab, color-mix\(in oklab, (#[0-9a-f]{6}), (#[0-9a-f]{6}) var/g
+      /--([a-z-]+): color-mix\(in oklab, color-mix\(in oklab, (#[0-9a-f]{6}), (#[0-9a-f]{6}) var/g,
     )) {
       // Lines and scrollbars stay grey at both ends.
       if (/^(line|scrollbar)/.test(surface)) continue;
@@ -319,12 +361,14 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       expect(white, surface).toBe("#ffffff");
     }
     expect(light).toContain(
-      "--bg: color-mix(in oklab, color-mix(in oklab, #f4f4f4, #ffffff var(--background-whiteness)), #000000 var(--background-dim));"
+      "--bg: color-mix(in oklab, color-mix(in oklab, #f4f4f4, #ffffff var(--background-whiteness)), #000000 var(--background-dim));",
     );
 
     // The dark grounds fall toward black, but 100 stops 67% of the way there.
     for (const surface of ["bg", "panel-sunken", "code-surface", "terminal-surface"]) {
-      expect(dark, surface).toMatch(new RegExp(`--${surface}: .* #000000 var\\(--background-fall\\)\\);`));
+      expect(dark, surface).toMatch(
+        new RegExp(`--${surface}: .* #000000 var\\(--background-fall\\)\\);`),
+      );
     }
     // 0 lifts the page to the lightest charcoal.
     expect(dark).toContain("#141414, #2c2c2c var(--background-lift)");
@@ -340,9 +384,11 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     for (const surface of ["sidebar", "review-panel", "review-sidebar"]) {
       expect(background).not.toContain(`--${surface}:`);
       expect(light).toContain(`--${surface}: color-mix(`);
-      expect(readHex(dark, surface)).toBe(readHex(cssRuleBody(tokens, ':root[data-theme="dark"]'), surface));
+      expect(readHex(dark, surface)).toBe(
+        readHex(cssRuleBody(tokens, ':root[data-theme="dark"]'), surface),
+      );
       expect(luminance(readHex(cssRuleBody(tokens, ":root"), surface))).toBeLessThan(
-        luminance(readHex(cssRuleBody(tokens, ":root"), "bg"))
+        luminance(readHex(cssRuleBody(tokens, ":root"), "bg")),
       );
     }
   });
@@ -355,14 +401,19 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     // so it must declare none.
     const fields: [string, string][] = [
       ["src/renderer/styles/chat-chrome.css", ".composer-input input,\n.composer-input textarea"],
-      ["src/renderer/styles/chat-composer-chips.css", ".session-input input,\n.session-input textarea"]
+      [
+        "src/renderer/styles/chat-composer-chips.css",
+        ".session-input input,\n.session-input textarea",
+      ],
     ];
     for (const [file, selector] of fields) {
       expect(cssRuleBody(readSource(file), selector)).toContain("font-feature-settings: inherit;");
     }
 
     const chips = readSource("src/renderer/styles/chat-composer-chips.css");
-    expect(cssRuleBody(chips, ".composer-editor .cm-editor")).not.toContain("font-feature-settings");
+    expect(cssRuleBody(chips, ".composer-editor .cm-editor")).not.toContain(
+      "font-feature-settings",
+    );
   });
 
   it("keeps markdown table labels in intrinsic column sizing", () => {
@@ -376,14 +427,20 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
   });
 
   it("keeps the centered transcript fixed when its vertical scrollbar appears", () => {
-    const conversation = cssRuleBody(readSource("src/renderer/styles/chat-conversation.css"), ".conversation-list");
+    const conversation = cssRuleBody(
+      readSource("src/renderer/styles/chat-conversation.css"),
+      ".conversation-list",
+    );
     // `auto` is the bug: WebKit only applies `scrollbar-gutter` once the
     // scrollbar exists, so the reservation arrives one state too late and the
     // column jumps every time a disclosure crosses the overflow boundary.
     expect(conversation).toContain("overflow-y: scroll;");
     expect(conversation).toContain("scrollbar-gutter: stable both-edges;");
 
-    const agents = cssRuleBody(readSource("src/renderer/styles/chat-conversation.css"), ".agent-activity-scroll");
+    const agents = cssRuleBody(
+      readSource("src/renderer/styles/chat-conversation.css"),
+      ".agent-activity-scroll",
+    );
     expect(agents).toContain("overflow-y: scroll;");
     expect(agents).toContain("scrollbar-gutter: stable both-edges;");
   });
@@ -402,7 +459,9 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     const gutter = pixels(cardBody, "--workspace-card-width") + pixels(cardBody, "right") + 14;
     // The column cannot read a custom property off the card, so it restates
     // the same number. Drift there would move the card onto the transcript.
-    expect(pixels(cssRuleBody(card, ".session-main-column"), "--workspace-card-gutter")).toBe(gutter);
+    expect(pixels(cssRuleBody(card, ".session-main-column"), "--workspace-card-gutter")).toBe(
+      gutter,
+    );
 
     const measure = (width: number, suffix: string): number => {
       const body = cssRuleBody(conversation, `.app-shell[data-chat-width="${width}"]`);
@@ -414,18 +473,18 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       "": { measure: "", grid: ".session-grid" },
       " :is(.session-grid.review-open, .session-grid.log-open)": {
         measure: "-docked",
-        grid: ".session-grid.review-open"
+        grid: ".session-grid.review-open",
       },
       " .session-grid.review-open.log-open": {
         measure: "-tight",
-        grid: ".session-grid.review-open.log-open"
-      }
+        grid: ".session-grid.review-open.log-open",
+      },
     };
 
     const rules = [
       ...card.matchAll(
-        /@container \(min-width: (?<threshold>\d+)px\) \{\s*(?<selector>[^{]*?)\s*\.workspace-card \{\s*display: flex;(?<block>[\s\S]*?)\n\}\n/g
-      )
+        /@container \(min-width: (?<threshold>\d+)px\) \{\s*(?<selector>[^{]*?)\s*\.workspace-card \{\s*display: flex;(?<block>[\s\S]*?)\n\}\n/g,
+      ),
     ];
     expect(rules).toHaveLength(15);
 
@@ -439,13 +498,18 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       const width = Number(shell?.groups?.width);
       const state = suffixes[selector.slice(shell?.[0].length)];
       expect(state, selector).toBeDefined();
-      const minimumGutter = pixels(cssRuleBody(conversation, state.grid), "--session-inline-padding-min");
+      const minimumGutter = pixels(
+        cssRuleBody(conversation, state.grid),
+        "--session-inline-padding-min",
+      );
 
-      expect(Number(rule.groups?.threshold), selector).toBe(measure(width, state.measure) + gutter + minimumGutter);
+      expect(Number(rule.groups?.threshold), selector).toBe(
+        measure(width, state.measure) + gutter + minimumGutter,
+      );
       // The card and the shift switch together: a block that revealed the card
       // without handing it the gutter would land it on the transcript.
       expect(rule.groups?.block, selector).toContain(
-        "--session-inline-padding: var(--session-inline-padding-beside-card);"
+        "--session-inline-padding: var(--session-inline-padding-beside-card);",
       );
     }
   });
@@ -454,7 +518,7 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     const activity = readSource("src/renderer/styles/tool-activity.css");
     const selectors = {
       light: ':root[data-activity-icon-color="monochrome"] .tool-call-row-server-icon',
-      dark: ':root[data-theme="dark"][data-activity-icon-color="monochrome"] .tool-call-row-server-icon'
+      dark: ':root[data-theme="dark"][data-activity-icon-color="monochrome"] .tool-call-row-server-icon',
     };
 
     // CSS cannot import the table, and the iPhone export bakes the same numbers

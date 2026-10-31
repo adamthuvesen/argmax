@@ -45,12 +45,12 @@ async function loadCatalogue() {
     configFile: false,
     root: repoRoot,
     server: { middlewareMode: true },
-    logLevel: "error"
+    logLevel: "error",
   });
   try {
     return {
       models: await server.ssrLoadModule("/src/shared/providerModels.ts"),
-      picker: await server.ssrLoadModule("/src/renderer/lib/models.ts")
+      picker: await server.ssrLoadModule("/src/renderer/lib/models.ts"),
     };
   } finally {
     await server.close();
@@ -63,7 +63,7 @@ function selection(model) {
     provider: model.provider,
     label: model.label,
     modelId: model.modelId,
-    reasoningEffort: model.reasoningEffort ?? null
+    reasoningEffort: model.reasoningEffort ?? null,
   };
 }
 
@@ -78,10 +78,15 @@ function buildCatalogue({ models, picker }) {
     REASONING_EFFORTS,
     DEFAULT_REASONING_EFFORT,
     reasoningEffortsForModel,
-    effortForModel
+    effortForModel,
   } = models;
-  const { PROVIDER_LAUNCH_PRIORITY, FALLBACK_LAUNCH_MODEL, factoryLaunchModel, effortLabel, modelDefaultForProvider } =
-    picker;
+  const {
+    PROVIDER_LAUNCH_PRIORITY,
+    FALLBACK_LAUNCH_MODEL,
+    factoryLaunchModel,
+    effortLabel,
+    modelDefaultForProvider,
+  } = picker;
 
   return {
     // Not a version: a reader that finds a key missing should re-run the
@@ -90,7 +95,9 @@ function buildCatalogue({ models, picker }) {
     // Ordered low → high. JSON objects carry no order, and the phone clamps
     // an effort down this ladder when the model it moves to is missing a rung.
     efforts: [...REASONING_EFFORTS],
-    effortLabels: Object.fromEntries(REASONING_EFFORTS.map((effort) => [effort, effortLabel(effort)])),
+    effortLabels: Object.fromEntries(
+      REASONING_EFFORTS.map((effort) => [effort, effortLabel(effort)]),
+    ),
     defaultEffort: DEFAULT_REASONING_EFFORT,
     launchPriority: [...PROVIDER_LAUNCH_PRIORITY],
     factoryModel: selection(factoryLaunchModel()),
@@ -114,15 +121,19 @@ function buildCatalogue({ models, picker }) {
         contextWindow: model.contextWindow ?? null,
         // Empty for a fast model: the phone hides the effort control on the
         // same signal the web picker does.
-        reasoningEfforts: model.supportsReasoningEffort ? [...reasoningEffortsForModel(provider, model.modelId)] : [],
-        defaultEffort: model.supportsReasoningEffort ? (effortForModel(provider, model.modelId) ?? null) : null
-      }))
+        reasoningEfforts: model.supportsReasoningEffort
+          ? [...reasoningEffortsForModel(provider, model.modelId)]
+          : [],
+        defaultEffort: model.supportsReasoningEffort
+          ? (effortForModel(provider, model.modelId) ?? null)
+          : null,
+      })),
     })),
     // A cross-check the Swift side asserts: every default names a model the
     // provider actually lists.
     defaultModelIds: Object.fromEntries(
-      Object.entries(PROVIDER_MODEL_DEFAULTS).map(([provider, model]) => [provider, model.modelId])
-    )
+      Object.entries(PROVIDER_MODEL_DEFAULTS).map(([provider, model]) => [provider, model.modelId]),
+    ),
   };
 }
 
@@ -145,45 +156,52 @@ function rustCatalogueRow(provider, model, efforts) {
     `        supports_fast_mode: ${model.supportsFastMode === true},`,
     `        fast_mode_model_id: ${rustOption(model.fastModeModelId)},`,
     `        context_window: ${rustOption(model.contextWindow, String)},`,
-    "    },"
+    "    },",
   ].join("\n");
 }
 
 function rustProviderMatch(name, returnType, providers, arm) {
-  const arms = providers.map((provider) => `        ProviderId::${rustVariant(provider)} => ${arm(provider)},`);
+  const arms = providers.map(
+    (provider) => `        ProviderId::${rustVariant(provider)} => ${arm(provider)},`,
+  );
   return [
     `pub fn ${name}(provider: ProviderId) -> ${returnType} {`,
     "    match provider {",
     ...arms,
     "    }",
-    "}"
+    "}",
   ].join("\n");
 }
 
 function renderRustCatalogue({ models, picker }) {
-  const { PROVIDER_MODELS, STORED_ONLY_MODELS, PROVIDER_TITLE_MODEL, SUCCESSOR_MODEL_IDS, reasoningEffortsForModel } =
-    models;
+  const {
+    PROVIDER_MODELS,
+    STORED_ONLY_MODELS,
+    PROVIDER_TITLE_MODEL,
+    SUCCESSOR_MODEL_IDS,
+    reasoningEffortsForModel,
+  } = models;
   const providers = picker.PROVIDER_LAUNCH_PRIORITY;
   const rows = providers.flatMap((provider) =>
     [...PROVIDER_MODELS[provider], ...(STORED_ONLY_MODELS[provider] ?? [])].map((model) =>
       rustCatalogueRow(
         provider,
         model,
-        model.supportsReasoningEffort ? reasoningEffortsForModel(provider, model.modelId) : []
-      )
-    )
+        model.supportsReasoningEffort ? reasoningEffortsForModel(provider, model.modelId) : [],
+      ),
+    ),
   );
   const successors = providers.flatMap((provider) =>
     Object.entries(SUCCESSOR_MODEL_IDS[provider] ?? {}).map(
       ([retired, successor]) =>
-        `    (ProviderId::${rustVariant(provider)}, ${JSON.stringify(retired)}, ${JSON.stringify(successor)}),`
-    )
+        `    (ProviderId::${rustVariant(provider)}, ${JSON.stringify(retired)}, ${JSON.stringify(successor)}),`,
+    ),
   );
   const vercelSlugs = PROVIDER_MODELS.opencode
     .filter((model) => model.vercelSlug)
     .map(
       (model) =>
-        `    (${JSON.stringify(model.modelId.replace(/^openrouter\//, ""))}, ${JSON.stringify(model.vercelSlug)}),`
+        `    (${JSON.stringify(model.modelId.replace(/^openrouter\//, ""))}, ${JSON.stringify(model.vercelSlug)}),`,
     );
   return [
     "// Generated by scripts/export-provider-models.mjs from src/shared/providerModels.ts.",
@@ -210,14 +228,14 @@ function renderRustCatalogue({ models, picker }) {
         `            model_label: ${JSON.stringify(model.label)},`,
         `            model_id: ${JSON.stringify(model.modelId)},`,
         `            reasoning_effort: ${rustOption(model.reasoningEffort)},`,
-        "        }"
+        "        }",
       ].join("\n");
     }),
     "",
     rustProviderMatch("helper_model", "&'static str", providers, (provider) =>
-      JSON.stringify(PROVIDER_TITLE_MODEL[provider])
+      JSON.stringify(PROVIDER_TITLE_MODEL[provider]),
     ),
-    ""
+    "",
   ].join("\n");
 }
 
@@ -233,7 +251,7 @@ function catalogueFailures({ models }) {
     PROVIDER_TITLE_MODEL,
     STORED_ONLY_MODELS,
     SUCCESSOR_MODEL_IDS,
-    MODEL_PRICING
+    MODEL_PRICING,
   } = models;
   const failures = [];
   const accounted = new Set();
@@ -241,23 +259,23 @@ function catalogueFailures({ models }) {
     const ids = catalogueIds(models, provider);
     if (!ids.has(PROVIDER_MODEL_DEFAULTS[provider].modelId)) {
       failures.push(
-        `PROVIDER_MODEL_DEFAULTS.${provider} names ${PROVIDER_MODEL_DEFAULTS[provider].modelId}, which PROVIDER_MODELS.${provider} no longer lists`
+        `PROVIDER_MODEL_DEFAULTS.${provider} names ${PROVIDER_MODEL_DEFAULTS[provider].modelId}, which PROVIDER_MODELS.${provider} no longer lists`,
       );
     }
     if (!ids.has(PROVIDER_TITLE_MODEL[provider])) {
       failures.push(
-        `PROVIDER_TITLE_MODEL.${provider} names ${PROVIDER_TITLE_MODEL[provider]}, which PROVIDER_MODELS.${provider} no longer lists`
+        `PROVIDER_TITLE_MODEL.${provider} names ${PROVIDER_TITLE_MODEL[provider]}, which PROVIDER_MODELS.${provider} no longer lists`,
       );
     }
     for (const [retired, successor] of Object.entries(SUCCESSOR_MODEL_IDS[provider] ?? {})) {
       if (!ids.has(successor)) {
         failures.push(
-          `SUCCESSOR_MODEL_IDS.${provider} sends ${retired} to ${successor}, which PROVIDER_MODELS.${provider} does not list`
+          `SUCCESSOR_MODEL_IDS.${provider} sends ${retired} to ${successor}, which PROVIDER_MODELS.${provider} does not list`,
         );
       }
       if (ids.has(retired)) {
         failures.push(
-          `SUCCESSOR_MODEL_IDS.${provider} retires ${retired}, which PROVIDER_MODELS.${provider} still lists`
+          `SUCCESSOR_MODEL_IDS.${provider} retires ${retired}, which PROVIDER_MODELS.${provider} still lists`,
         );
       }
       accounted.add(retired);
@@ -272,7 +290,7 @@ function catalogueFailures({ models }) {
   for (const id of Object.keys(MODEL_PRICING)) {
     if (!accounted.has(id)) {
       failures.push(
-        `${id} is priced but left PROVIDER_MODELS. In src/shared/providerModels.ts add it to SUCCESSOR_MODEL_IDS or STORED_ONLY_MODELS, or move its rate to STORED_MODEL_PRICING_ALIASES`
+        `${id} is priced but left PROVIDER_MODELS. In src/shared/providerModels.ts add it to SUCCESSOR_MODEL_IDS or STORED_ONLY_MODELS, or move its rate to STORED_MODEL_PRICING_ALIASES`,
       );
     }
   }
@@ -284,15 +302,20 @@ const RETIRED_ID_ROOTS = ["src-tauri/src", "src-tauri/crates", "src/renderer", "
 const RETIRED_ID_HOMES = new Set([
   "src/shared/providerModels.ts",
   "src-tauri/src/providers/model_catalogue.generated.rs",
-  "src-tauri/src/providers/pricing.rs"
+  "src-tauri/src/providers/pricing.rs",
 ]);
 
 async function productionFiles(root) {
-  const entries = await readdir(path.join(repoRoot, root), { withFileTypes: true, recursive: true });
+  const entries = await readdir(path.join(repoRoot, root), {
+    withFileTypes: true,
+    recursive: true,
+  });
   return entries
     .filter((entry) => entry.isFile() && /\.(rs|ts|tsx)$/.test(entry.name))
     .map((entry) => path.relative(repoRoot, path.join(entry.parentPath, entry.name)))
-    .filter((file) => !RETIRED_ID_HOMES.has(file) && !/(\.test\.tsx?|_tests?\.rs|\/test\/.*)$/.test(file));
+    .filter(
+      (file) => !RETIRED_ID_HOMES.has(file) && !/(\.test\.tsx?|_tests?\.rs|\/test\/.*)$/.test(file),
+    );
 }
 
 function withoutRustTestModule(source) {
@@ -311,7 +334,9 @@ async function retiredIdFailures({ models }) {
       for (const retired of retiredIds) {
         const escaped = retired.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
         if (new RegExp(`(?<![\\w.-])${escaped}(?![\\w.-])`).test(line)) {
-          failures.push(`${file}:${index + 1} names the retired model ${retired}. Name its successor`);
+          failures.push(
+            `${file}:${index + 1} names the retired model ${retired}. Name its successor`,
+          );
         }
       }
     });
@@ -339,11 +364,15 @@ if (process.argv.includes("--check")) {
   // lookups here. A retired id is fine when a successor row resolves it.
   const testPath = path.join(repoRoot, "ios/Argmax/Tests/ProviderCatalogTests.swift");
   const testSource = await readFile(testPath, "utf8");
-  for (const [, provider, modelId] of testSource.matchAll(/model\(provider: "([^"]+)", modelId: "([^"]+)"\)/g)) {
+  for (const [, provider, modelId] of testSource.matchAll(
+    /model\(provider: "([^"]+)", modelId: "([^"]+)"\)/g,
+  )) {
     const entry = catalogue.providers.find((candidate) => candidate.id === provider);
     const resolved = entry?.successors[modelId] ?? modelId;
     if (!entry?.models.some((model) => model.modelId === resolved)) {
-      failures.push(`ProviderCatalogTests.swift looks up ${provider}/${modelId}, which the catalogue no longer lists`);
+      failures.push(
+        `ProviderCatalogTests.swift looks up ${provider}/${modelId}, which the catalogue no longer lists`,
+      );
     }
   }
 

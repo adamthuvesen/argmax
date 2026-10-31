@@ -45,7 +45,7 @@ export type TurnBodyChild = {
  */
 export function foldToolRunsToSummaries<T extends TurnBodyChild & { runTools?: ToolCall[] }>(
   children: readonly T[],
-  renderRun: (tools: ToolCall[]) => ReactNode
+  renderRun: (tools: ToolCall[]) => ReactNode,
 ): T[] {
   const folded: T[] = [];
   let run: { tools: ToolCall[]; anchor: T } | null = null;
@@ -59,7 +59,7 @@ export function foldToolRunsToSummaries<T extends TurnBodyChild & { runTools?: T
       kind: "tool",
       id: first ? `activity-${first.id}` : anchor.id,
       runTools: tools,
-      node: renderRun(tools)
+      node: renderRun(tools),
     });
   };
   for (const child of children) {
@@ -85,7 +85,7 @@ export function foldToolRunsToSummaries<T extends TurnBodyChild & { runTools?: T
  */
 export function foldActivityRunsToSummaries<T extends TurnBodyChild & { runTools?: ToolCall[] }>(
   children: readonly T[],
-  renderRun: (run: ActivityRun) => ReactNode
+  renderRun: (run: ActivityRun) => ReactNode,
 ): T[] {
   const folded: T[] = [];
   let run: { tools: ToolCall[]; members: ActivityMember[]; anchor: T } | null = null;
@@ -100,7 +100,7 @@ export function foldActivityRunsToSummaries<T extends TurnBodyChild & { runTools
       kind: "tool",
       id: firstMember ? `activity-${firstMember.id}` : anchor.id,
       runTools: tools,
-      node: renderRun({ tools, members })
+      node: renderRun({ tools, members }),
     });
   };
 

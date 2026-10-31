@@ -15,7 +15,7 @@ describe("ChatBubble", () => {
     const { container } = render(
       <ChatBubble kind="user" rawMarkdown="long">
         <p>long</p>
-      </ChatBubble>
+      </ChatBubble>,
     );
     const toggle = screen.getByRole("button", { name: "Show more" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -35,7 +35,7 @@ describe("ChatBubble", () => {
     const { container } = render(
       <ChatBubble kind="user" rawMarkdown="and so on?">
         <p>and so on?</p>
-      </ChatBubble>
+      </ChatBubble>,
     );
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
     // `.clipped` is what turns on overflow:hidden. A short prompt must not
@@ -56,12 +56,12 @@ describe("ChatBubble", () => {
         }
         observe(): void {}
         disconnect(): void {}
-      }
+      },
     );
     const { container } = render(
       <ChatBubble kind="user" rawMarkdown="grows">
         <p>grows</p>
-      </ChatBubble>
+      </ChatBubble>,
     );
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
 
@@ -72,7 +72,7 @@ describe("ChatBubble", () => {
     Object.defineProperty(body, "scrollHeight", { configurable: true, value: 300 });
     Object.defineProperty(body.firstElementChild as HTMLElement, "scrollHeight", {
       configurable: true,
-      value: 900
+      value: 900,
     });
     act(() => notify?.());
     expect(screen.getByRole("button", { name: "Show more" })).toBeInTheDocument();
@@ -83,21 +83,23 @@ describe("ChatBubble", () => {
     const { container } = render(
       <ChatBubble kind="assistant" rawMarkdown="reply">
         <p>reply</p>
-      </ChatBubble>
+      </ChatBubble>,
     );
     expect(container.querySelector(".chat-bubble-body")).toBeNull();
   });
 
   it("calls clipboard.writeText with the raw markdown on copy", async () => {
-    const writeText = vi.fn<(text: string) => Promise<void>>().mockImplementation(() => Promise.resolve());
+    const writeText = vi
+      .fn<(text: string) => Promise<void>>()
+      .mockImplementation(() => Promise.resolve());
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
-      value: { writeText }
+      value: { writeText },
     });
     render(
       <ChatBubble kind="assistant" rawMarkdown="**bold**">
         <p>**bold**</p>
-      </ChatBubble>
+      </ChatBubble>,
     );
     const button = screen.getByRole("button", { name: "Copy bubble" });
     fireEvent.click(button);

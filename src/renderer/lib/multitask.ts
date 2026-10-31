@@ -1,4 +1,9 @@
-import type { ApprovalRequest, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
+import type {
+  ApprovalRequest,
+  SessionSummary,
+  TimelineEvent,
+  WorkspaceSummary,
+} from "../../shared/types.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 
 /**
@@ -23,7 +28,7 @@ export type MultitaskDisplayStatus = "running" | "done" | "needs-you" | "failed"
 /** The session is authoritative when available; attention can require a reply mid-turn. */
 export function multitaskDisplayStatus(
   state: string | null,
-  attention?: SessionSummary["attention"] | null
+  attention?: SessionSummary["attention"] | null,
 ): MultitaskDisplayStatus {
   if (state === "failed") return "failed";
   if (state === "cancelled") return "stopped";
@@ -56,7 +61,7 @@ export function multitaskNoticeFor(event: TimelineEvent): MultitaskNotice {
       worktree: false,
       state: null,
       answer: null,
-      createdAt: event.createdAt
+      createdAt: event.createdAt,
     };
   }
   return {
@@ -66,7 +71,7 @@ export function multitaskNoticeFor(event: TimelineEvent): MultitaskNotice {
     worktree: canonical.worktree,
     state: canonical.state,
     answer: canonical.answer,
-    createdAt: event.createdAt
+    createdAt: event.createdAt,
   };
 }
 
@@ -77,7 +82,10 @@ export function multitaskNoticeFor(event: TimelineEvent): MultitaskNotice {
  * marker. Later rows carry only what they know, so a null must not erase what
  * the launch row already said.
  */
-export function mergeMultitaskNotice(existing: MultitaskNotice, incoming: MultitaskNotice): MultitaskNotice {
+export function mergeMultitaskNotice(
+  existing: MultitaskNotice,
+  incoming: MultitaskNotice,
+): MultitaskNotice {
   return {
     childSessionId: incoming.childSessionId ?? existing.childSessionId,
     taskLabel: incoming.taskLabel || existing.taskLabel,
@@ -86,7 +94,10 @@ export function mergeMultitaskNotice(existing: MultitaskNotice, incoming: Multit
     state: incoming.state ?? existing.state,
     answer: incoming.answer ?? existing.answer,
     // The dispatch is where the row belongs, and it is the earlier of the two.
-    createdAt: incoming.createdAt && incoming.createdAt < existing.createdAt ? incoming.createdAt : existing.createdAt
+    createdAt:
+      incoming.createdAt && incoming.createdAt < existing.createdAt
+        ? incoming.createdAt
+        : existing.createdAt,
   };
 }
 
@@ -169,7 +180,7 @@ export interface MultitaskChild {
 export function multitasksByParentSession(
   sessions: readonly SessionSummary[],
   workspaces: readonly WorkspaceSummary[],
-  approvals: readonly ApprovalRequest[] = []
+  approvals: readonly ApprovalRequest[] = [],
 ): Map<string, MultitaskChild[]> {
   const byParent = new Map<string, MultitaskChild[]>();
   for (const session of sessions) {
@@ -179,7 +190,9 @@ export function multitasksByParentSession(
       session,
       workspace: workspaces.find((workspace) => workspace.id === session.workspaceId) ?? null,
       pendingApproval:
-        approvals.find((approval) => approval.sessionId === session.id && approval.status === "pending") ?? null
+        approvals.find(
+          (approval) => approval.sessionId === session.id && approval.status === "pending",
+        ) ?? null,
     };
     const existing = byParent.get(launcher);
     if (existing) existing.push(child);

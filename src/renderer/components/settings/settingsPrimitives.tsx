@@ -1,5 +1,12 @@
 import { ChevronDown } from "lucide-react";
-import { useRef, useState, type CSSProperties, type JSX, type MutableRefObject, type ReactNode } from "react";
+import {
+  useRef,
+  useState,
+  type CSSProperties,
+  type JSX,
+  type MutableRefObject,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { useAnchoredPopover } from "../../hooks/useAnchoredPopover.js";
 import type { DiagnosticsReport } from "../../../shared/types.js";
@@ -8,7 +15,7 @@ import {
   ACTIVITY_MARK_OPTIONS,
   SESSION_UNDERLINE_OPTIONS,
   type ActivityMarkId,
-  type SessionUnderlineId
+  type SessionUnderlineId,
 } from "../../lib/activityMark.js";
 import { FONT_OPTIONS, type FontFamilyId, type FontOption } from "../../lib/fonts.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
@@ -19,7 +26,11 @@ import { useDismissOnOutsideOrEscape } from "../../hooks/useDismissOnOutsideOrEs
 
 export const COLD_START_BUDGET_MS = 1500;
 
-export function ColdStartSummary({ phases }: { phases: DiagnosticsReport["startupPhases"] }): JSX.Element | null {
+export function ColdStartSummary({
+  phases,
+}: {
+  phases: DiagnosticsReport["startupPhases"];
+}): JSX.Element | null {
   const ready = phases.find((p) => p.phase === "window.ready-to-show");
   if (!ready) return null;
   const overBudget = ready.elapsedMs > COLD_START_BUDGET_MS;
@@ -66,7 +77,7 @@ export function SettingGroup({
   label,
   action,
   card = true,
-  children
+  children,
 }: {
   id: string;
   label: string;
@@ -97,7 +108,7 @@ export function SettingRow({
   label,
   description,
   control,
-  htmlFor
+  htmlFor,
 }: {
   label: ReactNode;
   description?: ReactNode;
@@ -125,7 +136,13 @@ export function SettingRow({
 }
 
 /** A read-only row: label on the left, value on the right. */
-export function SettingValueRow({ label, value }: { label: ReactNode; value: ReactNode }): JSX.Element {
+export function SettingValueRow({
+  label,
+  value,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+}): JSX.Element {
   return <SettingRow label={label} control={<span className="settings-row-value">{value}</span>} />;
 }
 
@@ -133,7 +150,7 @@ export function SettingValueRow({ label, value }: { label: ReactNode; value: Rea
 export function SettingNote({
   children,
   tone,
-  role
+  role,
 }: {
   children: ReactNode;
   tone?: "warn";
@@ -150,7 +167,7 @@ export function Toggle({
   ariaLabel,
   checked,
   onChange,
-  disabled = false
+  disabled = false,
 }: {
   ariaLabel: string;
   checked: boolean;
@@ -180,7 +197,7 @@ export function SegmentedControl({
   name,
   value,
   onChange,
-  options
+  options,
 }: {
   ariaLabel: string;
   name: string;
@@ -189,11 +206,20 @@ export function SegmentedControl({
   options: ReadonlyArray<SegmentedOption>;
 }): JSX.Element {
   return (
-    <div className="settings-segmented" role="radiogroup" aria-label={ariaLabel} data-count={options.length}>
+    <div
+      className="settings-segmented"
+      role="radiogroup"
+      aria-label={ariaLabel}
+      data-count={options.length}
+    >
       {options.map((option) => {
         const checked = option.value === value;
         return (
-          <label key={option.value} className="settings-segmented-option" data-checked={checked ? "true" : "false"}>
+          <label
+            key={option.value}
+            className="settings-segmented-option"
+            data-checked={checked ? "true" : "false"}
+          >
             <input
               type="radio"
               name={name}
@@ -216,7 +242,7 @@ export function Slider({
   value,
   valueLabel,
   onChange,
-  disabled = false
+  disabled = false,
 }: {
   ariaLabel: string;
   min: number;
@@ -268,7 +294,7 @@ export function SettingsListPicker<T extends string>({
   placement = "below",
   popoverRef,
   portaled = false,
-  value
+  value,
 }: {
   ariaLabel: string;
   disabled?: boolean;
@@ -299,13 +325,13 @@ export function SettingsListPicker<T extends string>({
     open: isOpen && portaled,
     placement: placement === "above" ? "top-end" : "bottom-end",
     strategy: "fixed",
-    capHeight: true
+    capHeight: true,
   });
   useDismissOnOutsideOrEscape(
     portaled ? flyout.anchorRef : anchorRef,
     isOpen,
     () => setPickerOpen(false),
-    portaled ? flyout.popoverRef : undefined
+    portaled ? flyout.popoverRef : undefined,
   );
 
   const popover = isOpen ? (
@@ -320,7 +346,9 @@ export function SettingsListPicker<T extends string>({
       }}
       style={portaled ? flyout.floatingStyles : undefined}
       onClick={(event) => {
-        if (!(event.target instanceof Element && event.target.closest("button.project-picker-item"))) {
+        if (
+          !(event.target instanceof Element && event.target.closest("button.project-picker-item"))
+        ) {
           setPickerOpen(false);
         }
       }}
@@ -328,7 +356,12 @@ export function SettingsListPicker<T extends string>({
       {options.map((option) => {
         const isSelected = option.value === value;
         return (
-          <li key={option.value} role="option" aria-selected={isSelected} aria-disabled={option.disabled || undefined}>
+          <li
+            key={option.value}
+            role="option"
+            aria-selected={isSelected}
+            aria-disabled={option.disabled || undefined}
+          >
             <button
               type="button"
               className="project-picker-item"
@@ -375,7 +408,11 @@ export function SettingsListPicker<T extends string>({
         </span>
         <ChevronDown size={14} aria-hidden="true" />
       </button>
-      {popover ? (portaled && typeof document !== "undefined" ? createPortal(popover, document.body) : popover) : null}
+      {popover
+        ? portaled && typeof document !== "undefined"
+          ? createPortal(popover, document.body)
+          : popover
+        : null}
     </div>
   );
 }
@@ -383,7 +420,7 @@ export function SettingsListPicker<T extends string>({
 export function FontFamilyPicker({
   value,
   onChange,
-  inputId
+  inputId,
 }: {
   value: FontFamilyId;
   onChange: (id: FontFamilyId) => void;
@@ -398,7 +435,7 @@ export function FontFamilyPicker({
       options={FONT_OPTIONS.map((option: FontOption) => ({
         value: option.id,
         label: option.label,
-        labelStyle: { fontFamily: option.stack }
+        labelStyle: { fontFamily: option.stack },
       }))}
     />
   );
@@ -410,7 +447,7 @@ export function ThemePicker({
   value,
   onChange,
   ariaLabel = "Theme",
-  name = "theme-mode"
+  name = "theme-mode",
 }: {
   value: ThemeMode;
   onChange: (mode: ThemeMode) => void;
@@ -434,7 +471,7 @@ export function ThemePicker({
 export function ActivityMarkPicker({
   value,
   onChange,
-  inputId
+  inputId,
 }: {
   value: ActivityMarkId;
   onChange: (markId: ActivityMarkId) => void;
@@ -456,7 +493,7 @@ export function ActivityMarkPicker({
             <span className="activity-mark-preview">
               <WorkingNest active size={24} markId={option.id} />
             </span>
-          )
+          ),
         }))}
       />
     </div>
@@ -468,7 +505,7 @@ export function ActivityMarkPicker({
 export function SessionUnderlinePicker({
   value,
   onChange,
-  inputId
+  inputId,
 }: {
   value: SessionUnderlineId;
   onChange: (underlineId: SessionUnderlineId) => void;
@@ -482,7 +519,7 @@ export function SessionUnderlinePicker({
       onChange={onChange}
       options={SESSION_UNDERLINE_OPTIONS.map((option) => ({
         value: option.id,
-        label: option.label
+        label: option.label,
       }))}
     />
   );
@@ -490,7 +527,7 @@ export function SessionUnderlinePicker({
 
 export function AccentPicker({
   value,
-  onChange
+  onChange,
 }: {
   value: AccentId;
   onChange: (accentId: AccentId) => void;

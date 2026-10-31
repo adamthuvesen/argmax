@@ -3,10 +3,12 @@ import { parseVisualizationReference } from "./visualizationReference.js";
 
 describe("parseVisualizationReference", () => {
   it("accepts absolute HTML references with a title and wide mode", () => {
-    expect(parseVisualizationReference('{"path":"/tmp/chart.html","mode":"wide","title":"Trends"}')).toEqual({
+    expect(
+      parseVisualizationReference('{"path":"/tmp/chart.html","mode":"wide","title":"Trends"}'),
+    ).toEqual({
       path: "/tmp/chart.html",
       mode: "wide",
-      title: "Trends"
+      title: "Trends",
     });
   });
 
@@ -19,7 +21,7 @@ describe("parseVisualizationReference", () => {
     '{"path":"/tmp/secrets.txt"}',
     '{"path":"/tmp/chart.html","mode":"full"}',
     '{"path":"/tmp/chart.html","title":17}',
-    '{"path":"/tmp/chart.html","script":"run"}'
+    '{"path":"/tmp/chart.html","script":"run"}',
   ])("rejects malformed or unsupported references: %s", (source) => {
     expect(() => parseVisualizationReference(source)).toThrow();
   });

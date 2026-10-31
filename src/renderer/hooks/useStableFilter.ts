@@ -13,7 +13,11 @@ import { useMemo, useRef } from "react";
  * `key` must capture everything the predicate depends on. When `key` is falsy
  * the unfiltered `items` array is returned (and its reference passes through).
  */
-export function useStableFilter<T>(items: T[], key: string | null, predicate: (item: T) => boolean): T[] {
+export function useStableFilter<T>(
+  items: T[],
+  key: string | null,
+  predicate: (item: T) => boolean,
+): T[] {
   const prevRef = useRef<T[]>([]);
   return useMemo(() => {
     if (!key) return items;

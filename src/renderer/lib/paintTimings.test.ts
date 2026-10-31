@@ -6,7 +6,7 @@ import {
   markFirstContent,
   markFirstPaint,
   readFirstContentMeasure,
-  resetPaintTimingsForTesting
+  resetPaintTimingsForTesting,
 } from "./paintTimings.js";
 
 afterEach(() => {

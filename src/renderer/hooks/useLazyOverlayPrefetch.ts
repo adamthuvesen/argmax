@@ -22,20 +22,26 @@ const importBrowserPage = () => import("../components/BrowserPage.js");
 const importReviewPanel = () => import("../components/ReviewPanel.js");
 
 export const CommandPalette = lazy(() =>
-  importChunk(async () => ({ default: (await importCommandPalette()).CommandPalette }))
+  importChunk(async () => ({ default: (await importCommandPalette()).CommandPalette })),
 );
 export const SettingsPanel = lazy(() =>
-  importChunk(async () => ({ default: (await importSettingsPanel()).SettingsPanel }))
+  importChunk(async () => ({ default: (await importSettingsPanel()).SettingsPanel })),
 );
 export const ScheduledTasksPanel = lazy(() =>
-  importChunk(async () => ({ default: (await importScheduledTasksPanel()).ScheduledTasksPanel }))
+  importChunk(async () => ({ default: (await importScheduledTasksPanel()).ScheduledTasksPanel })),
 );
-export const UsagePanel = lazy(() => importChunk(async () => ({ default: (await importUsagePanel()).UsagePanel })));
+export const UsagePanel = lazy(() =>
+  importChunk(async () => ({ default: (await importUsagePanel()).UsagePanel })),
+);
 export const ActivityPanel = lazy(() =>
-  importChunk(async () => ({ default: (await importActivityPanel()).ActivityPanel }))
+  importChunk(async () => ({ default: (await importActivityPanel()).ActivityPanel })),
 );
-export const ArcPage = lazy(() => importChunk(async () => ({ default: (await importArcPage()).ArcPage })));
-export const BrowserPage = lazy(() => importChunk(async () => ({ default: (await importBrowserPage()).BrowserPage })));
+export const ArcPage = lazy(() =>
+  importChunk(async () => ({ default: (await importArcPage()).ArcPage })),
+);
+export const BrowserPage = lazy(() =>
+  importChunk(async () => ({ default: (await importBrowserPage()).BrowserPage })),
+);
 
 /** Warm lazy overlay chunks after first paint so the first ⌘K / ⌘F / Settings open isn't paying for transform+fetch+parse on the keypress. */
 export function useLazyOverlayPrefetch(): void {
@@ -50,10 +56,13 @@ export function useLazyOverlayPrefetch(): void {
     // requestIdleCallback recently.
     const ric =
       typeof window.requestIdleCallback === "function"
-        ? (cb: () => void, opts: { timeout: number }): number => window.requestIdleCallback(cb, opts)
+        ? (cb: () => void, opts: { timeout: number }): number =>
+            window.requestIdleCallback(cb, opts)
         : null;
     const cic =
-      typeof window.cancelIdleCallback === "function" ? (id: number): void => window.cancelIdleCallback(id) : null;
+      typeof window.cancelIdleCallback === "function"
+        ? (id: number): void => window.cancelIdleCallback(id)
+        : null;
     const timers: number[] = [];
     const ricIds: number[] = [];
     // Two passes, in priority order. The palette serves every search chord and

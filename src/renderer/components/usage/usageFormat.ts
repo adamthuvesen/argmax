@@ -14,7 +14,7 @@ export function formatUsd(value: number): string {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    maximumFractionDigits: 2,
   });
 }
 
@@ -31,7 +31,7 @@ export function formatUsdRate(value: number): string {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: digits,
-    maximumFractionDigits: digits
+    maximumFractionDigits: digits,
   });
 }
 
@@ -116,7 +116,11 @@ function parseInstant(value: string): Date | null {
  * `AUG 19` for a day bucket, `14:00` for an hour one — the axis carries the
  * unit the buckets are in, so a 24h chart never claims to show days.
  */
-export function formatBucketLabel(bucketStart: string, resolution: UsageResolution, timeZone: string): string {
+export function formatBucketLabel(
+  bucketStart: string,
+  resolution: UsageResolution,
+  timeZone: string,
+): string {
   const at = parseInstant(bucketStart);
   if (!at) return "";
   if (resolution === "hour") {
@@ -126,7 +130,11 @@ export function formatBucketLabel(bucketStart: string, resolution: UsageResoluti
 }
 
 /** The tooltip's fuller stamp: `Aug 19` or `Aug 19, 14:00`. */
-export function formatBucketTitle(bucketStart: string, resolution: UsageResolution, timeZone: string): string {
+export function formatBucketTitle(
+  bucketStart: string,
+  resolution: UsageResolution,
+  timeZone: string,
+): string {
   const at = parseInstant(bucketStart);
   if (!at) return "";
   if (resolution === "hour") {
@@ -135,7 +143,7 @@ export function formatBucketTitle(bucketStart: string, resolution: UsageResoluti
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      hour12: false
+      hour12: false,
     }).format(at);
   }
   return dateFormat(timeZone, { month: "short", day: "numeric", year: "numeric" }).format(at);
@@ -150,7 +158,7 @@ export function formatRangeLabel(
   rangeStart: string,
   rangeEnd: string,
   resolution: UsageResolution,
-  timeZone: string
+  timeZone: string,
 ): string {
   const start = parseInstant(rangeStart);
   const end = parseInstant(rangeEnd);
@@ -162,7 +170,7 @@ export function formatRangeLabel(
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      hour12: false
+      hour12: false,
     });
     return `${stamp.format(start)} to ${stamp.format(end)}`;
   }
@@ -216,7 +224,7 @@ export function formatScanStamp(value: string | null, timeZone: string): string 
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false
+    hour12: false,
   }).format(at);
 }
 

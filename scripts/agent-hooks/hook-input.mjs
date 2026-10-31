@@ -14,10 +14,13 @@ export function readHookInput() {
 export function editedPaths(request) {
   const input = request.tool_input ?? {};
   const absolute = input.file_path ? [input.file_path] : [];
-  const patch = typeof input.command === "string" ? input.command : (input.patch ?? input.input ?? "");
+  const patch =
+    typeof input.command === "string" ? input.command : (input.patch ?? input.input ?? "");
   const patched =
     request.tool_name === "apply_patch" || typeof input.patch === "string"
-      ? [...String(patch).matchAll(/^\*\*\* (?:Add|Update) File: (.+)$/gm)].map((match) => match[1].trim())
+      ? [...String(patch).matchAll(/^\*\*\* (?:Add|Update) File: (.+)$/gm)].map((match) =>
+          match[1].trim(),
+        )
       : [];
   return [...absolute, ...patched]
     .map((path) => relative(ROOT, isAbsolute(path) ? path : resolve(request.cwd ?? ROOT, path)))

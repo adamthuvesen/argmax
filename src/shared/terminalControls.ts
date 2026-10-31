@@ -2,7 +2,10 @@
 const oscSequencePattern = new RegExp("\\u001B\\][^\\u0007]*(?:\\u0007|\\u001B\\\\)", "g");
 const csiSequencePattern = new RegExp("\\u001B\\[[0-?]*[ -/]*[@-~]", "g");
 const escapeSequencePattern = new RegExp("\\u001B[@-Z\\\\-_]", "g");
-const controlCharacterPattern = new RegExp("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]", "g");
+const controlCharacterPattern = new RegExp(
+  "[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]",
+  "g",
+);
 /* oxlint-enable no-control-regex */
 
 /**

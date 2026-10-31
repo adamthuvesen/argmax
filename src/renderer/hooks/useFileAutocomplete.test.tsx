@@ -6,12 +6,12 @@ import {
   buildEntries,
   parseFileQuery,
   useFileAutocomplete,
-  type FileAutocompleteSource
+  type FileAutocompleteSource,
 } from "./useFileAutocomplete.js";
 
 function Harness({
   initialInput = "",
-  source = { kind: "workspace", id: "workspace-1" } satisfies FileAutocompleteSource
+  source = { kind: "workspace", id: "workspace-1" } satisfies FileAutocompleteSource,
 }: {
   initialInput?: string;
   source?: FileAutocompleteSource | null;
@@ -98,8 +98,8 @@ describe("useFileAutocomplete", () => {
       configurable: true,
       writable: true,
       value: {
-        workspace: { listFiles }
-      }
+        workspace: { listFiles },
+      },
     });
   });
 
@@ -114,7 +114,7 @@ describe("useFileAutocomplete", () => {
       () =>
         new Promise((resolve) => {
           resolveList = resolve;
-        })
+        }),
     );
 
     const { unmount } = render(<Harness initialInput="@" />);
@@ -137,12 +137,17 @@ describe("useFileAutocomplete", () => {
     });
     await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(2));
     await waitFor(() =>
-      expect(screen.queryAllByTestId("entry-file").map((node) => node.textContent)).toEqual(["fresh.ts"])
+      expect(screen.queryAllByTestId("entry-file").map((node) => node.textContent)).toEqual([
+        "fresh.ts",
+      ]),
     );
   });
 
   it("opens the popover with files and derived folders when the user types `@`", async () => {
-    const entries: WorkspaceFileEntry[] = [{ path: "src-tauri/main.ts" }, { path: "src/renderer/App.tsx" }];
+    const entries: WorkspaceFileEntry[] = [
+      { path: "src-tauri/main.ts" },
+      { path: "src/renderer/App.tsx" },
+    ];
     listFiles.mockResolvedValue(entries);
 
     render(<Harness initialInput="@" />);
@@ -152,7 +157,9 @@ describe("useFileAutocomplete", () => {
       setCaret(probe, 1);
     });
 
-    await waitFor(() => expect(listFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" }));
+    await waitFor(() =>
+      expect(listFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" }),
+    );
     await waitFor(() => expect(screen.getByTestId("popover-open").textContent).toBe("yes"));
     // 2 files + 3 derived folders (src, src-tauri, src/renderer)
     expect(screen.getByTestId("filtered-count").textContent).toBe("5");
@@ -170,7 +177,9 @@ describe("useFileAutocomplete", () => {
       setCaret(probe, 1);
     });
 
-    await waitFor(() => expect(listFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" }));
+    await waitFor(() =>
+      expect(listFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" }),
+    );
     await waitFor(() => expect(screen.getByTestId("popover-open").textContent).toBe("yes"));
     expect(screen.getByText("packages/shared/index.ts")).toBeTruthy();
   });
@@ -183,7 +192,7 @@ describe("useFileAutocomplete", () => {
     listFiles.mockResolvedValue([
       { path: "AGENTS.md" },
       { path: "src/renderer/lib/agentMode.ts" },
-      { path: "package.json" }
+      { path: "package.json" },
     ]);
 
     render(<Harness initialInput="@AG" />);
@@ -203,7 +212,10 @@ describe("useFileAutocomplete", () => {
   });
 
   it("inserts `@path ` (file, with trailing space) when Enter is pressed", async () => {
-    listFiles.mockResolvedValue([{ path: "src-tauri/src/main.ts" }, { path: "src/renderer/App.tsx" }]);
+    listFiles.mockResolvedValue([
+      { path: "src-tauri/src/main.ts" },
+      { path: "src/renderer/App.tsx" },
+    ]);
 
     render(<Harness initialInput="hello @main.ts" />);
 
@@ -226,7 +238,7 @@ describe("useFileAutocomplete", () => {
     listFiles.mockResolvedValue([
       { path: "src-tauri/main.ts" },
       { path: "src-tauri/ipc.ts" },
-      { path: "package.json" }
+      { path: "package.json" },
     ]);
 
     render(<Harness initialInput="poke @src-tauri" />);
@@ -244,7 +256,8 @@ describe("useFileAutocomplete", () => {
     const indexOfDir = (): number => {
       const items = screen.queryAllByTestId(/^entry-/);
       return items.findIndex(
-        (node) => node.getAttribute("data-testid") === "entry-dir" && node.textContent === "src-tauri"
+        (node) =>
+          node.getAttribute("data-testid") === "entry-dir" && node.textContent === "src-tauri",
       );
     };
     let target = indexOfDir();
@@ -264,7 +277,10 @@ describe("useFileAutocomplete", () => {
   });
 
   it("closes on Escape and stays closed while typing in the same token", async () => {
-    listFiles.mockResolvedValue([{ path: "src-tauri/src/main.ts" }, { path: "src/renderer/App.tsx" }]);
+    listFiles.mockResolvedValue([
+      { path: "src-tauri/src/main.ts" },
+      { path: "src/renderer/App.tsx" },
+    ]);
 
     render(<Harness initialInput="@" />);
 
@@ -289,7 +305,9 @@ describe("useFileAutocomplete", () => {
 
   it("bounds cached source trees and re-fetches an evicted project", async () => {
     listFiles.mockImplementation((source) => Promise.resolve([{ path: `${source.id}/index.ts` }]));
-    const { rerender } = render(<Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />);
+    const { rerender } = render(
+      <Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />,
+    );
     const probe = screen.getByLabelText<HTMLTextAreaElement>("probe");
     act(() => {
       setCaret(probe, 1);
@@ -312,9 +330,11 @@ describe("useFileAutocomplete", () => {
         ? new Promise((resolve) => {
             resolveFirst = resolve;
           })
-        : Promise.resolve([{ path: `${id}/index.ts` }])
+        : Promise.resolve([{ path: `${id}/index.ts` }]),
     );
-    const { rerender } = render(<Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />);
+    const { rerender } = render(
+      <Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />,
+    );
     const probe = screen.getByLabelText<HTMLTextAreaElement>("probe");
     act(() => {
       setCaret(probe, 1);
@@ -338,9 +358,11 @@ describe("useFileAutocomplete", () => {
       ({ id }) =>
         new Promise((resolve) => {
           resolvers.set(id, resolve);
-        })
+        }),
     );
-    const { rerender } = render(<Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />);
+    const { rerender } = render(
+      <Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />,
+    );
     const probe = screen.getByLabelText<HTMLTextAreaElement>("probe");
     act(() => {
       setCaret(probe, 1);

@@ -19,13 +19,20 @@ function plan(percent: number, fetchedAt = new Date().toISOString()): UsageRemai
             id: "5h",
             label: "5-hour",
             remainingPercent: percent,
-            resetsAt: new Date(Date.now() + 2 * 3_600_000).toISOString()
+            resetsAt: new Date(Date.now() + 2 * 3_600_000).toISOString(),
           },
-          { id: "week", label: "Weekly", remainingPercent: 88, resetsAt: null }
-        ]
+          { id: "week", label: "Weekly", remainingPercent: 88, resetsAt: null },
+        ],
       },
-      { provider: "codex", kind: "api_key", planLabel: null, message: null, messageUrl: null, windows: [] }
-    ]
+      {
+        provider: "codex",
+        kind: "api_key",
+        planLabel: null,
+        message: null,
+        messageUrl: null,
+        windows: [],
+      },
+    ],
   };
 }
 
@@ -46,7 +53,9 @@ describe("ComposerUsageChip", () => {
     setCachedUsageRemaining(plan(41), null);
     render(<ComposerUsageChip provider="claude" />);
 
-    const chip = await screen.findByRole("button", { name: /^Claude plan: 41% left in the 5-hour window/ });
+    const chip = await screen.findByRole("button", {
+      name: /^Claude plan: 41% left in the 5-hour window/,
+    });
     expect(chip).toHaveTextContent("41%");
     expect(remaining).not.toHaveBeenCalled();
   });
@@ -57,7 +66,7 @@ describe("ComposerUsageChip", () => {
       <>
         <ComposerUsageChip provider="claude" />
         <ComposerUsageChip provider="claude" />
-      </>
+      </>,
     );
 
     expect(await screen.findAllByRole("button", { name: /Claude plan: 73% left/ })).toHaveLength(2);
@@ -100,15 +109,17 @@ describe("ComposerUsageChip", () => {
             planLabel: null,
             message: "token expired",
             messageUrl: null,
-            windows: []
-          }
-        ]
+            windows: [],
+          },
+        ],
       },
-      null
+      null,
     );
     render(<ComposerUsageChip provider="claude" />);
 
-    const chip = await screen.findByRole("button", { name: /^Claude plan: 41% left in the 5-hour window.*as of / });
+    const chip = await screen.findByRole("button", {
+      name: /^Claude plan: 41% left in the 5-hour window.*as of /,
+    });
     expect(chip).toHaveAttribute("data-old", "true");
     fireEvent.click(chip);
     await screen.findByRole("dialog", { name: "Plan usage" });

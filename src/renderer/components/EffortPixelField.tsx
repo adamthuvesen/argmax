@@ -10,7 +10,7 @@ import {
   mosaicWeight,
   readColorToken,
   vnoise,
-  type Rgb
+  type Rgb,
 } from "../lib/pixelField.js";
 
 // Accent pixel mosaic for the effort slider. It fills the track from the left up
@@ -211,7 +211,10 @@ export function EffortPixelField({ level, heat }: { level: number; heat: number 
         for (let c = 0; c < cols; c += 1) {
           const x = c * CELL;
           if (x >= fillWidth) break; // only the filled portion is pixelated
-          if (chaos > 0 && hash(c * 1.3 + frame * 0.37, r * 2.1 + frame * 0.11) < chaos * DROPOUT_CHANCE) {
+          if (
+            chaos > 0 &&
+            hash(c * 1.3 + frame * 0.37, r * 2.1 + frame * 0.11) < chaos * DROPOUT_CHANCE
+          ) {
             continue; // a cell that failed to paint this frame
           }
           const w = mosaicWeight(c, r, scroll);
@@ -235,7 +238,10 @@ export function EffortPixelField({ level, heat }: { level: number; heat: number 
               intensity = Math.min(1, intensity + white * 0.5);
             }
           }
-          if (chaos > 0 && hash(c * 0.61 + frame * 0.23, r * 1.7 + frame * 0.41) < chaos * BLOWOUT_CHANCE) {
+          if (
+            chaos > 0 &&
+            hash(c * 0.61 + frame * 0.23, r * 1.7 + frame * 0.41) < chaos * BLOWOUT_CHANCE
+          ) {
             white = 0.8;
             intensity = 1;
           }
@@ -260,7 +266,7 @@ export function EffortPixelField({ level, heat }: { level: number; heat: number 
         vx: Math.cos(angle) * vel,
         vy: Math.sin(angle) * vel,
         life: SPARK_LIFE * (0.6 + 0.5 * Math.random()) * (1 + chaos * 0.4),
-        size: !fromWithin && chaos > 0 && Math.random() < chaos * 0.2 ? 2 : 1
+        size: !fromWithin && chaos > 0 && Math.random() < chaos * 0.2 ? 2 : 1,
       });
     };
 
@@ -282,7 +288,7 @@ export function EffortPixelField({ level, heat }: { level: number; heat: number 
           runners.push({
             x: -CELL * RUNNER_TAIL,
             row: Math.floor(Math.random() * rows),
-            speed: (RUNNER_SPEED + RUNNER_SPEED_RANGE * runner) * (0.7 + 0.6 * Math.random())
+            speed: (RUNNER_SPEED + RUNNER_SPEED_RANGE * runner) * (0.7 + 0.6 * Math.random()),
           });
         });
       }
@@ -336,7 +342,8 @@ export function EffortPixelField({ level, heat }: { level: number; heat: number 
       // Rows may run into the overscan band above and below the rail.
       let row = Math.floor(Math.random() * rows);
       const cells: number[] = [];
-      const length = BOLT_MIN_CELLS + Math.floor(Math.random() * (BOLT_MAX_CELLS - BOLT_MIN_CELLS + 1));
+      const length =
+        BOLT_MIN_CELLS + Math.floor(Math.random() * (BOLT_MAX_CELLS - BOLT_MIN_CELLS + 1));
       const backward = Math.random() < 0.35; // some bolts strike back into the fill
       for (let i = 0; i < length; i += 1) {
         const col = backward ? edgeCol - i : edgeCol + i;
@@ -417,7 +424,9 @@ export function EffortPixelField({ level, heat }: { level: number; heat: number 
         const step = pendingDt;
         pendingDt = 0;
         const chaos = drive(shownHeat, CHAOS_ON);
-        const rate = (BASE_SPEED + SPEED_RANGE * Math.pow(shownHeat, SPEED_CURVE)) * (1 + chaos * CHAOS_SPEED_KICK);
+        const rate =
+          (BASE_SPEED + SPEED_RANGE * Math.pow(shownHeat, SPEED_CURVE)) *
+          (1 + chaos * CHAOS_SPEED_KICK);
         scroll += step * rate;
         surgePhase += step * SURGE_SPEED;
         paint(step);
@@ -449,7 +458,7 @@ export function EffortPixelField({ level, heat }: { level: number; heat: number 
     });
     themeObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme", "data-accent"]
+      attributeFilter: ["data-theme", "data-accent"],
     });
 
     const onVisibility = (): void => {

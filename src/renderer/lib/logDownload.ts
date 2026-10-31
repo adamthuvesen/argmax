@@ -5,7 +5,7 @@ import type { BackendLogEntry } from "../../shared/types.js";
 export function saveLogsFile(
   entries: ReadonlyArray<BackendLogEntry>,
   setStatus: (status: string | null) => void,
-  onError: (message: string) => void
+  onError: (message: string) => void,
 ): void {
   if (entries.length === 0) {
     onError("No log entries to save.");

@@ -1,16 +1,23 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
-import { SCRATCH_PROJECT_ID, type DashboardSnapshot, type SessionSummary } from "../../shared/types.js";
+import {
+  SCRATCH_PROJECT_ID,
+  type DashboardSnapshot,
+  type SessionSummary,
+} from "../../shared/types.js";
 import {
   collapsedDateGroupsStorageKey,
   collapsedProjectsStorageKey,
   projectOrderStorageKey,
   projectSortModeStorageKey,
-  sidebarViewModeStorageKey
+  sidebarViewModeStorageKey,
 } from "../lib/projects.js";
 import { defaultDashboardSnapshot } from "../../test/fixtures/dashboardSnapshot.js";
-import { resetSidebarChatNestingForTests, setSidebarChatsNested } from "../lib/sidebarChatNesting.js";
+import {
+  resetSidebarChatNestingForTests,
+  setSidebarChatsNested,
+} from "../lib/sidebarChatNesting.js";
 import { resetSessionUnreadForTests } from "../lib/sessionUnread.js";
 import { overlaysSnapshot, resetOverlaysForTests, showArcPage } from "../state/overlays.js";
 import { resetWorkspaceDragForTests } from "../state/workspaceDrag.js";
@@ -23,7 +30,7 @@ const projectSettings = {
   mergeCleanup: "off" as const,
   worktreeLocation: "/tmp/worktrees",
   setupCommand: "",
-  checkCommands: []
+  checkCommands: [],
 };
 
 const snapshot: DashboardSnapshot = {
@@ -36,8 +43,8 @@ const snapshot: DashboardSnapshot = {
       defaultBranch: "main",
       settings: projectSettings,
       counts: { active: 1, blocked: 0, failed: 0, reviewReady: 0 },
-      latestActivityAt: "2026-05-12T15:54:00.000Z"
-    }
+      latestActivityAt: "2026-05-12T15:54:00.000Z",
+    },
   ],
   workspaces: [
     {
@@ -63,14 +70,14 @@ const snapshot: DashboardSnapshot = {
       prCreatedAt: null,
       prMergedAt: null,
       prCheckState: null,
-      prActivityAt: null
-    }
+      prActivityAt: null,
+    },
   ],
   sessions: [],
   events: [],
   rawOutputs: [],
   approvals: [],
-  checks: []
+  checks: [],
 };
 
 const multiProjectSnapshot: DashboardSnapshot = {
@@ -85,7 +92,7 @@ const multiProjectSnapshot: DashboardSnapshot = {
       defaultBranch: "main",
       settings: projectSettings,
       counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
-      latestActivityAt: "2026-05-12T15:54:00.000Z"
+      latestActivityAt: "2026-05-12T15:54:00.000Z",
     },
     {
       id: "project-argmax",
@@ -95,7 +102,7 @@ const multiProjectSnapshot: DashboardSnapshot = {
       defaultBranch: "main",
       settings: projectSettings,
       counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
-      latestActivityAt: "2026-05-11T15:54:00.000Z"
+      latestActivityAt: "2026-05-11T15:54:00.000Z",
     },
     {
       id: "project-mango",
@@ -105,10 +112,10 @@ const multiProjectSnapshot: DashboardSnapshot = {
       defaultBranch: "main",
       settings: projectSettings,
       counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
-      latestActivityAt: "2026-05-10T15:54:00.000Z"
-    }
+      latestActivityAt: "2026-05-10T15:54:00.000Z",
+    },
   ],
-  workspaces: []
+  workspaces: [],
 };
 
 // Per-launch seed marker for session-group collapse, mirrored from Sidebar.tsx.
@@ -130,13 +137,24 @@ const baseProps = {
   selectedWorkspaceId: null,
   detectedIdes: [],
   defaultIde: null,
-  showPriority: false
+  showPriority: false,
 };
 
 // Section order assertions: does `later` sit after `earlier` in the rendered
 // document? Reads the live DOM order rather than any class or index.
 function rendersAfter(earlier: HTMLElement, later: HTMLElement): boolean {
   return Boolean(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING);
+}
+
+// The nearest element with this test id that wraps `element`. Wrappers come
+// before their contents in document order, so the last match is the closest.
+function innermostContaining(testId: string, element: HTMLElement): HTMLElement {
+  const match = screen
+    .getAllByTestId(testId)
+    .filter((candidate) => candidate.contains(element))
+    .at(-1);
+  if (!match) throw new Error(`expected a ${testId} around the element`);
+  return match;
 }
 
 function getProjectButtonOrder(): string[] {
@@ -188,7 +206,7 @@ describe("Sidebar — localStorage write isolation", () => {
           defaultIde={null}
           showPriority={false}
         />
-      </StrictMode>
+      </StrictMode>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
@@ -196,7 +214,9 @@ describe("Sidebar — localStorage write isolation", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Hide Argmax chats" }));
 
-    const collapsedWrites = setItemSpy.mock.calls.filter(([key]) => key === collapsedProjectsStorageKey);
+    const collapsedWrites = setItemSpy.mock.calls.filter(
+      ([key]) => key === collapsedProjectsStorageKey,
+    );
     expect(collapsedWrites).toHaveLength(1);
     expect(collapsedWrites[0]?.[1]).toBe(JSON.stringify(["project-1"]));
   });
@@ -224,7 +244,7 @@ describe("Sidebar — localStorage write isolation", () => {
           defaultIde={null}
           showPriority={false}
         />
-      </StrictMode>
+      </StrictMode>,
     );
 
     setItemSpy.mockClear();
@@ -232,7 +252,9 @@ describe("Sidebar — localStorage write isolation", () => {
     const chevron = screen.getByRole("button", { name: "Show Argmax chats" });
     fireEvent.click(chevron);
 
-    const collapsedWrites = setItemSpy.mock.calls.filter(([key]) => key === collapsedProjectsStorageKey);
+    const collapsedWrites = setItemSpy.mock.calls.filter(
+      ([key]) => key === collapsedProjectsStorageKey,
+    );
     expect(collapsedWrites).toHaveLength(1);
     expect(collapsedWrites[0]?.[1]).toBe(JSON.stringify([]));
   });
@@ -255,7 +277,7 @@ describe("Sidebar — project sort menu", () => {
     render(
       <StrictMode>
         <Sidebar {...baseProps} snapshot={multiProjectSnapshot} />
-      </StrictMode>
+      </StrictMode>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Sidebar view options" }));
@@ -298,8 +320,9 @@ describe("Sidebar — project sort menu", () => {
 
     // Only project groups are draggable. The "Projects" header and the
     // Pinned / Priority sections share the class but never reorder.
-    const groups = document.querySelectorAll<HTMLElement>('.project-group[draggable="true"]');
+    const groups = screen.getAllByTestId("sidebar-project-group");
     expect(groups).toHaveLength(3);
+    for (const group of groups) expect(group).toHaveAttribute("draggable", "true");
     const zebra = groups[0];
     const mango = groups[2];
     if (!zebra || !mango) throw new Error("expected project groups to render");
@@ -309,7 +332,7 @@ describe("Sidebar — project sort menu", () => {
       effectAllowed: "",
       dropEffect: "",
       setData: vi.fn(),
-      getData: vi.fn()
+      getData: vi.fn(),
     };
     fireEvent.dragStart(mango, { dataTransfer });
     fireEvent.dragOver(zebra, { dataTransfer });
@@ -317,7 +340,9 @@ describe("Sidebar — project sort menu", () => {
 
     // Mode flipped to manual and the drag order was persisted.
     expect(window.localStorage.getItem(projectSortModeStorageKey)).toBe(JSON.stringify("manual"));
-    const persistedOrder = JSON.parse(window.localStorage.getItem(projectOrderStorageKey) ?? "[]") as string[];
+    const persistedOrder = JSON.parse(
+      window.localStorage.getItem(projectOrderStorageKey) ?? "[]",
+    ) as string[];
     expect(persistedOrder[0]).toBe("project-mango");
 
     // The rendered order reflects the drag — Mango is now first.
@@ -339,7 +364,9 @@ describe("Sidebar — project removal menu", () => {
 
   it("pins a project above the sort order and keeps it pinned across mounts", () => {
     window.localStorage.setItem(projectSortModeStorageKey, JSON.stringify("alphabetical"));
-    const { unmount } = render(<Sidebar {...baseProps} snapshot={multiProjectSnapshot} onRemoveProject={vi.fn()} />);
+    const { unmount } = render(
+      <Sidebar {...baseProps} snapshot={multiProjectSnapshot} onRemoveProject={vi.fn()} />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Actions for Zebra" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Pin Project" }));
@@ -365,7 +392,7 @@ describe("Sidebar — project removal menu", () => {
     expect(overlaysSnapshot().settingsNavigation).toMatchObject({
       group: "projects",
       sectionId: "settings-project-folders",
-      projectId: "project-zebra"
+      projectId: "project-zebra",
     });
     expect(screen.queryByRole("menu", { name: "Zebra actions" })).not.toBeInTheDocument();
   });
@@ -373,7 +400,9 @@ describe("Sidebar — project removal menu", () => {
   it("opens a confirm step in-place and calls onRemoveProject only after confirmation", () => {
     const onRemoveProject = vi.fn();
 
-    render(<Sidebar {...baseProps} snapshot={multiProjectSnapshot} onRemoveProject={onRemoveProject} />);
+    render(
+      <Sidebar {...baseProps} snapshot={multiProjectSnapshot} onRemoveProject={onRemoveProject} />,
+    );
 
     // First click on the per-project "Actions" trigger — opens the menu.
     fireEvent.click(screen.getByRole("button", { name: "Actions for Zebra" }));
@@ -445,8 +474,8 @@ describe("Sidebar — workspaces without sessions", () => {
           prCreatedAt: null,
           prMergedAt: null,
           prCheckState: null,
-          prActivityAt: null
-        }
+          prActivityAt: null,
+        },
       ],
       sessions: [
         {
@@ -468,9 +497,9 @@ describe("Sidebar — workspaces without sessions", () => {
           tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           contextTokens: 0,
           imported: false,
-          launchKind: "agent"
-        }
-      ]
+          launchKind: "agent",
+        },
+      ],
     };
 
     render(<Sidebar {...baseProps} snapshot={snapshotWithOrphan} />);
@@ -507,13 +536,13 @@ describe("Sidebar — workspaces without sessions", () => {
       tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextTokens: 0,
       imported: false,
-      launchKind: "agent"
+      launchKind: "agent",
     };
     const withMultitask: DashboardSnapshot = {
       ...snapshot,
       workspaces: [
         { ...parentWorkspace, state: "complete" },
-        { ...parentWorkspace, id: "workspace-child", taskLabel: "Fix the heading" }
+        { ...parentWorkspace, id: "workspace-child", taskLabel: "Fix the heading" },
       ],
       sessions: [
         settledSession,
@@ -524,16 +553,18 @@ describe("Sidebar — workspaces without sessions", () => {
           state: "running",
           completedAt: null,
           launchKind: "multitask",
-          launchedBySessionId: "session-parent"
-        }
-      ]
+          launchedBySessionId: "session-parent",
+        },
+      ],
     };
 
     render(<Sidebar {...baseProps} snapshot={withMultitask} />);
     fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
 
     const parentRow = screen.getByRole("button", { name: "Build dashboard" });
-    expect(parentRow.querySelector('.status-marker[data-working="true"]')).not.toBeNull();
+    const marker = within(parentRow).getByTestId("working-nest");
+    expect(marker).toHaveClass("status-marker");
+    expect(marker).toHaveAttribute("data-working", "true");
     const children = screen.getByRole("group", { name: "Chats launched from Build dashboard" });
     expect(within(children).getByRole("button", { name: /Fix the heading/ })).toBeInTheDocument();
   });
@@ -573,7 +604,7 @@ describe("Sidebar — date (sessions) view mode", () => {
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextTokens: 0,
     imported: false,
-    launchKind: "agent"
+    launchKind: "agent",
   });
 
   const workspace = (id: string, projectId: string, taskLabel: string, lastActivityAt: string) => ({
@@ -599,7 +630,7 @@ describe("Sidebar — date (sessions) view mode", () => {
     prCreatedAt: null,
     prMergedAt: null,
     prCheckState: null,
-    prActivityAt: null
+    prActivityAt: null,
   });
 
   const TODAY = new Date(2026, 5, 5, 9, 0, 0).toISOString();
@@ -611,9 +642,9 @@ describe("Sidebar — date (sessions) view mode", () => {
     projects: [multiProjectSnapshot.projects[0], multiProjectSnapshot.projects[1]],
     workspaces: [
       workspace("w-zebra", "project-zebra", "Zebra task today", TODAY),
-      workspace("w-argmax", "project-argmax", "Argmax task in april", APRIL)
+      workspace("w-argmax", "project-argmax", "Argmax task in april", APRIL),
     ],
-    sessions: [session("w-zebra", TODAY), session("w-argmax", APRIL)]
+    sessions: [session("w-zebra", TODAY), session("w-argmax", APRIL)],
   };
 
   beforeEach(() => {
@@ -663,7 +694,7 @@ describe("Sidebar — date (sessions) view mode", () => {
       workspace("w-today", "project-zebra", "Task today", TODAY),
       workspace("w-yesterday", "project-zebra", "Task yesterday", YESTERDAY),
       workspace("w-week", "project-zebra", "Task this week", THIS_WEEK),
-      workspace("w-older", "project-zebra", "Task long ago", APRIL)
+      workspace("w-older", "project-zebra", "Task long ago", APRIL),
     ];
 
     render(
@@ -672,9 +703,9 @@ describe("Sidebar — date (sessions) view mode", () => {
         snapshot={{
           ...viewSnapshot,
           workspaces,
-          sessions: workspaces.map((row) => session(row.id, row.lastActivityAt))
+          sessions: workspaces.map((row) => session(row.id, row.lastActivityAt)),
         }}
-      />
+      />,
     );
 
     const today = screen.getByText("Today");
@@ -699,18 +730,19 @@ describe("Sidebar — date (sessions) view mode", () => {
       ...viewSnapshot,
       workspaces: [
         { ...workspace("w-zebra", "project-zebra", "Zebra task today", TODAY), pinned: true },
-        workspace("w-argmax", "project-argmax", "Argmax task in april", APRIL)
+        workspace("w-argmax", "project-argmax", "Argmax task in april", APRIL),
       ],
-      sessions: [session("w-zebra", TODAY), session("w-argmax", APRIL)]
+      sessions: [session("w-zebra", TODAY), session("w-argmax", APRIL)],
     };
 
-    const { container } = render(<Sidebar {...baseProps} snapshot={pinnedSnapshot} />);
+    render(<Sidebar {...baseProps} snapshot={pinnedSnapshot} />);
 
     // The pinned session renders inside the Pinned section.
-    const pinnedGroup = container.querySelector(".session-pinned-group");
-    expect(pinnedGroup).not.toBeNull();
-    expect(within(pinnedGroup as HTMLElement).getByText("Pinned")).toBeInTheDocument();
-    expect(within(pinnedGroup as HTMLElement).getByRole("button", { name: /Zebra task today/ })).toBeInTheDocument();
+    const pinnedGroup = screen.getByTestId("sidebar-pinned-group");
+    expect(within(pinnedGroup).getByText("Pinned")).toBeInTheDocument();
+    expect(
+      within(pinnedGroup).getByRole("button", { name: /Zebra task today/ }),
+    ).toBeInTheDocument();
 
     // It's pulled out of its date bucket — it was the only Today session, so the
     // Today bucket is gone, and it appears exactly once (not duplicated).
@@ -726,13 +758,14 @@ describe("Sidebar — date (sessions) view mode", () => {
       ...viewSnapshot,
       workspaces: [
         { ...workspace("w-a", "project-zebra", "Alpha chat", TODAY), pinned: true },
-        { ...workspace("w-b", "project-zebra", "Bravo chat", APRIL), pinned: true }
+        { ...workspace("w-b", "project-zebra", "Bravo chat", APRIL), pinned: true },
       ],
-      sessions: [session("w-a", TODAY), session("w-b", APRIL)]
+      sessions: [session("w-a", TODAY), session("w-b", APRIL)],
     };
 
-    const { container } = render(<Sidebar {...baseProps} snapshot={pinnedSnapshot} />);
-    const pinnedRows = (): Element[] => [...container.querySelectorAll(".session-pinned-group .session-row-wrap")];
+    render(<Sidebar {...baseProps} snapshot={pinnedSnapshot} />);
+    const pinnedRows = (): HTMLElement[] =>
+      within(screen.getByTestId("sidebar-pinned-group")).getAllByTestId("sidebar-pinned-row");
     const pinnedNames = (): string[] => pinnedRows().map((row) => row.textContent ?? "");
     expect(pinnedNames()[0]).toContain("Alpha chat");
 
@@ -743,8 +776,10 @@ describe("Sidebar — date (sessions) view mode", () => {
     fireEvent.drop(rows[0], { dataTransfer: data });
 
     expect(pinnedNames()[0]).toContain("Bravo chat");
-    expect(JSON.parse(window.localStorage.getItem("argmax.sidebar.workspaceOrder") ?? "{}")).toEqual({
-      pinned: ["w-b", "w-a"]
+    expect(
+      JSON.parse(window.localStorage.getItem("argmax.sidebar.workspaceOrder") ?? "{}"),
+    ).toEqual({
+      pinned: ["w-b", "w-a"],
     });
   });
 
@@ -753,12 +788,17 @@ describe("Sidebar — date (sessions) view mode", () => {
 
     // 12 sessions, all Today → over the 5-row cap.
     const workspaces = Array.from({ length: 12 }, (_, i) =>
-      workspace(`w-${i}`, "project-zebra", `Today task ${i}`, new Date(2026, 5, 5, 6, i).toISOString())
+      workspace(
+        `w-${i}`,
+        "project-zebra",
+        `Today task ${i}`,
+        new Date(2026, 5, 5, 6, i).toISOString(),
+      ),
     );
     const overflowSnapshot: DashboardSnapshot = {
       ...viewSnapshot,
       workspaces,
-      sessions: workspaces.map((w) => session(w.id, w.lastActivityAt))
+      sessions: workspaces.map((w) => session(w.id, w.lastActivityAt)),
     };
 
     render(<Sidebar {...baseProps} snapshot={overflowSnapshot} />);
@@ -773,19 +813,26 @@ describe("Sidebar — date (sessions) view mode", () => {
     fireEvent.click(screen.getByRole("button", { name: "Hide Today chats" }));
     expect(screen.queryByRole("button", { name: /Today task/ })).toBeNull();
     // Collapse state is persisted.
-    expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify(["today"]));
+    expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(
+      JSON.stringify(["today"]),
+    );
   });
 
   it("show less returns an overflowed date bucket to five rows when the selected session is older", () => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
 
     const workspaces = Array.from({ length: 12 }, (_, i) =>
-      workspace(`w-${i}`, "project-zebra", `Today task ${i}`, new Date(2026, 5, 5, 6, i).toISOString())
+      workspace(
+        `w-${i}`,
+        "project-zebra",
+        `Today task ${i}`,
+        new Date(2026, 5, 5, 6, i).toISOString(),
+      ),
     );
     const overflowSnapshot: DashboardSnapshot = {
       ...viewSnapshot,
       workspaces,
-      sessions: workspaces.map((w) => session(w.id, w.lastActivityAt))
+      sessions: workspaces.map((w) => session(w.id, w.lastActivityAt)),
     };
 
     render(<Sidebar {...baseProps} selectedWorkspaceId="w-0" snapshot={overflowSnapshot} />);
@@ -804,12 +851,17 @@ describe("Sidebar — date (sessions) view mode", () => {
 
   it("show less returns an overflowed project to five rows when the selected session is older", () => {
     const workspaces = Array.from({ length: 12 }, (_, i) =>
-      workspace(`w-${i}`, "project-zebra", `Zebra task ${i}`, new Date(2026, 5, 5, 6, i).toISOString())
+      workspace(
+        `w-${i}`,
+        "project-zebra",
+        `Zebra task ${i}`,
+        new Date(2026, 5, 5, 6, i).toISOString(),
+      ),
     );
     const overflowSnapshot: DashboardSnapshot = {
       ...viewSnapshot,
       workspaces,
-      sessions: workspaces.map((w) => session(w.id, w.lastActivityAt))
+      sessions: workspaces.map((w) => session(w.id, w.lastActivityAt)),
     };
 
     render(<Sidebar {...baseProps} selectedWorkspaceId="w-0" snapshot={overflowSnapshot} />);
@@ -846,7 +898,7 @@ describe("Sidebar — date (sessions) view mode", () => {
     const seeded: DashboardSnapshot = {
       ...viewSnapshot,
       workspaces: [workspace("w-seed", "project-zebra", "Seed task", THIS_WEEK)],
-      sessions: [session("w-seed", THIS_WEEK)]
+      sessions: [session("w-seed", THIS_WEEK)],
     };
 
     const { rerender } = render(<Sidebar {...baseProps} snapshot={seeded} />);
@@ -858,7 +910,9 @@ describe("Sidebar — date (sessions) view mode", () => {
     // Older is a history dump, not a launch confirmation. A stale row landing
     // in the same delta must not unfold it.
     expect(screen.queryByRole("button", { name: /Argmax task in april/ })).toBeNull();
-    expect(JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]")).toEqual(["older"]);
+    expect(JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]")).toEqual([
+      "older",
+    ]);
   });
 
   it("does not auto-expand Older when its session is selected", () => {
@@ -868,7 +922,9 @@ describe("Sidebar — date (sessions) view mode", () => {
     render(<Sidebar {...baseProps} selectedWorkspaceId="w-argmax" snapshot={viewSnapshot} />);
 
     expect(screen.queryByRole("button", { name: /Argmax task in april/ })).toBeNull();
-    expect(JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]")).toEqual(["older"]);
+    expect(JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]")).toEqual([
+      "older",
+    ]);
   });
 
   it("does not re-expand a group when a workspace drops out of the snapshot and returns", () => {
@@ -882,13 +938,15 @@ describe("Sidebar — date (sessions) view mode", () => {
     const withoutToday: DashboardSnapshot = {
       ...viewSnapshot,
       workspaces: viewSnapshot.workspaces.filter((row) => row.id !== "w-zebra"),
-      sessions: viewSnapshot.sessions.filter((row) => row.workspaceId !== "w-zebra")
+      sessions: viewSnapshot.sessions.filter((row) => row.workspaceId !== "w-zebra"),
     };
     rerender(<Sidebar {...baseProps} snapshot={withoutToday} />);
     rerender(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
 
     expect(screen.queryByRole("button", { name: /Zebra task today/ })).toBeNull();
-    expect(JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]")).toContain("today");
+    expect(
+      JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]"),
+    ).toContain("today");
   });
 
   it("toggles a date bucket by clicking the row, not just the chevron", () => {
@@ -901,7 +959,9 @@ describe("Sidebar — date (sessions) view mode", () => {
     expect(screen.getByRole("button", { name: /Zebra task today/ })).toBeInTheDocument();
     fireEvent.click(screen.getByText("Today"));
     expect(screen.queryByRole("button", { name: /Zebra task today/ })).toBeNull();
-    expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify(["today"]));
+    expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(
+      JSON.stringify(["today"]),
+    );
 
     // Clicking the row again expands it back.
     fireEvent.click(screen.getByText("Today"));
@@ -914,8 +974,7 @@ describe("Sidebar — date (sessions) view mode", () => {
     render(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
 
     const zebraName = screen.getByRole("button", { name: "Zebra" });
-    const zebraRow = zebraName.closest(".project-row");
-    if (!zebraRow) throw new Error("expected a project row for Zebra");
+    const zebraRow = innermostContaining("sidebar-header-row", zebraName);
 
     expect(screen.queryByRole("button", { name: /Zebra task today/ })).toBeNull();
     fireEvent.click(zebraRow);
@@ -946,7 +1005,9 @@ describe("Sidebar — date (sessions) view mode", () => {
     // The trigger follows the relocated cluster onto the Today header, so the
     // user can switch back from there.
     const trigger = screen.getByRole("button", { name: "Sidebar view options" });
-    expect(trigger.closest(".project-row")).toBe(screen.getByText("Today").closest(".project-row"));
+    expect(innermostContaining("sidebar-header-row", trigger)).toBe(
+      innermostContaining("sidebar-header-row", screen.getByText("Today")),
+    );
     fireEvent.click(trigger);
     const relocated = screen.getByRole("menu", { name: "Sidebar view options" });
     fireEvent.click(within(relocated).getByRole("menuitemradio", { name: "Projects" }));
@@ -956,9 +1017,7 @@ describe("Sidebar — date (sessions) view mode", () => {
 
   // Structural helper: which header row hosts a given label?
   function headerRowFor(label: string): HTMLElement {
-    const row = screen.getByText(label).closest(".project-row");
-    if (!(row instanceof HTMLElement)) throw new Error(`expected a header row for ${label}`);
-    return row;
+    return innermostContaining("sidebar-header-row", screen.getByText(label));
   }
 
   it("hosts the new-session and view-options actions on the newest recency header", () => {
@@ -985,8 +1044,10 @@ describe("Sidebar — date (sessions) view mode", () => {
     // the … / + cluster sits on the same line the recency header uses.
     const header = headerRowFor("Projects");
     expect(within(header).getByRole("button", { name: "Add Project" })).toBeInTheDocument();
-    expect(within(header).getByRole("button", { name: "Sidebar view options" })).toBeInTheDocument();
-    expect(document.querySelector(".rail-heading")).toBeNull();
+    expect(
+      within(header).getByRole("button", { name: "Sidebar view options" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("rail-heading")).toBeNull();
   });
 
   it("falls through to the next bucket when the newest one is empty", () => {
@@ -997,8 +1058,8 @@ describe("Sidebar — date (sessions) view mode", () => {
       ...viewSnapshot,
       workspaces: [
         { ...workspace("w-zebra", "project-zebra", "Zebra task today", TODAY), pinned: true },
-        workspace("w-argmax", "project-argmax", "Argmax task in april", APRIL)
-      ]
+        workspace("w-argmax", "project-argmax", "Argmax task in april", APRIL),
+      ],
     };
 
     render(<Sidebar {...baseProps} snapshot={pinnedSnapshot} />);
@@ -1021,7 +1082,7 @@ describe("Sidebar — date (sessions) view mode", () => {
       workspaces: [
         { ...workspace("w-pinned", "project-zebra", "Pinned task", TODAY), pinned: true },
         workspace("w-blocked", "project-zebra", "Blocked task", TODAY),
-        workspace("w-plain", "project-zebra", "Plain task", TODAY)
+        workspace("w-plain", "project-zebra", "Plain task", TODAY),
       ],
       sessions: [
         session("w-pinned", TODAY),
@@ -1032,10 +1093,10 @@ describe("Sidebar — date (sessions) view mode", () => {
           state: "waiting" as const,
           attention: "blocked" as const,
           attentionChangedAt: RECENTLY,
-          lastActivityAt: RECENTLY
+          lastActivityAt: RECENTLY,
         },
-        session("w-plain", TODAY)
-      ]
+        session("w-plain", TODAY),
+      ],
     };
 
     render(<Sidebar {...baseProps} showPriority snapshot={attentionSnapshot} />);
@@ -1046,7 +1107,9 @@ describe("Sidebar — date (sessions) view mode", () => {
       expect(within(row).queryByRole("button", { name: "Sidebar view options" })).toBeNull();
     }
 
-    expect(within(headerRowFor("Today")).getByRole("button", { name: "Add Project" })).toBeInTheDocument();
+    expect(
+      within(headerRowFor("Today")).getByRole("button", { name: "Add Project" }),
+    ).toBeInTheDocument();
   });
 
   it("does not collapse the newest group when the new-session action is clicked", () => {
@@ -1072,7 +1135,7 @@ describe("Sidebar — Priority section", () => {
   const session = (
     workspaceId: string,
     attention: "normal" | "blocked" | "review-ready",
-    attentionChangedAt: string
+    attentionChangedAt: string,
   ) => ({
     id: `session-${workspaceId}`,
     workspaceId,
@@ -1093,7 +1156,7 @@ describe("Sidebar — Priority section", () => {
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextTokens: 0,
     imported: false,
-    launchKind: "agent"
+    launchKind: "agent",
   });
 
   const workspace = (id: string, taskLabel: string, priorityDismissedAt?: string) => ({
@@ -1119,13 +1182,16 @@ describe("Sidebar — Priority section", () => {
     prCreatedAt: null,
     prMergedAt: null,
     prCheckState: null,
-    prActivityAt: null
+    prActivityAt: null,
   });
 
   const prioritySnapshot: DashboardSnapshot = {
     ...snapshot,
     workspaces: [workspace("w-blocked", "Blocked task"), workspace("w-calm", "Calm task")],
-    sessions: [session("w-blocked", "blocked", MINUTES_AGO_10), session("w-calm", "normal", MINUTES_AGO_10)]
+    sessions: [
+      session("w-blocked", "blocked", MINUTES_AGO_10),
+      session("w-calm", "normal", MINUTES_AGO_10),
+    ],
   };
 
   beforeEach(() => {
@@ -1156,16 +1222,23 @@ describe("Sidebar — Priority section", () => {
     const data = {
       ...prioritySnapshot,
       workspaces: [
-        { ...workspace("w-review", "Review task"), lastViewedAt: MINUTES_AGO_15, lastActivityAt: MINUTES_AGO_5 }
+        {
+          ...workspace("w-review", "Review task"),
+          lastViewedAt: MINUTES_AGO_15,
+          lastActivityAt: MINUTES_AGO_5,
+        },
       ],
-      sessions: [session("w-review", "review-ready", MINUTES_AGO_5)]
+      sessions: [session("w-review", "review-ready", MINUTES_AGO_5)],
     };
     const props = { ...baseProps, showPriority: true, snapshot: data };
     const { rerender } = render(<Sidebar {...props} selectedWorkspaceId={null} />);
     expect(screen.getByRole("button", { name: /Review task/ })).toBeInTheDocument();
     rerender(<Sidebar {...props} selectedWorkspaceId="w-review" />);
     expect(screen.getByRole("button", { name: /Review task/ })).toBeInTheDocument();
-    const readData = { ...data, workspaces: data.workspaces.map((row) => ({ ...row, lastViewedAt: MINUTES_AGO_5 })) };
+    const readData = {
+      ...data,
+      workspaces: data.workspaces.map((row) => ({ ...row, lastViewedAt: MINUTES_AGO_5 })),
+    };
     rerender(<Sidebar {...props} snapshot={readData} selectedWorkspaceId={null} />);
     expect(screen.queryByText("Priority")).not.toBeInTheDocument();
     rerender(<Sidebar {...props} snapshot={readData} selectedWorkspaceId="w-review" />);
@@ -1182,11 +1255,17 @@ describe("Sidebar — Priority section", () => {
       ...prioritySnapshot,
       workspaces: [
         workspace("w-blocked", "Blocked task"),
-        { ...workspace("w-review", "Review task"), priorityAddedAt: MINUTES_AGO_10 }
+        { ...workspace("w-review", "Review task"), priorityAddedAt: MINUTES_AGO_10 },
       ],
-      sessions: [session("w-blocked", "blocked", MINUTES_AGO_10), session("w-review", "review-ready", MINUTES_AGO_5)]
+      sessions: [
+        session("w-blocked", "blocked", MINUTES_AGO_10),
+        session("w-review", "review-ready", MINUTES_AGO_5),
+      ],
     };
-    window.localStorage.setItem("argmax.sidebar.workspaceOrder", JSON.stringify({ pinned: ["w-pin"] }));
+    window.localStorage.setItem(
+      "argmax.sidebar.workspaceOrder",
+      JSON.stringify({ pinned: ["w-pin"] }),
+    );
     const props = { ...baseProps, showPriority: true, snapshot: orderedSnapshot };
     const { unmount } = render(<Sidebar {...props} />);
     const names = () =>
@@ -1195,8 +1274,14 @@ describe("Sidebar — Priority section", () => {
         .map((row) => row.getAttribute("title")?.split(" — ")[0]);
     expect(names()).toEqual(["Blocked task", "Review task"]);
 
-    const source = screen.getByRole("button", { name: /Review task/ }).closest("[draggable]")!;
-    const target = screen.getByRole("button", { name: /Blocked task/ }).closest("[draggable]")!;
+    const source = innermostContaining(
+      "sidebar-priority-row",
+      screen.getByRole("button", { name: /Review task/ }),
+    );
+    const target = innermostContaining(
+      "sidebar-priority-row",
+      screen.getByRole("button", { name: /Blocked task/ }),
+    );
     expect(source).toHaveAttribute("draggable", "true");
     const dataTransfer = { setData: vi.fn(), effectAllowed: "", dropEffect: "" };
     fireEvent.dragStart(source, { dataTransfer });
@@ -1206,7 +1291,7 @@ describe("Sidebar — Priority section", () => {
     expect(names()).toEqual(["Review task", "Blocked task"]);
     expect(JSON.parse(window.localStorage.getItem("argmax.sidebar.workspaceOrder")!)).toEqual({
       pinned: ["w-pin"],
-      priority: ["w-review", "w-blocked"]
+      priority: ["w-review", "w-blocked"],
     });
 
     unmount();
@@ -1220,10 +1305,10 @@ describe("Sidebar — Priority section", () => {
           sessions: [
             session("w-blocked", "blocked", MINUTES_AGO_5),
             session("w-review", "normal", MINUTES_AGO_5),
-            { ...session("w-new", "normal", MINUTES_AGO_5), state: "running" }
-          ]
+            { ...session("w-new", "normal", MINUTES_AGO_5), state: "running" },
+          ],
         }}
-      />
+      />,
     );
     expect(names()).toEqual(["Review task", "Blocked task", "New task"]);
   });
@@ -1237,26 +1322,40 @@ describe("Sidebar — Priority section", () => {
         showPriority
         snapshot={{
           ...prioritySnapshot,
-          workspaces: [workspace("w-blocked", "Blocked task"), workspace("w-second", "Second task")],
-          sessions: [session("w-blocked", "blocked", MINUTES_AGO_5), session("w-second", "blocked", MINUTES_AGO_10)]
+          workspaces: [
+            workspace("w-blocked", "Blocked task"),
+            workspace("w-second", "Second task"),
+          ],
+          sessions: [
+            session("w-blocked", "blocked", MINUTES_AGO_5),
+            session("w-second", "blocked", MINUTES_AGO_10),
+          ],
         }}
-      />
+      />,
     );
     const source = screen.getByRole("button", { name: /Second task/ });
     const target = screen.getByRole("button", { name: /Blocked task/ });
-    const rect = vi.spyOn(target.parentElement!, "getBoundingClientRect").mockReturnValue({
-      left: 0,
-      right: 200,
-      top: 0,
-      bottom: 40,
-      x: 0,
-      y: 0,
-      width: 200,
-      height: 40,
-      toJSON: () => ({})
-    });
+    const rect = vi
+      .spyOn(innermostContaining("session-row", target), "getBoundingClientRect")
+      .mockReturnValue({
+        left: 0,
+        right: 200,
+        top: 0,
+        bottom: 40,
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 40,
+        toJSON: () => ({}),
+      });
     const pointer = (type: string, clientY: number) => {
-      const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: 30, clientY });
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 30,
+        clientY,
+      });
       Object.defineProperty(event, "pointerId", { value: 7 });
       return event;
     };
@@ -1268,7 +1367,7 @@ describe("Sidebar — Priority section", () => {
       expect(onOpenWorkspaceChat).not.toHaveBeenCalled();
       expect(screen.getAllByRole("button", { name: /Blocked task|Second task/ })[0]).toBe(source);
       expect(JSON.parse(window.localStorage.getItem("argmax.sidebar.workspaceOrder")!)).toEqual({
-        priority: ["w-second", "w-blocked"]
+        priority: ["w-second", "w-blocked"],
       });
     } finally {
       rect.mockRestore();
@@ -1297,19 +1396,26 @@ describe("Sidebar — Priority section", () => {
         {
           ...workspace("w-unread", "Unread task"),
           priorityAddedAt: MINUTES_AGO_15,
-          lastViewedAt: "2026-05-12T14:00:00.000Z"
-        }
+          lastViewedAt: "2026-05-12T14:00:00.000Z",
+        },
       ],
       sessions: [
         ...prioritySnapshot.sessions,
         { ...session("w-running", "normal", MINUTES_AGO_10), state: "running" },
-        session("w-unread", "normal", MINUTES_AGO_10)
-      ]
+        session("w-unread", "normal", MINUTES_AGO_10),
+      ],
     };
 
-    render(<Sidebar {...baseProps} showPriority onClearPriority={onClearPriority} snapshot={mixedSnapshot} />);
+    render(
+      <Sidebar
+        {...baseProps}
+        showPriority
+        onClearPriority={onClearPriority}
+        snapshot={mixedSnapshot}
+      />,
+    );
 
-    const header = screen.getByText("Priority").parentElement!.parentElement!;
+    const header = innermostContaining("sidebar-header-row", screen.getByText("Priority"));
     fireEvent.click(within(header).getByRole("button", { name: "Clear Priority" }));
 
     // A running chat stays in Priority; an unread one clears with the rest.
@@ -1336,31 +1442,42 @@ describe("Sidebar — Priority section", () => {
       ...prioritySnapshot,
       workspaces: [
         ...prioritySnapshot.workspaces,
-        { ...workspace("w-pinned-blocked", "Pinned blocked"), pinned: true }
+        { ...workspace("w-pinned-blocked", "Pinned blocked"), pinned: true },
       ],
-      sessions: [...prioritySnapshot.sessions, session("w-pinned-blocked", "blocked", MINUTES_AGO_10)]
+      sessions: [
+        ...prioritySnapshot.sessions,
+        session("w-pinned-blocked", "blocked", MINUTES_AGO_10),
+      ],
     };
 
-    const { container } = render(<Sidebar {...baseProps} showPriority snapshot={pinnedAttentionSnapshot} />);
+    render(<Sidebar {...baseProps} showPriority snapshot={pinnedAttentionSnapshot} />);
 
-    const pinnedGroup = container.querySelector(".session-pinned-group");
-    const priorityGroup = container.querySelector(".session-priority-group");
-    expect(pinnedGroup).not.toBeNull();
-    expect(priorityGroup).not.toBeNull();
-    expect(within(pinnedGroup as HTMLElement).getByRole("button", { name: /Pinned blocked/ })).toBeInTheDocument();
-    expect(within(priorityGroup as HTMLElement).getByRole("button", { name: /Blocked task/ })).toBeInTheDocument();
-    expect(within(priorityGroup as HTMLElement).queryByRole("button", { name: /Pinned blocked/ })).toBeNull();
+    const pinnedGroup = screen.getByTestId("sidebar-pinned-group");
+    const priorityGroup = screen.getByTestId("sidebar-priority-group");
+    expect(within(pinnedGroup).getByRole("button", { name: /Pinned blocked/ })).toBeInTheDocument();
+    expect(within(priorityGroup).getByRole("button", { name: /Blocked task/ })).toBeInTheDocument();
+    expect(within(priorityGroup).queryByRole("button", { name: /Pinned blocked/ })).toBeNull();
   });
 
   it("does not offer Add to priority on a pinned row", () => {
     const onAddToPriority = vi.fn();
     const pinnedSnapshot: DashboardSnapshot = {
       ...prioritySnapshot,
-      workspaces: [...prioritySnapshot.workspaces, { ...workspace("w-pinned", "Pinned task"), pinned: true }],
-      sessions: [...prioritySnapshot.sessions, session("w-pinned", "normal", MINUTES_AGO_10)]
+      workspaces: [
+        ...prioritySnapshot.workspaces,
+        { ...workspace("w-pinned", "Pinned task"), pinned: true },
+      ],
+      sessions: [...prioritySnapshot.sessions, session("w-pinned", "normal", MINUTES_AGO_10)],
     };
 
-    render(<Sidebar {...baseProps} showPriority onAddToPriority={onAddToPriority} snapshot={pinnedSnapshot} />);
+    render(
+      <Sidebar
+        {...baseProps}
+        showPriority
+        onAddToPriority={onAddToPriority}
+        snapshot={pinnedSnapshot}
+      />,
+    );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Pinned task/ }));
     expect(screen.queryByRole("menuitem", { name: "Add to Priority" })).toBeNull();
@@ -1373,7 +1490,9 @@ describe("Sidebar — Priority section", () => {
     // The chevron sits inside the label cluster so it hugs the word, matching
     // every recency header.
     const chevron = screen.getByRole("button", { name: "Hide Priority chats" });
-    expect(chevron.closest(".session-date-label")).toBe(screen.getByText("Priority").closest(".session-date-label"));
+    const label = screen.getByTestId("sidebar-priority-label");
+    expect(label).toContainElement(chevron);
+    expect(label).toContainElement(screen.getByText("Priority"));
 
     fireEvent.click(chevron);
     expect(screen.queryByRole("button", { name: /Blocked task/ })).toBeNull();
@@ -1388,7 +1507,9 @@ describe("Sidebar — Priority section", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Hide Priority chats" }));
 
-    expect(JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]")).toContain("priority");
+    expect(
+      JSON.parse(window.localStorage.getItem(collapsedDateGroupsStorageKey) ?? "[]"),
+    ).toContain("priority");
 
     cleanup();
     render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
@@ -1399,8 +1520,11 @@ describe("Sidebar — Priority section", () => {
   it("collapses Pinned the same way, and keeps it above Priority", () => {
     const pinnedSnapshot: DashboardSnapshot = {
       ...prioritySnapshot,
-      workspaces: [...prioritySnapshot.workspaces, { ...workspace("w-pinned", "Pinned task"), pinned: true }],
-      sessions: [...prioritySnapshot.sessions, session("w-pinned", "normal", MINUTES_AGO_10)]
+      workspaces: [
+        ...prioritySnapshot.workspaces,
+        { ...workspace("w-pinned", "Pinned task"), pinned: true },
+      ],
+      sessions: [...prioritySnapshot.sessions, session("w-pinned", "normal", MINUTES_AGO_10)],
     };
 
     render(<Sidebar {...baseProps} showPriority snapshot={pinnedSnapshot} />);
@@ -1419,7 +1543,12 @@ describe("Sidebar — Priority section", () => {
   it("marks a priority row done from the context menu", () => {
     const onRemoveFromPriority = vi.fn();
     render(
-      <Sidebar {...baseProps} showPriority onRemoveFromPriority={onRemoveFromPriority} snapshot={prioritySnapshot} />
+      <Sidebar
+        {...baseProps}
+        showPriority
+        onRemoveFromPriority={onRemoveFromPriority}
+        snapshot={prioritySnapshot}
+      />,
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Blocked task/ }));
@@ -1430,7 +1559,14 @@ describe("Sidebar — Priority section", () => {
 
   it("adds a non-priority row from the context menu", () => {
     const onAddToPriority = vi.fn();
-    render(<Sidebar {...baseProps} showPriority onAddToPriority={onAddToPriority} snapshot={prioritySnapshot} />);
+    render(
+      <Sidebar
+        {...baseProps}
+        showPriority
+        onAddToPriority={onAddToPriority}
+        snapshot={prioritySnapshot}
+      />,
+    );
 
     // The calm row sits in its project group; its menu offers Add, not Done.
     fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
@@ -1446,8 +1582,8 @@ describe("Sidebar — Priority section", () => {
       ...prioritySnapshot,
       workspaces: [
         workspace("w-blocked", "Blocked task"),
-        { ...workspace("w-calm", "Calm task"), priorityAddedAt: MINUTES_AGO_15 }
-      ]
+        { ...workspace("w-calm", "Calm task"), priorityAddedAt: MINUTES_AGO_15 },
+      ],
     };
     render(<Sidebar {...baseProps} showPriority snapshot={manualSnapshot} />);
 
@@ -1460,7 +1596,10 @@ describe("Sidebar — Priority section", () => {
   it("keeps an unresolved row after more than 30 minutes", () => {
     const quietSnapshot: DashboardSnapshot = {
       ...prioritySnapshot,
-      sessions: [session("w-blocked", "blocked", MINUTES_AGO_45), session("w-calm", "normal", MINUTES_AGO_45)]
+      sessions: [
+        session("w-blocked", "blocked", MINUTES_AGO_45),
+        session("w-calm", "normal", MINUTES_AGO_45),
+      ],
     };
     render(<Sidebar {...baseProps} showPriority snapshot={quietSnapshot} />);
     expect(screen.getByText("Priority")).toBeInTheDocument();
@@ -1487,8 +1626,8 @@ describe("Sidebar — Priority section", () => {
       workspaces: [
         // Dismissed after the attention change, so the row stays down.
         workspace("w-blocked", "Blocked task", MINUTES_AGO_5),
-        workspace("w-calm", "Calm task")
-      ]
+        workspace("w-calm", "Calm task"),
+      ],
     };
     render(<Sidebar {...baseProps} showPriority snapshot={dismissedSnapshot} />);
     expect(screen.queryByText("Priority")).toBeNull();
@@ -1497,7 +1636,11 @@ describe("Sidebar — Priority section", () => {
 
 describe("Sidebar — working rows in Priority", () => {
   const MINUTES_AGO_10 = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-  const workingWorkspace = (id: string, taskLabel: string, overrides: Record<string, unknown> = {}) => ({
+  const workingWorkspace = (
+    id: string,
+    taskLabel: string,
+    overrides: Record<string, unknown> = {},
+  ) => ({
     id,
     projectId: "project-1",
     taskLabel,
@@ -1521,7 +1664,7 @@ describe("Sidebar — working rows in Priority", () => {
     prActivityAt: null,
     icon: null,
     iconColor: null,
-    ...overrides
+    ...overrides,
   });
 
   const workingSession = (workspaceId: string, state: "running" | "complete" = "running") => ({
@@ -1544,7 +1687,7 @@ describe("Sidebar — working rows in Priority", () => {
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextTokens: 0,
     imported: false,
-    launchKind: "agent"
+    launchKind: "agent",
   });
 
   beforeEach(() => {
@@ -1567,9 +1710,9 @@ describe("Sidebar — working rows in Priority", () => {
         snapshot={{
           ...snapshot,
           workspaces: [workingWorkspace("w-live", "Live task")],
-          sessions: [workingSession("w-live")]
+          sessions: [workingSession("w-live")],
         }}
-      />
+      />,
     );
 
     expect(screen.getByText("Priority")).toBeInTheDocument();
@@ -1587,9 +1730,9 @@ describe("Sidebar — working rows in Priority", () => {
         snapshot={{
           ...snapshot,
           workspaces: [workingWorkspace("w-live", "Live task")],
-          sessions: [workingSession("w-live", "complete")]
+          sessions: [workingSession("w-live", "complete")],
         }}
-      />
+      />,
     );
 
     expect(screen.queryByText("Priority")).toBeNull();
@@ -1604,25 +1747,28 @@ describe("Sidebar — working rows in Priority", () => {
         showPriority
         snapshot={{
           ...snapshot,
-          workspaces: [workingWorkspace("w-live", "Live task"), workingWorkspace("w-failed", "Failed task")],
+          workspaces: [
+            workingWorkspace("w-live", "Live task"),
+            workingWorkspace("w-failed", "Failed task"),
+          ],
           sessions: [
             workingSession("w-live"),
             {
               ...workingSession("w-failed"),
               state: "failed" as const,
-              attention: "failed" as const
-            }
-          ]
+              attention: "failed" as const,
+            },
+          ],
         }}
-      />
+      />,
     );
 
     expect(screen.getByText("Priority")).toBeInTheDocument();
     expect(
       rendersAfter(
         screen.getByRole("button", { name: /Live task/ }),
-        screen.getByRole("button", { name: /Failed task/ })
-      )
+        screen.getByRole("button", { name: /Failed task/ }),
+      ),
     ).toBe(true);
     // Both rows left their project group: expanding it must not duplicate them.
     fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
@@ -1638,9 +1784,9 @@ describe("Sidebar — working rows in Priority", () => {
         snapshot={{
           ...snapshot,
           workspaces: [workingWorkspace("w-live", "Live task", { pinned: true })],
-          sessions: [workingSession("w-live")]
+          sessions: [workingSession("w-live")],
         }}
-      />
+      />,
     );
 
     expect(screen.queryByText("Priority")).toBeNull();
@@ -1663,7 +1809,7 @@ describe("Sidebar — working rows in Priority", () => {
             workingWorkspace("w-work-old", "Working Old", { lastActivityAt: t5 }),
             workingWorkspace("w-work-new", "Working New", { lastActivityAt: t1 }),
             workingWorkspace("w-attn-new", "Attn New", { lastActivityAt: t2 }),
-            workingWorkspace("w-attn-old", "Attn Old", { lastActivityAt: t8 })
+            workingWorkspace("w-attn-old", "Attn Old", { lastActivityAt: t8 }),
           ],
           sessions: [
             { ...workingSession("w-work-old"), lastActivityAt: t5 },
@@ -1673,7 +1819,7 @@ describe("Sidebar — working rows in Priority", () => {
               state: "waiting" as const,
               attention: "blocked" as const,
               attentionChangedAt: t2,
-              lastActivityAt: t2
+              lastActivityAt: t2,
             },
             {
               // Same reason as "Attn New", so this pair still tests recency
@@ -1682,11 +1828,11 @@ describe("Sidebar — working rows in Priority", () => {
               state: "waiting" as const,
               attention: "blocked" as const,
               attentionChangedAt: t8,
-              lastActivityAt: t8
-            }
-          ]
+              lastActivityAt: t8,
+            },
+          ],
         }}
-      />
+      />,
     );
 
     const btnWorkNew = screen.getByRole("button", { name: /Working New/ });
@@ -1714,7 +1860,7 @@ describe("Sidebar — working rows in Priority", () => {
           ...snapshot,
           workspaces: [
             workingWorkspace("w-blocked", "Fresh Blocked", { lastActivityAt: recent }),
-            workingWorkspace("w-approval", "Stale Approval", { lastActivityAt: older })
+            workingWorkspace("w-approval", "Stale Approval", { lastActivityAt: older }),
           ],
           sessions: [
             {
@@ -1722,25 +1868,25 @@ describe("Sidebar — working rows in Priority", () => {
               state: "waiting" as const,
               attention: "blocked" as const,
               attentionChangedAt: recent,
-              lastActivityAt: recent
+              lastActivityAt: recent,
             },
             {
               ...workingSession("w-approval", "complete"),
               state: "waiting" as const,
               attention: "approval-needed" as const,
               attentionChangedAt: older,
-              lastActivityAt: older
-            }
-          ]
+              lastActivityAt: older,
+            },
+          ],
         }}
-      />
+      />,
     );
 
     expect(
       rendersAfter(
         screen.getByRole("button", { name: /Stale Approval/ }),
-        screen.getByRole("button", { name: /Fresh Blocked/ })
-      )
+        screen.getByRole("button", { name: /Fresh Blocked/ }),
+      ),
     ).toBe(true);
   });
 });
@@ -1772,7 +1918,7 @@ describe("Sidebar — boot collapse defaults", () => {
     prCreatedAt: null,
     prMergedAt: null,
     prCheckState: null,
-    prActivityAt: null
+    prActivityAt: null,
   });
 
   const bootSession = (workspaceId: string, attention: "normal" | "blocked") => ({
@@ -1795,7 +1941,7 @@ describe("Sidebar — boot collapse defaults", () => {
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextTokens: 0,
     imported: false,
-    launchKind: "agent"
+    launchKind: "agent",
   });
 
   const bootSnapshot: DashboardSnapshot = {
@@ -1803,9 +1949,13 @@ describe("Sidebar — boot collapse defaults", () => {
     workspaces: [
       { ...bootWorkspace("w-pinned", "Pinned task", MINUTES_AGO_10), pinned: true },
       bootWorkspace("w-blocked", "Blocked task", MINUTES_AGO_10),
-      bootWorkspace("w-old", "Ancient task", LONG_AGO)
+      bootWorkspace("w-old", "Ancient task", LONG_AGO),
     ],
-    sessions: [bootSession("w-pinned", "normal"), bootSession("w-blocked", "blocked"), bootSession("w-old", "normal")]
+    sessions: [
+      bootSession("w-pinned", "normal"),
+      bootSession("w-blocked", "blocked"),
+      bootSession("w-old", "normal"),
+    ],
   };
 
   beforeEach(() => {
@@ -1875,10 +2025,15 @@ describe("Sidebar — repo-less chats", () => {
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextTokens: 0,
     imported: false,
-    launchKind: "agent"
+    launchKind: "agent",
   });
 
-  const workspace = (id: string, projectId: string, taskLabel: string, kind: "git" | "scratch") => ({
+  const workspace = (
+    id: string,
+    projectId: string,
+    taskLabel: string,
+    kind: "git" | "scratch",
+  ) => ({
     id,
     projectId,
     taskLabel,
@@ -1901,7 +2056,7 @@ describe("Sidebar — repo-less chats", () => {
     prCreatedAt: null,
     prMergedAt: null,
     prCheckState: null,
-    prActivityAt: null
+    prActivityAt: null,
   });
 
   const scratchProject = {
@@ -1912,7 +2067,7 @@ describe("Sidebar — repo-less chats", () => {
     defaultBranch: "main",
     settings: projectSettings,
     counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
-    latestActivityAt: TODAY
+    latestActivityAt: TODAY,
   };
 
   const sideChatSnapshot: DashboardSnapshot = {
@@ -1920,9 +2075,9 @@ describe("Sidebar — repo-less chats", () => {
     projects: [...snapshot.projects, scratchProject],
     workspaces: [
       workspace("w-repo", "project-1", "Repo task", "git"),
-      workspace("w-chat", SCRATCH_PROJECT_ID, "Explain quantization", "scratch")
+      workspace("w-chat", SCRATCH_PROJECT_ID, "Explain quantization", "scratch"),
     ],
-    sessions: [session("w-repo"), session("w-chat")]
+    sessions: [session("w-repo"), session("w-chat")],
   };
 
   beforeEach(() => {
@@ -1957,12 +2112,18 @@ describe("Sidebar — repo-less chats", () => {
 
     const today = screen.getByText("Today");
     expect(rendersAfter(today, screen.getByRole("button", { name: /Repo task/ }))).toBe(true);
-    expect(rendersAfter(today, screen.getByRole("button", { name: /Explain quantization/ }))).toBe(true);
+    expect(rendersAfter(today, screen.getByRole("button", { name: /Explain quantization/ }))).toBe(
+      true,
+    );
     // Calm chat and repo rows lead with the same resting dot; the subtitle says which is which.
     expect(
-      screen.getByRole("button", { name: /Explain quantization/ }).querySelector(".session-link-lead-dot")
-    ).not.toBeNull();
-    expect(screen.getByRole("button", { name: /Repo task/ }).querySelector(".session-link-lead-dot")).not.toBeNull();
+      within(screen.getByRole("button", { name: /Explain quantization/ })).getByTestId(
+        "session-lead-dot",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("button", { name: /Repo task/ })).getByTestId("session-lead-dot"),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Hide chats" })).toBeNull();
     expect(screen.queryByRole("button", { name: "New chat without a repository" })).toBeNull();
   });
@@ -1978,9 +2139,9 @@ describe("Sidebar — repo-less chats", () => {
         selectedWorkspaceId="w-chat"
         snapshot={{
           ...sideChatSnapshot,
-          sessions: [session("w-repo"), { ...session("w-chat"), state: "running" as const }]
+          sessions: [session("w-repo"), { ...session("w-chat"), state: "running" as const }],
         }}
-      />
+      />,
     );
 
     if (showPriority) {
@@ -2002,7 +2163,7 @@ describe("Sidebar — repo-less chats", () => {
     ["sessions", "running"],
     ["sessions", "approval-needed"],
     ["sessions", "review-ready"],
-    ["sessions", "manual"]
+    ["sessions", "manual"],
   ] as const)("promotes a %s chat for %s and returns it when resolved", (viewMode, reason) => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify(viewMode));
     const now = new Date().toISOString();
@@ -2011,7 +2172,7 @@ describe("Sidebar — repo-less chats", () => {
       workspaces: sideChatSnapshot.workspaces.map((workspace) =>
         workspace.id === "w-chat"
           ? { ...workspace, lastActivityAt: now, priorityAddedAt: reason === "manual" ? now : null }
-          : workspace
+          : workspace,
       ),
       sessions: [
         session("w-repo"),
@@ -2020,9 +2181,9 @@ describe("Sidebar — repo-less chats", () => {
           state: reason === "running" ? "running" : "complete",
           attention: reason === "approval-needed" || reason === "review-ready" ? reason : "normal",
           attentionChangedAt: now,
-          lastActivityAt: now
-        }
-      ]
+          lastActivityAt: now,
+        },
+      ],
     };
     const { rerender } = render(<Sidebar {...baseProps} showPriority snapshot={activeSnapshot} />);
 
@@ -2032,9 +2193,9 @@ describe("Sidebar — repo-less chats", () => {
       rendersAfter(
         screen.getByText("Priority"),
         screen.getByRole("button", {
-          name: /Explain quantization/
-        })
-      )
+          name: /Explain quantization/,
+        }),
+      ),
     ).toBe(true);
     expect(screen.queryByRole("button", { name: "Hide chats" })).toBeNull();
 
@@ -2043,14 +2204,16 @@ describe("Sidebar — repo-less chats", () => {
     expect(screen.queryByText("Priority")).toBeNull();
     expect(screen.getAllByRole("button", { name: /Explain quantization/ })).toHaveLength(1);
     const homeGroup =
-      viewMode === "projects" ? screen.getByRole("button", { name: "Hide chats" }) : screen.getByText("Today");
+      viewMode === "projects"
+        ? screen.getByRole("button", { name: "Hide chats" })
+        : screen.getByText("Today");
     expect(
       rendersAfter(
         homeGroup,
         screen.getByRole("button", {
-          name: /Explain quantization/
-        })
-      )
+          name: /Explain quantization/,
+        }),
+      ),
     ).toBe(true);
   });
 
@@ -2063,7 +2226,14 @@ describe("Sidebar — repo-less chats", () => {
 describe("Sidebar — archived chats", () => {
   const archivedSnapshot: DashboardSnapshot = {
     ...snapshot,
-    workspaces: [{ ...snapshot.workspaces[0], id: "archived-chat", taskLabel: "Old discussion", state: "archived" }],
+    workspaces: [
+      {
+        ...snapshot.workspaces[0],
+        id: "archived-chat",
+        taskLabel: "Old discussion",
+        state: "archived",
+      },
+    ],
     sessions: [
       {
         id: "archived-session",
@@ -2083,9 +2253,9 @@ describe("Sidebar — archived chats", () => {
         tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextTokens: 0,
         imported: false,
-        launchKind: "agent"
-      }
-    ]
+        launchKind: "agent",
+      },
+    ],
   };
 
   beforeEach(() => {
@@ -2100,16 +2270,28 @@ describe("Sidebar — archived chats", () => {
     (viewMode) => {
       window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify(viewMode));
       const onOpenWorkspaceChat = vi.fn();
-      render(<Sidebar {...baseProps} snapshot={archivedSnapshot} onOpenWorkspaceChat={onOpenWorkspaceChat} />);
+      render(
+        <Sidebar
+          {...baseProps}
+          snapshot={archivedSnapshot}
+          onOpenWorkspaceChat={onOpenWorkspaceChat}
+        />,
+      );
 
-      expect(screen.getByRole("button", { name: "Show Archived chats" })).toHaveAttribute("aria-expanded", "false");
+      expect(screen.getByRole("button", { name: "Show Archived chats" })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
       expect(screen.queryByRole("button", { name: /Old discussion/ })).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "Show Archived chats" }));
       fireEvent.click(screen.getByRole("button", { name: /Old discussion/ }));
-      expect(onOpenWorkspaceChat).toHaveBeenCalledWith("archived-chat", { ctrlOrMeta: false, alt: false });
+      expect(onOpenWorkspaceChat).toHaveBeenCalledWith("archived-chat", {
+        ctrlOrMeta: false,
+        alt: false,
+      });
       fireEvent.click(screen.getByRole("button", { name: "Hide Archived chats" }));
       expect(screen.queryByRole("button", { name: /Old discussion/ })).toBeNull();
-    }
+    },
   );
 
   it.each(["projects", "sessions"] as const)(
@@ -2118,25 +2300,34 @@ describe("Sidebar — archived chats", () => {
       window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify(viewMode));
       const mergedSnapshot: DashboardSnapshot = {
         ...archivedSnapshot,
-        workspaces: [{ ...archivedSnapshot.workspaces[0], checkoutRemovedAt: "2026-05-12T16:00:00.000Z" }]
+        workspaces: [
+          { ...archivedSnapshot.workspaces[0], checkoutRemovedAt: "2026-05-12T16:00:00.000Z" },
+        ],
       };
       render(<Sidebar {...baseProps} snapshot={mergedSnapshot} />);
 
       expect(screen.queryByRole("button", { name: "Show Archived chats" })).toBeNull();
       // The project group or the Older bucket, collapsed for a chat this old.
       fireEvent.click(
-        screen.getByRole("button", { name: viewMode === "projects" ? "Show Argmax chats" : "Show Older chats" })
+        screen.getByRole("button", {
+          name: viewMode === "projects" ? "Show Argmax chats" : "Show Older chats",
+        }),
       );
       expect(screen.getByRole("button", { name: /Old discussion/ })).toBeInTheDocument();
-    }
+    },
   );
 
   it("removes the Archived section when the setting is off", () => {
-    const { rerender } = render(<Sidebar {...baseProps} snapshot={archivedSnapshot} showArchived={false} />);
+    const { rerender } = render(
+      <Sidebar {...baseProps} snapshot={archivedSnapshot} showArchived={false} />,
+    );
     expect(screen.queryByRole("button", { name: "Show Archived chats" })).toBeNull();
 
     rerender(<Sidebar {...baseProps} snapshot={archivedSnapshot} showArchived />);
-    expect(screen.getByRole("button", { name: "Show Archived chats" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Show Archived chats" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 });
 
@@ -2153,7 +2344,7 @@ describe("Sidebar — unread response mark", () => {
     state: "complete" as const,
     lastActivityAt: earlier,
     icon: "Brain",
-    iconColor: "violet"
+    iconColor: "violet",
   };
 
   const unreadSnapshot = (activityAt: string): DashboardSnapshot => ({
@@ -2179,9 +2370,9 @@ describe("Sidebar — unread response mark", () => {
         tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextTokens: 0,
         imported: false,
-        launchKind: "agent"
-      }
-    ]
+        launchKind: "agent",
+      },
+    ],
   });
 
   beforeEach(() => {
@@ -2199,25 +2390,33 @@ describe("Sidebar — unread response mark", () => {
 
   it("dots a chat that responded while it was not open, then restores the icon when opened", () => {
     const { rerender } = render(
-      <Sidebar {...baseProps} snapshot={unreadSnapshot(earlier)} selectedWorkspaceId={null} />
+      <Sidebar {...baseProps} snapshot={unreadSnapshot(earlier)} selectedWorkspaceId={null} />,
     );
 
     const first = screen.getByRole("button", { name: "Background reply" });
     expect(first.getAttribute("title")).toBe("Background reply — complete");
-    expect(first.querySelector(".session-unread-marker")).toBeNull();
-    expect(first.querySelector(".session-custom-icon")).not.toBeNull();
+    expect(within(first).queryByTestId("session-unread-marker")).toBeNull();
+    expect(within(first).getByTestId("session-custom-icon")).toBeInTheDocument();
 
-    rerender(<Sidebar {...baseProps} snapshot={unreadSnapshot(later)} selectedWorkspaceId={null} />);
+    rerender(
+      <Sidebar {...baseProps} snapshot={unreadSnapshot(later)} selectedWorkspaceId={null} />,
+    );
     const unread = screen.getByRole("button", { name: "Background reply" });
     expect(unread.getAttribute("title")).toBe("Background reply — complete — unread response");
-    expect(unread.querySelector(".session-unread-marker")).not.toBeNull();
-    expect(unread.querySelector(".session-custom-icon")).toBeNull();
+    expect(within(unread).getByTestId("session-unread-marker")).toBeInTheDocument();
+    expect(within(unread).queryByTestId("session-custom-icon")).toBeNull();
 
-    rerender(<Sidebar {...baseProps} snapshot={unreadSnapshot(later)} selectedWorkspaceId="workspace-unread" />);
+    rerender(
+      <Sidebar
+        {...baseProps}
+        snapshot={unreadSnapshot(later)}
+        selectedWorkspaceId="workspace-unread"
+      />,
+    );
     const viewed = screen.getByRole("button", { name: "Background reply" });
     expect(viewed.getAttribute("title")).toBe("Background reply — complete");
-    expect(viewed.querySelector(".session-unread-marker")).toBeNull();
-    expect(viewed.querySelector(".session-custom-icon")).not.toBeNull();
+    expect(within(viewed).queryByTestId("session-unread-marker")).toBeNull();
+    expect(within(viewed).getByTestId("session-custom-icon")).toBeInTheDocument();
   });
 });
 
@@ -2232,8 +2431,8 @@ describe("Sidebar — Arcs section", () => {
         defaultBranch: "main",
         settings: projectSettings,
         counts: { active: 1, blocked: 0, failed: 0, reviewReady: 0 },
-        latestActivityAt: "2026-05-12T15:54:00.000Z"
-      }
+        latestActivityAt: "2026-05-12T15:54:00.000Z",
+      },
     ],
     workspaces: [
       {
@@ -2259,8 +2458,8 @@ describe("Sidebar — Arcs section", () => {
         prCreatedAt: null,
         prMergedAt: null,
         prCheckState: null,
-        prActivityAt: null
-      }
+        prActivityAt: null,
+      },
     ],
     sessions: [
       {
@@ -2282,8 +2481,8 @@ describe("Sidebar — Arcs section", () => {
         contextTokens: 0,
         imported: false,
         launchKind: "agent",
-        arcId: "arc-1"
-      }
+        arcId: "arc-1",
+      },
     ],
     events: [],
     rawOutputs: [],
@@ -2300,9 +2499,9 @@ describe("Sidebar — Arcs section", () => {
         memberCount: 1,
         updatedAt: "2026-05-12T15:54:00.000Z",
         lastEventAt: null,
-        archivedAt: null
-      }
-    ]
+        archivedAt: null,
+      },
+    ],
   };
 
   beforeEach(() => {
@@ -2334,8 +2533,8 @@ describe("Sidebar — Arcs section", () => {
       arcs: (arcSnapshot.arcs ?? []).map((arc) => ({
         ...arc,
         state: "done" as const,
-        archivedAt: "2026-05-13T09:00:00.000Z"
-      }))
+        archivedAt: "2026-05-13T09:00:00.000Z",
+      })),
     };
     render(<Sidebar {...baseProps} snapshot={archivedSnapshot} />);
     expect(screen.queryByRole("button", { name: /^Pricing rollout/ })).toBeNull();
@@ -2358,7 +2557,11 @@ describe("Sidebar — Arcs section", () => {
 
   it("omits empty section headings and keeps arc creation available", () => {
     render(
-      <Sidebar {...baseProps} showPriority snapshot={{ ...arcSnapshot, arcs: [], workspaces: [], sessions: [] }} />
+      <Sidebar
+        {...baseProps}
+        showPriority
+        snapshot={{ ...arcSnapshot, arcs: [], workspaces: [], sessions: [] }}
+      />,
     );
     for (const label of ["Arcs", "Pinned", "Priority"]) {
       expect(screen.queryByText(label)).toBeNull();
@@ -2396,7 +2599,8 @@ describe("Sidebar — Arcs section", () => {
 describe("Sidebar — snooze shelf", () => {
   const NOW = new Date(2026, 5, 5, 12, 0, 0);
   const TODAY = new Date(2026, 5, 5, 9, 0, 0).toISOString();
-  const inMinutes = (minutes: number): string => new Date(NOW.getTime() + minutes * 60_000).toISOString();
+  const inMinutes = (minutes: number): string =>
+    new Date(NOW.getTime() + minutes * 60_000).toISOString();
 
   const session = (workspaceId: string, attention: "normal" | "approval-needed" = "normal") => ({
     id: `session-${workspaceId}`,
@@ -2417,7 +2621,7 @@ describe("Sidebar — snooze shelf", () => {
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextTokens: 0,
     imported: false,
-    launchKind: "agent"
+    launchKind: "agent",
   });
 
   const workspace = (id: string, taskLabel: string, snoozedUntil: string | null = null) => ({
@@ -2444,16 +2648,19 @@ describe("Sidebar — snooze shelf", () => {
     prCreatedAt: null,
     prMergedAt: null,
     prCheckState: null,
-    prActivityAt: null
+    prActivityAt: null,
   });
 
   const shelfSnapshot = (
     snoozedUntil: string,
-    attention: "normal" | "approval-needed" = "normal"
+    attention: "normal" | "approval-needed" = "normal",
   ): DashboardSnapshot => ({
     ...snapshot,
-    workspaces: [workspace("w-snoozed", "Snoozed task", snoozedUntil), workspace("w-calm", "Calm task")],
-    sessions: [session("w-snoozed", attention), session("w-calm")]
+    workspaces: [
+      workspace("w-snoozed", "Snoozed task", snoozedUntil),
+      workspace("w-calm", "Calm task"),
+    ],
+    sessions: [session("w-snoozed", attention), session("w-calm")],
   });
 
   beforeEach(() => {
@@ -2510,7 +2717,7 @@ describe("Sidebar — snooze shelf", () => {
         onSnoozeWorkspace={onSnoozeWorkspace}
         onUnsnoozeWorkspace={onUnsnoozeWorkspace}
         snapshot={shelfSnapshot(inMinutes(60))}
-      />
+      />,
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Calm task/ }));
@@ -2536,9 +2743,9 @@ describe("Sidebar — snooze shelf", () => {
       ...snapshot,
       workspaces: [
         { ...workspace("w-archived", "Archived task", inMinutes(60)), state: "archived" as const },
-        workspace("w-calm", "Calm task")
+        workspace("w-calm", "Calm task"),
       ],
-      sessions: [session("w-archived"), session("w-calm")]
+      sessions: [session("w-archived"), session("w-calm")],
     };
     render(<Sidebar {...baseProps} showArchived snapshot={archivedSnapshot} />);
 
@@ -2551,22 +2758,25 @@ describe("Sidebar — snooze shelf", () => {
 
   it("marks a shelved chat viewed when it is opened", () => {
     const markWorkspacesViewed = vi.fn().mockResolvedValue([]);
-    Object.defineProperty(window, "argmax", { configurable: true, value: { markWorkspacesViewed } });
+    Object.defineProperty(window, "argmax", {
+      configurable: true,
+      value: { markWorkspacesViewed },
+    });
     try {
       const unread: DashboardSnapshot = {
         ...shelfSnapshot(inMinutes(60)),
         workspaces: [
           {
             ...workspace("w-snoozed", "Snoozed task", inMinutes(60)),
-            lastViewedAt: new Date(2026, 5, 5, 8, 0, 0).toISOString()
+            lastViewedAt: new Date(2026, 5, 5, 8, 0, 0).toISOString(),
           },
-          workspace("w-calm", "Calm task")
-        ]
+          workspace("w-calm", "Calm task"),
+        ],
       };
       render(<Sidebar {...baseProps} selectedWorkspaceId="w-snoozed" snapshot={unread} />);
 
       expect(markWorkspacesViewed).toHaveBeenCalledWith({
-        workspaces: [{ workspaceId: "w-snoozed", observedActivityAt: TODAY }]
+        workspaces: [{ workspaceId: "w-snoozed", observedActivityAt: TODAY }],
       });
       // Selecting a shelved chat opens the shelf.
       expect(screen.getByRole("button", { name: /Snoozed task/ })).toBeInTheDocument();
@@ -2576,9 +2786,15 @@ describe("Sidebar — snooze shelf", () => {
   });
 
   describe("a selected chat on the shelf", () => {
-    const withCalmLabel = (label: string, snoozedUntil: string | null = inMinutes(60)): DashboardSnapshot => ({
+    const withCalmLabel = (
+      label: string,
+      snoozedUntil: string | null = inMinutes(60),
+    ): DashboardSnapshot => ({
       ...shelfSnapshot(snoozedUntil ?? inMinutes(60)),
-      workspaces: [workspace("w-snoozed", "Snoozed task", snoozedUntil), workspace("w-calm", label)]
+      workspaces: [
+        workspace("w-snoozed", "Snoozed task", snoozedUntil),
+        workspace("w-calm", label),
+      ],
     });
 
     it("stays collapsed after the user closes it, through a dashboard refresh that changes nothing on the shelf", () => {
@@ -2617,11 +2833,13 @@ describe("Sidebar — snooze shelf", () => {
         workspaces: [
           workspace("w-snoozed", "Snoozed task", inMinutes(60)),
           workspace("w-second", "Second snoozed task", inMinutes(60)),
-          workspace("w-calm", "Calm task")
+          workspace("w-calm", "Calm task"),
         ],
-        sessions: [session("w-snoozed"), session("w-second"), session("w-calm")]
+        sessions: [session("w-snoozed"), session("w-second"), session("w-calm")],
       };
-      const { rerender } = render(<Sidebar {...baseProps} selectedWorkspaceId="w-snoozed" snapshot={twoShelved} />);
+      const { rerender } = render(
+        <Sidebar {...baseProps} selectedWorkspaceId="w-snoozed" snapshot={twoShelved} />,
+      );
       fireEvent.click(screen.getByRole("button", { name: "Hide Snoozed chats" }));
       expect(screen.queryByRole("button", { name: /Second snoozed task/ })).toBeNull();
 
@@ -2654,13 +2872,13 @@ describe("Sidebar — launched chat nesting", () => {
   const workspace = (
     id: string,
     taskLabel: string,
-    overrides: Partial<DashboardSnapshot["workspaces"][number]> = {}
+    overrides: Partial<DashboardSnapshot["workspaces"][number]> = {},
   ) => ({
     ...snapshot.workspaces[0],
     id,
     taskLabel,
     state: "complete" as const,
-    ...overrides
+    ...overrides,
   });
   const session = (id: string, workspaceId: string, parentId?: string): SessionSummary => ({
     ...defaultDashboardSnapshot.sessions[0],
@@ -2668,12 +2886,15 @@ describe("Sidebar — launched chat nesting", () => {
     workspaceId,
     state: "complete",
     attention: "normal",
-    launchedBySessionId: parentId ?? null
+    launchedBySessionId: parentId ?? null,
   });
   const launchedSnapshot = (): DashboardSnapshot => ({
     ...snapshot,
     workspaces: [workspace("parent", "Parent chat"), workspace("child", "Launched chat")],
-    sessions: [session("parent-session", "parent"), session("child-session", "child", "parent-session")]
+    sessions: [
+      session("parent-session", "parent"),
+      session("child-session", "child", "parent-session"),
+    ],
   });
 
   beforeEach(() => {
@@ -2691,61 +2912,91 @@ describe("Sidebar — launched chat nesting", () => {
 
   it("nests launched chats by default and lets the parent collapse and reopen them", () => {
     const onOpenWorkspaceChat = vi.fn();
-    render(<Sidebar {...baseProps} snapshot={launchedSnapshot()} onOpenWorkspaceChat={onOpenWorkspaceChat} />);
+    render(
+      <Sidebar
+        {...baseProps}
+        snapshot={launchedSnapshot()}
+        onOpenWorkspaceChat={onOpenWorkspaceChat}
+      />,
+    );
     const children = screen.getByRole("group", { name: "Chats launched from Parent chat" });
     fireEvent.click(within(children).getByRole("button", { name: "Launched chat" }));
     expect(onOpenWorkspaceChat).toHaveBeenCalledWith("child", expect.any(Object));
     fireEvent.contextMenu(screen.getByTitle("Parent chat — complete"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Collapse chats launched from Parent chat" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Collapse chats launched from Parent chat" }),
+    );
     expect(screen.queryByRole("button", { name: "Launched chat" })).not.toBeInTheDocument();
     fireEvent.contextMenu(screen.getByTitle("Parent chat — complete"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Expand chats launched from Parent chat" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Expand chats launched from Parent chat" }),
+    );
     expect(screen.getByRole("button", { name: "Launched chat" })).toBeInTheDocument();
   });
 
   it("keeps a collapsed parent collapsed when a new launched chat appears, and opens it when that chat is selected", () => {
     const { rerender } = render(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
     fireEvent.contextMenu(screen.getByTitle("Parent chat — complete"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Collapse chats launched from Parent chat" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Collapse chats launched from Parent chat" }),
+    );
     const withSecondChild = launchedSnapshot();
     withSecondChild.workspaces.push(workspace("second-child", "Second launched chat"));
-    withSecondChild.sessions.push(session("second-child-session", "second-child", "parent-session"));
+    withSecondChild.sessions.push(
+      session("second-child-session", "second-child", "parent-session"),
+    );
 
     rerender(<Sidebar {...baseProps} snapshot={withSecondChild} />);
-    expect(screen.queryByRole("group", { name: "Chats launched from Parent chat" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Chats launched from Parent chat" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Second launched chat" })).not.toBeInTheDocument();
 
-    rerender(<Sidebar {...baseProps} selectedWorkspaceId="second-child" snapshot={withSecondChild} />);
+    rerender(
+      <Sidebar {...baseProps} selectedWorkspaceId="second-child" snapshot={withSecondChild} />,
+    );
     expect(screen.getByRole("button", { name: "Second launched chat" })).toBeInTheDocument();
   });
 
   it("remembers a collapsed parent after the sidebar remounts", () => {
     const { unmount } = render(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
     fireEvent.contextMenu(screen.getByTitle("Parent chat — complete"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Collapse chats launched from Parent chat" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Collapse chats launched from Parent chat" }),
+    );
     unmount();
     render(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
-    expect(screen.queryByRole("group", { name: "Chats launched from Parent chat" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Chats launched from Parent chat" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Launched chat" })).not.toBeInTheDocument();
   });
 
   it("applies the Separate preference immediately and restores nesting when it is enabled", () => {
     render(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
     act(() => setSidebarChatsNested(false));
-    expect(screen.queryByRole("group", { name: "Chats launched from Parent chat" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Chats launched from Parent chat" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Launched chat/ })).toBeInTheDocument();
     act(() => setSidebarChatsNested(true));
-    expect(screen.getByRole("group", { name: "Chats launched from Parent chat" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("group", { name: "Chats launched from Parent chat" }),
+    ).toBeInTheDocument();
   });
 
   it("keeps a detached chat at the top level after a dashboard update", () => {
     const { rerender } = render(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
     fireEvent.contextMenu(screen.getByRole("button", { name: "Launched chat" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Detach to Top Level" }));
-    expect(screen.queryByRole("group", { name: "Chats launched from Parent chat" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Chats launched from Parent chat" }),
+    ).not.toBeInTheDocument();
     rerender(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
     expect(screen.getByRole("button", { name: /Launched chat/ })).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Chats launched from Parent chat" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Chats launched from Parent chat" }),
+    ).not.toBeInTheDocument();
     fireEvent.contextMenu(screen.getByRole("button", { name: /Launched chat/ }));
     expect(screen.queryByRole("menuitem", { name: "Detach to Top Level" })).not.toBeInTheDocument();
   });
@@ -2754,11 +3005,13 @@ describe("Sidebar — launched chat nesting", () => {
     const crossProject = launchedSnapshot();
     crossProject.projects = [...crossProject.projects, multiProjectSnapshot.projects[0]];
     crossProject.workspaces = crossProject.workspaces.map((row) =>
-      row.id === "child" ? { ...row, projectId: "project-zebra" } : row
+      row.id === "child" ? { ...row, projectId: "project-zebra" } : row,
     );
     render(<Sidebar {...baseProps} snapshot={crossProject} />);
     const children = screen.getByRole("group", { name: "Chats launched from Parent chat" });
-    expect(within(children).getByRole("button", { name: /Launched chat/ })).toHaveTextContent("Zebra");
+    expect(within(children).getByRole("button", { name: /Launched chat/ })).toHaveTextContent(
+      "Zebra",
+    );
     expect(screen.getAllByRole("button", { name: /Launched chat/ })).toHaveLength(1);
   });
 
@@ -2771,9 +3024,9 @@ describe("Sidebar — launched chat nesting", () => {
             state: "waiting",
             attention: "blocked",
             attentionChangedAt: new Date().toISOString(),
-            lastActivityAt: new Date().toISOString()
+            lastActivityAt: new Date().toISOString(),
           }
-        : row
+        : row,
     );
     const onRemoveFromPriority = vi.fn();
     const onClearPriority = vi.fn();
@@ -2784,7 +3037,7 @@ describe("Sidebar — launched chat nesting", () => {
         snapshot={needsAttention}
         onRemoveFromPriority={onRemoveFromPriority}
         onClearPriority={onClearPriority}
-      />
+      />,
     );
     expect(screen.getByText("Priority")).toBeInTheDocument();
     const children = screen.getByRole("group", { name: "Chats launched from Parent chat" });
@@ -2801,10 +3054,13 @@ describe("Sidebar — launched chat nesting", () => {
   it("uses saved root order when children bring their parents into Priority", () => {
     const ordered = launchedSnapshot();
     const now = new Date().toISOString();
-    ordered.workspaces.push(workspace("second-parent", "Second parent"), workspace("second-child", "Second child"));
+    ordered.workspaces.push(
+      workspace("second-parent", "Second parent"),
+      workspace("second-child", "Second child"),
+    );
     ordered.sessions.push(
       session("second-parent-session", "second-parent"),
-      session("second-child-session", "second-child", "second-parent-session")
+      session("second-child-session", "second-child", "second-parent-session"),
     );
     ordered.sessions = ordered.sessions.map((row) =>
       row.workspaceId === "child" || row.workspaceId === "second-child"
@@ -2813,27 +3069,34 @@ describe("Sidebar — launched chat nesting", () => {
             state: "waiting",
             attention: "blocked",
             attentionChangedAt: now,
-            lastActivityAt: row.workspaceId === "child" ? now : new Date(Date.now() - 60_000).toISOString()
+            lastActivityAt:
+              row.workspaceId === "child" ? now : new Date(Date.now() - 60_000).toISOString(),
           }
-        : row
+        : row,
     );
     window.localStorage.setItem(
       "argmax.sidebar.workspaceOrder",
-      JSON.stringify({ priority: ["second-parent", "parent"] })
+      JSON.stringify({ priority: ["second-parent", "parent"] }),
     );
     render(<Sidebar {...baseProps} showPriority snapshot={ordered} />);
     const first = screen.getByRole("button", { name: "Second parent Argmax" });
     const second = screen.getByRole("button", { name: "Parent chat Argmax" });
     expect(rendersAfter(first, second)).toBe(true);
     expect(
-      within(screen.getByRole("group", { name: "Chats launched from Parent chat" })).getByRole("button", {
-        name: "Launched chat"
-      })
+      within(screen.getByRole("group", { name: "Chats launched from Parent chat" })).getByRole(
+        "button",
+        {
+          name: "Launched chat",
+        },
+      ),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByRole("group", { name: "Chats launched from Second parent" })).getByRole("button", {
-        name: "Second child"
-      })
+      within(screen.getByRole("group", { name: "Chats launched from Second parent" })).getByRole(
+        "button",
+        {
+          name: "Second child",
+        },
+      ),
     ).toBeInTheDocument();
   });
 
@@ -2841,16 +3104,22 @@ describe("Sidebar — launched chat nesting", () => {
     const manyChats = launchedSnapshot();
     const newerRoots = Array.from({ length: 6 }, (_, index) =>
       workspace(`new-${index}`, `New chat ${index}`, {
-        lastActivityAt: `2026-10-18T10:0${index}:00.000Z`
-      })
+        lastActivityAt: `2026-10-18T10:0${index}:00.000Z`,
+      }),
     );
     manyChats.workspaces = [...newerRoots, ...manyChats.workspaces];
-    manyChats.sessions = [...newerRoots.map((row) => session(`session-${row.id}`, row.id)), ...manyChats.sessions];
+    manyChats.sessions = [
+      ...newerRoots.map((row) => session(`session-${row.id}`, row.id)),
+      ...manyChats.sessions,
+    ];
     const { rerender } = render(<Sidebar {...baseProps} snapshot={manyChats} />);
     expect(screen.queryByRole("button", { name: "Parent chat" })).not.toBeInTheDocument();
     rerender(<Sidebar {...baseProps} snapshot={manyChats} selectedWorkspaceId="child" />);
     expect(screen.getByRole("button", { name: "Parent chat" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Launched chat" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: "Launched chat" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
   });
 });
 
@@ -2867,7 +3136,7 @@ describe("Sidebar — status grouping", () => {
       pr?: "success" | "failure";
       archived?: boolean;
       unread?: boolean;
-    }>
+    }>,
   ): DashboardSnapshot {
     return {
       ...defaultDashboardSnapshot,
@@ -2882,7 +3151,7 @@ describe("Sidebar — status grouping", () => {
         prCheckState: row.pr ?? null,
         prActivityAt: row.pr ? at : null,
         lastActivityAt: at,
-        lastViewedAt: row.unread ? "2026-10-18T11:00:00.000Z" : at
+        lastViewedAt: row.unread ? "2026-10-18T11:00:00.000Z" : at,
       })),
       sessions: rows.map((row) => ({
         ...defaultDashboardSnapshot.sessions[0],
@@ -2892,8 +3161,8 @@ describe("Sidebar — status grouping", () => {
         attention: row.attention ?? "normal",
         attentionChangedAt: row.attention ? at : null,
         launchedBySessionId: row.parent ? `session-${row.parent}` : undefined,
-        lastActivityAt: at
-      }))
+        lastActivityAt: at,
+      })),
     };
   }
 
@@ -2920,20 +3189,25 @@ describe("Sidebar — status grouping", () => {
     expect(screen.getByRole("group", { name: "Completed chats" })).toBeInTheDocument();
   });
 
-  it.each(["running", "failed"] as const)("can manually prioritize a %s chat from its status group", (state) => {
-    const onAddToPriority = vi.fn();
-    render(
-      <Sidebar
-        {...baseProps}
-        showPriority
-        onAddToPriority={onAddToPriority}
-        snapshot={statusSnapshot([{ id: "Status task", state, attention: state === "failed" ? "failed" : "normal" }])}
-      />
-    );
-    fireEvent.contextMenu(screen.getByRole("button", { name: /Status task/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Add to Priority" }));
-    expect(onAddToPriority).toHaveBeenCalledWith("Status task");
-  });
+  it.each(["running", "failed"] as const)(
+    "can manually prioritize a %s chat from its status group",
+    (state) => {
+      const onAddToPriority = vi.fn();
+      render(
+        <Sidebar
+          {...baseProps}
+          showPriority
+          onAddToPriority={onAddToPriority}
+          snapshot={statusSnapshot([
+            { id: "Status task", state, attention: state === "failed" ? "failed" : "normal" },
+          ])}
+        />,
+      );
+      fireEvent.contextMenu(screen.getByRole("button", { name: /Status task/ }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Add to Priority" }));
+      expect(onAddToPriority).toHaveBeenCalledWith("Status task");
+    },
+  );
 
   it("keeps manual Priority separate and groups automatic status without duplicates", () => {
     const data = statusSnapshot([
@@ -2943,20 +3217,26 @@ describe("Sidebar — status grouping", () => {
       { id: "Failed task", state: "failed", attention: "failed" },
       { id: "Finished task" },
       { id: "Future task", state: "created" },
-      { id: "Old task", archived: true }
+      { id: "Old task", archived: true },
     ]);
     render(<Sidebar {...baseProps} showPriority snapshot={data} />);
     const working = screen.getByRole("group", { name: "Working chats" });
     expect(within(working).getByRole("button", { name: /Active task/ })).toBeInTheDocument();
     expect(within(working).queryByRole("button", { name: /Pinned task/ })).not.toBeInTheDocument();
     expect(
-      within(screen.getByRole("group", { name: "Needs attention chats" })).getByRole("button", { name: /Failed task/ })
+      within(screen.getByRole("group", { name: "Needs attention chats" })).getByRole("button", {
+        name: /Failed task/,
+      }),
     ).toBeInTheDocument();
     const completed = screen.getByRole("group", { name: "Completed chats" });
     expect(within(completed).getByRole("button", { name: /Finished task/ })).toBeInTheDocument();
-    expect(within(completed).queryByRole("button", { name: /Manual task/ })).not.toBeInTheDocument();
     expect(
-      within(screen.getByRole("group", { name: "Not started chats" })).getByRole("button", { name: /Future task/ })
+      within(completed).queryByRole("button", { name: /Manual task/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("group", { name: "Not started chats" })).getByRole("button", {
+        name: /Future task/,
+      }),
     ).toBeInTheDocument();
     expect(screen.getByText("Priority")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /Manual task/ })).toHaveLength(1);
@@ -2975,89 +3255,122 @@ describe("Sidebar — status grouping", () => {
       { id: "Red checks", pr: "failure" },
       { id: "Unread reply", attention: "review-ready", unread: true },
       { id: "Read reply", attention: "review-ready" },
-      { id: "Open pull request", pr: "success" }
+      { id: "Open pull request", pr: "success" },
     ]);
     render(<Sidebar {...baseProps} snapshot={data} />);
     const attention = screen.getByRole("group", { name: "Needs attention chats" });
-    fireEvent.click(within(attention).getByRole("button", { name: "Show 1 more Needs attention chats" }));
+    fireEvent.click(
+      within(attention).getByRole("button", { name: "Show 1 more Needs attention chats" }),
+    );
     for (const name of [
       "Approval task",
       "Question task",
       "Blocked task",
       "Legacy failure",
       "Red checks",
-      "Unread reply"
+      "Unread reply",
     ]) {
       expect(within(attention).getByRole("button", { name: new RegExp(name) })).toBeInTheDocument();
     }
     const completed = screen.getByRole("group", { name: "Completed chats" });
     expect(within(completed).getByRole("button", { name: /Read reply/ })).toBeInTheDocument();
-    expect(within(completed).getByRole("button", { name: /Open pull request/ })).toBeInTheDocument();
+    expect(
+      within(completed).getByRole("button", { name: /Open pull request/ }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Priority")).not.toBeInTheDocument();
   });
 
   it("keeps a read reply in Needs attention until the selected chat is left", () => {
-    const data = statusSnapshot([{ id: "New reply", attention: "review-ready", unread: true }, { id: "Other chat" }]);
+    const data = statusSnapshot([
+      { id: "New reply", attention: "review-ready", unread: true },
+      { id: "Other chat" },
+    ]);
     const { rerender } = render(<Sidebar {...baseProps} snapshot={data} />);
     rerender(<Sidebar {...baseProps} selectedWorkspaceId="New reply" snapshot={data} />);
     expect(
-      within(screen.getByRole("group", { name: "Needs attention chats" })).getByRole("button", { name: /New reply/ })
+      within(screen.getByRole("group", { name: "Needs attention chats" })).getByRole("button", {
+        name: /New reply/,
+      }),
     ).toBeInTheDocument();
-    const readData = { ...data, workspaces: data.workspaces.map((workspace) => ({ ...workspace, lastViewedAt: at })) };
+    const readData = {
+      ...data,
+      workspaces: data.workspaces.map((workspace) => ({ ...workspace, lastViewedAt: at })),
+    };
     rerender(<Sidebar {...baseProps} selectedWorkspaceId="Other chat" snapshot={readData} />);
     expect(screen.queryByRole("group", { name: "Needs attention chats" })).not.toBeInTheDocument();
     expect(
-      within(screen.getByRole("group", { name: "Completed chats" })).getByRole("button", { name: /New reply/ })
+      within(screen.getByRole("group", { name: "Completed chats" })).getByRole("button", {
+        name: /New reply/,
+      }),
     ).toBeInTheDocument();
   });
 
   it("reveals the selected chat when switching to Status and respects a later manual collapse", () => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("projects"));
-    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["status-completed"]));
+    window.localStorage.setItem(
+      collapsedDateGroupsStorageKey,
+      JSON.stringify(["status-completed"]),
+    );
     const data = statusSnapshot([{ id: "Selected task" }]);
-    const { rerender } = render(<Sidebar {...baseProps} selectedWorkspaceId="Selected task" snapshot={data} />);
+    const { rerender } = render(
+      <Sidebar {...baseProps} selectedWorkspaceId="Selected task" snapshot={data} />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Sidebar view options" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Status" }));
     const completed = screen.getByRole("group", { name: "Completed chats" });
     expect(within(completed).getByRole("button", { name: /Selected task/ })).toBeInTheDocument();
     fireEvent.click(within(completed).getByRole("button", { name: "Hide Completed chats" }));
     rerender(<Sidebar {...baseProps} selectedWorkspaceId="Selected task" snapshot={{ ...data }} />);
-    expect(within(completed).queryByRole("button", { name: /Selected task/ })).not.toBeInTheDocument();
+    expect(
+      within(completed).queryByRole("button", { name: /Selected task/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("reveals the selected chat's new status when its turn needs attention", () => {
-    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["status-attention"]));
+    window.localStorage.setItem(
+      collapsedDateGroupsStorageKey,
+      JSON.stringify(["status-attention"]),
+    );
     const { rerender } = render(
       <Sidebar
         {...baseProps}
         selectedWorkspaceId="Selected task"
         snapshot={statusSnapshot([{ id: "Selected task", state: "running" }])}
-      />
+      />,
     );
     expect(
-      within(screen.getByRole("group", { name: "Working chats" })).getByRole("button", { name: /Selected task/ })
+      within(screen.getByRole("group", { name: "Working chats" })).getByRole("button", {
+        name: /Selected task/,
+      }),
     ).toBeInTheDocument();
     rerender(
       <Sidebar
         {...baseProps}
         selectedWorkspaceId="Selected task"
-        snapshot={statusSnapshot([{ id: "Selected task", state: "waiting", attention: "approval-needed" }])}
-      />
+        snapshot={statusSnapshot([
+          { id: "Selected task", state: "waiting", attention: "approval-needed" },
+        ])}
+      />,
     );
     expect(
       within(screen.getByRole("group", { name: "Needs attention chats" })).getByRole("button", {
-        name: /Selected task/
-      })
+        name: /Selected task/,
+      }),
     ).toBeInTheDocument();
   });
 
   it("places a nested tree in Working for an active child and reveals its selected section", () => {
-    const data = statusSnapshot([{ id: "Parent task" }, { id: "Child task", state: "running", parent: "Parent task" }]);
+    const data = statusSnapshot([
+      { id: "Parent task" },
+      { id: "Child task", state: "running", parent: "Parent task" },
+    ]);
     window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["status-working"]));
     render(<Sidebar {...baseProps} selectedWorkspaceId="Child task" snapshot={data} />);
     const working = screen.getByRole("group", { name: "Working chats" });
     expect(within(working).getByRole("button", { name: /Parent task/ })).toBeInTheDocument();
-    const children = within(working).getByRole("group", { name: "Chats launched from Parent task" });
+    const children = within(working).getByRole("group", {
+      name: "Chats launched from Parent task",
+    });
     expect(within(children).getByRole("button", { name: /Child task/ })).toBeInTheDocument();
     expect(screen.queryByText("Completed")).not.toBeInTheDocument();
   });

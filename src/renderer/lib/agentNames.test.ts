@@ -7,7 +7,7 @@ import {
   assignAgentCodenames,
   nativeAgentReferences,
   codenameForTool,
-  fallbackCodename
+  fallbackCodename,
 } from "./agentNames.js";
 
 function agentSpawn(id: string, createdAt: string): TimelineEvent {
@@ -17,12 +17,14 @@ function agentSpawn(id: string, createdAt: string): TimelineEvent {
     type: "command.started",
     message: "Task",
     payload: { type: "tool_use", id, name: "Task", input: { description: `task ${id}` } },
-    createdAt
+    createdAt,
   };
 }
 
 function spawnEvents(ids: string[]): TimelineEvent[] {
-  return ids.map((id, index) => agentSpawn(id, `2026-05-12T15:00:${String(index).padStart(2, "0")}.000Z`));
+  return ids.map((id, index) =>
+    agentSpawn(id, `2026-05-12T15:00:${String(index).padStart(2, "0")}.000Z`),
+  );
 }
 
 describe("fallbackCodename", () => {
@@ -45,7 +47,9 @@ describe("assignAgentCodenames", () => {
 
   it("keeps earlier agents' names stable when a later spawn is appended", () => {
     const before = assignAgentCodenames(buildSessionToolCalls(spawnEvents(["a", "b", "c"]), false));
-    const after = assignAgentCodenames(buildSessionToolCalls(spawnEvents(["a", "b", "c", "d"]), false));
+    const after = assignAgentCodenames(
+      buildSessionToolCalls(spawnEvents(["a", "b", "c", "d"]), false),
+    );
     for (const id of ["a", "b", "c"]) {
       expect(after.get(id)).toBe(before.get(id));
     }
@@ -69,8 +73,8 @@ describe("assignAgentCodenames", () => {
         type: "command.started",
         message: "Read",
         payload: { type: "tool_use", id: "read", name: "Read", input: { file_path: "x.ts" } },
-        createdAt: "2026-05-12T15:00:01.000Z"
-      }
+        createdAt: "2026-05-12T15:00:01.000Z",
+      },
     ];
     const map = assignAgentCodenames(buildSessionToolCalls(events, false));
     expect([...map.keys()]).toEqual(["task"]);
@@ -91,14 +95,14 @@ describe("assignAgentCodenames", () => {
       providerChildSessionId: "child-native",
       agentRunId: "task-root",
       agentRootToolUseId: "task-root",
-      providerParentConversationId: "parent-native"
+      providerParentConversationId: "parent-native",
     };
     const continuation = {
       ...initial,
       id: "continued",
       toolUseId: "send-2",
       agentRunId: "send-2",
-      createdAt: "2026-05-12T15:01:00.000Z"
+      createdAt: "2026-05-12T15:01:00.000Z",
     };
     const names = assignAgentCodenames([initial, continuation]);
 
@@ -108,8 +112,8 @@ describe("assignAgentCodenames", () => {
       {
         name: codenameForTool(initial, names),
         providerChildSessionId: "child-native",
-        providerParentConversationId: "parent-native"
-      }
+        providerParentConversationId: "parent-native",
+      },
     ]);
     expect(nativeAgentReferences([initial], names, "different-parent")).toEqual([]);
   });
@@ -130,7 +134,7 @@ describe("assignAgentCodenames", () => {
       providerParentConversationId: "parent-current",
       agentRootToolUseId: "task-current",
       agentRunId: "task-current",
-      agentCodename: "Curie"
+      agentCodename: "Curie",
     };
     const otherParent = {
       ...current,
@@ -140,7 +144,7 @@ describe("assignAgentCodenames", () => {
       agentRunId: "task-other-parent",
       providerChildSessionId: "child-other",
       providerParentConversationId: "parent-other",
-      agentCodename: "Newton"
+      agentCodename: "Newton",
     };
     const noParent = {
       ...current,
@@ -150,16 +154,18 @@ describe("assignAgentCodenames", () => {
       agentRunId: "task-no-parent",
       providerChildSessionId: null,
       providerParentConversationId: null,
-      agentCodename: "Euler"
+      agentCodename: "Euler",
     };
     const names = assignAgentCodenames([current, otherParent, noParent]);
 
-    expect(nativeAgentReferences([current, otherParent, noParent], names, "parent-current")).toEqual([
+    expect(
+      nativeAgentReferences([current, otherParent, noParent], names, "parent-current"),
+    ).toEqual([
       {
         name: "Curie",
         providerChildSessionId: "child-current",
-        providerParentConversationId: "parent-current"
-      }
+        providerParentConversationId: "parent-current",
+      },
     ]);
     expect(nativeAgentReferences([current, otherParent], names, null)).toEqual([]);
   });
@@ -180,7 +186,7 @@ describe("assignAgentCodenames", () => {
       providerParentConversationId: "parent-native",
       agentRootToolUseId: "task-reused",
       agentRunId: "task-reused",
-      agentCodename: "Curie"
+      agentCodename: "Curie",
     };
 
     expect(codenameForTool(native, assignAgentCodenames([native]))).toBe("Curie");

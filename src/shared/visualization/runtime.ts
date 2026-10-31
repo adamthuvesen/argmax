@@ -5,7 +5,7 @@ import type {
   VisualizationHostMessage,
   VisualizationRuntimeConfig,
   VisualizationRuntimeMessage,
-  VisualizationState
+  VisualizationState,
 } from "./types.js";
 
 // The build script removes type imports and emits this file as a classic script.
@@ -39,7 +39,9 @@ import type {
     __argmaxVisualizationReceive?: (message: VisualizationHostMessage) => void;
     __argmaxVisualizationDiagnostics?: Diagnostics;
     webkit?: {
-      messageHandlers?: { argmaxVisualization?: { postMessage: (message: VisualizationRuntimeMessage) => void } };
+      messageHandlers?: {
+        argmaxVisualization?: { postMessage: (message: VisualizationRuntimeMessage) => void };
+      };
     };
     openai?: WidgetApi;
     Tweak?: typeof Tweak;
@@ -53,11 +55,12 @@ import type {
   const config = view.__argmaxVisualizationConfig ?? {
     instanceId: "standalone",
     appearance: { dark: false, variables: {} },
-    standalone: true
+    standalone: true,
   };
   const instanceId = config.instanceId;
   const hasHost =
-    !config.standalone && (Boolean(view.webkit?.messageHandlers?.argmaxVisualization) || parent !== window);
+    !config.standalone &&
+    (Boolean(view.webkit?.messageHandlers?.argmaxVisualization) || parent !== window);
   const controlsSupported = hasHost && config.capabilities?.controls === true;
   const diagnostics: Diagnostics = { ready: false, height: 0, console: [], missingImages: [] };
   view.__argmaxVisualizationDiagnostics = diagnostics;
@@ -99,15 +102,20 @@ import type {
     "error",
     (event: Event) => {
       if (event instanceof ErrorEvent) capture("error", [event.message]);
-      else if (event.target instanceof HTMLScriptElement || event.target instanceof HTMLLinkElement) {
+      else if (
+        event.target instanceof HTMLScriptElement ||
+        event.target instanceof HTMLLinkElement
+      ) {
         capture("error", [
-          `Resource unavailable: ${event.target.getAttribute("src") ?? event.target.getAttribute("href") ?? "unknown"}`
+          `Resource unavailable: ${event.target.getAttribute("src") ?? event.target.getAttribute("href") ?? "unknown"}`,
         ]);
       }
     },
-    true
+    true,
   );
-  window.addEventListener("unhandledrejection", (event: PromiseRejectionEvent) => capture("error", [event.reason]));
+  window.addEventListener("unhandledrejection", (event: PromiseRejectionEvent) =>
+    capture("error", [event.reason]),
+  );
 
   const cloneJson = (input: unknown): unknown => {
     const seen = new Set<object>();
@@ -115,7 +123,8 @@ import type {
       if (depth > 64) throw new Error("Visualization state is nested too deeply");
       if (value === null || typeof value === "string" || typeof value === "boolean") return;
       if (typeof value === "number" && Number.isFinite(value)) return;
-      if (typeof value !== "object") throw new Error("Visualization state must contain JSON values only");
+      if (typeof value !== "object")
+        throw new Error("Visualization state must contain JSON values only");
       if (seen.has(value)) throw new Error("Visualization state must not contain cycles");
       if (
         !Array.isArray(value) &&
@@ -131,16 +140,25 @@ import type {
     validate(input, 0);
     return JSON.parse(JSON.stringify(input)) as unknown;
   };
-  const normalizeState = (input: Partial<VisualizationState> | null | undefined): VisualizationState => {
-    if (input !== null && input !== undefined && (typeof input !== "object" || Array.isArray(input))) {
+  const normalizeState = (
+    input: Partial<VisualizationState> | null | undefined,
+  ): VisualizationState => {
+    if (
+      input !== null &&
+      input !== undefined &&
+      (typeof input !== "object" || Array.isArray(input))
+    ) {
       throw new Error("Visualization state must be an object");
     }
-    if (input && Object.keys(input).some((key) => key !== "modelContent" && key !== "privateContent")) {
+    if (
+      input &&
+      Object.keys(input).some((key) => key !== "modelContent" && key !== "privateContent")
+    ) {
       throw new Error("Visualization state accepts modelContent and privateContent only");
     }
     const state = cloneJson({
       modelContent: input?.modelContent ?? null,
-      privateContent: input?.privateContent ?? null
+      privateContent: input?.privateContent ?? null,
     }) as VisualizationState;
     if (new TextEncoder().encode(JSON.stringify(state)).byteLength > 16 * 1024) {
       throw new Error("Visualization state exceeds 16 KiB");
@@ -170,14 +188,16 @@ import type {
       followUp: hasHost,
       controls: controlsSupported,
       calendar: true,
-      carousel: true
+      carousel: true,
     },
     setWidgetState(input) {
       let state: VisualizationState;
       try {
         state = normalizeState(input);
       } catch (error) {
-        return Promise.reject(error instanceof Error ? error : new Error("Invalid visualization state"));
+        return Promise.reject(
+          error instanceof Error ? error : new Error("Invalid visualization state"),
+        );
       }
       api.widgetState = state;
       if (!hasHost) {
@@ -189,13 +209,26 @@ import type {
         }
         return Promise.resolve();
       }
-      return request((requestId) => ({ type: "argmax:visualization-state", instanceId, requestId, state }));
+      return request((requestId) => ({
+        type: "argmax:visualization-state",
+        instanceId,
+        requestId,
+        state,
+      }));
     },
     sendFollowUpMessage(options) {
-      if (!options || typeof options.prompt !== "string" || !options.prompt.trim() || options.prompt.length > 32000) {
+      if (
+        !options ||
+        typeof options.prompt !== "string" ||
+        !options.prompt.trim() ||
+        options.prompt.length > 32000
+      ) {
         return Promise.reject(new Error("A follow-up prompt must contain 1 to 32,000 characters"));
       }
-      if (options.title !== undefined && (typeof options.title !== "string" || options.title.length > 250)) {
+      if (
+        options.title !== undefined &&
+        (typeof options.title !== "string" || options.title.length > 250)
+      ) {
         return Promise.reject(new Error("A follow-up title must contain at most 250 characters"));
       }
       return request((requestId) => ({
@@ -203,9 +236,9 @@ import type {
         instanceId,
         requestId,
         prompt: options.prompt,
-        ...(options.title === undefined ? {} : { title: options.title })
+        ...(options.title === undefined ? {} : { title: options.title }),
       }));
-    }
+    },
   };
   if (!hasHost) {
     try {
@@ -227,7 +260,8 @@ import type {
     document.documentElement.style.colorScheme = appearance.dark ? "dark" : "light";
     document.documentElement.dataset.theme = appearance.dark ? "dark" : "light";
     for (const [name, value] of Object.entries(appearance.variables)) {
-      if (/^--[\w-]+$/.test(name) && typeof value === "string") document.documentElement.style.setProperty(name, value);
+      if (/^--[\w-]+$/.test(name) && typeof value === "string")
+        document.documentElement.style.setProperty(name, value);
     }
     globalsChanged({ theme: appearance.dark ? "dark" : "light" });
   };
@@ -266,8 +300,8 @@ import type {
           ...(variant ? { variant: variant.dataset.variant } : {}),
           controls: tweak.bindings.map((binding) => ({
             ...binding.schema,
-            value: binding.object[binding.property] as string | number | boolean
-          }))
+            value: binding.object[binding.property] as string | number | boolean,
+          })),
         });
       }
       send({ type: "argmax:visualization-controls", instanceId, groups });
@@ -275,11 +309,15 @@ import type {
   };
   const validControlValue = (schema: VisualizationControl, value: unknown) => {
     if (schema.kind === "toggle") return typeof value === "boolean";
-    if (schema.kind === "color") return typeof value === "string" && /^#[\da-f]{3}(?:[\da-f]{3})?$/i.test(value);
+    if (schema.kind === "color")
+      return typeof value === "string" && /^#[\da-f]{3}(?:[\da-f]{3})?$/i.test(value);
     if (schema.kind === "select")
       return typeof value === "string" && schema.options?.some((option) => option.value === value);
     return (
-      typeof value === "number" && Number.isFinite(value) && value >= (schema.min ?? 0) && value <= (schema.max ?? 100)
+      typeof value === "number" &&
+      Number.isFinite(value) &&
+      value >= (schema.min ?? 0) &&
+      value <= (schema.max ?? 100)
     );
   };
   class Tweak {
@@ -297,20 +335,29 @@ import type {
       this.onChange = options.onChange;
       tweaks.set(this.id, this);
     }
-    private add(kind: VisualizationControl["kind"], object: object, property: string, options: ControlOptions = {}) {
+    private add(
+      kind: VisualizationControl["kind"],
+      object: object,
+      property: string,
+      options: ControlOptions = {},
+    ) {
       if (this.disposed) throw new Error("This Tweak group was disposed");
       if (this.bindings.length >= 12) throw new Error("A Tweak group accepts at most 12 controls");
-      if (!object || !Object.hasOwn(object, property)) throw new Error("Tweak requires an existing object property");
+      if (!object || !Object.hasOwn(object, property))
+        throw new Error("Tweak requires an existing object property");
       if (options.reference && !/^[\w./:@$#-]+$/.test(options.reference))
         throw new Error("Tweak reference contains unsupported characters");
-      if (options.label !== undefined && (typeof options.label !== "string" || options.label.length > 250))
+      if (
+        options.label !== undefined &&
+        (typeof options.label !== "string" || options.label.length > 250)
+      )
         throw new Error("Tweak labels accept at most 250 characters");
       const values = object as Record<string, unknown>;
       const schema: VisualizationControl = {
         id: `control-${controlSequence + 1}`,
         kind,
         label: options.label ?? property,
-        value: values[property] as string | number | boolean
+        value: values[property] as string | number | boolean,
       };
       if (options.reference) schema.reference = options.reference;
       if (kind === "slider") {
@@ -326,14 +373,14 @@ import type {
           min: options.min,
           max: options.max,
           step: options.step ?? 1,
-          ...(options.unit ? { unit: options.unit.slice(0, 30) } : {})
+          ...(options.unit ? { unit: options.unit.slice(0, 30) } : {}),
         });
       }
       if (kind === "select") {
         if (!options.options?.length || options.options.length > 12)
           throw new Error("Tweak select requires 1 to 12 options");
         schema.options = options.options.map((option) =>
-          typeof option === "string" ? { label: option, value: option } : { ...option }
+          typeof option === "string" ? { label: option, value: option } : { ...option },
         );
         if (
           schema.options.some(
@@ -341,12 +388,13 @@ import type {
               typeof option.label !== "string" ||
               typeof option.value !== "string" ||
               option.label.length > 250 ||
-              option.value.length > 250
+              option.value.length > 250,
           )
         )
           throw new Error("Tweak select options require short strings");
       }
-      if (!validControlValue(schema, schema.value)) throw new Error(`Tweak ${kind} has an invalid initial value`);
+      if (!validControlValue(schema, schema.value))
+        throw new Error(`Tweak ${kind} has an invalid initial value`);
       controlSequence++;
       let originals = controlOriginals.get(object);
       if (!originals) {
@@ -359,7 +407,7 @@ import type {
         object: values,
         property,
         original: originals.get(property)!,
-        edited: schema.value
+        edited: schema.value,
       };
       this.bindings.push(binding);
       let edits = controlEdits.get(object);
@@ -426,8 +474,12 @@ import type {
         publishControls();
         break;
       }
-    } else if (message.type === "argmax:visualization-reset" || message.type === "argmax:visualization-original") {
-      if (message.type === "argmax:visualization-reset" && !message.groupId) config.controlValues = {};
+    } else if (
+      message.type === "argmax:visualization-reset" ||
+      message.type === "argmax:visualization-original"
+    ) {
+      if (message.type === "argmax:visualization-reset" && !message.groupId)
+        config.controlValues = {};
       for (const tweak of tweaks.values()) {
         if (message.groupId && tweak.id !== message.groupId) continue;
         for (const binding of tweak.bindings) {
@@ -468,14 +520,15 @@ import type {
       if (url.protocol === "https:" || url.protocol === "http:")
         send({ type: "argmax:visualization-link", instanceId, url: url.href });
     },
-    true
+    true,
   );
 
   const tabsFor = (list: Element) =>
     Array.from(list.querySelectorAll<HTMLButtonElement>('.nav-link[role="tab"]')).filter(
-      (tab) => tab.closest('[role="tablist"]') === list
+      (tab) => tab.closest('[role="tablist"]') === list,
     );
-  const tabEnabled = (tab: HTMLButtonElement) => !tab.disabled && tab.getAttribute("aria-disabled") !== "true";
+  const tabEnabled = (tab: HTMLButtonElement) =>
+    !tab.disabled && tab.getAttribute("aria-disabled") !== "true";
   const activateTab = (list: Element, selected: HTMLButtonElement, focus = false) => {
     const tabs = tabsFor(list);
     for (const tab of tabs) {
@@ -507,7 +560,8 @@ import type {
     const vertical = list.getAttribute("aria-orientation") === "vertical";
     let next: number;
     if (event.key === (vertical ? "ArrowDown" : "ArrowRight")) next = (current + 1) % tabs.length;
-    else if (event.key === (vertical ? "ArrowUp" : "ArrowLeft")) next = (current + tabs.length - 1) % tabs.length;
+    else if (event.key === (vertical ? "ArrowUp" : "ArrowLeft"))
+      next = (current + tabs.length - 1) % tabs.length;
     else if (event.key === "Home") next = 0;
     else if (event.key === "End") next = tabs.length - 1;
     else return;
@@ -527,7 +581,8 @@ import type {
     for (const root of document.querySelectorAll<HTMLElement>(".viz-carousel")) {
       if (carousels.has(root)) continue;
       const variants = Array.from(root.children).filter(
-        (child): child is HTMLElement => child instanceof HTMLElement && child.hasAttribute("data-variant")
+        (child): child is HTMLElement =>
+          child instanceof HTMLElement && child.hasAttribute("data-variant"),
       );
       if (variants.length < 2) continue;
       const names = variants.map((variant) => variant.dataset.variant ?? "");
@@ -559,7 +614,7 @@ import type {
       count.setAttribute("aria-live", "polite");
       let index = Math.max(
         0,
-        variants.findIndex((variant) => !variant.hidden)
+        variants.findIndex((variant) => !variant.hidden),
       );
       const select = (selected: number) => {
         index = (selected + variants.length) % variants.length;
@@ -623,10 +678,15 @@ import type {
     tooltip.style.left = `${Math.max(8, Math.min(left, viewportWidth - size.width - 8))}px`;
     tooltip.style.top = `${Math.max(8, Math.min(top, viewportHeight - size.height - 8))}px`;
     const described = target.getAttribute("aria-describedby")?.split(/\s+/).filter(Boolean) ?? [];
-    if (!described.includes(tooltip.id)) target.setAttribute("aria-describedby", [...described, tooltip.id].join(" "));
+    if (!described.includes(tooltip.id))
+      target.setAttribute("aria-describedby", [...described, tooltip.id].join(" "));
   };
   const tooltipFor = (event: Event) =>
-    event.composedPath().find((item): item is Element => item instanceof Element && item.hasAttribute("data-tooltip"));
+    event
+      .composedPath()
+      .find(
+        (item): item is Element => item instanceof Element && item.hasAttribute("data-tooltip"),
+      );
   document.addEventListener("pointerover", (event) => {
     const target = tooltipFor(event);
     if (target && target !== tooltipTarget) showTooltip(target);
@@ -666,7 +726,17 @@ import type {
   }
   class VizCalendar extends HTMLElement {
     static get observedAttributes() {
-      return ["date", "start", "end", "now", "time-zone", "lang", "empty-label", "events", "interactive"];
+      return [
+        "date",
+        "start",
+        "end",
+        "now",
+        "time-zone",
+        "lang",
+        "empty-label",
+        "events",
+        "interactive",
+      ];
     }
     private supplied: CalendarEvent[] | undefined;
     constructor() {
@@ -710,8 +780,10 @@ import type {
         const start = minutes(this.getAttribute("start") ?? "09:00");
         const end = minutes(this.getAttribute("end") ?? "17:00", true);
         if (end <= start) throw new Error("Calendar end must be after start");
-        const data = this.supplied ?? (JSON.parse(this.getAttribute("events") ?? "[]") as CalendarEvent[]);
-        if (!Array.isArray(data) || data.length > 200) throw new Error("Calendar accepts at most 200 events");
+        const data =
+          this.supplied ?? (JSON.parse(this.getAttribute("events") ?? "[]") as CalendarEvent[]);
+        if (!Array.isArray(data) || data.length > 200)
+          throw new Error("Calendar accepts at most 200 events");
         const events = data
           .map((event, index) => {
             if (
@@ -735,19 +807,29 @@ import type {
             const from = minutes(event.start);
             const to = minutes(event.end, true);
             if (to <= from) throw new Error("Calendar event end must be after start");
-            return { event, index, from: Math.max(start, from), to: Math.min(end, to), lane: 0, lanes: 1 };
+            return {
+              event,
+              index,
+              from: Math.max(start, from),
+              to: Math.min(end, to),
+              lane: 0,
+              lanes: 1,
+            };
           })
           .filter((event) => event.to > event.from)
           .sort((a, b) => a.from - b.from || a.to - b.to);
         const heading = document.createElement("div");
         heading.className = "heading";
         const label = document.createElement("span");
-        label.textContent = new Intl.DateTimeFormat(this.getAttribute("lang") ?? navigator.language, {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-          timeZone: "UTC"
-        }).format(parsed);
+        label.textContent = new Intl.DateTimeFormat(
+          this.getAttribute("lang") ?? navigator.language,
+          {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            timeZone: "UTC",
+          },
+        ).format(parsed);
         const zone = document.createElement("span");
         zone.textContent = this.getAttribute("time-zone") ?? "";
         heading.append(label, zone);
@@ -815,7 +897,7 @@ import type {
               width: 14,
               height: 14,
               "aria-hidden": "true",
-              style: "vertical-align:-2px;margin-inline-end:4px"
+              style: "vertical-align:-2px;margin-inline-end:4px",
             });
             title.prepend(icon);
           }
@@ -829,7 +911,11 @@ import type {
           button.addEventListener("click", () => {
             if (this.hasAttribute("interactive"))
               this.dispatchEvent(
-                new CustomEvent("eventselect", { bubbles: true, composed: true, detail: { event, index: entry.index } })
+                new CustomEvent("eventselect", {
+                  bubbles: true,
+                  composed: true,
+                  detail: { event, index: entry.index },
+                }),
               );
           });
           schedule.append(button);
@@ -870,7 +956,7 @@ import type {
         resizeScheduled = false;
         if (stopped) return;
         diagnostics.height = Math.ceil(
-          Math.max(document.body.getBoundingClientRect().height, document.body.scrollHeight)
+          Math.max(document.body.getBoundingClientRect().height, document.body.scrollHeight),
         );
         send({ type: "argmax:visualization-height", instanceId, height: diagnostics.height });
       });
@@ -889,7 +975,7 @@ import type {
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ["hidden"]
+        attributeFilter: ["hidden"],
       });
     };
     observe();
@@ -923,8 +1009,8 @@ import type {
               .slice(0, 100);
             diagnostics.ready = true;
             resize();
-          })
-        )
+          }),
+        ),
       );
     };
     if (document.readyState === "complete") complete();

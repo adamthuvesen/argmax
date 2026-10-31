@@ -10,9 +10,20 @@ import { WorkingNest } from "./WorkingNest.js";
  * The mark is what says *wait*, so it carries no visible phrase; `label` names
  * the wait for assistive tech only.
  */
-export function LoadingLine({ label, className }: { label: string; className?: string }): JSX.Element {
+export function LoadingLine({
+  label,
+  className,
+}: {
+  label: string;
+  className?: string;
+}): JSX.Element {
   return (
-    <p className={`loading-line${className ? ` ${className}` : ""}`} role="status" aria-busy="true" aria-label={label}>
+    <p
+      className={`loading-line${className ? ` ${className}` : ""}`}
+      role="status"
+      aria-busy="true"
+      aria-label={label}
+    >
       <WorkingNest active size={13} />
     </p>
   );

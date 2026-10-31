@@ -10,7 +10,7 @@ function renderPlans(onOpenUsage = vi.fn()): void {
   render(
     <ul>
       <IdentityPlans onOpenUsage={onOpenUsage} />
-    </ul>
+    </ul>,
   );
 }
 
@@ -21,7 +21,7 @@ function fresh(overrides: Partial<UsageRemaining> = {}): UsageRemaining {
 function stubRemaining(remaining: UsageRemaining): ReturnType<typeof vi.fn> {
   const read = vi.fn().mockResolvedValue(remaining);
   (globalThis.window as unknown as { argmax: ArgmaxApi }).argmax = {
-    usage: { remaining: read }
+    usage: { remaining: read },
   } as unknown as ArgmaxApi;
   return read;
 }
@@ -40,7 +40,12 @@ describe("IdentityPlans", () => {
 
     const list = screen.getByLabelText("Remaining on your plans");
     const rows = within(list).getAllByRole("listitem");
-    expect(rows.map((row) => row.dataset.provider)).toEqual(["claude", "codex", "opencode", "grok"]);
+    expect(rows.map((row) => row.dataset.provider)).toEqual([
+      "claude",
+      "codex",
+      "opencode",
+      "grok",
+    ]);
     // Cursor is Teams, with its remaining on a dashboard we cannot read.
     expect(within(list).queryByText("Cursor")).toBeNull();
     // Claude's three windows each carry their own figure.
@@ -75,7 +80,7 @@ describe("IdentityPlans", () => {
     cleanup();
     setCachedUsageRemaining(
       usageRemainingFixture({ fetchedAt: new Date(Date.now() - 6 * 60_000).toISOString() }),
-      null
+      null,
     );
     renderPlans();
 

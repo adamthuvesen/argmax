@@ -7,7 +7,7 @@ import {
   Hash,
   SquareCode,
   Terminal,
-  type LucideIcon
+  type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState, type JSX } from "react";
 import { displayPath } from "../lib/displayPath.js";
@@ -25,13 +25,13 @@ const FAMILY_ICONS: Record<FileFamily, LucideIcon> = {
   rust: Cog,
   data: Braces,
   shell: Terminal,
-  doc: FileText
+  doc: FileText,
 };
 
 const KIND_LABELS: Record<TurnFileChange["kind"], string> = {
   create: "Created",
   edit: "Edited",
-  delete: "Deleted"
+  delete: "Deleted",
 };
 
 /**
@@ -46,7 +46,7 @@ export function TurnChangesCard({
   defaultExpanded = true,
   onOpenDiff,
   onOpenFile,
-  onOpenReview
+  onOpenReview,
 }: {
   changes: readonly TurnFileChange[];
   workspaceCwd?: string | null;
@@ -73,10 +73,10 @@ export function TurnChangesCard({
         return {
           change,
           name: slash === -1 ? shown : shown.slice(slash + 1),
-          relativePath: shown
+          relativePath: shown,
         };
       }),
-    [changes, workspaceCwd]
+    [changes, workspaceCwd],
   );
 
   if (rows.length === 0) return null;
@@ -93,7 +93,11 @@ export function TurnChangesCard({
           aria-label={expanded ? `Hide ${fileLabel}` : `Show ${fileLabel}`}
           onClick={() => setExpanded((open) => !open)}
         >
-          <ChevronRight size={12} className={`turn-changes-chevron${expanded ? " expanded" : ""}`} aria-hidden="true" />
+          <ChevronRight
+            size={12}
+            className={`turn-changes-chevron${expanded ? " expanded" : ""}`}
+            aria-hidden="true"
+          />
           <span className="turn-changes-title">{fileLabel}</span>
           <TurnChangesStat adds={totals.adds} dels={totals.dels} />
         </button>

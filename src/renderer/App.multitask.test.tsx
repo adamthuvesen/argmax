@@ -13,7 +13,7 @@ import {
   snapshot,
   terminateProvider,
   workspaceRow,
-  sessionRow
+  sessionRow,
 } from "../test/appTestHarness.js";
 
 const childWorkspace = workspaceRow({
@@ -24,7 +24,7 @@ const childWorkspace = workspaceRow({
   sharedWorkspace: true,
   dirty: true,
   changedFiles: 1,
-  lastActivityAt: "2026-05-08T15:56:00.000Z"
+  lastActivityAt: "2026-05-08T15:56:00.000Z",
 });
 
 const childSession = sessionRow({
@@ -41,7 +41,7 @@ const childSession = sessionRow({
   completedAt: "2026-05-08T15:56:00.000Z",
   lastActivityAt: "2026-05-08T15:56:00.000Z",
   launchedBySessionId: "session-1",
-  launchKind: "multitask"
+  launchKind: "multitask",
 });
 
 const events: DashboardSnapshot["events"] = [
@@ -51,7 +51,7 @@ const events: DashboardSnapshot["events"] = [
     type: "message.completed",
     message: "Corrected the 0.4 heading to 2026.",
     payload: {},
-    createdAt: "2026-05-08T15:56:00.000Z"
+    createdAt: "2026-05-08T15:56:00.000Z",
   },
   {
     id: "child-prompt",
@@ -59,7 +59,7 @@ const events: DashboardSnapshot["events"] = [
     type: "user.message",
     message: "The changelog says 2025 for the 0.4 entry.",
     payload: {},
-    createdAt: "2026-05-08T15:55:00.000Z"
+    createdAt: "2026-05-08T15:55:00.000Z",
   },
   {
     id: "multitask-launched",
@@ -71,9 +71,9 @@ const events: DashboardSnapshot["events"] = [
       childWorkspaceId: "workspace-multitask",
       taskLabel: "Fix the changelog date",
       prompt: "The changelog says 2025 for the 0.4 entry.",
-      worktree: false
+      worktree: false,
     },
-    createdAt: "2026-05-08T15:55:00.000Z"
+    createdAt: "2026-05-08T15:55:00.000Z",
   },
   {
     id: "parent-prompt",
@@ -81,8 +81,8 @@ const events: DashboardSnapshot["events"] = [
     type: "user.message",
     message: "Build dashboard",
     payload: {},
-    createdAt: "2026-05-08T15:54:00.000Z"
-  }
+    createdAt: "2026-05-08T15:54:00.000Z",
+  },
 ];
 
 function mountWithMultitask(childOverrides: Partial<typeof childSession> = {}): void {
@@ -90,7 +90,7 @@ function mountWithMultitask(childOverrides: Partial<typeof childSession> = {}): 
     ...snapshot,
     workspaces: [...snapshot.workspaces, childWorkspace],
     sessions: [...snapshot.sessions, { ...childSession, ...childOverrides }],
-    events
+    events,
   });
 }
 
@@ -107,7 +107,9 @@ describe("multitask in the chat that dispatched it", () => {
 
     await screen.findByRole("button", { name: "Build dashboard" });
     const children = screen.getByRole("group", { name: "Chats launched from Build dashboard" });
-    expect(within(children).getByRole("button", { name: "Fix the changelog date" })).toBeInTheDocument();
+    expect(
+      within(children).getByRole("button", { name: "Fix the changelog date" }),
+    ).toBeInTheDocument();
   });
 
   it("hosts the rows in a card above the composer, not in the turn, and folds them", async () => {
@@ -116,11 +118,19 @@ describe("multitask in the chat that dispatched it", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     const group = await screen.findByRole("region", { name: "Multitasks" });
-    expect(group.closest(".turn-block-body")).toBeNull();
-    expect(group.closest(".session-meta-cards")).not.toBeNull();
-    expect(group.closest(".session-meta-cards")?.nextElementSibling).toHaveClass("session-composer-stack");
+    for (const turnBody of screen.queryAllByTestId("turn-block-body")) {
+      expect(turnBody).not.toContainElement(group);
+    }
+    const metaCards = screen.getByTestId("session-meta-cards");
+    expect(metaCards).toContainElement(group);
+    const composer = screen.getByRole("form", { name: "Session composer" });
+    expect(
+      metaCards.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     const toggle = within(group).getByRole("button", { name: /^Multitasks/ });
-    expect(within(group).getByRole("button", { name: "Open multitask: Fix the changelog date" })).toBeVisible();
+    expect(
+      within(group).getByRole("button", { name: "Open multitask: Fix the changelog date" }),
+    ).toBeVisible();
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(within(group).queryByRole("button", { name: /^Open multitask/ })).toBeNull();
@@ -133,7 +143,9 @@ describe("multitask in the chat that dispatched it", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Dismiss multitask: Fix the changelog date" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Dismiss multitask: Fix the changelog date" }),
+    );
 
     await waitFor(() => expect(screen.queryByRole("region", { name: "Multitasks" })).toBeNull());
   });
@@ -143,13 +155,15 @@ describe("multitask in the chat that dispatched it", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" }),
+    );
 
     const tablist = await screen.findByRole("tablist", { name: "Subagents and multitasks" });
     expect(
       within(tablist)
         .getAllByRole("tab")
-        .map((tab) => tab.textContent)
+        .map((tab) => tab.textContent),
     ).toEqual(["Fix the changelog date"]);
     // Its own transcript, in the dock — the parent chat is still the one on the
     // left, and nothing navigated away from it.
@@ -175,8 +189,8 @@ describe("multitask in the chat that dispatched it", () => {
         workspaceId: "multitask-workspace",
         provider: "codex",
         modelId: PROVIDER_TITLE_MODEL.codex,
-        prompt: dispatched
-      })
+        prompt: dispatched,
+      }),
     );
   });
 
@@ -185,14 +199,22 @@ describe("multitask in the chat that dispatched it", () => {
     // hands the pane back to the launcher. A multitask has no pane of its own,
     // so that must not fire for one: the chat it was dispatched from stays on
     // screen, and its launcher draft never picks up the multitask's prompt.
-    mountWithMultitask({ state: "running", completedAt: null, startedAt: new Date().toISOString() });
+    mountWithMultitask({
+      state: "running",
+      completedAt: null,
+      startedAt: new Date().toISOString(),
+    });
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Stop multitask: Fix the changelog date" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Stop multitask: Fix the changelog date" }),
+    );
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-multitask"));
-    expect(await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" }),
+    ).toBeInTheDocument();
     expect(readDraft(launcherDraftKey("project-1")).text).toBe("");
     expect(archiveWorkspace).not.toHaveBeenCalled();
   });

@@ -11,7 +11,7 @@ describe("useComposerDraft persist lock", () => {
   it("drops the stored entry when persist turns off without clearing the on-screen text", () => {
     const { result, rerender } = renderHook(
       ({ persist }: { persist: boolean }) => useComposerDraft("launch-p", { persist }),
-      { initialProps: { persist: true } }
+      { initialProps: { persist: true } },
     );
 
     act(() => {
@@ -27,7 +27,7 @@ describe("useComposerDraft persist lock", () => {
   it("writes the still-held text back if persist returns (a failed send)", () => {
     const { result, rerender } = renderHook(
       ({ persist }: { persist: boolean }) => useComposerDraft("launch-p", { persist }),
-      { initialProps: { persist: true } }
+      { initialProps: { persist: true } },
     );
 
     act(() => {

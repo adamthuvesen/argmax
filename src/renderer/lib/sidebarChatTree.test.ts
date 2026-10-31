@@ -8,14 +8,18 @@ const baseWorkspace = defaultDashboardSnapshot.workspaces[0];
 const workspace = (id: string, overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary => ({
   ...baseWorkspace,
   id,
-  ...overrides
+  ...overrides,
 });
-const session = (workspaceId: string, parentId?: string, overrides: Partial<SessionSummary> = {}): SessionSummary => ({
+const session = (
+  workspaceId: string,
+  parentId?: string,
+  overrides: Partial<SessionSummary> = {},
+): SessionSummary => ({
   ...defaultDashboardSnapshot.sessions[0],
   id: `session-${workspaceId}`,
   workspaceId,
   launchedBySessionId: parentId ? `session-${parentId}` : null,
-  ...overrides
+  ...overrides,
 });
 
 describe("buildSidebarChatTree", () => {
@@ -24,26 +28,34 @@ describe("buildSidebarChatTree", () => {
       workspace("parent"),
       workspace("older", { lastActivityAt: "2026-10-17T10:00:00Z" }),
       workspace("newer", { projectId: "other-project", lastActivityAt: "2026-10-18T10:00:00Z" }),
-      workspace("grandchild")
+      workspace("grandchild"),
     ];
     const tree = buildSidebarChatTree(
       rows,
-      [session("parent"), session("older", "parent"), session("newer", "parent"), session("grandchild", "older")],
+      [
+        session("parent"),
+        session("older", "parent"),
+        session("newer", "parent"),
+        session("grandchild", "older"),
+      ],
       new Set(),
-      true
+      true,
     );
-    expect(tree.childrenByWorkspace.get("parent")?.map((row) => row.id)).toEqual(["newer", "older"]);
+    expect(tree.childrenByWorkspace.get("parent")?.map((row) => row.id)).toEqual([
+      "newer",
+      "older",
+    ]);
     expect(tree.childrenByWorkspace.get("older")?.map((row) => row.id)).toEqual(["grandchild"]);
     expect([...tree.parentByWorkspace]).toEqual([
       ["older", "parent"],
       ["newer", "parent"],
-      ["grandchild", "older"]
+      ["grandchild", "older"],
     ]);
     expect([...tree.rootByWorkspace]).toEqual([
       ["parent", "parent"],
       ["older", "parent"],
       ["newer", "parent"],
-      ["grandchild", "parent"]
+      ["grandchild", "parent"],
     ]);
   });
 
@@ -53,7 +65,7 @@ describe("buildSidebarChatTree", () => {
       workspace("pinned", { pinned: true }),
       workspace("detached"),
       workspace("orphan"),
-      workspace("self")
+      workspace("self"),
     ];
     const tree = buildSidebarChatTree(
       rows,
@@ -62,10 +74,10 @@ describe("buildSidebarChatTree", () => {
         session("pinned", "parent"),
         session("detached", "parent"),
         session("orphan", "absent"),
-        session("self", "self")
+        session("self", "self"),
       ],
       new Set(["detached"]),
-      true
+      true,
     );
     expect(tree.parentByWorkspace.size).toBe(0);
     expect(tree.childrenByWorkspace.size).toBe(0);
@@ -77,7 +89,7 @@ describe("buildSidebarChatTree", () => {
       [workspace("child")],
       [session("parent"), session("child", "parent")],
       new Set(),
-      true
+      true,
     );
     expect(tree.parentByWorkspace.size).toBe(0);
     expect(tree.rootByWorkspace.get("child")).toBe("child");
@@ -88,14 +100,14 @@ describe("buildSidebarChatTree", () => {
       [workspace("a"), workspace("b"), workspace("c"), workspace("child")],
       [session("a", "b"), session("b", "c"), session("c", "a"), session("child", "b")],
       new Set(),
-      true
+      true,
     );
     expect([...tree.parentByWorkspace]).toEqual([["child", "b"]]);
     expect([...tree.rootByWorkspace]).toEqual([
       ["a", "a"],
       ["b", "b"],
       ["c", "c"],
-      ["child", "b"]
+      ["child", "b"],
     ]);
   });
 
@@ -106,10 +118,10 @@ describe("buildSidebarChatTree", () => {
         session("parent-a"),
         session("parent-b"),
         session("child", "parent-a", { id: "child-old", lastActivityAt: "2026-10-17T10:00:00Z" }),
-        session("child", "parent-b", { id: "child-new", lastActivityAt: "2026-10-18T10:00:00Z" })
+        session("child", "parent-b", { id: "child-new", lastActivityAt: "2026-10-18T10:00:00Z" }),
       ],
       new Set(),
-      true
+      true,
     );
     expect(tree.parentByWorkspace.get("child")).toBe("parent-b");
     expect(tree.childrenByWorkspace.has("parent-a")).toBe(false);
@@ -120,11 +132,14 @@ describe("buildSidebarChatTree", () => {
       [workspace("parent"), workspace("child")],
       [
         session("parent", undefined, { lastActivityAt: "2026-10-17T10:00:00Z" }),
-        session("parent", undefined, { id: "new-parent-session", lastActivityAt: "2026-10-18T10:00:00Z" }),
-        session("child", "parent")
+        session("parent", undefined, {
+          id: "new-parent-session",
+          lastActivityAt: "2026-10-18T10:00:00Z",
+        }),
+        session("child", "parent"),
       ],
       new Set(),
-      true
+      true,
     );
     expect(tree.parentByWorkspace.get("child")).toBe("parent");
   });
@@ -134,13 +149,13 @@ describe("buildSidebarChatTree", () => {
       [workspace("parent"), workspace("child")],
       [session("parent"), session("child", "parent")],
       new Set(),
-      false
+      false,
     );
     expect(tree.parentByWorkspace.size).toBe(0);
     expect(tree.childrenByWorkspace.size).toBe(0);
     expect([...tree.rootByWorkspace]).toEqual([
       ["parent", "parent"],
-      ["child", "child"]
+      ["child", "child"],
     ]);
   });
 });

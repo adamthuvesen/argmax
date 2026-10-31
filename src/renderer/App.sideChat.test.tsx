@@ -11,7 +11,7 @@ import {
   mockDashboardSnapshot,
   setupAppTestMocks,
   snapshot,
-  terminateProvider
+  terminateProvider,
 } from "../test/appTestHarness.js";
 
 describe("App side chat launcher", () => {
@@ -36,19 +36,19 @@ describe("App side chat launcher", () => {
     expect(screen.queryByRole("button", { name: "Worktree" })).toBeNull();
 
     fireEvent.change(input, {
-      target: { value: "Explain vector clocks" }
+      target: { value: "Explain vector clocks" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Start agent" }));
 
     await waitFor(() => expect(createScratchWorkspace).toHaveBeenCalledTimes(1));
     expect(createScratchWorkspace).toHaveBeenCalledWith({
       taskLabel: "Explain vector clocks",
-      kind: null
+      kind: null,
     });
     await waitFor(() => expect(launchProvider).toHaveBeenCalledTimes(1));
     expect(launchProvider.mock.calls[0]?.[0]).toMatchObject({
       prompt: "Explain vector clocks",
-      agentMode: "auto"
+      agentMode: "auto",
     });
   });
 
@@ -60,7 +60,7 @@ describe("App side chat launcher", () => {
       taskLabel: "Explore this idea",
       kind: "scratch",
       sharedWorkspace: true,
-      path: "/tmp/side-chats/workspace-docked-chat"
+      path: "/tmp/side-chats/workspace-docked-chat",
     };
     const child: SessionSummary = {
       ...snapshot.sessions[0],
@@ -70,7 +70,7 @@ describe("App side chat launcher", () => {
       state: "running",
       startedAt: new Date().toISOString(),
       completedAt: null,
-      launchKind: "user"
+      launchKind: "user",
     };
     createScratchWorkspace.mockResolvedValue(scratch);
     launchProvider.mockResolvedValue(child);
@@ -82,7 +82,7 @@ describe("App side chat launcher", () => {
     fireEvent.click(within(review).getByRole("button", { name: "New workspace tab" }));
     fireEvent.click(within(review).getByRole("button", { name: "Side chat" }));
     fireEvent.change(within(review).getByRole("textbox", { name: "Side chat message" }), {
-      target: { value: child.prompt }
+      target: { value: child.prompt },
     });
     fireEvent.click(within(review).getByRole("button", { name: "Start side chat" }));
     const stop = await within(review).findByRole("button", { name: "Stop chat" });
@@ -158,9 +158,9 @@ describe("App side chat launcher", () => {
           prCreatedAt: null,
           prMergedAt: null,
           prCheckState: null,
-          prActivityAt: null
-        }
-      ]
+          prActivityAt: null,
+        },
+      ],
     });
 
     render(<App />);
@@ -169,8 +169,8 @@ describe("App side chat launcher", () => {
     await waitFor(() =>
       expect(archiveWorkspace).toHaveBeenCalledWith({
         workspaceId: "workspace-stray-popup",
-        force: true
-      })
+        force: true,
+      }),
     );
   });
 
@@ -187,11 +187,13 @@ describe("App side chat launcher", () => {
       path: "/tmp/side-chats/workspace-popup-live",
       state: "created",
       sharedWorkspace: true,
-      kind: "popup"
+      kind: "popup",
     };
     createScratchWorkspace.mockResolvedValue(popupWorkspace);
     let resolveLaunch: ((session: SessionSummary) => void) | null = null;
-    launchProvider.mockImplementation(() => new Promise<SessionSummary>((resolve) => (resolveLaunch = resolve)));
+    launchProvider.mockImplementation(
+      () => new Promise<SessionSummary>((resolve) => (resolveLaunch = resolve)),
+    );
 
     // jsdom implements Range selection but not layout measurement.
     Range.prototype.getBoundingClientRect = () => ({
@@ -203,7 +205,7 @@ describe("App side chat launcher", () => {
       height: 16,
       x: 40,
       y: 200,
-      toJSON: () => ({})
+      toJSON: () => ({}),
     });
 
     render(<App />);
@@ -220,7 +222,9 @@ describe("App side chat launcher", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "More Details" }));
     await waitFor(() => expect(createScratchWorkspace).toHaveBeenCalledTimes(1));
 
-    expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: "ask-each-time" }));
+    expect(launchProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ permissionMode: "ask-each-time" }),
+    );
 
     // The early delta arrives while providers.launch is still pending.
     act(() => {
@@ -231,7 +235,7 @@ describe("App side chat launcher", () => {
     const popupSession: SessionSummary = {
       ...snapshot.sessions[0],
       id: "session-popup-live",
-      workspaceId: "workspace-popup-live"
+      workspaceId: "workspace-popup-live",
     };
     await act(async () => {
       resolveLaunch?.(popupSession);

@@ -42,36 +42,43 @@ export function useProjectFolderChanges(source: ReviewState["projectChanges"], e
       .then(async (folders) => {
         const others = folders.filter(
           (folder) =>
-            folder.enabled && (workingFolderId ? folder.id !== workingFolderId : folder.rootPath !== workingRootPath)
+            folder.enabled &&
+            (workingFolderId ? folder.id !== workingFolderId : folder.rootPath !== workingRootPath),
         );
         const result = await Promise.all(
           others.map(async (folder): Promise<ProjectFolderChanges> => {
             try {
               const files = await bridge.review.listChangedFiles(
                 { kind: "projectFolder", id: folder.id },
-                "workingTree"
+                "workingTree",
               );
-              return { folder, files: [...files].sort((a, b) => a.path.localeCompare(b.path)), error: null };
+              return {
+                folder,
+                files: [...files].sort((a, b) => a.path.localeCompare(b.path)),
+                error: null,
+              };
             } catch (failure) {
               return { folder, files: [], error: errorMessage(failure) };
             }
-          })
+          }),
         );
         if (cancelled) return;
         setWorkingFolder(
           folders.find((folder) =>
-            workingFolderId ? folder.id === workingFolderId : folder.rootPath === workingRootPath
-          ) ?? null
+            workingFolderId ? folder.id === workingFolderId : folder.rootPath === workingRootPath,
+          ) ?? null,
         );
         setGroups(result);
         setError(null);
         setSelection((current) =>
           current &&
           result.some(
-            (group) => group.folder.id === current.folderId && group.files.some((file) => file.path === current.path)
+            (group) =>
+              group.folder.id === current.folderId &&
+              group.files.some((file) => file.path === current.path),
           )
             ? current
-            : null
+            : null,
         );
       })
       .catch((failure: unknown) => {
@@ -89,7 +96,12 @@ export function useProjectFolderChanges(source: ReviewState["projectChanges"], e
     setDiffError(null);
     setLoadingDiff(true);
     void window.argmax.review
-      .loadDiff({ kind: "projectFolder", id: selection.folderId }, selection.path, "workingTree", contextLines)
+      .loadDiff(
+        { kind: "projectFolder", id: selection.folderId },
+        selection.path,
+        "workingTree",
+        contextLines,
+      )
       .then((result) => {
         if (!cancelled) setDiff(result);
       })
@@ -112,11 +124,11 @@ export function useProjectFolderChanges(source: ReviewState["projectChanges"], e
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
   const expandContext = useCallback(
     () => setContextLines((current) => nextDiffContext(current ?? null) ?? current),
-    []
+    [],
   );
   const selectedFolder = useMemo(
     () => groups.find((group) => group.folder.id === selection?.folderId)?.folder ?? null,
-    [groups, selection]
+    [groups, selection],
   );
   return {
     workingFolder,
@@ -130,7 +142,7 @@ export function useProjectFolderChanges(source: ReviewState["projectChanges"], e
     selectFile,
     clearSelection,
     refresh,
-    expandContext
+    expandContext,
   };
 }
 

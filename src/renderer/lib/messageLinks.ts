@@ -68,7 +68,8 @@ export function splitLinkSegments(input: string): MessageLinkSegment[] | null {
   for (const match of input.matchAll(URL_RUN)) {
     const url = trimSentencePunctuation(match[0]);
     if (!HAS_HOST.test(url)) continue;
-    if (match.index > cursor) segments.push({ text: input.slice(cursor, match.index), link: false });
+    if (match.index > cursor)
+      segments.push({ text: input.slice(cursor, match.index), link: false });
     segments.push({ text: url, link: true });
     cursor = match.index + url.length;
   }

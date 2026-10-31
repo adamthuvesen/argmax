@@ -41,7 +41,9 @@ export function useAgentToolsSettings(): {
     setBrowserToolsState(enabled);
     void api.setBrowserTools({ enabled }).catch((error: unknown) => {
       setBrowserToolsState(!enabled);
-      showErrorToast(error instanceof Error ? error.message : "Could not save browser tools setting.");
+      showErrorToast(
+        error instanceof Error ? error.message : "Could not save browser tools setting.",
+      );
     });
   }, []);
 

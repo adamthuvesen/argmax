@@ -1,7 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-type TokenizedLines = { lines: Array<Array<{ content: string; color?: string }>>; grammarState: undefined };
+type TokenizedLines = {
+  lines: Array<Array<{ content: string; color?: string }>>;
+  grammarState: undefined;
+};
 const tokenizeLinesMock = vi.hoisted(() =>
   vi.fn<(code: string, lang: string, appearance: "light" | "dark") => TokenizedLines>((code) => {
     // Deterministic stub: tag whitespace runs with no color and non-whitespace
@@ -13,28 +16,32 @@ const tokenizeLinesMock = vi.hoisted(() =>
       let match: RegExpExecArray | null;
       while ((match = pattern.exec(content))) {
         const piece = match[0];
-        tokens.push(/^\s+$/.test(piece) ? { content: piece } : { content: piece, color: "#005cc5" });
+        tokens.push(
+          /^\s+$/.test(piece) ? { content: piece } : { content: piece, color: "#005cc5" },
+        );
       }
       return tokens.length > 0 ? tokens : [{ content }];
     });
     return { lines, grammarState: undefined };
-  })
+  }),
 );
 const useHighlighterReadyMock = vi.hoisted(() => vi.fn<() => boolean>(() => true));
-const useHighlightThemeAppearanceMock = vi.hoisted(() => vi.fn<() => "light" | "dark">(() => "light"));
+const useHighlightThemeAppearanceMock = vi.hoisted(() =>
+  vi.fn<() => "light" | "dark">(() => "light"),
+);
 const langFromPathMock = vi.hoisted(() =>
   vi.fn((filePath: string | null | undefined): string | null => {
     if (!filePath) return null;
     if (filePath.endsWith(".ts")) return "typescript";
     return null;
-  })
+  }),
 );
 
 vi.mock("../lib/highlighter.js", () => ({
   tokenizeLines: tokenizeLinesMock,
   useHighlighterReady: useHighlighterReadyMock,
   useHighlightThemeAppearance: useHighlightThemeAppearanceMock,
-  langFromPath: langFromPathMock
+  langFromPath: langFromPathMock,
 }));
 
 import type { ParsedDiffBlock } from "../lib/diff.js";
@@ -44,26 +51,26 @@ const TS_HUNK: ParsedDiffBlock = {
   id: "hunk-1",
   kind: "hunk",
   header: "@@ -1,2 +1,2 @@",
-  lines: [{ kind: "addition", content: "const x = 42;", oldLineNumber: null, newLineNumber: 1 }]
+  lines: [{ kind: "addition", content: "const x = 42;", oldLineNumber: null, newLineNumber: 1 }],
 };
 
 const UNKNOWN_HUNK: ParsedDiffBlock = {
   id: "hunk-2",
   kind: "hunk",
   header: "@@ -1 +1 @@",
-  lines: [{ kind: "addition", content: "weird format", oldLineNumber: null, newLineNumber: 1 }]
+  lines: [{ kind: "addition", content: "weird format", oldLineNumber: null, newLineNumber: 1 }],
 };
 
 const OMITTED: Extract<ParsedDiffBlock, { kind: "omitted" }> = {
   id: "omitted-1",
   kind: "omitted",
-  count: 16
+  count: 16,
 };
 
 const TRUNCATED: ParsedDiffBlock = {
   id: "truncated",
   kind: "truncated",
-  droppedBytes: 4096
+  droppedBytes: 4096,
 };
 
 const RANGE_HUNK: Extract<ParsedDiffBlock, { kind: "hunk" }> = {
@@ -75,8 +82,8 @@ const RANGE_HUNK: Extract<ParsedDiffBlock, { kind: "hunk" }> = {
     { kind: "deletion", content: "old", oldLineNumber: 11, newLineNumber: null },
     { kind: "addition", content: "first", oldLineNumber: null, newLineNumber: 21 },
     { kind: "addition", content: "second", oldLineNumber: null, newLineNumber: 22 },
-    { kind: "context", content: "after", oldLineNumber: 12, newLineNumber: 23 }
-  ]
+    { kind: "context", content: "after", oldLineNumber: 12, newLineNumber: 23 },
+  ],
 };
 
 function lineCommentButton(line: number): HTMLElement {
@@ -100,11 +107,13 @@ describe("DiffBlocks", () => {
 
     // Highlighting lands a slice after the first paint, which shows plain text.
     expect(screen.getByText("const x = 42;")).toBeInTheDocument();
-    await waitFor(() => expect(document.querySelectorAll("span.hl-token").length).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(document.querySelectorAll("span.hl-token").length).toBeGreaterThan(0),
+    );
 
     // At least one token carries a non-empty color style.
     const colored = Array.from(document.querySelectorAll("span.hl-token")).filter(
-      (node) => (node as HTMLElement).style.color !== ""
+      (node) => (node as HTMLElement).style.color !== "",
     );
     expect(colored.length).toBeGreaterThan(0);
     expect(tokenizeLinesMock.mock.calls[0]?.[1]).toBe("typescript");
@@ -119,8 +128,8 @@ describe("DiffBlocks", () => {
         { kind: "context", content: "const s = `a", oldLineNumber: 1, newLineNumber: 1 },
         { kind: "deletion", content: "b`;", oldLineNumber: 2, newLineNumber: null },
         { kind: "addition", content: "c`;", oldLineNumber: null, newLineNumber: 2 },
-        { kind: "addition", content: "run(s);", oldLineNumber: null, newLineNumber: 3 }
-      ]
+        { kind: "addition", content: "run(s);", oldLineNumber: null, newLineNumber: 3 },
+      ],
     };
     render(<DiffBlocks blocks={[hunk]} filePath="src/x.ts" />);
 
@@ -176,7 +185,7 @@ describe("DiffBlocks", () => {
     expect(form).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Comment text"), {
-      target: { value: "use a named constant" }
+      target: { value: "use a named constant" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Comment" }));
 
@@ -185,7 +194,7 @@ describe("DiffBlocks", () => {
       line: 1,
       side: "addition",
       lineText: "const x = 42;",
-      comment: "use a named constant"
+      comment: "use a named constant",
     });
     expect(screen.queryByRole("form", { name: "Comment on src/x.ts:1" })).toBeNull();
   });
@@ -203,7 +212,7 @@ describe("DiffBlocks", () => {
 
   it.each([
     [21, 23],
-    [23, 21]
+    [23, 21],
   ])("submits a range dragged from %i to %i", (from, to) => {
     const onAddComment = vi.fn();
     render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={onAddComment} />);
@@ -226,7 +235,7 @@ describe("DiffBlocks", () => {
       side: "addition",
       endSide: "context",
       lineText: "+first\n+second\n after",
-      comment: "range note"
+      comment: "range note",
     });
     expect(screen.queryByRole("form")).toBeNull();
     expect(screen.queryByRole("button", { pressed: true })).toBeNull();
@@ -238,7 +247,9 @@ describe("DiffBlocks", () => {
     fireEvent.mouseDown(lineCommentButton(11), { button: 0, buttons: 1 });
     fireEvent.mouseEnter(lineCommentButton(22), { buttons: 1 });
     fireEvent.mouseUp(window);
-    expect(screen.getByRole("form", { name: "Comment on src/x.ts:11 (removed)-22 (added)" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("form", { name: "Comment on src/x.ts:11 (removed)-22 (added)" }),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Comment text"), { target: { value: "mixed range" } });
     fireEvent.keyDown(screen.getByLabelText("Comment text"), { key: "Enter" });
     expect(onAddComment).toHaveBeenCalledWith({
@@ -248,7 +259,7 @@ describe("DiffBlocks", () => {
       side: "deletion",
       endSide: "addition",
       lineText: "-old\n+first\n+second",
-      comment: "mixed range"
+      comment: "mixed range",
     });
   });
 
@@ -265,18 +276,22 @@ describe("DiffBlocks", () => {
 
   it.each([
     [11, 23, "11 (removed)-23 (unchanged)"],
-    [20, 11, "20 (unchanged)-11 (removed)"]
+    [20, 11, "20 (unchanged)-11 (removed)"],
   ] as const)("labels unchanged endpoints for %i to %i", (from, to, location) => {
     render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={vi.fn()} />);
     fireEvent.mouseDown(lineCommentButton(from), { button: 0, buttons: 1 });
     fireEvent.mouseEnter(lineCommentButton(to), { buttons: 1 });
     fireEvent.mouseUp(window);
-    expect(screen.getByRole("form", { name: `Comment on src/x.ts:${location}` })).toBeInTheDocument();
+    expect(
+      screen.getByRole("form", { name: `Comment on src/x.ts:${location}` }),
+    ).toBeInTheDocument();
   });
 
   it.each(["file", "diff"])("clears a comment when the %s changes", (change) => {
     const onAddComment = vi.fn();
-    const { rerender } = render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={onAddComment} />);
+    const { rerender } = render(
+      <DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={onAddComment} />,
+    );
     fireEvent.click(lineCommentButton(21));
     expect(screen.getByRole("form")).toBeInTheDocument();
     rerender(
@@ -284,7 +299,7 @@ describe("DiffBlocks", () => {
         blocks={change === "diff" ? [{ ...RANGE_HUNK, lines: [] }] : [RANGE_HUNK]}
         filePath={change === "file" ? "src/y.ts" : "src/x.ts"}
         onAddComment={onAddComment}
-      />
+      />,
     );
     expect(screen.queryByRole("form")).toBeNull();
     expect(screen.queryByRole("button", { pressed: true })).toBeNull();
@@ -304,7 +319,11 @@ describe("DiffBlocks", () => {
   it("turns a between-hunk gap into an expand control", () => {
     const onExpandContext = vi.fn();
     render(
-      <DiffBlocks blocks={[TS_HUNK, OMITTED, UNKNOWN_HUNK]} filePath="src/x.ts" onExpandContext={onExpandContext} />
+      <DiffBlocks
+        blocks={[TS_HUNK, OMITTED, UNKNOWN_HUNK]}
+        filePath="src/x.ts"
+        onExpandContext={onExpandContext}
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Expand 16 unmodified lines" }));
@@ -318,7 +337,7 @@ describe("DiffBlocks", () => {
         filePath="src/x.ts"
         presentation="review"
         onExpandContext={() => undefined}
-      />
+      />,
     );
 
     expect(screen.queryByText(TS_HUNK.header)).toBeNull();
@@ -337,7 +356,13 @@ describe("DiffBlocks", () => {
 
   it("announces a truncated diff and stops advertising expansion", () => {
     const onExpandContext = vi.fn();
-    render(<DiffBlocks blocks={[TS_HUNK, OMITTED, TRUNCATED]} filePath="src/x.ts" onExpandContext={onExpandContext} />);
+    render(
+      <DiffBlocks
+        blocks={[TS_HUNK, OMITTED, TRUNCATED]}
+        filePath="src/x.ts"
+        onExpandContext={onExpandContext}
+      />,
+    );
 
     // Asking git for more context would only drop more content.
     expect(screen.queryByRole("button", { name: /unmodified/ })).toBeNull();

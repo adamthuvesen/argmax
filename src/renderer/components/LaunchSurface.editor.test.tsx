@@ -10,7 +10,7 @@ import {
   createIsolatedWorkspace,
   launchProvider,
   setupAppTestMocks,
-  snapshot
+  snapshot,
 } from "../../test/appTestHarness.js";
 
 vi.mock("./ComposerEditor.js", async () => {
@@ -20,7 +20,11 @@ vi.mock("./ComposerEditor.js", async () => {
 
 beforeAll(installZeroLayoutForCodeMirror);
 
-const workspace = { ...snapshot.workspaces[0], id: "workspace-real", taskLabel: "Real editor chat" };
+const workspace = {
+  ...snapshot.workspaces[0],
+  id: "workspace-real",
+  taskLabel: "Real editor chat",
+};
 const session = { ...snapshot.sessions[0], id: "session-real", workspaceId: workspace.id };
 
 async function launcher(): Promise<EditorView> {
@@ -35,7 +39,7 @@ function type(view: EditorView, text: string): void {
   view.dispatch({
     changes: { from: end, insert: text },
     selection: { anchor: end + text.length },
-    userEvent: "input.type"
+    userEvent: "input.type",
   });
 }
 
@@ -57,7 +61,9 @@ describe("LaunchSurface with the real editor", () => {
 
     act(() => {
       type(view, "Fix the flaky test");
-      view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      view.contentDOM.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
     });
 
     await waitFor(() => expect(launchProvider).toHaveBeenCalledOnce());
@@ -71,7 +77,12 @@ describe("LaunchSurface with the real editor", () => {
     act(() => {
       type(view, "Background task");
       view.contentDOM.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Enter", altKey: true, bubbles: true, cancelable: true })
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          altKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
       );
     });
 

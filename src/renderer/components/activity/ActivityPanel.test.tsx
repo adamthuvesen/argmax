@@ -68,8 +68,8 @@ describe("ActivityPanel", () => {
       expect.objectContaining({
         window: "30d",
         projectId: null,
-        timeZone: expect.any(String) as unknown as string
-      })
+        timeZone: expect.any(String) as unknown as string,
+      }),
     );
     expect(screen.getByText("Aug 4 to Sep 2")).toBeInTheDocument();
     expect(screen.getByText("12 repositories")).toBeInTheDocument();
@@ -86,26 +86,38 @@ describe("ActivityPanel", () => {
     expect(
       within(menu)
         .getAllByRole("option")
-        .map((option) => option.textContent)
-    ).toEqual(["Last 24 hours", "Last 7 days", "Last 30 days", "Last 12 months", String(new Date().getFullYear())]);
+        .map((option) => option.textContent),
+    ).toEqual([
+      "Last 24 hours",
+      "Last 7 days",
+      "Last 30 days",
+      "Last 12 months",
+      String(new Date().getFullYear()),
+    ]);
 
     pickOption("Last 24 hours");
 
     expect(summary).toHaveBeenLastCalledWith(expect.objectContaining({ window: "24h" }));
     // Hourly buckets, so the range names hours rather than claiming days.
     expect(await screen.findByText(/Sep 2, 00:00 to Sep 3, 00:00/)).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Hourly commits by repository, 24 hours/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /Hourly commits by repository, 24 hours/ }),
+    ).toBeInTheDocument();
   });
 
   it("labels the chart's axis by the window's own bucket, not by days", async () => {
     await openActivity();
-    expect(screen.getByRole("img", { name: /Daily commits by repository, 30 days/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /Daily commits by repository, 30 days/ }),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Time range" }));
     pickOption("Last 12 months");
 
     expect(summary).toHaveBeenLastCalledWith(expect.objectContaining({ window: "12m" }));
-    expect(await screen.findByRole("img", { name: /Weekly commits by repository, 5[0-9] weeks/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("img", { name: /Weekly commits by repository, 5[0-9] weeks/ }),
+    ).toBeInTheDocument();
   });
 
   it("swaps the hero, the chart and the repository bars from commits to lines", async () => {
@@ -120,7 +132,9 @@ describe("ActivityPanel", () => {
     const lines = heroFigure("Lines changed");
     // Churn is added plus removed, so it dwarfs the commit count it replaced.
     expect(Number(lines.title.replace(/[^0-9]/g, ""))).toBeGreaterThan(commits);
-    expect(within(screen.getByRole("region", { name: "Summary" })).queryByLabelText("Commits")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Summary" })).queryByLabelText("Commits"),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Daily lines by repository/ })).toBeInTheDocument();
     // The metric switch is a presentation change: it never re-reads the backend.
     expect(summary).toHaveBeenCalledTimes(1);
@@ -135,12 +149,17 @@ describe("ActivityPanel", () => {
     pickOption("dbt-transform");
 
     await waitFor(() => {
-      expect(summary).toHaveBeenLastCalledWith(expect.objectContaining({ window: "30d", projectId: "p-dbt" }));
+      expect(summary).toHaveBeenLastCalledWith(
+        expect.objectContaining({ window: "30d", projectId: "p-dbt" }),
+      );
     });
     expect(picker).toHaveTextContent("dbt-transform");
     const rows = await screen.findByRole("list", { name: "Commits by repository" });
     await waitFor(() => {
-      expect(within(rows).getByRole("button", { name: /dbt-transform/ })).toHaveAttribute("aria-pressed", "true");
+      expect(within(rows).getByRole("button", { name: /dbt-transform/ })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     });
     // The rows are the filter, so they keep every repository: a one-row table
     // is not the comparison the card exists for.
@@ -159,8 +178,8 @@ describe("ActivityPanel", () => {
 
     expect(
       screen.getByRole("img", {
-        name: /commits across .* active days in the 365 days ending Sep 2, 2026/
-      })
+        name: /commits across .* active days in the 365 days ending Sep 2, 2026/,
+      }),
     ).toBeInTheDocument();
     // One cell per day, each published with its own count and date.
     expect(heatmapDays()).toBe(365);
@@ -173,7 +192,9 @@ describe("ActivityPanel", () => {
     pickOption("dotfiles");
 
     await waitFor(() => {
-      expect(summary).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: "p-dotfiles" }));
+      expect(summary).toHaveBeenLastCalledWith(
+        expect.objectContaining({ projectId: "p-dotfiles" }),
+      );
     });
     // The year and the ranking are the comparisons a filter would destroy.
     expect(heatmapDays()).toBe(365);
@@ -229,7 +250,7 @@ describe("ActivityPanel", () => {
       return Promise.resolve({
         ...partial,
         totals: { ...partial.totals, commits: 0, linesAdded: 0, linesRemoved: 0 },
-        series: []
+        series: [],
       });
     });
     render(<ActivityPanel />);

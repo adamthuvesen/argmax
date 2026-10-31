@@ -32,7 +32,10 @@ interface FileChipMatch {
 
 /** Convert a linked absolute workspace path into the relative path expected by
  * the Files view. Encoded spaces come from Markdown links wrapped in `<...>`. */
-export function normalizeFileChipPath(path: string, workspaceCwd: string | null | undefined): string {
+export function normalizeFileChipPath(
+  path: string,
+  workspaceCwd: string | null | undefined,
+): string {
   let decoded = path;
   try {
     decoded = decodeURIComponent(path);
@@ -71,7 +74,7 @@ export function matchFileChip(value: string): FileChipMatch | null {
     return {
       path,
       line: parseLine(result[2]),
-      needsExistenceCheck: !EXTENSION_PATTERN.test(basename(path))
+      needsExistenceCheck: !EXTENSION_PATTERN.test(basename(path)),
     };
   }
   if (trimmed.length > MAX_RELATIVE_LENGTH) return null;
@@ -97,11 +100,13 @@ function parseLine(value: string | undefined): number | null {
 export function formatFileChipLabel(
   path: string,
   workspaceCwd: string | null | undefined,
-  line: number | null
+  line: number | null,
 ): string {
   const root = workspaceCwd?.replace(/\/+$/, "");
   const isOutsideWorkspace =
-    Boolean(root) && (path.startsWith("/") || path.startsWith("~/")) && !path.startsWith(`${root}/`);
+    Boolean(root) &&
+    (path.startsWith("/") || path.startsWith("~/")) &&
+    !path.startsWith(`${root}/`);
   const name = isOutsideWorkspace ? collapseHome(path) : basename(path);
   return line ? `${name}:${line}` : name;
 }

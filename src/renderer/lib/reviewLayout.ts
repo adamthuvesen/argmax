@@ -1,4 +1,11 @@
-export type ReviewPanelMode = "changes" | "files" | "agents" | "browser" | "terminal" | "new" | "side-chat";
+export type ReviewPanelMode =
+  | "changes"
+  | "files"
+  | "agents"
+  | "browser"
+  | "terminal"
+  | "new"
+  | "side-chat";
 
 export interface ReviewLayout {
   modes: [ReviewPanelMode] | [ReviewPanelMode, ReviewPanelMode];
@@ -19,7 +26,7 @@ const REVIEW_PANEL_MODES: readonly ReviewPanelMode[] = [
   "browser",
   "terminal",
   "new",
-  "side-chat"
+  "side-chat",
 ];
 
 export function isReviewPanelMode(value: unknown): value is ReviewPanelMode {
@@ -43,7 +50,8 @@ export function parseReviewLayout(stored: string | null): ReviewLayout | null {
       activeIndex?: unknown;
       ratio?: unknown;
     };
-    if (!Array.isArray(value.modes) || value.modes.length < 1 || value.modes.length > 2) return null;
+    if (!Array.isArray(value.modes) || value.modes.length < 1 || value.modes.length > 2)
+      return null;
     if (!value.modes.every(isReviewPanelMode)) return null;
     if (value.modes.length === 2 && value.modes[0] === value.modes[1]) return null;
     if (value.activeIndex !== 0 && value.activeIndex !== 1) return null;
@@ -52,14 +60,17 @@ export function parseReviewLayout(stored: string | null): ReviewLayout | null {
     return {
       modes: value.modes as [ReviewPanelMode] | [ReviewPanelMode, ReviewPanelMode],
       activeIndex: value.activeIndex,
-      ratio: clampReviewSplitRatio(value.ratio)
+      ratio: clampReviewSplitRatio(value.ratio),
     };
   } catch {
     return null;
   }
 }
 
-export function normalizeReviewLayout(layout: ReviewLayout, availableModes: readonly ReviewPanelMode[]): ReviewLayout {
+export function normalizeReviewLayout(
+  layout: ReviewLayout,
+  availableModes: readonly ReviewPanelMode[],
+): ReviewLayout {
   const available = new Set(availableModes);
   const wantedPaneCount = layout.modes.length;
   const modes: ReviewPanelMode[] = [];
@@ -77,7 +88,7 @@ export function normalizeReviewLayout(layout: ReviewLayout, availableModes: read
   return {
     modes: modes as [ReviewPanelMode] | [ReviewPanelMode, ReviewPanelMode],
     activeIndex: (activeIndex >= 0 ? activeIndex : 0) as 0 | 1,
-    ratio: clampReviewSplitRatio(layout.ratio)
+    ratio: clampReviewSplitRatio(layout.ratio),
   };
 }
 
@@ -92,7 +103,11 @@ export function activateReviewMode(layout: ReviewLayout, mode: ReviewPanelMode):
   return { ...layout, modes };
 }
 
-export function setReviewPaneMode(layout: ReviewLayout, index: 0 | 1, mode: ReviewPanelMode): ReviewLayout {
+export function setReviewPaneMode(
+  layout: ReviewLayout,
+  index: 0 | 1,
+  mode: ReviewPanelMode,
+): ReviewLayout {
   if (index >= layout.modes.length) return layout;
   const existingIndex = layout.modes.indexOf(mode);
   const modes: ReviewLayout["modes"] = [...layout.modes];
@@ -110,7 +125,7 @@ function fallbackSplitMode(mode: ReviewPanelMode): ReviewPanelMode {
 export function splitReviewMode(
   layout: ReviewLayout,
   mode: ReviewPanelMode,
-  position: ReviewSplitPosition
+  position: ReviewSplitPosition,
 ): ReviewLayout {
   const targetIndex: 0 | 1 = position === "top" ? 0 : 1;
   if (layout.modes.length === 1) {
@@ -127,7 +142,7 @@ export function splitReviewMode(
     return {
       ...layout,
       modes: [layout.modes[1], layout.modes[0]],
-      activeIndex: targetIndex
+      activeIndex: targetIndex,
     };
   }
   const modes: [ReviewPanelMode, ReviewPanelMode] = [...layout.modes];
@@ -140,7 +155,7 @@ export function closeReviewPane(layout: ReviewLayout, index: 0 | 1): ReviewLayou
   return {
     modes: [layout.modes[index === 0 ? 1 : 0]],
     activeIndex: 0,
-    ratio: layout.ratio
+    ratio: layout.ratio,
   };
 }
 

@@ -8,14 +8,16 @@ const highlightCodeMock = vi.hoisted(() =>
     (
       code: string,
       lang: string | null,
-      appearance?: "light" | "dark"
+      appearance?: "light" | "dark",
     ) => Array<Array<{ content: string; color: string }>>
-  >((code) => code.split("\n").map((line) => [{ content: `HL:${line}`, color: "#005cc5" }]))
+  >((code) => code.split("\n").map((line) => [{ content: `HL:${line}`, color: "#005cc5" }])),
 );
 const plainCodeLinesMock = vi.hoisted(() =>
-  vi.fn((code: string) => code.split("\n").map((line) => [{ content: line }]))
+  vi.fn((code: string) => code.split("\n").map((line) => [{ content: line }])),
 );
-const useHighlightThemeAppearanceMock = vi.hoisted(() => vi.fn<() => "light" | "dark">(() => "light"));
+const useHighlightThemeAppearanceMock = vi.hoisted(() =>
+  vi.fn<() => "light" | "dark">(() => "light"),
+);
 
 vi.mock("../lib/highlighter.js", () => ({
   highlightCode: highlightCodeMock,
@@ -28,7 +30,7 @@ vi.mock("../lib/highlighter.js", () => ({
   plainCodeLines: plainCodeLinesMock,
   resolveFenceLang: (tag: string | null | undefined) => (tag ? "typescript" : null),
   useHighlighterReady: () => true,
-  useHighlightThemeAppearance: useHighlightThemeAppearanceMock
+  useHighlightThemeAppearance: useHighlightThemeAppearanceMock,
 }));
 
 import { CodeBlock } from "./CodeBlock.js";
@@ -62,7 +64,7 @@ describe("CodeBlock streaming highlight", () => {
     render(
       <StreamingCodeContext.Provider value={true}>
         <CodeBlock className="language-ts">const x = 1;</CodeBlock>
-      </StreamingCodeContext.Provider>
+      </StreamingCodeContext.Provider>,
     );
     // Immediately: plain text, shiki has not run on the live fence.
     expect(screen.getByText("const x = 1;")).toBeInTheDocument();

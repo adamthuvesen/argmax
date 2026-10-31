@@ -7,7 +7,7 @@ import {
   formatDeltaRatio,
   formatDuration,
   formatHeroCount,
-  formatRemoved
+  formatRemoved,
 } from "./activityFormat.js";
 import { metricValue, type ActivityDelta, type ActivityMetric } from "./activityPresentation.js";
 import { ActivityHeatmap } from "./ActivityHeatmap.js";
@@ -27,14 +27,14 @@ import { ActivityHeatmap } from "./ActivityHeatmap.js";
 const DELTA_GLYPH: Record<ActivityDelta["direction"], string> = {
   up: "↑",
   down: "↓",
-  flat: "→"
+  flat: "→",
 };
 
 /** The direction for a reader who cannot see the glyph. */
 const DELTA_WORD: Record<ActivityDelta["direction"], string> = {
   up: "up",
   down: "down",
-  flat: "level"
+  flat: "level",
 };
 
 /**
@@ -59,7 +59,7 @@ function ActivityDeltaChip({ delta }: { delta: ActivityDelta }): JSX.Element {
 export function ActivityHero({
   summary,
   metric,
-  delta
+  delta,
 }: {
   summary: ActivitySummary;
   metric: ActivityMetric;
@@ -80,7 +80,11 @@ export function ActivityHero({
           </p>
           {/* The exact count stays reachable on hover for the windows where
               the figure is shown rounded. */}
-          <p className="activity-hero-figure" aria-labelledby={eyebrowId} title={formatCount(figure)}>
+          <p
+            className="activity-hero-figure"
+            aria-labelledby={eyebrowId}
+            title={formatCount(figure)}
+          >
             {formatHeroCount(figure)}
           </p>
           <p className="activity-hero-figure-label">
@@ -108,7 +112,11 @@ export function ActivityHero({
                 window, so the fourth slot spends itself on the one figure
                 nothing else on the page states in the open. */}
             <dt>Median cycle</dt>
-            <dd>{summary.medianCycleSeconds !== null ? formatDuration(summary.medianCycleSeconds) : "—"}</dd>
+            <dd>
+              {summary.medianCycleSeconds !== null
+                ? formatDuration(summary.medianCycleSeconds)
+                : "—"}
+            </dd>
           </div>
         </dl>
       </div>
@@ -136,7 +144,8 @@ export function ActivityHero({
                 ·
               </span>
               <span>
-                busiest {formatCalendarDate(streaks.busiestDay.date)}, {formatCount(streaks.busiestDay.commits)} commits
+                busiest {formatCalendarDate(streaks.busiestDay.date)},{" "}
+                {formatCount(streaks.busiestDay.commits)} commits
               </span>
             </>
           ) : null}

@@ -1,4 +1,10 @@
-export type SettingsGroupId = "general" | "appearance" | "agents" | "projects" | "integrations" | "advanced";
+export type SettingsGroupId =
+  | "general"
+  | "appearance"
+  | "agents"
+  | "projects"
+  | "integrations"
+  | "advanced";
 
 type SettingsSectionMeta = {
   id: string;
@@ -29,22 +35,26 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
           "New chat",
           "Follow-up while agent works",
           "Random icon for new chats",
-          "Escape stops a running chat"
-        ]
+          "Escape stops a running chat",
+        ],
       },
       {
         id: "settings-notifications",
         label: "Notifications",
-        settings: ["Notify when agent finishes", "Test notification"]
+        settings: ["Notify when agent finishes", "Test notification"],
       },
       {
         id: "settings-window-snapshot",
         label: "Window snapshot",
-        settings: ["Window snapshot shortcut", "Shortcut keys", "Screen Recording access"]
+        settings: ["Window snapshot shortcut", "Shortcut keys", "Screen Recording access"],
       },
       { id: "settings-power", label: "Power", settings: ["Keep computer awake"] },
-      { id: "settings-handoff", label: "Handoff", settings: ["Default IDE", "Web links from chat"] }
-    ]
+      {
+        id: "settings-handoff",
+        label: "Handoff",
+        settings: ["Default IDE", "Web links from chat"],
+      },
+    ],
   },
   {
     id: "appearance",
@@ -61,13 +71,19 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
           "Activity icons",
           "Activity mark",
           "Running row underline",
-          "Your message bubbles"
-        ]
+          "Your message bubbles",
+        ],
       },
       {
         id: "settings-typography",
         label: "Typography",
-        settings: ["Font family", "App font size", "Agent window font size", "Font heaviness", "Ink strength"]
+        settings: [
+          "Font family",
+          "App font size",
+          "Agent window font size",
+          "Font heaviness",
+          "Ink strength",
+        ],
       },
       {
         id: "settings-layout",
@@ -85,10 +101,10 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
           "Fork bar in forked chats",
           "Fox mascot",
           "Context indicator in composer",
-          "Celebrate PR milestones"
-        ]
-      }
-    ]
+          "Celebrate PR milestones",
+        ],
+      },
+    ],
   },
   {
     id: "agents",
@@ -97,13 +113,13 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
       {
         id: "settings-agent-defaults",
         label: "Defaults",
-        settings: ["Default model", "Default effort", "Fast mode"]
+        settings: ["Default model", "Default effort", "Fast mode"],
       },
       { id: "settings-auto-routing", label: "Model router", settings: ["Jev API key"] },
       {
         id: "settings-opencode-gateway",
         label: "OpenCode gateway",
-        settings: ["Gateway", "OpenRouter API key", "Vercel AI Gateway API key"]
+        settings: ["Gateway", "OpenRouter API key", "Vercel AI Gateway API key"],
       },
       { id: "settings-permissions", label: "Permissions", settings: ["Tool permissions"] },
       { id: "settings-tools", label: "Tools", settings: ["Browser tools"] },
@@ -115,12 +131,12 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
           "Changed files expanded",
           "Goals",
           "Turns a goal may spend",
-          "Revert to a turn"
-        ]
+          "Revert to a turn",
+        ],
       },
       { id: "settings-providers", label: "Providers", settings: ["Refresh provider discovery"] },
-      { id: "settings-session-sync", label: "Chat sync", settings: ["How far back"] }
-    ]
+      { id: "settings-session-sync", label: "Chat sync", settings: ["How far back"] },
+    ],
   },
   {
     id: "projects",
@@ -129,10 +145,15 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
       {
         id: "settings-project-config",
         label: "Project settings",
-        settings: ["Worktree location", "Setup command", "Check commands", "Archive a workspace when its PR merges"]
+        settings: [
+          "Worktree location",
+          "Setup command",
+          "Check commands",
+          "Archive a workspace when its PR merges",
+        ],
       },
-      { id: "settings-project-sources", label: "Project sources" }
-    ]
+      { id: "settings-project-sources", label: "Project sources" },
+    ],
   },
   {
     id: "integrations",
@@ -151,17 +172,21 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
           "Port",
           "ntfy topic",
           "APNs key file",
-          "Paired phones"
-        ]
-      }
-    ]
+          "Paired phones",
+        ],
+      },
+    ],
   },
   {
     id: "advanced",
     label: "Advanced",
     dividerBefore: true,
     sections: [
-      { id: "settings-chat-history", label: "Chat history", settings: ["Delete chats older than 7 days"] },
+      {
+        id: "settings-chat-history",
+        label: "Chat history",
+        settings: ["Delete chats older than 7 days"],
+      },
       { id: "settings-knowledge", label: "Project knowledge" },
       {
         id: "settings-diagnostics",
@@ -173,12 +198,12 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
           "Archived workspaces",
           "Save log file",
           "Performance",
-          "Developer tools"
-        ]
+          "Developer tools",
+        ],
       },
-      { id: "settings-about", label: "About", settings: ["Version", "Source and issues"] }
-    ]
-  }
+      { id: "settings-about", label: "About", settings: ["Version", "Source and issues"] },
+    ],
+  },
 ];
 
 export const DEFAULT_SETTINGS_GROUP = SETTINGS_GROUPS[0];

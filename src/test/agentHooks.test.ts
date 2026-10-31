@@ -14,7 +14,7 @@ function runHook(name: string, input: unknown) {
     cwd: ROOT,
     input: JSON.stringify(input),
     encoding: "utf8",
-    env: { ...process.env, TMPDIR: tempRoot }
+    env: { ...process.env, TMPDIR: tempRoot },
   });
 }
 
@@ -22,15 +22,18 @@ afterAll(() => rmSync(tempRoot, { recursive: true, force: true }));
 
 describe("agent hooks", () => {
   it.each([
-    ["Claude Code", { tool_name: "Edit", tool_input: { file_path: path.join(ROOT, "src/shared/ipcSchemas.ts") } }],
+    [
+      "Claude Code",
+      { tool_name: "Edit", tool_input: { file_path: path.join(ROOT, "src/shared/ipcSchemas.ts") } },
+    ],
     [
       "Codex",
       {
         tool_name: "apply_patch",
         cwd: ROOT,
-        tool_input: { command: "*** Begin Patch\n*** Update File: src/shared/ipcSchemas.ts\n" }
-      }
-    ]
+        tool_input: { command: "*** Begin Patch\n*** Update File: src/shared/ipcSchemas.ts\n" },
+      },
+    ],
   ])("refuses a generated file from %s and names the generator", (_client, input) => {
     const result = runHook("pre-tool-use", input);
     expect(result.status).toBe(2);
@@ -50,7 +53,7 @@ describe("agent hooks", () => {
     "git restore src/a.ts",
     "git -C . restore .",
     "git restore --staged --worktree .",
-    "cd src && git add -A"
+    "cd src && git add -A",
   ])("refuses %s", (command) => {
     expect(runHook("pre-tool-use", { tool_name: "Bash", tool_input: { command } }).status).toBe(2);
   });
@@ -63,21 +66,24 @@ describe("agent hooks", () => {
     "git stash list",
     "git checkout main",
     "git checkout -b feature",
-    'git commit -m "docs: never run git add -A"'
+    'git commit -m "docs: never run git add -A"',
   ])("allows %s", (command) => {
     expect(runHook("pre-tool-use", { tool_name: "Bash", tool_input: { command } }).status).toBe(0);
   });
 
   it("does not read a patch's text as a command", () => {
     const command = "*** Begin Patch\n*** Update File: docs/testing.md\n+Do not run git stash.\n";
-    expect(runHook("pre-tool-use", { tool_name: "apply_patch", cwd: ROOT, tool_input: { command } }).status).toBe(0);
+    expect(
+      runHook("pre-tool-use", { tool_name: "apply_patch", cwd: ROOT, tool_input: { command } })
+        .status,
+    ).toBe(0);
   });
 
   it("gives the subsystem rule once per session after an edit", () => {
     const input = {
       session_id: sessionId,
       tool_name: "Edit",
-      tool_input: { file_path: path.join(ROOT, "src-tauri/src/routing/table.rs") }
+      tool_input: { file_path: path.join(ROOT, "src-tauri/src/routing/table.rs") },
     };
     const first = JSON.parse(runHook("post-tool-use", input).stdout) as {
       hookSpecificOutput: { additionalContext: string };
@@ -92,8 +98,14 @@ describe("agent hooks", () => {
     const stopSession = `${sessionId}-lint`;
     writeFileSync(source, "export const id = crypto.randomUUID();\n");
     try {
-      runHook("post-tool-use", { session_id: stopSession, tool_name: "Write", tool_input: { file_path: source } });
-      const blocked = JSON.parse(runHook("stop", { session_id: stopSession }).stdout) as { reason: string };
+      runHook("post-tool-use", {
+        session_id: stopSession,
+        tool_name: "Write",
+        tool_input: { file_path: source },
+      });
+      const blocked = JSON.parse(runHook("stop", { session_id: stopSession }).stdout) as {
+        reason: string;
+      };
       expect(blocked.reason).toContain("no-restricted-properties");
     } finally {
       if (existsSync(source)) rmSync(source);
@@ -106,7 +118,11 @@ describe("agent hooks", () => {
     const stopSession = `${sessionId}-stop`;
     writeFileSync(source, "export const broken: number = 'text';\n");
     try {
-      runHook("post-tool-use", { session_id: stopSession, tool_name: "Write", tool_input: { file_path: source } });
+      runHook("post-tool-use", {
+        session_id: stopSession,
+        tool_name: "Write",
+        tool_input: { file_path: source },
+      });
       const blocked = JSON.parse(runHook("stop", { session_id: stopSession }).stdout) as {
         decision: string;
         reason: string;

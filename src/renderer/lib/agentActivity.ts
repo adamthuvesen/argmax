@@ -7,11 +7,13 @@ import { effortLabel } from "./models.js";
 import {
   buildSessionToolCalls,
   latestSessionEndAt,
-  receiverThreadIds as toolReceiverThreadIds
+  receiverThreadIds as toolReceiverThreadIds,
 } from "./sessionConversationModel.js";
 import { getToolTypeBucket, type ToolCall } from "./toolCalls.js";
 
-type AgentActivityItem = { kind: "message"; event: TimelineEvent } | { kind: "tool"; tool: ToolCall };
+type AgentActivityItem =
+  | { kind: "message"; event: TimelineEvent }
+  | { kind: "tool"; tool: ToolCall };
 
 /** What a subagent ran on, resolved for display. */
 export type AgentModel = {
@@ -44,7 +46,11 @@ function nonBlankText(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
-function isChildMessage(event: TimelineEvent, parentToolUseId: string, receiverThreadIds: readonly string[]): boolean {
+function isChildMessage(
+  event: TimelineEvent,
+  parentToolUseId: string,
+  receiverThreadIds: readonly string[],
+): boolean {
   const decoded = decodeTimelineEvent(event);
   if ((decoded.kind !== "message" || decoded.role !== "assistant") && decoded.kind !== "error") {
     return false;
@@ -80,9 +86,14 @@ function reportedRunModel(
   parentToolUseId: string,
   agentRunId: string | null,
   providerInvocationId: string | null,
-  nativeIdentity: NativeAgentIdentity | null
+  nativeIdentity: NativeAgentIdentity | null,
 ): { modelId: string; effort: string | null } | null {
-  let newest: { modelId: string; effort: string | null; createdAt: string; rowCursor: number | null } | null = null;
+  let newest: {
+    modelId: string;
+    effort: string | null;
+    createdAt: string;
+    rowCursor: number | null;
+  } | null = null;
   for (const event of events) {
     const decoded = decodeTimelineEvent(event);
     const belongsToAgent =
@@ -104,16 +115,20 @@ function reportedRunModel(
       modelId,
       effort: decoded.agentReasoningEffort,
       createdAt: event.createdAt,
-      rowCursor: typeof event.rowCursor === "number" ? event.rowCursor : null
+      rowCursor: typeof event.rowCursor === "number" ? event.rowCursor : null,
     };
     if (newest === null) {
       newest = candidate;
       continue;
     }
     const cursorIsNewer =
-      newest.rowCursor !== null && candidate.rowCursor !== null && candidate.rowCursor > newest.rowCursor;
+      newest.rowCursor !== null &&
+      candidate.rowCursor !== null &&
+      candidate.rowCursor > newest.rowCursor;
     const timeIsNewer =
-      (newest.rowCursor === null || candidate.rowCursor === null || newest.rowCursor === candidate.rowCursor) &&
+      (newest.rowCursor === null ||
+        candidate.rowCursor === null ||
+        newest.rowCursor === candidate.rowCursor) &&
       candidate.createdAt > newest.createdAt;
     if (cursorIsNewer || timeIsNewer) newest = candidate;
   }
@@ -137,9 +152,15 @@ function agentModel(
   agentRunId: string | null,
   providerInvocationId: string | null,
   nativeIdentity: NativeAgentIdentity | null,
-  provider: ProviderId | undefined
+  provider: ProviderId | undefined,
 ): AgentModel | null {
-  const reported = reportedRunModel(events, parentToolUseId, agentRunId, providerInvocationId, nativeIdentity);
+  const reported = reportedRunModel(
+    events,
+    parentToolUseId,
+    agentRunId,
+    providerInvocationId,
+    nativeIdentity,
+  );
   const requested = parentTool ? nonBlankText(parentTool.inputFull.model) : null;
   const reference = reported?.modelId ?? requested;
   if (!reference) return null;
@@ -151,7 +172,7 @@ function agentModel(
   const effort = reported?.effort ?? requestedEffort;
   return {
     label: (provider ? modelLabelForReference(provider, reference) : null) ?? reference.trim(),
-    effort: effort ? effortText(effort) : null
+    effort: effort ? effortText(effort) : null,
   };
 }
 
@@ -159,7 +180,8 @@ export function activityTitle(tool: ToolCall | null, parentToolUseId: string): s
   if (!tool) return `Agent ${parentToolUseId}`;
   const description = nonBlankText(tool.inputFull.description);
   if (description) return description;
-  const subagentType = nonBlankText(tool.inputFull.subagent_type) ?? nonBlankText(tool.inputFull.subagentType);
+  const subagentType =
+    nonBlankText(tool.inputFull.subagent_type) ?? nonBlankText(tool.inputFull.subagentType);
   if (subagentType) return subagentType;
   if (tool.inputPreview) return tool.inputPreview;
   return "Agent";
@@ -185,7 +207,7 @@ export function buildAgentActivity(params: {
     events,
     sessionRunning = true,
     sessionInterrupted = false,
-    provider
+    provider,
   } = params;
   const tools = buildSessionToolCalls(events, sessionRunning, sessionInterrupted);
   const identityRuns = tools.filter(
@@ -194,14 +216,14 @@ export function buildAgentActivity(params: {
       agentRootToolUseId(tool) === parentToolUseId &&
       (!nativeIdentity ||
         (tool.providerParentConversationId === nativeIdentity.providerParentConversationId &&
-          tool.providerChildSessionId === nativeIdentity.providerChildSessionId))
+          tool.providerChildSessionId === nativeIdentity.providerChildSessionId)),
   );
   const parentTool =
     (agentRunId
       ? identityRuns.find(
           (tool) =>
             tool.agentRunId === agentRunId &&
-            (!providerInvocationId || tool.providerInvocationId === providerInvocationId)
+            (!providerInvocationId || tool.providerInvocationId === providerInvocationId),
         )
       : identityRuns.at(-1)) ?? null;
   const receiverThreadIds = parentTool ? toolReceiverThreadIds(parentTool) : [];
@@ -216,7 +238,7 @@ export function buildAgentActivity(params: {
       (!nativeIdentity ||
         (tool.providerParentConversationId === nativeIdentity.providerParentConversationId &&
           tool.providerChildSessionId === nativeIdentity.providerChildSessionId)) &&
-      matchesRun(tool)
+      matchesRun(tool),
   );
   const childMessages = events
     .filter((event) => {
@@ -241,14 +263,15 @@ export function buildAgentActivity(params: {
     : childMessages;
   const items: AgentActivityItem[] = [
     ...visibleChildMessages.map((event) => ({ kind: "message" as const, event })),
-    ...childTools.map((tool) => ({ kind: "tool" as const, tool }))
+    ...childTools.map((tool) => ({ kind: "tool" as const, tool })),
   ].sort((a, b) => {
     const cmp = itemTime(a).localeCompare(itemTime(b));
     if (cmp !== 0) return cmp;
     return (a.kind === "message" ? -1 : 0) - (b.kind === "message" ? -1 : 0);
   });
   const subagentType = parentTool
-    ? (nonBlankText(parentTool.inputFull.subagent_type) ?? nonBlankText(parentTool.inputFull.subagentType))
+    ? (nonBlankText(parentTool.inputFull.subagent_type) ??
+      nonBlankText(parentTool.inputFull.subagentType))
     : null;
   const lifecycle = events
     .filter((event) => {
@@ -273,7 +296,8 @@ export function buildAgentActivity(params: {
     });
   const latestLifecycle = lifecycle.at(-1);
   const latestAgentEvent = latestLifecycle ? decodeTimelineEvent(latestLifecycle) : null;
-  const sessionEnded = latestLifecycle !== undefined && latestSessionEndAt(events) >= latestLifecycle.createdAt;
+  const sessionEnded =
+    latestLifecycle !== undefined && latestSessionEndAt(events) >= latestLifecycle.createdAt;
   const status =
     latestAgentEvent?.kind === "agent"
       ? latestAgentEvent.phase === "started"
@@ -292,7 +316,9 @@ export function buildAgentActivity(params: {
       : null;
   const candidateFinalOutput =
     lifecycleResult ??
-    (parentTool?.output && !isInternalAgentLaunchMetadata(parentTool.output) ? parentTool.output : null);
+    (parentTool?.output && !isInternalAgentLaunchMetadata(parentTool.output)
+      ? parentTool.output
+      : null);
   const duplicatesVisibleAnswer =
     candidateFinalOutput !== null &&
     visibleChildMessages.some((event) => {
@@ -309,12 +335,20 @@ export function buildAgentActivity(params: {
     title: activityTitle(parentTool, parentToolUseId),
     prompt,
     subagentType,
-    model: agentModel(events, parentToolUseId, parentTool, agentRunId, providerInvocationId, nativeIdentity, provider),
+    model: agentModel(
+      events,
+      parentToolUseId,
+      parentTool,
+      agentRunId,
+      providerInvocationId,
+      nativeIdentity,
+      provider,
+    ),
     status,
     items,
     finalOutput,
     limited: parentTool !== null && visibleChildMessages.length === 0 && childToolIds.size === 0,
-    receiverThreadIds
+    receiverThreadIds,
   };
 }
 
@@ -325,9 +359,12 @@ type PersistentAgentRun = { key: string; agentRunId: string; providerInvocationI
 export function persistentAgentRuns(
   events: readonly TimelineEvent[],
   parentToolUseId: string,
-  nativeIdentity: NativeAgentIdentity | null = null
+  nativeIdentity: NativeAgentIdentity | null = null,
 ): PersistentAgentRun[] {
-  const runs = new Map<string, { createdAt: string; agentRunId: string; providerInvocationId: string | null }>();
+  const runs = new Map<
+    string,
+    { createdAt: string; agentRunId: string; providerInvocationId: string | null }
+  >();
   for (const event of events) {
     const decoded = decodeTimelineEvent(event);
     if (
@@ -346,11 +383,15 @@ export function persistentAgentRuns(
       runs.set(key, {
         createdAt: event.createdAt,
         agentRunId: decoded.agentRunId,
-        providerInvocationId: decoded.providerInvocationId
+        providerInvocationId: decoded.providerInvocationId,
       });
     }
   }
   return [...runs.entries()]
     .sort((a, b) => a[1].createdAt.localeCompare(b[1].createdAt))
-    .map(([key, run]) => ({ key, agentRunId: run.agentRunId, providerInvocationId: run.providerInvocationId }));
+    .map(([key, run]) => ({
+      key,
+      agentRunId: run.agentRunId,
+      providerInvocationId: run.providerInvocationId,
+    }));
 }

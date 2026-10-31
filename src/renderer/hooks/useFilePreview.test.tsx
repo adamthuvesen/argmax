@@ -6,7 +6,9 @@ import type { ReviewIpcDispatch } from "../lib/reviewIpc.js";
 import { useFilePreview } from "./useFilePreview.js";
 import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
-function makeDispatch(readFile: (path: string) => Promise<WorkspaceFilePreview>): ReviewIpcDispatch {
+function makeDispatch(
+  readFile: (path: string) => Promise<WorkspaceFilePreview>,
+): ReviewIpcDispatch {
   return {
     listChangedFiles: vi.fn().mockResolvedValue([]),
     loadDiff: vi.fn().mockRejectedValue(new Error("unused")),
@@ -19,7 +21,7 @@ function makeDispatch(readFile: (path: string) => Promise<WorkspaceFilePreview>)
     listFiles: vi.fn().mockResolvedValue([]),
     readFile,
     statFile: () => null,
-    writeFile: () => null
+    writeFile: () => null,
   };
 }
 
@@ -32,11 +34,15 @@ function usePreview(sourceId: string, dispatch: ReviewIpcDispatch, storageKey: s
     mode: "files",
     isPanelOpen: true,
     rootPath: `/tmp/${sourceId}`,
-    storageKey
+    storageKey,
   });
 }
 
-function usePreviewWithSourceReset(sourceId: string, dispatch: ReviewIpcDispatch, storageKey: string | null) {
+function usePreviewWithSourceReset(
+  sourceId: string,
+  dispatch: ReviewIpcDispatch,
+  storageKey: string | null,
+) {
   const preview = usePreview(sourceId, dispatch, storageKey);
   const resetForSourceChange = preview.resetForSourceChange;
   const previousSourceId = useRef(sourceId);
@@ -54,7 +60,7 @@ describe("useFilePreview dirty buffers", () => {
     Object.defineProperty(window, "argmax", {
       configurable: true,
       writable: true,
-      value: {} satisfies Partial<ArgmaxApi>
+      value: {} satisfies Partial<ArgmaxApi>,
     });
   });
 
@@ -69,14 +75,18 @@ describe("useFilePreview dirty buffers", () => {
       kind: "text",
       content: "on disk\n",
       size: 8,
-      mtimeMs: 10
+      mtimeMs: 10,
     });
     const writeFile = vi
       .fn<ReviewIpcDispatch["writeFile"]>()
       .mockRejectedValueOnce(new Error("disk full"))
       .mockResolvedValueOnce({ ok: "true", mtimeMs: 11, size: 6 });
     const { result } = renderHook(() =>
-      usePreview("workspace-retry", { ...makeDispatch(readFile), writeFile }, "files.session-retry")
+      usePreview(
+        "workspace-retry",
+        { ...makeDispatch(readFile), writeFile },
+        "files.session-retry",
+      ),
     );
 
     act(() => result.current.openFile("src/file.ts"));
@@ -97,20 +107,22 @@ describe("useFilePreview dirty buffers", () => {
       kind: "text",
       content: "on disk\n",
       size: 8,
-      mtimeMs: 10
+      mtimeMs: 10,
     });
     const statFile = vi.fn<NonNullable<ReviewIpcDispatch["statFile"]>>().mockResolvedValue({
       mtimeMs: 20,
-      size: 18
+      size: 18,
     });
     const writeFile = vi.fn<ReviewIpcDispatch["writeFile"]>().mockResolvedValue({
       ok: "false",
       reason: "stale",
       currentMtimeMs: 20,
-      size: 18
+      size: 18,
     });
     const dispatch = { ...makeDispatch(readFile), statFile, writeFile };
-    const first = renderHook(() => usePreview("workspace-1", dispatch, "argmax.reviewPanel.files.session-1"));
+    const first = renderHook(() =>
+      usePreview("workspace-1", dispatch, "argmax.reviewPanel.files.session-1"),
+    );
 
     act(() => first.result.current.openFile("src/file.ts"));
     await waitFor(() => expect(first.result.current.previewState).toBe("ready"));
@@ -118,7 +130,9 @@ describe("useFilePreview dirty buffers", () => {
     expect(first.result.current.isDirty).toBe(true);
     first.unmount();
 
-    const restored = renderHook(() => usePreview("workspace-1", dispatch, "argmax.reviewPanel.files.session-1"));
+    const restored = renderHook(() =>
+      usePreview("workspace-1", dispatch, "argmax.reviewPanel.files.session-1"),
+    );
 
     await waitFor(() => expect(restored.result.current.previewState).toBe("ready"));
     expect(restored.result.current.activeTabPath).toBe("src/file.ts");
@@ -135,19 +149,19 @@ describe("useFilePreview dirty buffers", () => {
       kind: "text",
       content: "first disk\n",
       size: 11,
-      mtimeMs: 10
+      mtimeMs: 10,
     });
     const secondRead = vi.fn<(path: string) => Promise<WorkspaceFilePreview>>().mockResolvedValue({
       kind: "text",
       content: "second disk\n",
       size: 12,
-      mtimeMs: 20
+      mtimeMs: 20,
     });
     const firstDispatch = makeDispatch(firstRead);
     const secondDispatch = makeDispatch(secondRead);
     const { result, rerender } = renderHook(
       ({ sourceId, dispatch }) => usePreviewWithSourceReset(sourceId, dispatch, null),
-      { initialProps: { sourceId: "project-1", dispatch: firstDispatch } }
+      { initialProps: { sourceId: "project-1", dispatch: firstDispatch } },
     );
 
     act(() => result.current.openFile("src/shared.ts"));
@@ -172,13 +186,13 @@ describe("useFilePreview dirty buffers", () => {
       kind: "text",
       content: "original\n",
       size: 9,
-      mtimeMs: 10
+      mtimeMs: 10,
     });
     let finishSave!: (result: { ok: "true"; mtimeMs: number; size: number }) => void;
     const writeFile = vi.fn<ReviewIpcDispatch["writeFile"]>().mockReturnValue(
       new Promise((resolve) => {
         finishSave = resolve;
-      })
+      }),
     );
     const dispatch = { ...makeDispatch(readFile), writeFile };
     const first = renderHook(() => usePreview("workspace-save", dispatch, "files.session-save"));

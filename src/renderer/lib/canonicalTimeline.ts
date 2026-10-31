@@ -8,7 +8,7 @@ import {
   extractCompletionCorrelationId,
   extractProviderInvocationId,
   extractToolName,
-  extractToolUseId
+  extractToolUseId,
 } from "./toolCalls.js";
 
 export type { RawTimelineEvent } from "../../shared/types.js";
@@ -76,7 +76,13 @@ type CanonicalApprovalEvent = CanonicalCommon & {
   riskLevel: string | null;
 };
 
-type PlainLifecycleName = "started" | "streaming" | "completed" | "cancelled" | "cleared" | "recovered-from-crash";
+type PlainLifecycleName =
+  | "started"
+  | "streaming"
+  | "completed"
+  | "cancelled"
+  | "cleared"
+  | "recovered-from-crash";
 
 type PlainLifecycleEvent = CanonicalCommon & {
   kind: "lifecycle";
@@ -222,7 +228,10 @@ function positiveNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
-function decodeSourceActivity(payload: Record<string, unknown>, at: string): ProjectSourceActivity | null {
+function decodeSourceActivity(
+  payload: Record<string, unknown>,
+  at: string,
+): ProjectSourceActivity | null {
   if (payload.operation !== "project-source") return null;
   const source = objectValue(payload.source);
   const sourceId = nonBlankString(source?.id);
@@ -247,7 +256,7 @@ function decodeSourceActivity(payload: Record<string, unknown>, at: string): Pro
     action,
     at: nonBlankString(payload.readAt) ?? nonBlankString(payload.at) ?? at,
     readLocation: nonBlankString(payload.location),
-    truncated: payload.truncated === true
+    truncated: payload.truncated === true,
   };
 }
 
@@ -270,7 +279,7 @@ function providerThreadId(payload: Record<string, unknown>): string | null {
 
 function common<T extends RawTimelineEvent>(
   raw: T,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ): Omit<CanonicalCommon, "raw"> & { raw: T } {
   const context = raw.semantic?.version === 1 ? raw.semantic.context : null;
   return {
@@ -279,8 +288,12 @@ function common<T extends RawTimelineEvent>(
     parentToolUseId: context ? context.parentToolUseId : stringValue(payload.parent_tool_use_id),
     providerThreadId: context ? context.providerThreadId : providerThreadId(payload),
     agentModelId: context ? context.agentModelId : nonBlankString(payload.agentModelId),
-    agentReasoningEffort: context ? context.agentReasoningEffort : nonBlankString(payload.agentReasoningEffort),
-    providerChildSessionId: context ? context.providerChildSessionId : nonBlankString(payload.providerChildSessionId),
+    agentReasoningEffort: context
+      ? context.agentReasoningEffort
+      : nonBlankString(payload.agentReasoningEffort),
+    providerChildSessionId: context
+      ? context.providerChildSessionId
+      : nonBlankString(payload.providerChildSessionId),
     agentRunId: context ? context.agentRunId : nonBlankString(payload.agentRunId),
     agentRootToolUseId: context
       ? context.agentRootToolUseId
@@ -289,9 +302,11 @@ function common<T extends RawTimelineEvent>(
       ? context.providerParentConversationId
       : nonBlankString(payload.providerParentConversationId),
     agentCodename: context ? context.agentCodename : nonBlankString(payload.agentCodename),
-    providerInvocationId: context ? context.providerInvocationId : extractProviderInvocationId(payload),
+    providerInvocationId: context
+      ? context.providerInvocationId
+      : extractProviderInvocationId(payload),
     traceSuperseded: context ? context.traceSuperseded : payload.traceSyntheticSuperseded === true,
-    traceImported: context ? context.traceImported : payload.traceImported === true
+    traceImported: context ? context.traceImported : payload.traceImported === true,
   };
 }
 
@@ -301,7 +316,9 @@ export function decodeWireTimelineEvent(wire: WireTimelineEvent): TimelineEvent 
   return {
     ...wire,
     rowCursor: wire.rowCursor ?? undefined,
-    payload: isPlainObject(payload) ? payload : { __argmaxInvalidPayload: true, rawPayload: payload }
+    payload: isPlainObject(payload)
+      ? payload
+      : { __argmaxInvalidPayload: true, rawPayload: payload },
   };
 }
 
@@ -317,35 +334,49 @@ function cursorCumulativeText(payload: Record<string, unknown>): string | null {
   return parts.length > 0 ? parts.join("") : null;
 }
 
-function decodeMessage(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalMessageEvent {
+function decodeMessage(
+  raw: TimelineEvent,
+  payload: Record<string, unknown>,
+): CanonicalMessageEvent {
   const shared = common(raw, payload);
   const event = raw.semantic?.version === 1 ? raw.semantic.event : null;
   const meaning = event?.kind === "message" ? event : null;
   const base = {
     ...shared,
     kind: "message" as const,
-    role: meaning?.role ?? (raw.type === "user.message" ? ("user" as const) : ("assistant" as const)),
-    delivery: meaning ? meaning.delivery : raw.type === "user.message" && payload.delivery === "steer" ? "steer" : null,
-    phase: meaning?.phase ?? (raw.type === "message.delta" ? ("delta" as const) : ("completed" as const)),
+    role:
+      meaning?.role ?? (raw.type === "user.message" ? ("user" as const) : ("assistant" as const)),
+    delivery: meaning
+      ? meaning.delivery
+      : raw.type === "user.message" && payload.delivery === "steer"
+        ? "steer"
+        : null,
+    phase:
+      meaning?.phase ??
+      (raw.type === "message.delta" ? ("delta" as const) : ("completed" as const)),
     content:
       meaning?.content ??
-      (raw.type === "message.delta" && payload.thinking === true ? ("thinking" as const) : ("answer" as const)),
+      (raw.type === "message.delta" && payload.thinking === true
+        ? ("thinking" as const)
+        : ("answer" as const)),
     childProse:
       (meaning?.role ?? (raw.type === "user.message" ? "user" : "assistant")) !== "user" &&
       (shared.parentToolUseId !== null || shared.providerThreadId !== null),
     rawStream:
-      meaning?.rawStream ?? (payload.stream === "stdout" || payload.stream === "stderr" || payload.stream === "pty")
+      meaning?.rawStream ??
+      (payload.stream === "stdout" || payload.stream === "stderr" || payload.stream === "pty"),
   };
   return Object.defineProperty(base, "cumulativeText", {
     enumerable: true,
-    get: () => (meaning ? meaning.cumulativeText : cursorCumulativeText(payload))
+    get: () => (meaning ? meaning.cumulativeText : cursorCumulativeText(payload)),
   }) as CanonicalMessageEvent;
 }
 
 function decodeTool(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalToolEvent {
   const event = raw.semantic?.version === 1 ? raw.semantic.event : null;
   const meaning = event?.kind === "tool" ? event : null;
-  const phase = meaning?.phase ?? (raw.type.slice("command.".length) as CanonicalToolEvent["phase"]);
+  const phase =
+    meaning?.phase ?? (raw.type.slice("command.".length) as CanonicalToolEvent["phase"]);
   const status = stringValue(payload.status)?.toLowerCase() ?? null;
   const shared = common(raw, payload);
   return {
@@ -375,17 +406,27 @@ function decodeTool(raw: TimelineEvent, payload: Record<string, unknown>): Canon
         : null,
     running:
       meaning?.running ??
-      (phase !== "completed" || status === "running" || status === "started" || status === "in_progress"),
-    traceSyntheticLaunch: meaning?.traceSyntheticLaunch ?? payload.traceSyntheticLaunch === true
+      (phase !== "completed" ||
+        status === "running" ||
+        status === "started" ||
+        status === "in_progress"),
+    traceSyntheticLaunch: meaning?.traceSyntheticLaunch ?? payload.traceSyntheticLaunch === true,
   };
 }
 
-function decodeApproval(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalApprovalEvent {
+function decodeApproval(
+  raw: TimelineEvent,
+  payload: Record<string, unknown>,
+): CanonicalApprovalEvent {
   const event = raw.semantic?.version === 1 ? raw.semantic.event : null;
   const meaning = event?.kind === "approval" ? event : null;
   const phase =
     meaning?.phase ??
-    (raw.type === "approval.requested" ? "requested" : raw.type === "approval.resolved" ? "resolved" : "blocked");
+    (raw.type === "approval.requested"
+      ? "requested"
+      : raw.type === "approval.resolved"
+        ? "resolved"
+        : "blocked");
   const shared = common(raw, payload);
   return {
     ...shared,
@@ -395,11 +436,15 @@ function decodeApproval(raw: TimelineEvent, payload: Record<string, unknown>): C
     provider: meaning ? meaning.provider : stringValue(payload.provider),
     providerInvocationId: shared.providerInvocationId,
     providerRequestId: meaning ? meaning.providerRequestId : stringValue(payload.providerRequestId),
-    toolUseId: meaning ? meaning.toolUseId : (stringValue(payload.toolUseId) ?? stringValue(payload.tool_use_id)),
-    resolution: meaning ? meaning.resolution : (stringValue(payload.status) ?? stringValue(payload.resolution)),
+    toolUseId: meaning
+      ? meaning.toolUseId
+      : (stringValue(payload.toolUseId) ?? stringValue(payload.tool_use_id)),
+    resolution: meaning
+      ? meaning.resolution
+      : (stringValue(payload.status) ?? stringValue(payload.resolution)),
     command: stringValue(payload.command),
     cwd: stringValue(payload.cwd),
-    riskLevel: stringValue(payload.riskLevel)
+    riskLevel: stringValue(payload.riskLevel),
   };
 }
 
@@ -412,11 +457,14 @@ function decodeAgent(raw: TimelineEvent, payload: Record<string, unknown>): Cano
     kind: "agent",
     phase: meaning?.phase ?? (raw.type === "agent.started" ? "started" : "completed"),
     providerInvocationId: shared.providerInvocationId,
-    status: meaning ? meaning.status : stringValue(payload.status)
+    status: meaning ? meaning.status : stringValue(payload.status),
   };
 }
 
-function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalLifecycleEvent {
+function decodeLifecycle(
+  raw: TimelineEvent,
+  payload: Record<string, unknown>,
+): CanonicalLifecycleEvent {
   const event = raw.semantic?.version === 1 ? raw.semantic.event : null;
   const name = event?.kind === "lifecycle" ? event.name : raw.type.slice("session.".length);
   const shared = common(raw, payload);
@@ -426,7 +474,7 @@ function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): 
       kind: "lifecycle",
       name,
       preTokens: positiveNumber(payload.preTokens),
-      postTokens: positiveNumber(payload.postTokens)
+      postTokens: positiveNumber(payload.postTokens),
     };
   }
   if (name === "provider-changed") {
@@ -436,7 +484,7 @@ function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): 
       name,
       from: providerDisplayName(payload.from),
       to: providerDisplayName(payload.provider) ?? raw.message,
-      modelLabel: nonBlankString(payload.modelLabel)
+      modelLabel: nonBlankString(payload.modelLabel),
     };
   }
   if (name === "move-requested") {
@@ -447,7 +495,7 @@ function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): 
       destinationProjectId: stringValue(payload.destinationProjectId),
       destinationProjectName: stringValue(payload.destinationProjectName),
       worktree: typeof payload.worktree === "boolean" ? payload.worktree : null,
-      keepSource: typeof payload.keepSource === "boolean" ? payload.keepSource : null
+      keepSource: typeof payload.keepSource === "boolean" ? payload.keepSource : null,
     };
   }
   if (name === "archive-requested") {
@@ -455,7 +503,7 @@ function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): 
       ...shared,
       kind: "lifecycle",
       name,
-      workspaceId: stringValue(payload.workspaceId)
+      workspaceId: stringValue(payload.workspaceId),
     };
   }
   if (name === "note") {
@@ -464,13 +512,18 @@ function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): 
       kind: "lifecycle",
       name,
       operation: stringValue(payload.operation),
-      sourceActivity: decodeSourceActivity(payload, raw.createdAt)
+      sourceActivity: decodeSourceActivity(payload, raw.createdAt),
     };
   }
   if (name === "moved") {
-    const direction = payload.direction === "source" || payload.direction === "destination" ? payload.direction : null;
+    const direction =
+      payload.direction === "source" || payload.direction === "destination"
+        ? payload.direction
+        : null;
     const checkoutMode =
-      payload.checkoutMode === "shared" || payload.checkoutMode === "worktree" || payload.checkoutMode === "attached"
+      payload.checkoutMode === "shared" ||
+      payload.checkoutMode === "worktree" ||
+      payload.checkoutMode === "attached"
         ? payload.checkoutMode
         : null;
     return {
@@ -486,13 +539,16 @@ function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): 
       destinationProjectName: stringValue(payload.destinationProjectName),
       destinationPath: stringValue(payload.destinationPath),
       checkoutMode,
-      sourceArchiveState: stringValue(payload.sourceArchiveState)
+      sourceArchiveState: stringValue(payload.sourceArchiveState),
     };
   }
   return { ...shared, kind: "lifecycle", name: name as PlainLifecycleName };
 }
 
-function decodeMultitask(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalMultitaskEvent {
+function decodeMultitask(
+  raw: TimelineEvent,
+  payload: Record<string, unknown>,
+): CanonicalMultitaskEvent {
   const event = raw.semantic?.version === 1 ? raw.semantic.event : null;
   const meaning = event?.kind === "multitask" ? event : null;
   return {
@@ -504,7 +560,7 @@ function decodeMultitask(raw: TimelineEvent, payload: Record<string, unknown>): 
     taskLabel: (meaning ? meaning.taskLabel : stringValue(payload.taskLabel)) ?? raw.message,
     prompt: meaning ? meaning.prompt : stringValue(payload.prompt),
     worktree: meaning ? meaning.worktree : payload.worktree === true,
-    answer: meaning ? meaning.answer : stringValue(payload.answer)
+    answer: meaning ? meaning.answer : stringValue(payload.answer),
   };
 }
 
@@ -516,7 +572,7 @@ function decodeError(raw: TimelineEvent, payload: Record<string, unknown>): Cano
     kind: "error",
     code: meaning ? meaning.code : stringValue(payload.code),
     operation: meaning ? meaning.operation : stringValue(payload.operation),
-    isPayloadTruncation: raw.message === "event payload truncated" && "truncatedEventId" in payload
+    isPayloadTruncation: raw.message === "event payload truncated" && "truncatedEventId" in payload,
   };
 }
 
@@ -528,7 +584,7 @@ export function decodeTimelineEvent(raw: RawTimelineEvent): CanonicalTimelineEve
     const decoded: CanonicalUnknownEvent = {
       ...common(raw, {}),
       kind: "unknown",
-      reason: "invalid-payload"
+      reason: "invalid-payload",
     };
     decodedEvents.set(raw, decoded);
     return decoded;
@@ -566,7 +622,7 @@ export function decodeTimelineEvent(raw: RawTimelineEvent): CanonicalTimelineEve
       title: payload.title,
       summary: payload.summary,
       format: payload.format,
-      mode: payload.mode === "wide" ? "wide" : null
+      mode: payload.mode === "wide" ? "wide" : null,
     };
   } else if (meaning?.kind === "error") {
     decoded = decodeError(validRaw, payload);
@@ -574,11 +630,19 @@ export function decodeTimelineEvent(raw: RawTimelineEvent): CanonicalTimelineEve
     decoded = {
       ...common(validRaw, payload),
       kind: "unknown",
-      reason: meaning.reason === "invalid-payload" ? "invalid-payload" : "unsupported-type"
+      reason: meaning.reason === "invalid-payload" ? "invalid-payload" : "unsupported-type",
     };
-  } else if (raw.type === "user.message" || raw.type === "message.delta" || raw.type === "message.completed") {
+  } else if (
+    raw.type === "user.message" ||
+    raw.type === "message.delta" ||
+    raw.type === "message.completed"
+  ) {
     decoded = decodeMessage(validRaw, payload);
-  } else if (raw.type === "command.started" || raw.type === "command.output" || raw.type === "command.completed") {
+  } else if (
+    raw.type === "command.started" ||
+    raw.type === "command.output" ||
+    raw.type === "command.completed"
+  ) {
     decoded = decodeTool(validRaw, payload);
   } else if (
     raw.type === "approval.requested" ||

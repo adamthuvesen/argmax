@@ -21,7 +21,10 @@ function readPrefersReducedMotion(): boolean {
  * displayed value when the target moves mid-flight, and always lands
  * exactly on it.
  */
-export function useAnimatedNumber(target: number, durationMs: number = DEFAULT_DURATION_MS): number {
+export function useAnimatedNumber(
+  target: number,
+  durationMs: number = DEFAULT_DURATION_MS,
+): number {
   const [display, setDisplay] = useState(target);
   const displayRef = useRef(target);
   const rafRef = useRef(0);

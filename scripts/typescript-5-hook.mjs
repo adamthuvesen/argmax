@@ -5,5 +5,5 @@ import { registerHooks } from "node:module";
 
 registerHooks({
   resolve: (specifier, context, nextResolve) =>
-    nextResolve(specifier.replace(/^typescript(?=$|\/)/, "typescript-5"), context)
+    nextResolve(specifier.replace(/^typescript(?=$|\/)/, "typescript-5"), context),
 });

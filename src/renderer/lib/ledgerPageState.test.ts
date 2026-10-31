@@ -7,7 +7,7 @@ import {
   requestUsageSummary,
   resetLedgerPageStateForTests,
   setCachedActivitySummary,
-  setCachedUsageSummary
+  setCachedUsageSummary,
 } from "./ledgerPageState.js";
 
 describe("ledgerPageState", () => {
@@ -58,7 +58,7 @@ describe("ledgerPageState", () => {
         () =>
           new Promise((_, rejectRequest) => {
             reject = rejectRequest;
-          })
+          }),
       )
       .mockResolvedValueOnce(summary);
 

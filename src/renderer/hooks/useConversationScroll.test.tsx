@@ -56,7 +56,7 @@ function Harness({
   sessionId = "session-a",
   resetKey = "prompt-a",
   enabled = true,
-  items
+  items,
 }: HarnessProps): ReactElement {
   controller = useConversationScroll({ sessionId, resetKey, enabled, items });
   return (
@@ -91,7 +91,7 @@ function rect(top: number, height: number, width = 800): DOMRect {
     bottom: top + height,
     width,
     height,
-    toJSON: () => ({})
+    toJSON: () => ({}),
   };
 }
 
@@ -120,44 +120,44 @@ function installGeometry(geometry: Geometry): {
       get: () => geometry.top,
       set: (value: number) => {
         geometry.top = Math.max(0, Math.min(value, effectiveHeight() - geometry.viewportHeight));
-      }
+      },
     },
     getBoundingClientRect: {
       configurable: true,
-      value: () => rect(0, geometry.viewportHeight)
-    }
+      value: () => rect(0, geometry.viewportHeight),
+    },
   });
   Object.defineProperties(content, {
     offsetHeight: { configurable: true, get: effectiveHeight },
     scrollHeight: { configurable: true, get: effectiveHeight },
     getBoundingClientRect: {
       configurable: true,
-      value: () => rect(-geometry.top, effectiveHeight())
-    }
+      value: () => rect(-geometry.top, effectiveHeight()),
+    },
   });
   Object.defineProperty(turn, "getBoundingClientRect", {
     configurable: true,
-    value: () => rect(geometry.turnTop - geometry.top, geometry.naturalHeight - geometry.turnTop)
+    value: () => rect(geometry.turnTop - geometry.top, geometry.naturalHeight - geometry.turnTop),
   });
   Object.defineProperty(prompt, "getBoundingClientRect", {
     configurable: true,
-    value: () => rect(geometry.promptTop - geometry.top, 60)
+    value: () => rect(geometry.promptTop - geometry.top, 60),
   });
   Object.defineProperty(block, "getBoundingClientRect", {
     configurable: true,
-    value: () => rect(geometry.blockTop - geometry.top, 120)
+    value: () => rect(geometry.blockTop - geometry.top, 120),
   });
   Object.defineProperties(nested, {
     clientHeight: { configurable: true, get: () => 100 },
     scrollHeight: { configurable: true, get: () => 300 },
     getBoundingClientRect: {
       configurable: true,
-      value: () => rect(geometry.blockTop - geometry.top, 100)
-    }
+      value: () => rect(geometry.blockTop - geometry.top, 100),
+    },
   });
   Object.defineProperty(document, "elementFromPoint", {
     configurable: true,
-    value: vi.fn(() => block)
+    value: vi.fn(() => block),
   });
   return { scroll, content, block, turn, nested };
 }
@@ -169,7 +169,7 @@ function wheel(target: Element, deltaY: number): void {
 function touch(target: Element, type: string, clientY: number): void {
   const event = new Event(type, { bubbles: true });
   Object.defineProperty(event, "touches", {
-    value: type === "touchend" ? [] : [{ clientY }]
+    value: type === "touchend" ? [] : [{ clientY }],
   });
   target.dispatchEvent(event);
 }
@@ -194,7 +194,7 @@ describe("useConversationScroll", () => {
       top: 0,
       promptTop: 600,
       blockTop: 650,
-      turnTop: 0
+      turnTop: 0,
     };
     const { content } = installGeometry(geometry);
 
@@ -213,7 +213,7 @@ describe("useConversationScroll", () => {
       top: 0,
       promptTop: 600,
       blockTop: 650,
-      turnTop: 0
+      turnTop: 0,
     };
     const { scroll } = installGeometry(geometry);
     act(() => view.rerender(<Harness {...props} />));
@@ -238,7 +238,7 @@ describe("useConversationScroll", () => {
       top: 0,
       promptTop: 700,
       blockTop: 750,
-      turnTop: 0
+      turnTop: 0,
     };
     const { scroll } = installGeometry(geometry);
     act(() => view.rerender(<Harness {...props} />));
@@ -262,7 +262,7 @@ describe("useConversationScroll", () => {
     ["scroll", 12],
     ["commit", 0.5],
     ["observer", 0.5],
-    ["scroll", 0.5]
+    ["scroll", 0.5],
   ] as const)(
     "resumes after returning to bottom when growth precedes the %s callback (%s px movement)",
     (firstCallback, movement) => {
@@ -274,7 +274,7 @@ describe("useConversationScroll", () => {
         top: 0,
         promptTop: 600,
         blockTop: 650,
-        turnTop: 0
+        turnTop: 0,
       };
       const { scroll } = installGeometry(geometry);
       act(() => view.rerender(<Harness {...props} />));
@@ -299,7 +299,7 @@ describe("useConversationScroll", () => {
 
       expect(geometry.top).toBe(1300);
       expect(controller.follow.isDetached()).toBe(false);
-    }
+    },
   );
 
   it.each(["commit", "observer", "scroll"])(
@@ -313,7 +313,7 @@ describe("useConversationScroll", () => {
         top: 0,
         promptTop: 600,
         blockTop: 650,
-        turnTop: 0
+        turnTop: 0,
       };
       const { scroll } = installGeometry(geometry);
       act(() => view.rerender(<Harness {...props} />));
@@ -333,7 +333,7 @@ describe("useConversationScroll", () => {
 
       expect(geometry.top).toBe(1400);
       expect(controller.follow.isDetached()).toBe(false);
-    }
+    },
   );
 
   it("stays attached when a taller viewport clamps following to its new bottom", () => {
@@ -345,7 +345,7 @@ describe("useConversationScroll", () => {
       top: 0,
       promptTop: 700,
       blockTop: 750,
-      turnTop: 0
+      turnTop: 0,
     };
     installGeometry(geometry);
     act(() => view.rerender(<Harness {...props} />));
@@ -368,7 +368,7 @@ describe("useConversationScroll", () => {
       top: 0,
       promptTop: 700,
       blockTop: 750,
-      turnTop: 0
+      turnTop: 0,
     };
     const { scroll } = installGeometry(geometry);
     act(() => view.rerender(<Harness {...props} />));
@@ -402,7 +402,7 @@ describe("useConversationScroll", () => {
         top: 0,
         promptTop: 700,
         blockTop: 750,
-        turnTop: 0
+        turnTop: 0,
       };
       const { content, scroll } = installGeometry(geometry);
       act(() => view.rerender(<Harness {...props} />));
@@ -421,7 +421,7 @@ describe("useConversationScroll", () => {
       expect(geometry.top).toBe(939);
       expect(geometry.blockTop - geometry.top).toBe(blockViewportTop);
       expect(controller.follow.isDetached()).toBe(true);
-    }
+    },
   );
 
   it("freezes content height before an upward wheel scroll so a fold below cannot clamp the reader", () => {
@@ -433,7 +433,7 @@ describe("useConversationScroll", () => {
       top: 0,
       promptTop: 800,
       blockTop: 850,
-      turnTop: 0
+      turnTop: 0,
     };
     const { scroll, content } = installGeometry(geometry);
     act(() => view.rerender(<Harness {...props} />));
@@ -454,7 +454,7 @@ describe("useConversationScroll", () => {
 
   it.each([
     { naturalHeight: 700, expectedTop: 380, expectedFloor: "880px" },
-    { naturalHeight: 1300, expectedTop: 788, expectedFloor: "1288px" }
+    { naturalHeight: 1300, expectedTop: 788, expectedFloor: "1288px" },
   ])(
     "keeps a removed anchor's position within the remaining $naturalHeight px of content",
     ({ naturalHeight, expectedTop, expectedFloor }) => {
@@ -466,7 +466,7 @@ describe("useConversationScroll", () => {
         top: 0,
         promptTop: 400,
         blockTop: 850,
-        turnTop: 0
+        turnTop: 0,
       };
       const { scroll, content, block } = installGeometry(geometry);
       act(() => view.rerender(<Harness {...props} />));
@@ -481,7 +481,7 @@ describe("useConversationScroll", () => {
       expect(content.style.minHeight).toBe(expectedFloor);
       expect(geometry.top).toBe(expectedTop);
       expect(controller.follow.isDetached()).toBe(true);
-    }
+    },
   );
 
   it("preserves a fine-grained anchor when content changes above it inside one turn", () => {
@@ -493,7 +493,7 @@ describe("useConversationScroll", () => {
       top: 0,
       promptTop: 800,
       blockTop: 850,
-      turnTop: 0
+      turnTop: 0,
     };
     const { scroll } = installGeometry(geometry);
     act(() => view.rerender(<Harness {...props} />));
@@ -519,7 +519,7 @@ describe("useConversationScroll", () => {
       top: 0,
       promptTop: 500,
       blockTop: 550,
-      turnTop: 0
+      turnTop: 0,
     };
     const { nested, scroll } = installGeometry(geometry);
     const input = document.createElement("textarea");
@@ -548,7 +548,7 @@ describe("useConversationScroll", () => {
       top: 0,
       promptTop: 700,
       blockTop: 750,
-      turnTop: 0
+      turnTop: 0,
     };
     const { scroll } = installGeometry(geometry);
     act(() => view.rerender(<Harness {...props} />));
@@ -569,7 +569,9 @@ describe("useConversationScroll", () => {
 
     act(() => wheel(scroll, -10));
     expect(controller.follow.isDetached()).toBe(true);
-    act(() => view.rerender(<Harness sessionId="session-b" resetKey="prompt-b" items={["one", "two"]} />));
+    act(() =>
+      view.rerender(<Harness sessionId="session-b" resetKey="prompt-b" items={["one", "two"]} />),
+    );
     expect(controller.follow.isDetached()).toBe(false);
   });
 
@@ -582,7 +584,7 @@ describe("useConversationScroll", () => {
       top: 0,
       promptTop: 800,
       blockTop: 750,
-      turnTop: 0
+      turnTop: 0,
     };
     const { block } = installGeometry(geometry);
     act(() => view.rerender(<Harness {...props} />));
@@ -602,7 +604,7 @@ describe("useConversationScroll", () => {
       top: 0,
       promptTop: 500,
       blockTop: 550,
-      turnTop: 0
+      turnTop: 0,
     };
     const { content, scroll } = installGeometry(geometry);
     act(() => view.rerender(<Harness {...props} />));
@@ -622,7 +624,7 @@ describe("useConversationScroll", () => {
       top: 0,
       promptTop: 500,
       blockTop: 550,
-      turnTop: 0
+      turnTop: 0,
     };
     const { content, scroll, turn } = installGeometry(geometry);
     act(() => view.rerender(<Harness items={["one"]} />));

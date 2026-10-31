@@ -45,7 +45,7 @@ export function RemoteSettings(): JSX.Element {
     onError: (error) => {
       if (explicitLoad.current) showErrorToast(errorMessage(error));
       else setQueryLoadError(errorMessage(error));
-    }
+    },
   });
   const loadError = statusQuery.isAvailable
     ? queryLoadError
@@ -57,7 +57,7 @@ export function RemoteSettings(): JSX.Element {
       await refetchStatus();
       explicitLoad.current = false;
     },
-    [refetchStatus]
+    [refetchStatus],
   );
 
   // `fields` defaults to the drafts, which is what "Save changes" commits. The
@@ -79,11 +79,13 @@ export function RemoteSettings(): JSX.Element {
         const next = await remote.setConfig({
           enabled,
           port,
-          ntfyTopic: source.ntfyTopic
+          ntfyTopic: source.ntfyTopic,
         });
         adoptStatus(next);
         if (next.enabled && !next.serving) {
-          showErrorToast(`The bridge could not start on port ${next.port} — is something else using it?`);
+          showErrorToast(
+            `The bridge could not start on port ${next.port} — is something else using it?`,
+          );
         } else {
           setNote({ kind: "saved", message: "Saved." });
         }
@@ -93,7 +95,7 @@ export function RemoteSettings(): JSX.Element {
         setBusy(false);
       }
     },
-    [adoptStatus, portField, status, topicField]
+    [adoptStatus, portField, status, topicField],
   );
 
   const sendTestNotification = useCallback(async (): Promise<void> => {
@@ -123,8 +125,8 @@ export function RemoteSettings(): JSX.Element {
             keyPath: keyPathField,
             keyId: keyIdField,
             teamId: teamIdField,
-            sandbox
-          })
+            sandbox,
+          }),
         );
         setNote({ kind: "saved", message: "Saved." });
       } catch (error) {
@@ -133,7 +135,7 @@ export function RemoteSettings(): JSX.Element {
         setBusy(false);
       }
     },
-    [adoptStatus, keyIdField, keyPathField, teamIdField]
+    [adoptStatus, keyIdField, keyPathField, teamIdField],
   );
 
   const removeDevice = useCallback(async (token: string): Promise<void> => {
@@ -143,7 +145,9 @@ export function RemoteSettings(): JSX.Element {
     setNote(null);
     try {
       const devices = await remote.unregisterPushDevice({ token });
-      setStatus((current) => (current ? { ...current, apns: { ...current.apns, devices } } : current));
+      setStatus((current) =>
+        current ? { ...current, apns: { ...current.apns, devices } } : current,
+      );
     } catch (error) {
       showErrorToast(errorMessage(error));
     } finally {
@@ -162,11 +166,13 @@ export function RemoteSettings(): JSX.Element {
       if (failed.length === 0) {
         setNote({
           kind: "saved",
-          message: `Test push sent to ${results.length} device${results.length === 1 ? "" : "s"}.`
+          message: `Test push sent to ${results.length} device${results.length === 1 ? "" : "s"}.`,
         });
       } else {
         // Naming the device matters when only one of several pushes fails.
-        showErrorToast(failed.map((result) => `${result.name}: ${result.error ?? "failed"}`).join("; "));
+        showErrorToast(
+          failed.map((result) => `${result.name}: ${result.error ?? "failed"}`).join("; "),
+        );
       }
     } catch (error) {
       showErrorToast(`Test push failed: ${errorMessage(error)}`);
@@ -175,7 +181,9 @@ export function RemoteSettings(): JSX.Element {
     }
   }, []);
 
-  const dirty = status !== null && (portField !== String(status.port) || topicField !== (status.ntfyTopic ?? ""));
+  const dirty =
+    status !== null &&
+    (portField !== String(status.port) || topicField !== (status.ntfyTopic ?? ""));
 
   const apnsDirty =
     status !== null &&
@@ -203,7 +211,7 @@ export function RemoteSettings(): JSX.Element {
                 onChange={(next) =>
                   void saveConfig(next, {
                     port: String(status.port),
-                    ntfyTopic: status.ntfyTopic ?? ""
+                    ntfyTopic: status.ntfyTopic ?? "",
                   })
                 }
               />
@@ -222,15 +230,15 @@ export function RemoteSettings(): JSX.Element {
               />
               <div className="settings-remote-pairing-info">
                 <p className="settings-note">
-                  Scan with your phone's camera. The link carries the pairing token in the URL fragment, so it never
-                  crosses the network.
+                  Scan with your phone's camera. The link carries the pairing token in the URL
+                  fragment, so it never crosses the network.
                 </p>
                 <CopyValueRow label="Pairing link" value={status.pairingUrl} />
                 <CopyValueRow label="Tailscale proxy" value={status.serveCommand} code />
                 {status.tailnetUrl === null ? (
                   <p className="settings-note" data-tone="warn">
-                    Tailscale CLI not found — the QR points at this Mac only. Install Tailscale to reach it from your
-                    phone.
+                    Tailscale CLI not found — the QR points at this Mac only. Install Tailscale to
+                    reach it from your phone.
                   </p>
                 ) : !status.tailscaleRunning ? (
                   <p className="settings-note" data-tone="warn">
@@ -353,7 +361,8 @@ export function RemoteSettings(): JSX.Element {
             </ul>
           ) : (
             <p className="settings-note">
-              No phones paired yet. The Argmax app registers itself the first time you open it on a paired phone.
+              No phones paired yet. The Argmax app registers itself the first time you open it on a
+              paired phone.
             </p>
           )}
 
@@ -369,7 +378,9 @@ export function RemoteSettings(): JSX.Element {
             <button
               type="button"
               className="settings-button"
-              disabled={busy || !status.apns.configured || status.apns.devices.length === 0 || apnsDirty}
+              disabled={
+                busy || !status.apns.configured || status.apns.devices.length === 0 || apnsDirty
+              }
               title={
                 !status.apns.configured
                   ? "Set the key path, key id, and team id first"
@@ -399,7 +410,11 @@ export function RemoteSettings(): JSX.Element {
               className="settings-button"
               disabled={busy || status.ntfyTopic === null || dirty}
               title={
-                status.ntfyTopic === null ? "Save an ntfy topic first" : dirty ? "Save your changes first" : undefined
+                status.ntfyTopic === null
+                  ? "Save an ntfy topic first"
+                  : dirty
+                    ? "Save your changes first"
+                    : undefined
               }
               onClick={() => void sendTestNotification()}
             >
@@ -431,7 +446,15 @@ export function RemoteSettings(): JSX.Element {
   );
 }
 
-function CopyValueRow({ label, value, code = false }: { label: string; value: string; code?: boolean }): JSX.Element {
+function CopyValueRow({
+  label,
+  value,
+  code = false,
+}: {
+  label: string;
+  value: string;
+  code?: boolean;
+}): JSX.Element {
   const [copyFlash, copy] = useCopyToClipboard();
   return (
     <div className="settings-remote-copyrow">
@@ -443,8 +466,14 @@ function CopyValueRow({ label, value, code = false }: { label: string; value: st
         onClick={() => void copy(value)}
         aria-label={`Copy ${label.toLowerCase()}`}
       >
-        {copyFlash === "copied" ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-        <span>{copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy"}</span>
+        {copyFlash === "copied" ? (
+          <Check size={13} aria-hidden="true" />
+        ) : (
+          <Copy size={13} aria-hidden="true" />
+        )}
+        <span>
+          {copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy"}
+        </span>
       </button>
     </div>
   );

@@ -5,7 +5,7 @@ export const SUPPORTED_IMAGE_MIME_TYPES: readonly AttachmentMimeType[] = [
   "image/png",
   "image/jpeg",
   "image/gif",
-  "image/webp"
+  "image/webp",
 ];
 
 export function isSupportedImageMime(mime: string): mime is AttachmentMimeType {
@@ -17,7 +17,7 @@ const IMAGE_EXTENSION_MIME: Readonly<Record<string, AttachmentMimeType>> = {
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
   gif: "image/gif",
-  webp: "image/webp"
+  webp: "image/webp",
 };
 
 /**
@@ -35,7 +35,7 @@ const DRAG_TYPE_IMAGE_MIME: Readonly<Record<string, AttachmentMimeType>> = {
   "public.jpeg": "image/jpeg",
   "public.jpeg-2000": "image/jpeg",
   "com.compuserve.gif": "image/gif",
-  "org.webmproject.webp": "image/webp"
+  "org.webmproject.webp": "image/webp",
 };
 
 /** MIME from a filename when the File's own type is empty. Screenshot drops
@@ -59,12 +59,19 @@ export function imageMimeFromDragType(type: string): AttachmentMimeType | null {
 export function isImageDragType(type: string): boolean {
   if (imageMimeFromDragType(type) !== null) return true;
   if (type.startsWith("image/")) return true;
-  return type === "public.tiff" || type === "public.image" || type === "public.heic" || type === "public.heif";
+  return (
+    type === "public.tiff" ||
+    type === "public.image" ||
+    type === "public.heic" ||
+    type === "public.heif"
+  );
 }
 
 function isFilePromiseDragType(type: string): boolean {
   return (
-    type.includes("promised-file") || type === "com.apple.NSPromiseContents" || type === "NSPromiseContentsPboardType"
+    type.includes("promised-file") ||
+    type === "com.apple.NSPromiseContents" ||
+    type === "NSPromiseContentsPboardType"
   );
 }
 
@@ -191,7 +198,7 @@ export function collectDroppedFiles(dataTransfer: ComposerDragPayload): File[] {
  */
 export function buildAttachmentReferences(
   files: Iterable<File> | Iterable<{ path?: string }>,
-  workspacePath: string | null
+  workspacePath: string | null,
 ): string[] {
   const refs: string[] = [];
   for (const file of files) {

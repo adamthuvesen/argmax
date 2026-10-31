@@ -29,7 +29,7 @@ const listeners = new Set<() => void>();
 
 /** The chats in a snapshot, newest activity first. */
 export function chatDirectoryFromSnapshot(
-  snapshot: Pick<DashboardSnapshot, "projects" | "workspaces" | "sessions">
+  snapshot: Pick<DashboardSnapshot, "projects" | "workspaces" | "sessions">,
 ): ChatDirectoryEntry[] {
   const workspaceById = new Map(snapshot.workspaces.map((workspace) => [workspace.id, workspace]));
   const projectById = new Map(snapshot.projects.map((project) => [project.id, project]));
@@ -43,11 +43,15 @@ export function chatDirectoryFromSnapshot(
       workspaceId: workspace.id,
       title: workspace.taskLabel || titleFromPrompt(session.prompt) || session.modelLabel,
       projectName: project && project.id !== SCRATCH_PROJECT_ID ? project.name : "",
-      lastActivityAt: session.lastActivityAt
+      lastActivityAt: session.lastActivityAt,
     });
   }
   return directory.sort((left, right) =>
-    left.lastActivityAt === right.lastActivityAt ? 0 : left.lastActivityAt < right.lastActivityAt ? 1 : -1
+    left.lastActivityAt === right.lastActivityAt
+      ? 0
+      : left.lastActivityAt < right.lastActivityAt
+        ? 1
+        : -1,
   );
 }
 
@@ -87,7 +91,7 @@ export function useChatDirectory(): readonly ChatDirectoryEntry[] {
   return useSyncExternalStore(
     subscribe,
     () => entries,
-    () => entries
+    () => entries,
   );
 }
 
@@ -100,7 +104,7 @@ export function useChatDirectory(): readonly ChatDirectoryEntry[] {
 export function searchChatTitles(
   directory: readonly ChatDirectoryEntry[],
   query: string,
-  limit: number
+  limit: number,
 ): ChatDirectoryEntry[] {
   const needles = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (needles.length === 0) return [];

@@ -18,7 +18,7 @@ export function ProjectFoldersForm({
   onCancel,
   onBusyChange,
   autoFocus = false,
-  renderFolderDetails
+  renderFolderDetails,
 }: {
   initialValue: ProjectFoldersDraft;
   submitLabel: string;
@@ -132,7 +132,12 @@ export function ProjectFoldersForm({
       <div className="project-folders-intro">
         <div className="project-folders-heading">
           <h3>Folders</h3>
-          <button className="settings-button" type="button" disabled={busy} onClick={() => void addFolder()}>
+          <button
+            className="settings-button"
+            type="button"
+            disabled={busy}
+            onClick={() => void addFolder()}
+          >
             <FolderPlus size={14} aria-hidden="true" /> Add folder
           </button>
         </div>

@@ -14,7 +14,7 @@ function activeGoal(): Goal {
     maxTurns: 20,
     lastReason: null,
     createdAt: "2026-09-11T10:00:00.000Z",
-    updatedAt: "2026-09-11T10:05:00.000Z"
+    updatedAt: "2026-09-11T10:05:00.000Z",
   };
 }
 
@@ -32,7 +32,7 @@ const goals = {
   set: vi.fn<ArgmaxApi["goals"]["set"]>(),
   get: vi.fn<ArgmaxApi["goals"]["get"]>(),
   list: vi.fn<ArgmaxApi["goals"]["list"]>(),
-  clear: vi.fn<ArgmaxApi["goals"]["clear"]>()
+  clear: vi.fn<ArgmaxApi["goals"]["clear"]>(),
 };
 
 beforeEach(() => {
@@ -54,7 +54,9 @@ describe("SessionComposer goal", () => {
     submit("/goal every test in test/auth passes");
 
     await waitFor(() =>
-      expect(goals.set).toHaveBeenCalledWith(expect.objectContaining({ condition: "every test in test/auth passes" }))
+      expect(goals.set).toHaveBeenCalledWith(
+        expect.objectContaining({ condition: "every test in test/auth passes" }),
+      ),
     );
     // Setting a goal starts its own first turn; the composer must not send one too.
     expect(onSendSessionInput).not.toHaveBeenCalled();

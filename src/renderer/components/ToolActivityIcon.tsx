@@ -16,7 +16,7 @@ import {
   Sparkles,
   SquarePen,
   Terminal,
-  Wrench
+  Wrench,
 } from "lucide-react";
 import type { JSX } from "react";
 import type { ToolActivityKind } from "../lib/toolActivity.js";
@@ -44,10 +44,16 @@ const ICONS = {
   "memory-save": Brain,
   git: GitBranch,
   browser: Globe,
-  plan: ListChecks
+  plan: ListChecks,
 };
 
-export function ToolActivityIcon({ kind, danger = false }: { kind: ToolActivityKind; danger?: boolean }): JSX.Element {
+export function ToolActivityIcon({
+  kind,
+  danger = false,
+}: {
+  kind: ToolActivityKind;
+  danger?: boolean;
+}): JSX.Element {
   const Icon = ICONS[kind];
   return (
     <Icon

@@ -8,7 +8,13 @@ import { usePrMilestone } from "./usePrMilestone.js";
 const start = "2026-09-05T10:00:00.000Z";
 const later = "2026-09-05T10:00:05.000Z";
 const old = "2026-09-04T10:00:00.000Z";
-const workspace = { ...baseWorkspace, prNumber: null, prState: null, prCreatedAt: null, prMergedAt: null };
+const workspace = {
+  ...baseWorkspace,
+  prNumber: null,
+  prState: null,
+  prCreatedAt: null,
+  prMergedAt: null,
+};
 let enabled = true;
 function wrapper({ children }: { children: ReactNode }) {
   return <PrMilestoneCelebrationContext value={enabled}>{children}</PrMilestoneCelebrationContext>;
@@ -26,7 +32,10 @@ afterEach(() => {
 
 describe("confirmed PR milestones", () => {
   it("celebrates a newly created PR once, independently of turn completion", () => {
-    const { result, rerender } = renderHook(usePrMilestone, { initialProps: baseWorkspace, wrapper });
+    const { result, rerender } = renderHook(usePrMilestone, {
+      initialProps: baseWorkspace,
+      wrapper,
+    });
     const created = { ...workspace, prNumber: 42, prState: "OPEN" as const, prCreatedAt: later };
     vi.setSystemTime(later);
     rerender(created);
@@ -37,7 +46,10 @@ describe("confirmed PR milestones", () => {
   });
 
   it("ignores an old PR discovered later and an offline merge", () => {
-    const { result, rerender } = renderHook(usePrMilestone, { initialProps: baseWorkspace, wrapper });
+    const { result, rerender } = renderHook(usePrMilestone, {
+      initialProps: baseWorkspace,
+      wrapper,
+    });
     rerender({ ...workspace, prNumber: 42, prState: "OPEN", prCreatedAt: old });
     expect(result.current.milestone).toBeNull();
     rerender({ ...workspace, prNumber: 42, prState: "MERGED", prCreatedAt: old, prMergedAt: old });
@@ -45,8 +57,17 @@ describe("confirmed PR milestones", () => {
   });
 
   it("celebrates a confirmed merge once, including creation and merge between polls", () => {
-    const { result, rerender } = renderHook(usePrMilestone, { initialProps: baseWorkspace, wrapper });
-    const merged = { ...workspace, prNumber: 42, prState: "MERGED" as const, prCreatedAt: later, prMergedAt: later };
+    const { result, rerender } = renderHook(usePrMilestone, {
+      initialProps: baseWorkspace,
+      wrapper,
+    });
+    const merged = {
+      ...workspace,
+      prNumber: 42,
+      prState: "MERGED" as const,
+      prCreatedAt: later,
+      prMergedAt: later,
+    };
     vi.setSystemTime(later);
     rerender(merged);
     expect(result.current.milestone).toBe("42:merged");
@@ -56,7 +77,10 @@ describe("confirmed PR milestones", () => {
   });
 
   it("does not celebrate missing timestamps, closed PRs, or ordinary updates", () => {
-    const { result, rerender } = renderHook(usePrMilestone, { initialProps: baseWorkspace, wrapper });
+    const { result, rerender } = renderHook(usePrMilestone, {
+      initialProps: baseWorkspace,
+      wrapper,
+    });
     rerender({ ...workspace, changedFiles: 10 });
     expect(result.current.milestone).toBeNull();
     rerender({ ...workspace, prNumber: 42, prState: "OPEN" });
@@ -73,7 +97,10 @@ describe("confirmed PR milestones", () => {
 
   it("does not replay disabled milestones when enabled, even if discovery is delayed", () => {
     enabled = false;
-    const { result, rerender } = renderHook(usePrMilestone, { initialProps: baseWorkspace, wrapper });
+    const { result, rerender } = renderHook(usePrMilestone, {
+      initialProps: baseWorkspace,
+      wrapper,
+    });
     vi.setSystemTime("2026-09-05T10:00:10.000Z");
     enabled = true;
     rerender({ ...workspace });

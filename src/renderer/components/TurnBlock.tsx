@@ -57,7 +57,7 @@ function turnBounds(toolItems: TurnToolItem[], assistantTimestamps: number[]): B
   return {
     startedAt: sawAny && Number.isFinite(startedAt) ? startedAt : 0,
     endedAt,
-    lastSeenAt
+    lastSeenAt,
   };
 }
 
@@ -80,7 +80,7 @@ export function TurnBlock({
   changes,
   onFork,
   onForkIsolated,
-  revert
+  revert,
 }: {
   toolItems: TurnToolItem[];
   assistantTimestamps: number[];
@@ -139,7 +139,10 @@ export function TurnBlock({
   /** "Revert to here", when this turn has a before-turn checkpoint. */
   revert?: JSX.Element;
 }): JSX.Element {
-  const toolRunning = useMemo(() => toolItems.some((item) => item.tool.status === "running"), [toolItems]);
+  const toolRunning = useMemo(
+    () => toolItems.some((item) => item.tool.status === "running"),
+    [toolItems],
+  );
   // The parent's active flag is authoritative, including resumable pauses.
   // Only a finished turn may settle its activity and expose its footer.
   // Fall back to tool status for isolated component tests and narrow callers.
@@ -161,7 +164,10 @@ export function TurnBlock({
     const timeout = setTimeout(() => setSettling(false), 600);
     return () => clearTimeout(timeout);
   }, [hideWorkingWhenCollapsed, running]);
-  const bounds = useMemo(() => turnBounds(toolItems, assistantTimestamps), [toolItems, assistantTimestamps]);
+  const bounds = useMemo(
+    () => turnBounds(toolItems, assistantTimestamps),
+    [toolItems, assistantTimestamps],
+  );
   const startedAtMs =
     typeof turnStartedAtMs === "number" && turnStartedAtMs > 0 && Number.isFinite(turnStartedAtMs)
       ? turnStartedAtMs
@@ -171,7 +177,8 @@ export function TurnBlock({
   // and the launching turn can finish first. Fall back to the last event seen
   // rather than read the open row as zero elapsed.
   const endedAtMs = running ? bounds.endedAt : (bounds.endedAt ?? bounds.lastSeenAt);
-  const elapsedMs = endedAtMs !== null && startedAtMs > 0 ? Math.max(0, endedAtMs - startedAtMs) : 0;
+  const elapsedMs =
+    endedAtMs !== null && startedAtMs > 0 ? Math.max(0, endedAtMs - startedAtMs) : 0;
 
   // Tool-group expansion is owned by the parent (it builds the tool nodes), so
   // the chip and the per-group chevrons stay in sync. The chip just reflects it
@@ -189,12 +196,12 @@ export function TurnBlock({
   const {
     visibleItems: mountedBody,
     hiddenEarlierCount: hiddenEarlierBodyCount,
-    showEarlier: showEarlierBody
+    showEarlier: showEarlierBody,
   } = useStableTailWindow(follow ? visibleBody : [], {
     initialCount: TURN_BODY_WINDOW,
     pageSize: TURN_BODY_WINDOW_STEP,
     follow,
-    getId: (child) => child.id
+    getId: (child) => child.id,
   });
   const renderedBody = follow ? mountedBody : visibleBody;
 
@@ -218,11 +225,18 @@ export function TurnBlock({
     const d = new Date(ms);
     const now = new Date();
     const sameDay =
-      d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate();
     if (sameDay) {
       return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     }
-    return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   }, [headerTimestampIso]);
   // Show a quiet turn marker for every assistant turn so long chats get the
   // same visual reset as Codex. Tool turns remain clickable/collapsible; pure
@@ -292,7 +306,7 @@ export function TurnBlock({
               ? {
                   onClick: () => {
                     onToggleTools();
-                  }
+                  },
                 }
               : {})}
           >
@@ -352,7 +366,7 @@ function TurnFooter({
   turnMarkdown,
   onFork,
   onForkIsolated,
-  revert
+  revert,
 }: {
   turnMarkdown?: string;
   onFork?: () => void;
@@ -368,7 +382,13 @@ function TurnFooter({
           type="button"
           className="turn-block-footer-action"
           aria-label="Copy reply"
-          title={copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy reply"}
+          title={
+            copyFlash === "copied"
+              ? "Copied"
+              : copyFlash === "failed"
+                ? "Couldn't copy"
+                : "Copy reply"
+          }
           onClick={() => void copy(turnMarkdown)}
         >
           {/* The outcome has to be visible on the button: a tooltip nobody

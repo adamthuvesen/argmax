@@ -1,6 +1,11 @@
 import { CalendarDays } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type JSX } from "react";
-import type { ProviderId, UsageRemaining, UsageSummary, UsageWindow } from "../../../shared/types.js";
+import type {
+  ProviderId,
+  UsageRemaining,
+  UsageSummary,
+  UsageWindow,
+} from "../../../shared/types.js";
 import {
   getCachedUsageRemaining,
   getCachedUsageRemainingError,
@@ -11,7 +16,7 @@ import {
   requestUsageRemaining,
   requestUsageSummary,
   recordUsageRemainingFailure,
-  usageRemainingHasSettled
+  usageRemainingHasSettled,
 } from "../../lib/ledgerPageState.js";
 import { SegmentedControl, SettingsListPicker } from "../settings/settingsPrimitives.js";
 import { LedgerSwitch } from "./LedgerSwitch.js";
@@ -30,7 +35,7 @@ import {
   processedTokens,
   providerLabel,
   USAGE_PROVIDER_ORDER,
-  type UsageMetric
+  type UsageMetric,
 } from "./usagePresentation.js";
 
 /** Warm refresh while the page is open. */
@@ -48,7 +53,7 @@ const REMAINING_HOLD_MS = 2_000;
 const WINDOW_OPTIONS: ReadonlyArray<{ value: UsageWindow; label: string }> = [
   { value: "24h", label: "Last 24 hours" },
   { value: "7d", label: "Last 7 days" },
-  { value: "30d", label: "Last 30 days" }
+  { value: "30d", label: "Last 30 days" },
 ];
 
 /** The picker's value for "every provider"; the backend takes `null`. */
@@ -57,14 +62,14 @@ type ProviderChoice = ProviderId | typeof ALL_PROVIDERS;
 
 const METRIC_OPTIONS = [
   { value: "cost", label: "Cost" },
-  { value: "tokens", label: "Tokens" }
+  { value: "tokens", label: "Tokens" },
 ];
 
 /** What the delta chip compares this window against, said in words. */
 const PREVIOUS_LABEL: Record<UsageWindow, string> = {
   "24h": "the previous 24 hours",
   "7d": "the previous 7 days",
-  "30d": "the previous 30 days"
+  "30d": "the previous 30 days",
 };
 
 /**
@@ -94,7 +99,11 @@ function hostTimeZone(): string {
   }
 }
 
-async function fetchSummary(window: UsageWindow, provider: ProviderId | null, timeZone: string): Promise<UsageSummary> {
+async function fetchSummary(
+  window: UsageWindow,
+  provider: ProviderId | null,
+  timeZone: string,
+): Promise<UsageSummary> {
   const api = globalThis.window?.argmax;
   if (api) return api.usage.summary({ window, provider, timeZone });
   // No bridge: browser preview boots the whole app on demo data, and the
@@ -120,13 +129,17 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
   const providerRef = useRef(provider);
   providerRef.current = provider;
   const [summary, setSummary] = useState<UsageSummary | null>(() =>
-    getCachedUsageSummary(cachedUi.usageWindow, cachedUi.provider, timeZoneRef.current)
+    getCachedUsageSummary(cachedUi.usageWindow, cachedUi.provider, timeZoneRef.current),
   );
   /** Boot prefetch or a revisit — paint the ledger without waiting on remaining. */
   const openedFromCache = useRef(summary !== null);
   const [error, setError] = useState<string | null>(null);
-  const [remaining, setRemaining] = useState<UsageRemaining | null>(() => getCachedUsageRemaining());
-  const [remainingError, setRemainingError] = useState<string | null>(() => getCachedUsageRemainingError());
+  const [remaining, setRemaining] = useState<UsageRemaining | null>(() =>
+    getCachedUsageRemaining(),
+  );
+  const [remainingError, setRemainingError] = useState<string | null>(() =>
+    getCachedUsageRemainingError(),
+  );
   const [remainingHoldOver, setRemainingHoldOver] = useState(() => usageRemainingHasSettled());
   // Only the newest request may write state: a slow 30-day scan must not
   // land on top of the 24h window the user switched to while it ran.
@@ -138,7 +151,7 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
     requestRef.current = request;
     try {
       const next = await requestUsageSummary(target, scope, timeZoneRef.current, () =>
-        fetchSummary(target, scope, timeZoneRef.current)
+        fetchSummary(target, scope, timeZoneRef.current),
       );
       if (requestRef.current !== request) return;
       setSummary(next);
@@ -220,10 +233,12 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
     : "";
   const chartTitle = summary?.resolution === "hour" ? "Hourly" : "Daily";
   const chartHeading = `${chartTitle} ${metric === "cost" ? "cost" : "tokens"}`;
-  const scanStamp = summary ? formatScanStamp(summary.scan.lastCompletedAt, summary.timeZone) : null;
+  const scanStamp = summary
+    ? formatScanStamp(summary.scan.lastCompletedAt, summary.timeZone)
+    : null;
 
   return (
-    <div className="settings-page usage-page">
+    <div className="settings-page usage-page" data-testid="usage-page">
       <div className="settings-topbar" data-window-drag />
       <div className="usage-main">
         <header className="usage-topbar">
@@ -271,7 +286,11 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
             {error ? (
               <div className="usage-notice" data-tone="error" role="alert">
                 <span>{error}</span>
-                <button type="button" className="sched-button" onClick={() => void load(usageWindow, provider)}>
+                <button
+                  type="button"
+                  className="sched-button"
+                  onClick={() => void load(usageWindow, provider)}
+                >
                   Try again
                 </button>
               </div>
@@ -288,7 +307,11 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
             ) : null}
             {!summary && !error ? <UsageSkeleton /> : null}
 
-            <UsageRemainingCard remaining={remaining} error={remainingError} onRefresh={() => void loadRemaining()} />
+            <UsageRemainingCard
+              remaining={remaining}
+              error={remainingError}
+              onRefresh={() => void loadRemaining()}
+            />
             <RouterCostCard usageWindow={usageWindow} visible={visible} />
           </>
         ) : (
@@ -308,13 +331,15 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
 function UsageProviderPicker({
   summary,
   value,
-  onChange
+  onChange,
 }: {
   summary: UsageSummary | null;
   value: ProviderId | null;
   onChange: (provider: ProviderId | null) => void;
 }): JSX.Element {
-  const unavailable = new Set((summary?.providers ?? []).filter((row) => !row.available).map((row) => row.provider));
+  const unavailable = new Set(
+    (summary?.providers ?? []).filter((row) => !row.available).map((row) => row.provider),
+  );
   const options: Array<{
     value: ProviderChoice;
     label: string;
@@ -328,8 +353,10 @@ function UsageProviderPicker({
       label: providerLabel(id),
       disabled: unavailable.has(id),
       title: unavailable.has(id) ? "No local usage data" : undefined,
-      icon: <span className="usage-series usage-series-dot" data-provider={id} aria-hidden="true" />
-    }))
+      icon: (
+        <span className="usage-series usage-series-dot" data-provider={id} aria-hidden="true" />
+      ),
+    })),
   ];
   return (
     <SettingsListPicker<ProviderChoice>
@@ -346,7 +373,7 @@ function UsageBody({
   metric,
   chartHeading,
   provider,
-  onSelectProvider
+  onSelectProvider,
 }: {
   summary: UsageSummary;
   metric: UsageMetric;
@@ -373,8 +400,8 @@ function UsageBody({
       <div className="usage-blank">
         <p className="usage-blank-headline">No usage in this window.</p>
         <p className="usage-blank-body">
-          Argmax reads every transcript the provider CLIs left on disk, not only the sessions it started. Run an agent,
-          or widen the range.
+          Argmax reads every transcript the provider CLIs left on disk, not only the sessions it
+          started. Run an agent, or widen the range.
         </p>
       </div>
     );
@@ -385,8 +412,8 @@ function UsageBody({
       {summary.scan.phase === "scanning" ? (
         <div className="usage-notice" data-tone="scanning" role="status">
           <span>
-            Still scanning — {formatCount(summary.scan.filesDone)} of {formatCount(summary.scan.filesTotal)} files.
-            These numbers are partial.
+            Still scanning — {formatCount(summary.scan.filesDone)} of{" "}
+            {formatCount(summary.scan.filesTotal)} files. These numbers are partial.
           </span>
         </div>
       ) : null}
@@ -402,7 +429,12 @@ function UsageBody({
           delta={windowDelta(summary, metric)}
           onShowAll={() => onSelectProvider(null)}
         />
-        <UsageProviderRows summary={summary} metric={metric} selected={provider} onSelect={onSelectProvider} />
+        <UsageProviderRows
+          summary={summary}
+          metric={metric}
+          selected={provider}
+          onSelect={onSelectProvider}
+        />
       </section>
       <section className="usage-chart-card" aria-label={chartHeading}>
         <div className="usage-section-head">

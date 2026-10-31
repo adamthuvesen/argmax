@@ -5,14 +5,18 @@ import { CheckedFileChip, FileChip } from "./FileChip.js";
 
 describe("matchFileChip", () => {
   it("matches a bare path with extension", () => {
-    expect(matchFileChip("src/index.ts")).toEqual({ path: "src/index.ts", line: null, needsExistenceCheck: false });
+    expect(matchFileChip("src/index.ts")).toEqual({
+      path: "src/index.ts",
+      line: null,
+      needsExistenceCheck: false,
+    });
   });
 
   it("matches a path with line suffix", () => {
     expect(matchFileChip("src/foo/bar.tsx:42")).toEqual({
       path: "src/foo/bar.tsx",
       line: 42,
-      needsExistenceCheck: false
+      needsExistenceCheck: false,
     });
   });
 
@@ -20,7 +24,7 @@ describe("matchFileChip", () => {
     expect(matchFileChip("src/foo/bar.tsx:42:7")).toEqual({
       path: "src/foo/bar.tsx",
       line: 42,
-      needsExistenceCheck: false
+      needsExistenceCheck: false,
     });
   });
 
@@ -40,17 +44,19 @@ describe("matchFileChip", () => {
     expect(matchFileChip("~/.local/share/dotfiles/agent-secrets.json")).toEqual({
       path: "~/.local/share/dotfiles/agent-secrets.json",
       line: null,
-      needsExistenceCheck: false
+      needsExistenceCheck: false,
     });
   });
 });
 
 describe("matchFileChip outside the workspace", () => {
   it("matches an anchored path with spaces, keeping its line", () => {
-    expect(matchFileChip("~/Library/Application Support/com.argmax.rs/local-state/argmax.sqlite:12")).toEqual({
+    expect(
+      matchFileChip("~/Library/Application Support/com.argmax.rs/local-state/argmax.sqlite:12"),
+    ).toEqual({
       path: "~/Library/Application Support/com.argmax.rs/local-state/argmax.sqlite",
       line: 12,
-      needsExistenceCheck: false
+      needsExistenceCheck: false,
     });
   });
 
@@ -65,7 +71,11 @@ describe("matchFileChip outside the workspace", () => {
   });
 
   it("asks for an existence check on an anchored path without an extension", () => {
-    expect(matchFileChip("/etc/hosts")).toEqual({ path: "/etc/hosts", line: null, needsExistenceCheck: true });
+    expect(matchFileChip("/etc/hosts")).toEqual({
+      path: "/etc/hosts",
+      line: null,
+      needsExistenceCheck: true,
+    });
     expect(matchFileChip("~/dev/repo/Makefile")?.needsExistenceCheck).toBe(true);
     expect(matchFileChip("/api/users")?.needsExistenceCheck).toBe(true);
   });
@@ -84,7 +94,7 @@ describe("matchFileChip outside the workspace", () => {
 describe("normalizeFileChipPath for sibling paths", () => {
   it("resolves ../ against the workspace", () => {
     expect(normalizeFileChipPath("../dotfiles/README.md", "/Users/me/dev/argmax")).toBe(
-      "/Users/me/dev/dotfiles/README.md"
+      "/Users/me/dev/dotfiles/README.md",
     );
     expect(normalizeFileChipPath("../argmax/src/a.ts", "/Users/me/dev/argmax")).toBe("src/a.ts");
   });
@@ -102,7 +112,9 @@ describe("formatFileChipLabel", () => {
 
   it("shows the whole path, home collapsed, when the file is outside the workspace", () => {
     expect(formatFileChipLabel("/other/dir/foo.ts", "/repo", null)).toBe("/other/dir/foo.ts");
-    expect(formatFileChipLabel("/Users/me/.local/share/a.json", "/repo", 3)).toBe("~/.local/share/a.json:3");
+    expect(formatFileChipLabel("/Users/me/.local/share/a.json", "/repo", 3)).toBe(
+      "~/.local/share/a.json:3",
+    );
     expect(formatFileChipLabel("~/.zshrc", "/repo", null)).toBe("~/.zshrc");
   });
 
@@ -144,8 +156,8 @@ describe("FileChip", () => {
       writable: true,
       value: {
         workspaces: { openInIde },
-        system: { openPath }
-      }
+        system: { openPath },
+      },
     });
   });
 
@@ -176,18 +188,20 @@ describe("FileChip", () => {
       kind: "text",
       content: "{}",
       size: 2,
-      mtimeMs: 1
+      mtimeMs: 1,
     });
     (window as unknown as { argmax: unknown }).argmax = {
       workspace: { statFile, listFiles, readFile },
       workspaces: { openInIde: vi.fn() },
-      system: { openPath: vi.fn() }
+      system: { openPath: vi.fn() },
     };
     render(<FileChip path="package.json" line={null} workspaceId="ws-1" workspaceCwd="/repo" />);
 
     fireEvent.focus(screen.getByRole("button", { name: "Open package.json" }));
 
-    await waitFor(() => expect(readFile).toHaveBeenCalledWith({ kind: "workspace", id: "ws-1" }, "docs/package.json"));
+    await waitFor(() =>
+      expect(readFile).toHaveBeenCalledWith({ kind: "workspace", id: "ws-1" }, "docs/package.json"),
+    );
     expect(await screen.findByRole("tooltip")).toHaveTextContent("{}");
   });
 });
@@ -202,7 +216,7 @@ describe("CheckedFileChip", () => {
     (window as unknown as { argmax: unknown }).argmax = {
       workspace: { statExternalFile, statFile: vi.fn().mockRejectedValue(new Error("no")) },
       workspaces: { openInIde: vi.fn() },
-      system: { openPath: vi.fn() }
+      system: { openPath: vi.fn() },
     };
   }
 
@@ -216,9 +230,11 @@ describe("CheckedFileChip", () => {
         workspaceId="ws-1"
         workspaceCwd="/repo"
         fallback={<code>/etc/hosts</code>}
-      />
+      />,
     );
-    expect(await screen.findByRole("button", { name: "Open /etc/hosts" })).toHaveTextContent("/etc/hosts");
+    expect(await screen.findByRole("button", { name: "Open /etc/hosts" })).toHaveTextContent(
+      "/etc/hosts",
+    );
     expect(statExternalFile).toHaveBeenCalledWith("/etc/hosts");
   });
 
@@ -232,7 +248,7 @@ describe("CheckedFileChip", () => {
         workspaceId="ws-1"
         workspaceCwd="/repo"
         fallback={<code>/api/users</code>}
-      />
+      />,
     );
     await waitFor(() => expect(statExternalFile).toHaveBeenCalledWith("/api/users"));
     expect(screen.queryByRole("button")).toBeNull();

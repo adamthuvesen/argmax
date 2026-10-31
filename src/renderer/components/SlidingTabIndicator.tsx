@@ -32,6 +32,7 @@ export function SlidingTabIndicator({ activeKey }: { activeKey: string }): JSX.E
     <span
       ref={indicatorRef}
       className="sliding-tab-indicator"
+      data-testid="sliding-tab-indicator"
       aria-hidden="true"
       style={{ "--sliding-tab-x": "0px", "--sliding-tab-width": "0px" } as CSSProperties}
     />

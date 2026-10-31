@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceFilePreview } from "../../shared/types.js";
 import { BoundedMap } from "../../shared/boundedSet.js";
-import { isExternalFilePath, type ReviewIpcDispatch, type ReviewSourceKind } from "../lib/reviewIpc.js";
+import {
+  isExternalFilePath,
+  type ReviewIpcDispatch,
+  type ReviewSourceKind,
+} from "../lib/reviewIpc.js";
 import { errorMessage } from "../../shared/error.js";
 import { showErrorToast } from "../state/toast.js";
 import type {
@@ -10,7 +14,7 @@ import type {
   WorkspaceFileDirtyClosePrompt,
   WorkspaceFileSaveState,
   WorkspaceFileTab,
-  WorkspaceFilesState
+  WorkspaceFilesState,
 } from "./useReviewState.js";
 
 interface WorkspaceFileTabState {
@@ -56,7 +60,7 @@ const bufferedFilesByOwnerAndSource = new Map<string, BufferedFilesSnapshot>();
 function bufferedFilesKey(
   storageKey: string | null,
   sourceKind: ReviewSourceKind | null,
-  sourceId: string | null
+  sourceId: string | null,
 ): string | null {
   if (!sourceKind || !sourceId) return null;
   return `${storageKey ?? "launcher"}\u0000${sourceKind}\u0000${sourceId}`;
@@ -69,12 +73,17 @@ function hasDirtyBuffer(tab: WorkspaceFileTabState): boolean {
 function snapshotBufferedFiles(
   tabs: WorkspaceFileTabState[],
   activePath: string | null,
-  pendingSavePaths: ReadonlySet<string>
+  pendingSavePaths: ReadonlySet<string>,
 ): BufferedFilesSnapshot {
   const dirtyBuffers = new Map<string, DirtyFileBuffer>();
   for (const tab of tabs) {
     const savePending = pendingSavePaths.has(tab.path);
-    if ((!hasDirtyBuffer(tab) && !savePending) || tab.buffer === null || tab.preview?.kind !== "text") continue;
+    if (
+      (!hasDirtyBuffer(tab) && !savePending) ||
+      tab.buffer === null ||
+      tab.preview?.kind !== "text"
+    )
+      continue;
     dirtyBuffers.set(tab.path, {
       buffer: tab.buffer,
       // A save may already be carrying different contents to disk. If the
@@ -82,13 +91,13 @@ function snapshotBufferedFiles(
       // let the in-flight write silently replace their chosen text.
       original: savePending && !hasDirtyBuffer(tab) ? null : tab.original,
       diskMtimeMs: tab.diskMtimeMs,
-      preview: tab.preview
+      preview: tab.preview,
     });
   }
   return {
     paths: tabs.map((tab) => tab.path),
     activePath,
-    dirtyBuffers
+    dirtyBuffers,
   };
 }
 
@@ -97,7 +106,7 @@ function rememberBufferedFiles(
   key: string | null,
   tabs: WorkspaceFileTabState[],
   activePath: string | null,
-  pendingSavePaths: ReadonlySet<string>
+  pendingSavePaths: ReadonlySet<string>,
 ): void {
   if (!key) return;
   const snapshot = snapshotBufferedFiles(tabs, activePath, pendingSavePaths);
@@ -108,7 +117,10 @@ function rememberBufferedFiles(
   store.set(key, snapshot);
 }
 
-function createWorkspaceFileTab(path: string, dirtyBuffer?: DirtyFileBuffer): WorkspaceFileTabState {
+function createWorkspaceFileTab(
+  path: string,
+  dirtyBuffer?: DirtyFileBuffer,
+): WorkspaceFileTabState {
   return {
     path,
     preview: dirtyBuffer?.preview ?? null,
@@ -123,7 +135,7 @@ function createWorkspaceFileTab(path: string, dirtyBuffer?: DirtyFileBuffer): Wo
     diskMtimeMs: dirtyBuffer?.diskMtimeMs ?? null,
     externalChange: false,
     saveState: "idle",
-    saveError: null
+    saveError: null,
   };
 }
 
@@ -140,11 +152,15 @@ function readStoredOpenFiles(storageKey: string | null): StoredOpenFiles {
     if (typeof parsed !== "object" || parsed === null) return empty;
     const { paths, activePath } = parsed as Record<string, unknown>;
     if (!Array.isArray(paths)) return empty;
-    const validPaths = [...new Set(paths.filter((path): path is string => typeof path === "string"))];
+    const validPaths = [
+      ...new Set(paths.filter((path): path is string => typeof path === "string")),
+    ];
     return {
       paths: validPaths,
       activePath:
-        typeof activePath === "string" && validPaths.includes(activePath) ? activePath : (validPaths[0] ?? null)
+        typeof activePath === "string" && validPaths.includes(activePath)
+          ? activePath
+          : (validPaths[0] ?? null),
     };
   } catch {
     return empty;
@@ -179,7 +195,9 @@ export function useFilePreview(args: {
   // unmount while navigating between chats.
   const transientBufferedFiles = useRef(new Map<string, BufferedFilesSnapshot>());
   const nextBufferedFilesStoreRef = useRef(bufferedFilesByOwnerAndSource);
-  nextBufferedFilesStoreRef.current = storageKey ? bufferedFilesByOwnerAndSource : transientBufferedFiles.current;
+  nextBufferedFilesStoreRef.current = storageKey
+    ? bufferedFilesByOwnerAndSource
+    : transientBufferedFiles.current;
   const activeBufferedFilesStoreRef = useRef(nextBufferedFilesStoreRef.current);
   const nextBufferedFilesKeyRef = useRef<string | null>(null);
   nextBufferedFilesKeyRef.current = bufferedFilesKey(storageKey, sourceKind, sourceId);
@@ -193,7 +211,7 @@ export function useFilePreview(args: {
   // Each needs a lifetime, or its first save would be dropped as aborted.
   const restoreTabs = (
     stored: StoredOpenFiles,
-    dirtyBuffers = new Map<string, DirtyFileBuffer>()
+    dirtyBuffers = new Map<string, DirtyFileBuffer>(),
   ): WorkspaceFileTabState[] =>
     stored.paths.map((path) => {
       workspaceTabLifetimes.current.set(path, ++workspaceTabLifetimeSeq.current);
@@ -206,7 +224,9 @@ export function useFilePreview(args: {
     if (buffered) return buffered;
     return { ...readStoredOpenFiles(storageKey), dirtyBuffers: new Map<string, DirtyFileBuffer>() };
   });
-  const [tabs, setTabs] = useState<WorkspaceFileTabState[]>(() => restoreTabs(initialFiles, initialFiles.dirtyBuffers));
+  const [tabs, setTabs] = useState<WorkspaceFileTabState[]>(() =>
+    restoreTabs(initialFiles, initialFiles.dirtyBuffers),
+  );
   const [activeTabPath, setActiveTabPath] = useState<string | null>(initialFiles.activePath);
   const [dirtyClosePath, setDirtyClosePath] = useState<string | null>(null);
 
@@ -217,7 +237,10 @@ export function useFilePreview(args: {
       if (tabPathsKey === "[]") {
         window.localStorage.removeItem(storageKey);
       } else {
-        const stored: StoredOpenFiles = { paths: JSON.parse(tabPathsKey) as string[], activePath: activeTabPath };
+        const stored: StoredOpenFiles = {
+          paths: JSON.parse(tabPathsKey) as string[],
+          activePath: activeTabPath,
+        };
         window.localStorage.setItem(storageKey, JSON.stringify(stored));
       }
     } catch {
@@ -235,7 +258,7 @@ export function useFilePreview(args: {
       activeBufferedFilesKeyRef.current,
       tabs,
       activeTabPath,
-      pendingSavePaths.current
+      pendingSavePaths.current,
     );
   }, [tabs, activeTabPath]);
 
@@ -263,7 +286,7 @@ export function useFilePreview(args: {
         original: string | null;
         diskMtimeMs: number | null;
       }
-    >(CLOSED_FILE_CACHE_LIMIT)
+    >(CLOSED_FILE_CACHE_LIMIT),
   );
 
   const activeTab = tabs.find((tab) => tab.path === activeTabPath) ?? null;
@@ -277,7 +300,7 @@ export function useFilePreview(args: {
     workspaceFileTabs: [] as WorkspaceFileTabState[],
     workspaceActiveFilePath: null as string | null,
     workspaceActiveDiskMtimeMs: null as number | null,
-    workspaceActiveExternalChange: false
+    workspaceActiveExternalChange: false,
   });
   listenerStateRef.current = {
     sourceId,
@@ -286,7 +309,7 @@ export function useFilePreview(args: {
     workspaceFileTabs: tabs,
     workspaceActiveFilePath: activeTabPath,
     workspaceActiveDiskMtimeMs: activeTab?.diskMtimeMs ?? null,
-    workspaceActiveExternalChange: activeTab?.externalChange ?? false
+    workspaceActiveExternalChange: activeTab?.externalChange ?? false,
   };
 
   // `workspace:stat-file` is a Rust command that takes the same DB mutex as
@@ -307,7 +330,7 @@ export function useFilePreview(args: {
       activeBufferedFilesKeyRef.current,
       listenerStateRef.current.workspaceFileTabs,
       listenerStateRef.current.workspaceActiveFilePath,
-      pendingSavePaths.current
+      pendingSavePaths.current,
     );
     sourceGeneration.current += 1;
     workspaceReadTokens.current.clear();
@@ -328,7 +351,7 @@ export function useFilePreview(args: {
     // never borrows dirty contents from the previous source.
     const restored = buffered ?? {
       ...readStoredOpenFiles(storageKeyRef.current),
-      dirtyBuffers: new Map<string, DirtyFileBuffer>()
+      dirtyBuffers: new Map<string, DirtyFileBuffer>(),
     };
     setTabs(restoreTabs(restored, restored.dirtyBuffers));
     setActiveTabPath(restored.activePath);
@@ -339,7 +362,7 @@ export function useFilePreview(args: {
     (filePath: string, update: (tab: WorkspaceFileTabState) => WorkspaceFileTabState): void => {
       setTabs((current) => current.map((tab) => (tab.path === filePath ? update(tab) : tab)));
     },
-    []
+    [],
   );
 
   const loadFile = useCallback(
@@ -356,14 +379,17 @@ export function useFilePreview(args: {
         ...tab,
         previewState: "loading",
         previewError: null,
-        externalChange: false
+        externalChange: false,
       }));
       void ipc
         .readFile(filePath)
         .then((preview) => {
           if (workspaceReadTokens.current.get(filePath) !== token) return;
           workspaceStatTokens.current.delete(filePath);
-          workspaceSaveMtimes.current.set(filePath, preview.kind === "text" ? preview.mtimeMs : null);
+          workspaceSaveMtimes.current.set(
+            filePath,
+            preview.kind === "text" ? preview.mtimeMs : null,
+          );
           updateTab(filePath, (tab) => ({
             ...tab,
             preview,
@@ -374,7 +400,7 @@ export function useFilePreview(args: {
             diskMtimeMs: preview.kind === "text" ? preview.mtimeMs : null,
             externalChange: false,
             saveState: "idle",
-            saveError: null
+            saveError: null,
           }));
         })
         .catch((error) => {
@@ -386,11 +412,11 @@ export function useFilePreview(args: {
             previewError: errorMessage(error) || "Could not read file.",
             buffer: null,
             original: null,
-            diskMtimeMs: null
+            diskMtimeMs: null,
           }));
         });
     },
-    [updateTab]
+    [updateTab],
   );
 
   useEffect(() => {
@@ -412,7 +438,7 @@ export function useFilePreview(args: {
             previewState: "ready" as AsyncState,
             buffer: cached.buffer,
             original: cached.original,
-            diskMtimeMs: cached.diskMtimeMs
+            diskMtimeMs: cached.diskMtimeMs,
           }
         : createWorkspaceFileTab(filePath);
       return [...current, tab];
@@ -440,14 +466,18 @@ export function useFilePreview(args: {
         preview: closing.preview,
         buffer: closing.original,
         original: closing.original,
-        diskMtimeMs: closing.diskMtimeMs
+        diskMtimeMs: closing.diskMtimeMs,
       });
     }
     const remaining = current.filter((tab) => tab.path !== filePath);
     const fallbackPath = remaining[index]?.path ?? remaining[index - 1]?.path ?? null;
     setTabs(remaining);
     setActiveTabPath((activePath) => {
-      if (activePath && activePath !== filePath && remaining.some((tab) => tab.path === activePath)) {
+      if (
+        activePath &&
+        activePath !== filePath &&
+        remaining.some((tab) => tab.path === activePath)
+      ) {
         return activePath;
       }
       return fallbackPath;
@@ -464,7 +494,10 @@ export function useFilePreview(args: {
 
   const closeTab = useCallback(
     (filePath: string): void => {
-      const tab = listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
+      const tab =
+        listenerStateRef.current.workspaceFileTabs.find(
+          (candidate) => candidate.path === filePath,
+        ) ?? null;
       if (!tab) return;
       if (isWorkspaceFileTabDirty(tab, listenerStateRef.current.canEdit)) {
         setActiveTabPath(filePath);
@@ -473,7 +506,7 @@ export function useFilePreview(args: {
       }
       forceCloseTab(filePath);
     },
-    [forceCloseTab]
+    [forceCloseTab],
   );
 
   const editFile = useCallback(
@@ -485,10 +518,10 @@ export function useFilePreview(args: {
         ...tab,
         buffer: content,
         saveError: null,
-        saveState: "idle"
+        saveState: "idle",
       }));
     },
-    [updateTab]
+    [updateTab],
   );
 
   const reloadFile = useCallback((): void => {
@@ -517,7 +550,7 @@ export function useFilePreview(args: {
         updateTab(filePath, (tab) => ({
           ...tab,
           diskMtimeMs: latest.mtimeMs,
-          externalChange: false
+          externalChange: false,
         }));
       })
       .catch(() => {
@@ -527,13 +560,30 @@ export function useFilePreview(args: {
   }, [updateTab]);
 
   const saveFilePathNow = useCallback(
-    async (filePath: string, generation: number, tabLifetime: number, contentToSave: string): Promise<SaveOutcome> => {
-      if (sourceGeneration.current !== generation || workspaceTabLifetimes.current.get(filePath) !== tabLifetime)
+    async (
+      filePath: string,
+      generation: number,
+      tabLifetime: number,
+      contentToSave: string,
+    ): Promise<SaveOutcome> => {
+      if (
+        sourceGeneration.current !== generation ||
+        workspaceTabLifetimes.current.get(filePath) !== tabLifetime
+      )
         return "aborted";
       const id = listenerStateRef.current.sourceId;
       const kind = listenerStateRef.current.sourceKind;
-      const tab = listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
-      if (!id || !kind || !tab || !listenerStateRef.current.canEdit || isExternalFilePath(filePath)) {
+      const tab =
+        listenerStateRef.current.workspaceFileTabs.find(
+          (candidate) => candidate.path === filePath,
+        ) ?? null;
+      if (
+        !id ||
+        !kind ||
+        !tab ||
+        !listenerStateRef.current.canEdit ||
+        isExternalFilePath(filePath)
+      ) {
         return "aborted";
       }
       const token = ++workspaceSaveSeq.current;
@@ -542,7 +592,7 @@ export function useFilePreview(args: {
       updateTab(filePath, (current) => ({
         ...current,
         saveState: "saving",
-        saveError: null
+        saveError: null,
       }));
       try {
         const ipc = dispatchRef.current;
@@ -563,7 +613,7 @@ export function useFilePreview(args: {
           updateTab(filePath, (current) => ({
             ...current,
             saveState: "idle",
-            externalChange: true
+            externalChange: true,
           }));
           return "stale";
         }
@@ -575,7 +625,7 @@ export function useFilePreview(args: {
           diskMtimeMs: result.mtimeMs,
           saveState: "idle",
           saveError: null,
-          externalChange: false
+          externalChange: false,
         }));
         return "saved";
       } catch (error) {
@@ -589,19 +639,22 @@ export function useFilePreview(args: {
         updateTab(filePath, (current) => ({
           ...current,
           saveState: "error",
-          saveError: message
+          saveError: message,
         }));
         showErrorToast(message);
         return "error";
       }
     },
-    [updateTab]
+    [updateTab],
   );
 
   const saveFilePath = useCallback(
     async (filePath: string): Promise<SaveOutcome> => {
       const generation = sourceGeneration.current;
-      const tab = listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
+      const tab =
+        listenerStateRef.current.workspaceFileTabs.find(
+          (candidate) => candidate.path === filePath,
+        ) ?? null;
       if (!tab || tab.buffer === null || tab.buffer === tab.original) return "saved";
       const tabLifetime = workspaceTabLifetimes.current.get(filePath);
       if (tabLifetime === undefined) return "aborted";
@@ -609,7 +662,8 @@ export function useFilePreview(args: {
       // earlier saves. Looking it up only when the queue runs would let a
       // later keystroke silently replace the payload of this save request.
       const contentToSave = tab.buffer;
-      const previous = workspaceSaveQueues.current.get(filePath) ?? Promise.resolve<SaveOutcome>("saved");
+      const previous =
+        workspaceSaveQueues.current.get(filePath) ?? Promise.resolve<SaveOutcome>("saved");
       const queued = previous
         .catch(() => "error" as const)
         .then(() => saveFilePathNow(filePath, generation, tabLifetime, contentToSave));
@@ -623,7 +677,7 @@ export function useFilePreview(args: {
       });
       return queued;
     },
-    [saveFilePathNow]
+    [saveFilePathNow],
   );
 
   const saveFile = useCallback(async (): Promise<void> => {
@@ -726,10 +780,11 @@ export function useFilePreview(args: {
     path: tab.path,
     isDirty: isWorkspaceFileTabDirty(tab, canEdit),
     saveState: tab.saveState,
-    externalChange: tab.externalChange
+    externalChange: tab.externalChange,
   }));
 
-  const dirtyCloseTab = dirtyClosePath !== null ? (tabs.find((tab) => tab.path === dirtyClosePath) ?? null) : null;
+  const dirtyCloseTab =
+    dirtyClosePath !== null ? (tabs.find((tab) => tab.path === dirtyClosePath) ?? null) : null;
   const dirtyClosePrompt: WorkspaceFileDirtyClosePrompt | null =
     dirtyCloseTab && isWorkspaceFileTabDirty(dirtyCloseTab, canEdit)
       ? { path: dirtyCloseTab.path, saveError: dirtyCloseTab.saveError }
@@ -766,6 +821,6 @@ export function useFilePreview(args: {
     saveFile,
     reloadFile,
     dismissExternalChange,
-    resetForSourceChange
+    resetForSourceChange,
   };
 }

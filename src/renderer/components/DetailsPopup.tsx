@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type JSX, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type {
   AgentMode,
   ApprovalRequest,
@@ -9,13 +16,17 @@ import type {
   RawProviderOutput,
   SessionSummary,
   TimelineEvent,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../../shared/types.js";
 import type { SendInputResult } from "../../shared/bindings.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
-import { readBoundedNumberPreference, type ThinkingDisplay, type ToolCallsDisplay } from "../lib/uiPreferences.js";
+import {
+  readBoundedNumberPreference,
+  type ThinkingDisplay,
+  type ToolCallsDisplay,
+} from "../lib/uiPreferences.js";
 import { useReviewState } from "../hooks/useReviewState.js";
 import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
 import type { FontSize } from "../lib/fonts.js";
@@ -61,7 +72,7 @@ export function DetailsPopup({
   project,
   rawOutputs = [],
   session,
-  workspace
+  workspace,
 }: {
   approvals?: ApprovalRequest[];
   /** Settings → Appearance: keep the floating composer on the agent-window scale. */
@@ -76,8 +87,17 @@ export function DetailsPopup({
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onClose: () => void;
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
-  onSendQueuedMessageNow: (sessionId: string, messageId: string, delivery?: QueuedMessageDelivery) => Promise<void>;
-  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId, pendingMessageId?: string) => Promise<void>;
+  onSendQueuedMessageNow: (
+    sessionId: string,
+    messageId: string,
+    delivery?: QueuedMessageDelivery,
+  ) => Promise<void>;
+  onMultitask?: (
+    sessionId: string,
+    prompt: string,
+    provider: ProviderId,
+    pendingMessageId?: string,
+  ) => Promise<void>;
   /** The popup has no dock, so a multitask dispatched from it opens as a full
    *  chat — the same fallback the phone uses. Without it the row is a button
    *  that goes nowhere, and the chat has no sidebar row either. */
@@ -87,7 +107,7 @@ export function DetailsPopup({
     input: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
-    attachments?: ComposerAttachment[]
+    attachments?: ComposerAttachment[],
   ) => Promise<SendInputResult>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
@@ -98,7 +118,11 @@ export function DetailsPopup({
   workspace: WorkspaceSummary;
 }): JSX.Element {
   const sessionId = session.id;
-  const { events: sessionEvents, rawOutputs: visibleRawOutputs } = useSessionTimeline(sessionId, events, rawOutputs);
+  const { events: sessionEvents, rawOutputs: visibleRawOutputs } = useSessionTimeline(
+    sessionId,
+    events,
+    rawOutputs,
+  );
   // The seed prompt restates the excerpt the user just selected, so it only
   // eats panel space. Hide it (the oldest user message — events run newest
   // first) and give the whole panel to the answer; typed follow-ups still show.
@@ -123,13 +147,13 @@ export function DetailsPopup({
     width: readBoundedNumberPreference(WIDTH_KEY, {
       min: MIN_WIDTH,
       max: MAX_WIDTH,
-      fallback: DEFAULT_WIDTH
+      fallback: DEFAULT_WIDTH,
     }),
     height: readBoundedNumberPreference(HEIGHT_KEY, {
       min: MIN_HEIGHT,
       max: MAX_HEIGHT,
-      fallback: DEFAULT_HEIGHT
-    })
+      fallback: DEFAULT_HEIGHT,
+    }),
   }));
   useEffect(() => {
     try {
@@ -149,7 +173,7 @@ export function DetailsPopup({
       dragCleanupRef.current?.();
       dragCleanupRef.current = null;
     },
-    []
+    [],
   );
   const startResize = (event: ReactPointerEvent<HTMLDivElement>): void => {
     event.preventDefault();
@@ -160,7 +184,7 @@ export function DetailsPopup({
     const onMove = (move: globalThis.PointerEvent): void => {
       setSize({
         width: Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth + (startX - move.clientX))),
-        height: Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, startHeight + (startY - move.clientY)))
+        height: Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, startHeight + (startY - move.clientY))),
       });
     };
     const stop = (): void => {
@@ -177,7 +201,10 @@ export function DetailsPopup({
     document.body.style.cursor = "nwse-resize";
   };
 
-  const sessionPendingMessages = useMemo(() => pendingMessages?.[sessionId] ?? [], [pendingMessages, sessionId]);
+  const sessionPendingMessages = useMemo(
+    () => pendingMessages?.[sessionId] ?? [],
+    [pendingMessages, sessionId],
+  );
 
   // Blank the prompt as well: foldConversation synthesizes a user bubble from
   // `session.prompt` whenever no user.message event is visible, which would
@@ -192,7 +219,12 @@ export function DetailsPopup({
       data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
       style={{ width: `${size.width}px`, height: `${size.height}px` }}
     >
-      <div className="details-popup-resize" role="presentation" title="Drag to resize" onPointerDown={startResize} />
+      <div
+        className="details-popup-resize"
+        role="presentation"
+        title="Drag to resize"
+        onPointerDown={startResize}
+      />
       <SessionConversation
         chatFontSize={chatFontSize}
         defaultToolCallsDisplay={defaultToolCallsDisplay}
@@ -221,11 +253,13 @@ export function DetailsPopup({
         workspace={workspace}
       />
       {onResolveApproval &&
-      approvals.some((approval) => approval.sessionId === sessionId && approval.status === "pending") ? (
+      approvals.some(
+        (approval) => approval.sessionId === sessionId && approval.status === "pending",
+      ) ? (
         <div className="details-popup-approvals">
           <ApprovalSurface
             approvals={approvals.filter(
-              (approval) => approval.sessionId === sessionId && approval.status === "pending"
+              (approval) => approval.sessionId === sessionId && approval.status === "pending",
             )}
             events={sessionEvents}
             onResolveApproval={onResolveApproval}

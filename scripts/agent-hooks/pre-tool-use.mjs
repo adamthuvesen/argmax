@@ -11,7 +11,8 @@ import { editedPaths, ROOT } from "./hook-input.mjs";
 const GENERATED = JSON.parse(readFileSync(resolve(ROOT, "scripts/generated-files.json"), "utf8"));
 
 const STAGE_ALL = "Stage explicit paths. A blanket add takes a peer session's edits.";
-const STASH = "Do not stash in a shared checkout. It moves a peer session's edits. Use a detached worktree.";
+const STASH =
+  "Do not stash in a shared checkout. It moves a peer session's edits. Use a detached worktree.";
 const RESTORE = "Do not restore files in a shared checkout. It destroys a peer session's edits.";
 
 /** Removes quoted text and heredocs, so a commit message cannot look like a command. */
@@ -29,7 +30,8 @@ function gitArguments(segment) {
   const rest = words.slice(git + 1);
   while (rest[0]?.startsWith("-")) {
     const option = rest.shift();
-    if (option === "-C" || option === "-c" || option === "--git-dir" || option === "--work-tree") rest.shift();
+    if (option === "-C" || option === "-c" || option === "--git-dir" || option === "--work-tree")
+      rest.shift();
   }
   return rest;
 }
@@ -40,7 +42,8 @@ function gitRefusal(args) {
   if (subcommand === "add" && has("-A", "--all", "-u", "--update", ".", ":/")) return STAGE_ALL;
   if (subcommand === "stash" && !["list", "show"].includes(rest[0])) return STASH;
   if (subcommand === "checkout" && has("--", ".")) return RESTORE;
-  if (subcommand === "restore" && (has("-W", "--worktree") || !has("-S", "--staged"))) return RESTORE;
+  if (subcommand === "restore" && (has("-W", "--worktree") || !has("-S", "--staged")))
+    return RESTORE;
   return null;
 }
 
@@ -60,7 +63,8 @@ function refusal(request) {
   }
   const command = request.tool_input?.command;
   // Codex passes `apply_patch` text in `command`. That text is file content.
-  if (typeof command === "string" && request.tool_name !== "apply_patch") return commandRefusal(command);
+  if (typeof command === "string" && request.tool_name !== "apply_patch")
+    return commandRefusal(command);
   return null;
 }
 

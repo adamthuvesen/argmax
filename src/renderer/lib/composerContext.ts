@@ -57,9 +57,9 @@ function referencePattern(): RegExp {
   return new RegExp(
     `\\[([^\\[\\]\\n]{1,${MAX_TITLE_CHARS}})\\]\\(${CHAT_REFERENCE_PREFIX.replace(
       /[/:]/g,
-      "\\$&"
+      "\\$&",
     )}(${ID_CHARS})(?:\\?([A-Za-z0-9_=&.-]*))?\\)`,
-    "g"
+    "g",
   );
 }
 
@@ -75,7 +75,11 @@ function titleForLink(title: string): string {
 }
 
 /** The text that stands for a chat reference in a prompt. */
-export function chatReferenceLink(reference: { sessionId: string; eventId?: string; title: string }): string {
+export function chatReferenceLink(reference: {
+  sessionId: string;
+  eventId?: string;
+  title: string;
+}): string {
   if (!new RegExp(`^${ID_CHARS}$`).test(reference.sessionId)) {
     throw new Error(`Not a chat id: ${reference.sessionId}`);
   }
@@ -115,8 +119,8 @@ export function findChatReferences(text: string): ChatReferenceMatch[] {
         v: CHAT_REFERENCE_VERSION,
         sessionId: match[2],
         ...(parsed.eventId !== undefined ? { eventId: parsed.eventId } : {}),
-        title: match[1]
-      }
+        title: match[1],
+      },
     });
   }
   return matches;
@@ -154,7 +158,7 @@ export function encodeClipboardPayload(text: string): string {
   const payload: ComposerClipboardPayload = {
     v: CHAT_REFERENCE_VERSION,
     text,
-    references: findChatReferences(text).map((match) => match.reference)
+    references: findChatReferences(text).map((match) => match.reference),
   };
   return JSON.stringify(payload);
 }
@@ -186,7 +190,8 @@ export function decodeClipboardPayload(raw: string): ComposerClipboardPayload | 
   const consistent =
     listed.length === inText.length &&
     listed.every(
-      (entry, index) => entry?.sessionId === inText[index]?.sessionId && entry?.eventId === inText[index]?.eventId
+      (entry, index) =>
+        entry?.sessionId === inText[index]?.sessionId && entry?.eventId === inText[index]?.eventId,
     );
   return consistent ? { v: CHAT_REFERENCE_VERSION, text, references: inText } : null;
 }

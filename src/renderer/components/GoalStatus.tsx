@@ -10,7 +10,7 @@ import { showErrorToast } from "../state/toast.js";
 const OUTCOME_LABELS: Record<string, string> = {
   achieved: "Goal met",
   impossible: "Goal can't be met",
-  stopped: "Goal stopped"
+  stopped: "Goal stopped",
 };
 
 /**
@@ -35,7 +35,7 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
   const { refetch } = useBridgeQuery({
     key: ["goals.get", session.id],
     read: (api) => api.goals?.get({ sessionId: session.id }),
-    onData: setGoal
+    onData: setGoal,
   });
 
   useEffect(() => {
@@ -81,7 +81,9 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
           title={expanded ? "Collapse goal details" : goal.condition}
         >
           <Target size={14} className="composer-queued-chip-icon" aria-hidden="true" />
-          <span className="goal-status-label">{active ? "Goal" : (OUTCOME_LABELS[goal.state] ?? "Goal")}</span>
+          <span className="goal-status-label">
+            {active ? "Goal" : (OUTCOME_LABELS[goal.state] ?? "Goal")}
+          </span>
           <span className="goal-status-condition">{goal.condition}</span>
         </button>
         <button

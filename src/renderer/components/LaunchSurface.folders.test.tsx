@@ -1,4 +1,13 @@
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, ProjectFolder } from "../../shared/types.js";
 import { getProjectFolders, primaryProject, setupAppTestMocks } from "../../test/appTestHarness.js";
@@ -15,7 +24,7 @@ const folders: ProjectFolder[] = [
     rootPath: project.repoPath,
     isPrimary: true,
     enabled: true,
-    summary: null
+    summary: null,
   },
   {
     id: "secondary",
@@ -24,7 +33,7 @@ const folders: ProjectFolder[] = [
     rootPath: "/repos/library",
     isPrimary: false,
     enabled: true,
-    summary: null
+    summary: null,
   },
   {
     id: "notes",
@@ -33,15 +42,20 @@ const folders: ProjectFolder[] = [
     rootPath: "/docs/notes",
     isPrimary: false,
     enabled: true,
-    summary: null
-  }
+    summary: null,
+  },
 ];
 
 function launcher() {
   const launch = vi.fn().mockResolvedValue(undefined);
   render(
     <LaunchSurface
-      model={{ provider: "claude", modelId: "claude-fable-5-1", label: "Fable", reasoningEffort: "medium" }}
+      model={{
+        provider: "claude",
+        modelId: "claude-fable-5-1",
+        label: "Fable",
+        reasoningEffort: "medium",
+      }}
       project={project}
       projects={[project]}
       onAddProject={vi.fn()}
@@ -49,7 +63,7 @@ function launcher() {
       onBranchSwitch={vi.fn()}
       onLaunchTask={launch}
       onModelChange={vi.fn()}
-    />
+    />,
   );
   return launch;
 }
@@ -58,11 +72,13 @@ async function pickFolder(name: string) {
   await waitFor(() =>
     expect(screen.getByRole("button", { name: "Switch project" })).toHaveAttribute(
       "title",
-      expect.stringContaining("Right-click")
-    )
+      expect.stringContaining("Right-click"),
+    ),
   );
   fireEvent.contextMenu(screen.getByRole("button", { name: "Switch project" }));
-  fireEvent.click(within(screen.getByRole("listbox", { name: "Work in" })).getByRole("button", { name }));
+  fireEvent.click(
+    within(screen.getByRole("listbox", { name: "Work in" })).getByRole("button", { name }),
+  );
 }
 
 describe("launcher working folder", () => {
@@ -70,16 +86,17 @@ describe("launcher working folder", () => {
     setupAppTestMocks();
     getProjectFolders.mockResolvedValue(folders);
     vi.spyOn(window.argmax!.projects, "refreshBranch").mockResolvedValue(project);
-    vi.spyOn(window.argmax!.projects, "getFolderContext").mockImplementation(({ projectFolderId }) =>
-      Promise.resolve({
-        folderId: projectFolderId ?? "primary",
-        project: {
-          ...project,
-          repoPath: folders.find((folder) => folder.id === projectFolderId)!.rootPath,
-          currentBranch: "library-main"
-        },
-        isGit: projectFolderId !== "notes"
-      })
+    vi.spyOn(window.argmax!.projects, "getFolderContext").mockImplementation(
+      ({ projectFolderId }) =>
+        Promise.resolve({
+          folderId: projectFolderId ?? "primary",
+          project: {
+            ...project,
+            repoPath: folders.find((folder) => folder.id === projectFolderId)!.rootPath,
+            currentBranch: "library-main",
+          },
+          isGit: projectFolderId !== "notes",
+        }),
     );
   });
   afterEach(cleanup);
@@ -89,8 +106,8 @@ describe("launcher working folder", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Switch project" })).toHaveAttribute(
         "title",
-        expect.stringContaining(`Work in ${project.repoPath.split("/").at(-1)}`)
-      )
+        expect.stringContaining(`Work in ${project.repoPath.split("/").at(-1)}`),
+      ),
     );
     expect(screen.getByRole("button", { name: "Switch project" })).toHaveTextContent(project.name);
     fireEvent.click(screen.getByRole("button", { name: "Switch project" }));
@@ -99,16 +116,18 @@ describe("launcher working folder", () => {
     fireEvent.contextMenu(screen.getByRole("button", { name: "Switch project" }));
     expect(
       within(screen.getByRole("listbox", { name: "Work in" })).getByRole("button", {
-        name: `${project.repoPath.split("/").at(-1)} Primary`
-      })
+        name: `${project.repoPath.split("/").at(-1)} Primary`,
+      }),
     ).toBeInTheDocument();
     await pickFolder("library");
     expect(screen.getByRole("button", { name: "Switch project" })).toHaveAttribute(
       "title",
-      expect.stringContaining("Work in library")
+      expect.stringContaining("Work in library"),
     );
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Switch branch" })).toHaveTextContent("library-main")
+      expect(screen.getByRole("button", { name: "Switch branch" })).toHaveTextContent(
+        "library-main",
+      ),
     );
     vi.mocked(window.argmax!.projects.listBranches).mockResolvedValue(["library-main", "feature"]);
     fireEvent.click(screen.getByRole("button", { name: "Switch branch" }));
@@ -116,13 +135,15 @@ describe("launcher working folder", () => {
     expect(window.argmax!.projects.listBranches).toHaveBeenCalledWith(project.id, "secondary");
     await pickFolder("library");
     expect(window.argmax!.projects.configure).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("Task prompt"), { target: { value: "Fix the library" } });
+    fireEvent.change(screen.getByLabelText("Task prompt"), {
+      target: { value: "Fix the library" },
+    });
     fireEvent.submit(screen.getByLabelText("Task prompt"));
     await waitFor(() => expect(launch).toHaveBeenCalledOnce());
     expect(launch.mock.calls[0]?.[8]).toMatchObject({
       projectId: project.id,
       projectFolderId: "secondary",
-      branch: "feature"
+      branch: "feature",
     });
     expect(launch.mock.calls[0]?.[9]).toBe("secondary");
   });
@@ -131,7 +152,9 @@ describe("launcher working folder", () => {
     const launch = launcher();
     fireEvent.click(await screen.findByRole("button", { name: "Worktree" }));
     await pickFolder("notes");
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Worktree" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Worktree" })).not.toBeInTheDocument(),
+    );
     expect(screen.queryByRole("button", { name: "Switch branch" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Task prompt"), { target: { value: "Edit notes" } });
     fireEvent.submit(screen.getByLabelText("Task prompt"));
@@ -149,13 +172,20 @@ describe("launcher working folder", () => {
       suggestedProjectId: other.id,
       suggestedProbability: 0.98,
       currentProbability: 0.01,
-      reasons: ["Mentions Other"]
+      reasons: ["Mentions Other"],
     });
-    const launch = vi.fn().mockResolvedValue({ sessionId: "session-new", workspaceId: "workspace-new" });
+    const launch = vi
+      .fn()
+      .mockResolvedValue({ sessionId: "session-new", workspaceId: "workspace-new" });
     render(
       <LaunchSurface
         autoRouting
-        model={{ provider: "claude", modelId: "claude-fable-5-1", label: "Fable", reasoningEffort: "medium" }}
+        model={{
+          provider: "claude",
+          modelId: "claude-fable-5-1",
+          label: "Fable",
+          reasoningEffort: "medium",
+        }}
         project={project}
         projects={[project, other]}
         onAddProject={vi.fn()}
@@ -163,13 +193,15 @@ describe("launcher working folder", () => {
         onBranchSwitch={vi.fn()}
         onLaunchTask={launch}
         onModelChange={vi.fn()}
-      />
+      />,
     );
     fireEvent.click(await screen.findByRole("button", { name: "Worktree" }));
     await pickFolder("notes");
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Worktree" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Worktree" })).not.toBeInTheDocument(),
+    );
     fireEvent.change(screen.getByLabelText("Task prompt"), {
-      target: { value: "Fix the release notes in the other project" }
+      target: { value: "Fix the release notes in the other project" },
     });
     fireEvent.submit(screen.getByLabelText("Task prompt"));
     await waitFor(() => expect(launch).toHaveBeenCalledOnce());
@@ -180,7 +212,9 @@ describe("launcher working folder", () => {
 
   it("blocks launch on a folder read error", async () => {
     const launch = launcher();
-    vi.mocked(window.argmax!.projects.getFolderContext).mockRejectedValue(new Error("Folder is missing"));
+    vi.mocked(window.argmax!.projects.getFolderContext).mockRejectedValue(
+      new Error("Folder is missing"),
+    );
     await pickFolder("library");
     expect(await screen.findByRole("alert")).toHaveTextContent("Folder is missing");
     fireEvent.change(screen.getByLabelText("Task prompt"), { target: { value: "Do work" } });
@@ -189,7 +223,7 @@ describe("launcher working folder", () => {
     vi.mocked(window.argmax!.projects.getFolderContext).mockResolvedValue({
       folderId: "secondary",
       project: { ...project, repoPath: "/repos/library" },
-      isGit: true
+      isGit: true,
     });
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
@@ -201,16 +235,19 @@ describe("launcher working folder", () => {
     getProjectFolders.mockResolvedValue([
       folders[0],
       { ...folders[1], name: "library" },
-      { ...folders[2], name: "library", rootPath: "/docs/library" }
+      { ...folders[2], name: "library", rootPath: "/docs/library" },
     ]);
     launcher();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Switch project" })).toHaveAttribute(
         "title",
-        expect.stringContaining("Right-click")
-      )
+        expect.stringContaining("Right-click"),
+      ),
     );
-    fireEvent.keyDown(screen.getByRole("button", { name: "Switch project" }), { key: "F10", shiftKey: true });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Switch project" }), {
+      key: "F10",
+      shiftKey: true,
+    });
     const list = screen.getByRole("listbox", { name: "Work in" });
     expect(within(list).getByText("/repos/library")).toBeInTheDocument();
     expect(within(list).getByText("/docs/library")).toBeInTheDocument();
@@ -220,8 +257,8 @@ describe("launcher working folder", () => {
     await waitFor(() =>
       expect(window.argmax!.projects.getFolderContext).toHaveBeenCalledWith({
         projectId: project.id,
-        projectFolderId: "secondary"
-      })
+        projectFolderId: "secondary",
+      }),
     );
     expect(screen.queryByRole("listbox", { name: "Work in" })).not.toBeInTheDocument();
   });
@@ -232,7 +269,7 @@ describe("launcher working folder", () => {
       () =>
         new Promise((resolve) => {
           finish = resolve;
-        })
+        }),
     );
     const launch = launcher();
     await pickFolder("library");
@@ -248,9 +285,12 @@ describe("launcher working folder", () => {
   });
 
   it("requires a new selection when the selected folder is removed", async () => {
-    const { result, rerender } = renderHook(({ selectedProject }) => useLaunchFolder(selectedProject), {
-      initialProps: { selectedProject: project }
-    });
+    const { result, rerender } = renderHook(
+      ({ selectedProject }) => useLaunchFolder(selectedProject),
+      {
+        initialProps: { selectedProject: project },
+      },
+    );
     await waitFor(() => expect(result.current.folders).toHaveLength(3));
     act(() => result.current.pickFolder(folders[1]));
     await waitFor(() => expect(result.current.ready).toBe(true));

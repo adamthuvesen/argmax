@@ -8,6 +8,9 @@ export async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
     return demoSnapshot;
   }
 
-  const [dashboard, approvals] = await Promise.all([window.argmax.dashboard.list(), window.argmax.approvals.pending()]);
+  const [dashboard, approvals] = await Promise.all([
+    window.argmax.dashboard.list(),
+    window.argmax.approvals.pending(),
+  ]);
   return { ...dashboard, events: [], rawOutputs: [], approvals };
 }

@@ -44,16 +44,28 @@ function classifySingleFileTool(lower: string): {
 } | null {
   const isMultiEdit = /multi[_-]?edit/.test(lower);
   const isWrite =
-    !isMultiEdit && (lower.includes("write") || lower.includes("create_file") || lower.includes("createfile"));
+    !isMultiEdit &&
+    (lower.includes("write") || lower.includes("create_file") || lower.includes("createfile"));
   const isEdit =
     !isMultiEdit &&
-    (lower.includes("edit") || lower.includes("patch") || lower.includes("replace") || lower.includes("update_file"));
-  const isDelete = lower.includes("delete") || lower.includes("remove_file") || lower.includes("removefile");
+    (lower.includes("edit") ||
+      lower.includes("patch") ||
+      lower.includes("replace") ||
+      lower.includes("update_file"));
+  const isDelete =
+    lower.includes("delete") || lower.includes("remove_file") || lower.includes("removefile");
   if (!isWrite && !isEdit && !isMultiEdit && !isDelete) return null;
   return { isMultiEdit, isWrite, isEdit, isDelete };
 }
 
-const SINGLE_FILE_PATH_KEYS = ["file_path", "filePath", "filepath", "path", "relative_path", "absolute_path"];
+const SINGLE_FILE_PATH_KEYS = [
+  "file_path",
+  "filePath",
+  "filepath",
+  "path",
+  "relative_path",
+  "absolute_path",
+];
 
 function isCodexFileChangeTool(lower: string): boolean {
   return lower === "file_change" || lower === "file-change" || lower === "filechange";
@@ -75,11 +87,14 @@ function editPair(source: Record<string, unknown>): { old: string; new: string }
         ? source.new_string
         : typeof source.newString === "string"
           ? source.newString
-          : ""
+          : "",
   };
 }
 
-export function interpretFileChange(name: string, input: Record<string, unknown>): FileChange[] | null {
+export function interpretFileChange(
+  name: string,
+  input: Record<string, unknown>,
+): FileChange[] | null {
   const lower = name.toLowerCase();
 
   // Notebook edits don't fit the line-diff abstraction — let the fallback
@@ -153,8 +168,8 @@ export function interpretFileChange(name: string, input: Record<string, unknown>
         addCount,
         delCount,
         noLineNumbers: true,
-        ...(replaceAll ? { note: "Applies to all matches" } : {})
-      }
+        ...(replaceAll ? { note: "Applies to all matches" } : {}),
+      },
     ];
   }
 
@@ -170,8 +185,8 @@ export function interpretFileChange(name: string, input: Record<string, unknown>
           hunks: [],
           addCount: countLines(pair.new),
           delCount: countLines(pair.old),
-          note: "Change too large to preview inline."
-        }
+          note: "Change too large to preview inline.",
+        },
       ];
     }
     const built = synthesizeHunk(pair.old, pair.new);
@@ -189,8 +204,8 @@ export function interpretFileChange(name: string, input: Record<string, unknown>
         // report the real line. Showing that number would make it a false
         // clickable claim.
         noLineNumbers: true,
-        ...(replaceAll ? { note: "Applies to all matches" } : {})
-      }
+        ...(replaceAll ? { note: "Applies to all matches" } : {}),
+      },
     ];
   }
 
@@ -201,7 +216,13 @@ export function interpretFileChange(name: string, input: Record<string, unknown>
 
 function makeCreate(path: string, content: string): FileChange {
   if (looksBinary(content)) {
-    return { kind: "create", path, hunks: [], addCount: 0, note: "Binary file — content not shown." };
+    return {
+      kind: "create",
+      path,
+      hunks: [],
+      addCount: 0,
+      note: "Binary file — content not shown.",
+    };
   }
   if (content.length > MAX_INLINE_CHARS) {
     return {
@@ -209,7 +230,7 @@ function makeCreate(path: string, content: string): FileChange {
       path,
       hunks: [],
       addCount: countLines(content),
-      note: "File is too large to preview inline."
+      note: "File is too large to preview inline.",
     };
   }
   const built = synthesizeHunk("", content);
@@ -241,7 +262,8 @@ function interpretCodexFileChange(input: Record<string, unknown>): FileChange[] 
 
     if (kind === "add" || kind === "create" || addBag) {
       const content =
-        (addBag ? pickString(addBag, ["content", "text"]) : null) ?? pickString(entry, ["content", "text", "new_text"]);
+        (addBag ? pickString(addBag, ["content", "text"]) : null) ??
+        pickString(entry, ["content", "text", "new_text"]);
       // Codex names a created path and sends no body, so the diff Argmax
       // measured from git is the only account of what landed. It reads as a
       // create either way: the file is still new to the tree.
@@ -268,8 +290,11 @@ function interpretCodexFileChange(input: Record<string, unknown>): FileChange[] 
     }
 
     const before =
-      (updateBag ? pickString(updateBag, ["before", "old"]) : null) ?? pickString(entry, ["before", "old"]);
-    const after = (updateBag ? pickString(updateBag, ["after", "new"]) : null) ?? pickString(entry, ["after", "new"]);
+      (updateBag ? pickString(updateBag, ["before", "old"]) : null) ??
+      pickString(entry, ["before", "old"]);
+    const after =
+      (updateBag ? pickString(updateBag, ["after", "new"]) : null) ??
+      pickString(entry, ["after", "new"]);
     if (before !== null || after !== null) {
       const built = synthesizeHunk(before ?? "", after ?? "");
       const hunks = parseUnifiedDiff(built.diff);
@@ -285,7 +310,7 @@ function interpretCodexFileChange(input: Record<string, unknown>): FileChange[] 
       hunks: [],
       addCount: 0,
       delCount: 0,
-      note: "No diff content provided."
+      note: "No diff content provided.",
     });
   }
   return result.length > 0 ? result : null;
@@ -301,7 +326,10 @@ function codexChangeKind(entry: Record<string, unknown>): string | null {
   return kind ? (pickString(kind, ["type", "kind", "operation"])?.toLowerCase() ?? null) : null;
 }
 
-export function synthesizeHunk(oldText: string, newText: string): { diff: string; adds: number; dels: number } {
+export function synthesizeHunk(
+  oldText: string,
+  newText: string,
+): { diff: string; adds: number; dels: number } {
   const oldLines = textLines(oldText);
   const newLines = textLines(newText);
   const oldStart = oldLines.length === 0 ? 0 : 1;
@@ -311,7 +339,7 @@ export function synthesizeHunk(oldText: string, newText: string): { diff: string
   return {
     diff: body.length > 0 ? `${header}\n${body}` : header,
     adds: newLines.length,
-    dels: oldLines.length
+    dels: oldLines.length,
   };
 }
 
@@ -346,7 +374,9 @@ function pickString(input: Record<string, unknown>, keys: readonly string[]): st
 
 function objectAt(input: Record<string, unknown>, key: string): Record<string, unknown> | null {
   const value = input[key];
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function countLines(text: string): number {

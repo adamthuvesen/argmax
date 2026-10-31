@@ -4,7 +4,7 @@ import {
   parseFtsSnippet,
   searchPaletteItems,
   searchFilePaths,
-  type PaletteItem
+  type PaletteItem,
 } from "./paletteSearch.js";
 
 const noop = () => {};
@@ -21,12 +21,12 @@ describe("searchPaletteItems", () => {
     expect(
       highlightSegments(row.label, hit.labelRanges)
         .filter((part) => part.matched)
-        .map((part) => part.text)
+        .map((part) => part.text),
     ).toEqual(["resize"]);
     expect(
       highlightSegments(row.meta, hit.subtitleRanges)
         .filter((part) => part.matched)
-        .map((part) => part.text)
+        .map((part) => part.text),
     ).toEqual(["Argmax"]);
   });
 
@@ -42,11 +42,15 @@ describe("searchPaletteItems", () => {
     const hits = searchPaletteItems([shellChat, terminal], "shell");
     expect(hits.map((hit) => hit.item.id)).toEqual(["chat", "terminal"]);
     expect(hits[1].labelRanges).toBeNull();
-    expect(searchPaletteItems([terminal], "toggle shell").map((hit) => hit.item.id)).toEqual(["terminal"]);
+    expect(searchPaletteItems([terminal], "toggle shell").map((hit) => hit.item.id)).toEqual([
+      "terminal",
+    ]);
   });
 
   it("keeps exact matches first even beyond the fuzzy ranking threshold", () => {
-    const rows = Array.from({ length: 1100 }, (_, index) => item(String(index), `Search result ${index}`));
+    const rows = Array.from({ length: 1100 }, (_, index) =>
+      item(String(index), `Search result ${index}`),
+    );
     rows.push(item("exact", "Search"));
     expect(searchPaletteItems(rows, "Search")[0].item.id).toBe("exact");
   });
@@ -61,7 +65,7 @@ describe("searchPaletteItems", () => {
     const items = [
       item("settings", "Open Settings", "Defaults, providers, tools"),
       item("session", "New Chat", "Open the launcher"),
-      item("search", "Search Sessions", "Full-text search across every session timeline")
+      item("search", "Search Sessions", "Full-text search across every session timeline"),
     ];
     const hits = searchPaletteItems(items, "Settings");
     expect(hits.length).toBeGreaterThan(0);
@@ -84,7 +88,7 @@ describe("searchPaletteItems", () => {
   it("falls back to subtitle matching when the label has no match", () => {
     const items = [
       item("a", "Open Settings", "Defaults, providers, tools"),
-      item("b", "Search Sessions", "Full-text search across every session timeline")
+      item("b", "Search Sessions", "Full-text search across every session timeline"),
     ];
     const hits = searchPaletteItems(items, "providers");
     expect(hits.length).toBe(1);
@@ -102,8 +106,20 @@ describe("searchPaletteItems", () => {
 
   it("ranks Files-group items by basename when the query matches the filename", () => {
     const files: PaletteItem[] = [
-      { id: "file:src-tauri/src/index.ts", label: "index.ts", subtitle: "src-tauri/src", group: "Files", run: noop },
-      { id: "file:src/renderer/App.tsx", label: "App.tsx", subtitle: "src/renderer", group: "Files", run: noop }
+      {
+        id: "file:src-tauri/src/index.ts",
+        label: "index.ts",
+        subtitle: "src-tauri/src",
+        group: "Files",
+        run: noop,
+      },
+      {
+        id: "file:src/renderer/App.tsx",
+        label: "App.tsx",
+        subtitle: "src/renderer",
+        group: "Files",
+        run: noop,
+      },
     ];
     const hits = searchPaletteItems(files, "App");
     expect(hits.length).toBeGreaterThan(0);
@@ -113,17 +129,28 @@ describe("searchPaletteItems", () => {
 
 describe("searchFilePaths", () => {
   it("prefers a filename match to a directory match", () => {
-    expect(searchFilePaths(["app/docs/README.md", "src/App.tsx", "app/server.ts"], "app")[0]).toBe("src/App.tsx");
+    expect(searchFilePaths(["app/docs/README.md", "src/App.tsx", "app/server.ts"], "app")[0]).toBe(
+      "src/App.tsx",
+    );
   });
 
   it("lets changed files lead ties and an empty query, never a better match", () => {
     const paths = ["src/app.ts", "lib/app.ts", "src/appendix.ts"];
     const changed = new Set(["lib/app.ts", "src/appendix.ts"]);
     expect(searchFilePaths(paths, "app.ts", 50, changed)[0]).toBe("lib/app.ts");
-    expect(searchFilePaths(paths, "", 50, changed)).toEqual(["lib/app.ts", "src/appendix.ts", "src/app.ts"]);
-    expect(searchFilePaths(["src/app.ts", "src/appendix.ts"], "app.ts", 50, new Set(["src/appendix.ts"]))[0]).toBe(
-      "src/app.ts"
-    );
+    expect(searchFilePaths(paths, "", 50, changed)).toEqual([
+      "lib/app.ts",
+      "src/appendix.ts",
+      "src/app.ts",
+    ]);
+    expect(
+      searchFilePaths(
+        ["src/app.ts", "src/appendix.ts"],
+        "app.ts",
+        50,
+        new Set(["src/appendix.ts"]),
+      )[0],
+    ).toBe("src/app.ts");
   });
 
   it("keeps exact filenames first in large result sets", () => {
@@ -142,7 +169,7 @@ describe("highlightSegments", () => {
     const segments = highlightSegments("Dashboard", [0, 4]);
     expect(segments).toEqual([
       { text: "Dash", matched: true },
-      { text: "board", matched: false }
+      { text: "board", matched: false },
     ]);
   });
 
@@ -151,7 +178,7 @@ describe("highlightSegments", () => {
     expect(segments).toEqual([
       { text: "foo", matched: true },
       { text: " bar ", matched: false },
-      { text: "baz", matched: true }
+      { text: "baz", matched: true },
     ]);
   });
 });
@@ -163,7 +190,7 @@ describe("parseFtsSnippet", () => {
       { text: "the ", matched: false },
       { text: "quick", matched: true },
       { text: " brown ", matched: false },
-      { text: "fox", matched: true }
+      { text: "fox", matched: true },
     ]);
   });
 

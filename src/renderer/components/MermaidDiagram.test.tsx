@@ -9,14 +9,14 @@ const renderMermaidDiagram = vi.hoisted(() =>
       return Promise.reject(new Error("Parse error on line 1: expecting a diagram type"));
     }
     return Promise.resolve({ svg: `<svg data-testid="mermaid-svg"><title>flow</title></svg>` });
-  })
+  }),
 );
 
 vi.mock("../lib/mermaidRuntime.js", async (importOriginal) => {
   const actual = await importOriginal<typeof MermaidRuntime>();
   return {
     ...actual,
-    renderMermaidDiagram
+    renderMermaidDiagram,
   };
 });
 
@@ -37,7 +37,7 @@ describe("MermaidDiagram", () => {
     const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
-      value: { writeText }
+      value: { writeText },
     });
 
     const source = "flowchart LR\n  A --> B";
@@ -149,7 +149,7 @@ describe("MermaidDiagram", () => {
 
   it("marks a drawing that is wider than its column so CSS can break out", async () => {
     renderMermaidDiagram.mockResolvedValueOnce({
-      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`
+      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`,
     });
     render(<MermaidDiagram source={"flowchart LR\n  A --> B"} />);
     const figure = await screen.findByLabelText("Diagram");
@@ -161,7 +161,7 @@ describe("MermaidDiagram", () => {
 
   it("sets a symmetric pixel breakout from the rendered session bounds", async () => {
     renderMermaidDiagram.mockResolvedValueOnce({
-      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`
+      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`,
     });
     const { container } = render(
       <div className="session-main-column">
@@ -170,7 +170,7 @@ describe("MermaidDiagram", () => {
             <MermaidDiagram source={"flowchart LR\n  A --> B"} />
           </div>
         </div>
-      </div>
+      </div>,
     );
     const session = container.querySelector<HTMLElement>(".session-main-column");
     const transcript = container.querySelector<HTMLElement>(".conversation-content");
@@ -181,15 +181,15 @@ describe("MermaidDiagram", () => {
     column?.style.setProperty("--markdown-prose-width", "780px");
     vi.spyOn(session as HTMLElement, "getBoundingClientRect").mockReturnValue({
       left: 0,
-      right: 1200
+      right: 1200,
     } as DOMRect);
     vi.spyOn(transcript as HTMLElement, "getBoundingClientRect").mockReturnValue({
       left: 0,
-      right: 1200
+      right: 1200,
     } as DOMRect);
     vi.spyOn(column as HTMLElement, "getBoundingClientRect").mockReturnValue({
       left: 130,
-      right: 1070
+      right: 1070,
     } as DOMRect);
     Object.defineProperty(column, "clientWidth", { configurable: true, value: 940 });
 
@@ -202,7 +202,7 @@ describe("MermaidDiagram", () => {
 
   it("breaks out to the clearance beside an open workspace card", async () => {
     renderMermaidDiagram.mockResolvedValueOnce({
-      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`
+      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`,
     });
     const { container } = render(
       <div className="session-main-column">
@@ -214,7 +214,7 @@ describe("MermaidDiagram", () => {
             </div>
           </div>
         </div>
-      </div>
+      </div>,
     );
     const session = container.querySelector<HTMLElement>(".session-main-column");
     const card = container.querySelector<HTMLElement>(".workspace-card");
@@ -228,19 +228,19 @@ describe("MermaidDiagram", () => {
     column?.style.setProperty("--markdown-prose-width", "780px");
     vi.spyOn(session as HTMLElement, "getBoundingClientRect").mockReturnValue({
       left: 0,
-      right: 1117
+      right: 1117,
     } as DOMRect);
     vi.spyOn(transcript as HTMLElement, "getBoundingClientRect").mockReturnValue({
       left: 10,
-      right: 1107
+      right: 1107,
     } as DOMRect);
     vi.spyOn(card as HTMLElement, "getBoundingClientRect").mockReturnValue({
       left: 841,
-      right: 1097
+      right: 1097,
     } as DOMRect);
     vi.spyOn(column as HTMLElement, "getBoundingClientRect").mockReturnValue({
       left: 38,
-      right: 790
+      right: 790,
     } as DOMRect);
     Object.defineProperty(column, "clientWidth", { configurable: true, value: 752 });
 
@@ -255,7 +255,7 @@ describe("MermaidDiagram", () => {
     render(
       <StreamingCodeContext.Provider value={true}>
         <MermaidDiagram source={"flowchart LR\n  A --> B"} />
-      </StreamingCodeContext.Provider>
+      </StreamingCodeContext.Provider>,
     );
     expect(screen.getByRole("status")).toHaveTextContent("Drawing diagram");
     expect(renderMermaidDiagram).not.toHaveBeenCalled();

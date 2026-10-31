@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type JSX,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import { fileActions, resolveFileForOpening, systemActions } from "../data/bridgeActions.js";
 import { createPortal } from "react-dom";
 import { formatFileChipLabel } from "../lib/fileChipPath.js";
@@ -27,7 +34,10 @@ type FileChipProps = {
  *  file after mentioning it. */
 const confirmedFiles = new Set<string>();
 
-async function isFileOnDisk(path: string, workspaceId: string | null | undefined): Promise<boolean> {
+async function isFileOnDisk(
+  path: string,
+  workspaceId: string | null | undefined,
+): Promise<boolean> {
   const files = fileActions();
   if (!files) return false;
   try {
@@ -48,7 +58,10 @@ async function isFileOnDisk(path: string, workspaceId: string | null | undefined
  * A FileChip for a path that could as easily be something else, such as
  * `/api/users`: it shows `fallback` until the path is confirmed to be a file.
  */
-export function CheckedFileChip({ fallback, ...props }: FileChipProps & { fallback: ReactNode }): JSX.Element {
+export function CheckedFileChip({
+  fallback,
+  ...props
+}: FileChipProps & { fallback: ReactNode }): JSX.Element {
   const key = `${props.workspaceId ?? ""}:${props.path}`;
   const [isFile, setIsFile] = useState(() => confirmedFiles.has(key));
   useEffect(() => {
@@ -68,7 +81,13 @@ export function CheckedFileChip({ fallback, ...props }: FileChipProps & { fallba
   return isFile ? <FileChip {...props} /> : <>{fallback}</>;
 }
 
-export function FileChip({ path, line, workspaceId, workspaceCwd, onOpen }: FileChipProps): JSX.Element {
+export function FileChip({
+  path,
+  line,
+  workspaceId,
+  workspaceCwd,
+  onOpen,
+}: FileChipProps): JSX.Element {
   const label = formatFileChipLabel(path, workspaceCwd, line);
   const ariaLabel = line ? `Open ${path} at line ${line}` : `Open ${path}`;
   const title = onOpen ? `${ariaLabel} (⌘-click to open in IDE)` : ariaLabel;
@@ -85,7 +104,7 @@ export function FileChip({ path, line, workspaceId, workspaceCwd, onOpen }: File
     void withToast(
       () => system.openPath(workspaceCwd ? { path, cwd: workspaceCwd } : { path }),
       showToast,
-      "Could not open this file."
+      "Could not open this file.",
     );
   };
 
@@ -102,7 +121,7 @@ export function FileChip({ path, line, workspaceId, workspaceCwd, onOpen }: File
     workspaceId: workspaceId ?? null,
     path: previewPath ?? path,
     line,
-    active: previewActive
+    active: previewActive,
   });
 
   const cancelHoverTimer = (): void => {
@@ -175,7 +194,7 @@ export function FileChip({ path, line, workspaceId, workspaceCwd, onOpen }: File
               error={previewResolutionError ?? preview.error}
               path={label}
             />,
-            document.body
+            document.body,
           )
         : null}
     </>

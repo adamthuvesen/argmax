@@ -2,7 +2,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __liveTimerTickForTest } from "../lib/liveTimer.js";
 import { THINKING_WORDS } from "../lib/thinkingWords.js";
-import { ACTIVITY_MARK_STORAGE_KEY, resetActivityMarkForTests, setActivityMark } from "../lib/activityMark.js";
+import {
+  ACTIVITY_MARK_STORAGE_KEY,
+  resetActivityMarkForTests,
+  setActivityMark,
+} from "../lib/activityMark.js";
 import { ActivityMarkPicker } from "./settings/settingsPrimitives.js";
 import { LoadingLine } from "./LoadingLine.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
@@ -24,25 +28,26 @@ describe("<ThinkingLabel />", () => {
           <ActivityMarkPicker value="nest" onChange={setActivityMark} />
           <ThinkingLabel />
           <LoadingLine label="Loading projects" />
-        </>
+        </>,
       );
       const thinking = screen.getByLabelText("Thinking");
       const word = screen.getByTestId("thinking-label").textContent;
 
       fireEvent.click(screen.getByRole("button", { name: "Activity mark" }));
-      fireEvent.click(screen.getByRole("button", { name: markId[0].toUpperCase() + markId.slice(1) }));
+      fireEvent.click(
+        screen.getByRole("button", { name: markId[0].toUpperCase() + markId.slice(1) }),
+      );
 
       expect(window.localStorage.getItem(ACTIVITY_MARK_STORAGE_KEY)).toBe(markId);
       expect(thinking.querySelector("[data-mark]")).toHaveAttribute("data-mark", markId);
-      expect(screen.getByRole("status", { name: "Loading projects" }).querySelector("[data-mark]")).toHaveAttribute(
-        "data-mark",
-        markId
-      );
+      expect(
+        screen.getByRole("status", { name: "Loading projects" }).querySelector("[data-mark]"),
+      ).toHaveAttribute("data-mark", markId);
       expect(screen.getByTestId("thinking-label")).toHaveTextContent(word ?? "");
       vi.spyOn(performance, "now").mockReturnValue(14_000);
       __liveTimerTickForTest();
       expect(screen.getByTestId("thinking-label")).toHaveTextContent("14s");
-    }
+    },
   );
 
   it("stops claiming the beat while it dissolves", () => {
@@ -156,12 +161,15 @@ describe("<ThinkingLabel />", () => {
     const words = new Set(
       [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((minute) => {
         const { container, unmount } = render(
-          <ThinkingLabel phaseKey="session-1" startedAtMs={Date.parse("2026-09-06T07:00:00.000Z") + minute * 60_000} />
+          <ThinkingLabel
+            phaseKey="session-1"
+            startedAtMs={Date.parse("2026-09-06T07:00:00.000Z") + minute * 60_000}
+          />,
         );
         const word = container.querySelector(".thinking-label")?.textContent;
         unmount();
         return word;
-      })
+      }),
     );
     expect(words.size).toBeGreaterThan(1);
   });

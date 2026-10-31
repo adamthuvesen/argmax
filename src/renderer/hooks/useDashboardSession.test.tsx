@@ -7,7 +7,7 @@ import type {
   DashboardSnapshot,
   SessionSummary,
   TimelineEvent,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../../shared/types.js";
 import { emptySnapshot } from "../lib/snapshot.js";
 import { useDashboardSession } from "./useDashboardSession.js";
@@ -37,7 +37,7 @@ function makeWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSumm
     prMergedAt: null,
     prCheckState: null,
     prActivityAt: null,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -62,7 +62,7 @@ function makeSession(overrides: Partial<SessionSummary> = {}): SessionSummary {
     contextTokens: 0,
     imported: false,
     launchKind: "agent",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -91,11 +91,11 @@ describe("useDashboardSession — refresh / delta race", () => {
             mergeCleanup: "off",
             worktreeLocation: "/tmp/wt",
             setupCommand: "",
-            checkCommands: []
+            checkCommands: [],
           },
           counts: { active: 1, blocked: 0, failed: 0, reviewReady: 0 },
-          latestActivityAt: "2026-05-12T15:00:01.000Z"
-        }
+          latestActivityAt: "2026-05-12T15:00:01.000Z",
+        },
       ],
       workspaces: [existingWorkspace],
       sessions: [existingSession],
@@ -103,13 +103,13 @@ describe("useDashboardSession — refresh / delta race", () => {
       rawOutputs: [],
       approvals: [],
       checks: [],
-      pendingMessages: {}
+      pendingMessages: {},
     };
 
     statusMock = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue({
       workspaces: baseSnapshot.workspaces,
       sessions: baseSnapshot.sessions,
-      checks: baseSnapshot.checks
+      checks: baseSnapshot.checks,
     });
     pendingMock = vi.fn<ArgmaxApi["approvals"]["pending"]>().mockResolvedValue([]);
     resolveApprovalMock = vi
@@ -118,18 +118,21 @@ describe("useDashboardSession — refresh / delta race", () => {
 
     (window as unknown as { argmax: ArgmaxApi }).argmax = {
       workspaces: { status: statusMock } as unknown as ArgmaxApi["workspaces"],
-      approvals: { pending: pendingMock, resolve: resolveApprovalMock } as unknown as ArgmaxApi["approvals"],
+      approvals: {
+        pending: pendingMock,
+        resolve: resolveApprovalMock,
+      } as unknown as ArgmaxApi["approvals"],
       dashboard: {
-        onDelta: () => () => {}
+        onDelta: () => () => {},
       } as unknown as ArgmaxApi["dashboard"],
       session: {
         eventsSince: vi.fn().mockResolvedValue({
           events: [],
           rawOutputs: [],
           eventCursor: 0,
-          rawOutputCursor: 0
-        })
-      } as unknown as ArgmaxApi["session"]
+          rawOutputCursor: 0,
+        }),
+      } as unknown as ArgmaxApi["session"],
     } as unknown as ArgmaxApi;
   });
 
@@ -148,13 +151,13 @@ describe("useDashboardSession — refresh / delta race", () => {
     const freshSession = makeSession({
       id: "session-fresh",
       workspaceId: "ws-fresh",
-      prompt: "fresh"
+      prompt: "fresh",
     });
     const freshWorkspace = makeWorkspace({ id: "ws-fresh", taskLabel: "Fresh" });
     const seeded: DashboardSnapshot = {
       ...baseSnapshot,
       workspaces: [...baseSnapshot.workspaces, freshWorkspace],
-      sessions: [...baseSnapshot.sessions, freshSession]
+      sessions: [...baseSnapshot.sessions, freshSession],
     };
 
     // Stable loadSnapshot identity so the auto-rerun loadDashboard effect
@@ -171,15 +174,21 @@ describe("useDashboardSession — refresh / delta race", () => {
     statusMock.mockResolvedValueOnce({
       workspaces: baseSnapshot.workspaces,
       sessions: baseSnapshot.sessions,
-      checks: baseSnapshot.checks
+      checks: baseSnapshot.checks,
     });
 
     await act(async () => {
       await result.current.refresh();
     });
 
-    expect(result.current.snapshot.sessions.map((s) => s.id).sort()).toEqual(["session-existing", "session-fresh"]);
-    expect(result.current.snapshot.workspaces.map((w) => w.id).sort()).toEqual(["ws-existing", "ws-fresh"]);
+    expect(result.current.snapshot.sessions.map((s) => s.id).sort()).toEqual([
+      "session-existing",
+      "session-fresh",
+    ]);
+    expect(result.current.snapshot.workspaces.map((w) => w.id).sort()).toEqual([
+      "ws-existing",
+      "ws-fresh",
+    ]);
   });
 
   it("replaces approvals authoritatively so resolved items don't linger", async () => {
@@ -194,14 +203,14 @@ describe("useDashboardSession — refresh / delta race", () => {
       riskLevel: "low",
       status: "pending",
       createdAt: "2026-05-12T15:00:02.000Z",
-      resolvedAt: null
+      resolvedAt: null,
     };
     baseSnapshot = { ...baseSnapshot, approvals: [pending] };
 
     statusMock.mockResolvedValue({
       workspaces: baseSnapshot.workspaces,
       sessions: baseSnapshot.sessions,
-      checks: baseSnapshot.checks
+      checks: baseSnapshot.checks,
     });
     // Backend now reports zero pending approvals (e.g. it was resolved).
     pendingMock.mockResolvedValue([]);
@@ -230,7 +239,7 @@ describe("useDashboardSession — refresh / delta race", () => {
     const staleStatus = {
       workspaces: baseSnapshot.workspaces,
       sessions: baseSnapshot.sessions,
-      checks: baseSnapshot.checks
+      checks: baseSnapshot.checks,
     };
     (window as unknown as { argmax: ArgmaxApi }).argmax = {
       workspaces: {
@@ -238,26 +247,29 @@ describe("useDashboardSession — refresh / delta race", () => {
           () =>
             new Promise<Awaited<ReturnType<ArgmaxApi["workspaces"]["status"]>>>((resolve) => {
               resolveStatus = resolve;
-            })
-        )
+            }),
+        ),
       } as unknown as ArgmaxApi["workspaces"],
-      approvals: { pending: pendingMock, resolve: resolveApprovalMock } as unknown as ArgmaxApi["approvals"],
+      approvals: {
+        pending: pendingMock,
+        resolve: resolveApprovalMock,
+      } as unknown as ArgmaxApi["approvals"],
       dashboard: {
         onDelta: (handler: (delta: DashboardDelta) => void) => {
           deltaHandler = handler;
           return () => {
             deltaHandler = null;
           };
-        }
+        },
       } as unknown as ArgmaxApi["dashboard"],
       session: {
         eventsSince: vi.fn().mockResolvedValue({
           events: [],
           rawOutputs: [],
           eventCursor: 0,
-          rawOutputCursor: 0
-        })
-      } as unknown as ArgmaxApi["session"]
+          rawOutputCursor: 0,
+        }),
+      } as unknown as ArgmaxApi["session"],
     } as unknown as ArgmaxApi;
 
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
@@ -276,7 +288,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       riskLevel: "high",
       status: "pending",
       createdAt: "2026-05-12T15:00:05.000Z",
-      resolvedAt: null
+      resolvedAt: null,
     };
 
     await act(async () => {
@@ -284,14 +296,16 @@ describe("useDashboardSession — refresh / delta race", () => {
       // The turn ends and an approval is raised while the reads are in flight.
       deltaHandler?.({
         sessions: [makeSession({ state: "complete", lastActivityAt: "2026-05-12T15:00:06.000Z" })],
-        approvals: [raisedApproval]
+        approvals: [raisedApproval],
       });
       resolveStatus(staleStatus);
       await pending;
     });
 
     expect(result.current.snapshot.sessions[0]?.state).toBe("complete");
-    expect(result.current.snapshot.approvals.map((approval) => approval.id)).toEqual(["approval-mid-refresh"]);
+    expect(result.current.snapshot.approvals.map((approval) => approval.id)).toEqual([
+      "approval-mid-refresh",
+    ]);
   });
 
   it("preserves the last-good snapshot and toasts when a single refresh fails", async () => {
@@ -347,7 +361,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       // oxlint-disable-next-line typescript/prefer-promise-reject-errors
       Promise.reject({
         code: "DATABASE_NOT_READY",
-        message: "Migration v18 (synced_sessions) checksum drift: stored=abc expected=def"
+        message: "Migration v18 (synced_sessions) checksum drift: stored=abc expected=def",
       });
 
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
@@ -360,30 +374,33 @@ describe("useDashboardSession — refresh / delta race", () => {
     const deltaSession = makeSession({
       id: "session-delta",
       workspaceId: "ws-delta",
-      prompt: "from delta"
+      prompt: "from delta",
     });
     const deltaWorkspace = makeWorkspace({ id: "ws-delta", taskLabel: "Delta" });
 
     let deltaHandler: ((delta: DashboardDelta) => void) | null = null;
     (window as unknown as { argmax: ArgmaxApi }).argmax = {
       workspaces: { status: statusMock } as unknown as ArgmaxApi["workspaces"],
-      approvals: { pending: pendingMock, resolve: resolveApprovalMock } as unknown as ArgmaxApi["approvals"],
+      approvals: {
+        pending: pendingMock,
+        resolve: resolveApprovalMock,
+      } as unknown as ArgmaxApi["approvals"],
       dashboard: {
         onDelta: (handler: (delta: DashboardDelta) => void) => {
           deltaHandler = handler;
           return () => {
             deltaHandler = null;
           };
-        }
+        },
       } as unknown as ArgmaxApi["dashboard"],
       session: {
         eventsSince: vi.fn().mockResolvedValue({
           events: [],
           rawOutputs: [],
           eventCursor: 0,
-          rawOutputCursor: 0
-        })
-      } as unknown as ArgmaxApi["session"]
+          rawOutputCursor: 0,
+        }),
+      } as unknown as ArgmaxApi["session"],
     } as unknown as ArgmaxApi;
 
     let resolveLoad!: (snapshot: DashboardSnapshot) => void;
@@ -403,7 +420,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       resolveLoad({
         ...baseSnapshot,
         sessions: baseSnapshot.sessions,
-        workspaces: baseSnapshot.workspaces
+        workspaces: baseSnapshot.workspaces,
       });
       await Promise.resolve();
     });
@@ -411,7 +428,7 @@ describe("useDashboardSession — refresh / delta race", () => {
     await waitFor(() => expect(result.current.loadState).toBe("ready"));
     expect(result.current.snapshot.sessions.map((session) => session.id).sort()).toEqual([
       "session-delta",
-      "session-existing"
+      "session-existing",
     ]);
   });
 
@@ -423,23 +440,26 @@ describe("useDashboardSession — refresh / delta race", () => {
     let deltaHandler: ((delta: DashboardDelta) => void) | null = null;
     (window as unknown as { argmax: ArgmaxApi }).argmax = {
       workspaces: { status: statusMock } as unknown as ArgmaxApi["workspaces"],
-      approvals: { pending: pendingMock, resolve: resolveApprovalMock } as unknown as ArgmaxApi["approvals"],
+      approvals: {
+        pending: pendingMock,
+        resolve: resolveApprovalMock,
+      } as unknown as ArgmaxApi["approvals"],
       dashboard: {
         onDelta: (handler: (delta: DashboardDelta) => void) => {
           deltaHandler = handler;
           return () => {
             deltaHandler = null;
           };
-        }
+        },
       } as unknown as ArgmaxApi["dashboard"],
       session: {
         eventsSince: vi.fn().mockResolvedValue({
           events: [],
           rawOutputs: [],
           eventCursor: 0,
-          rawOutputCursor: 0
-        })
-      } as unknown as ArgmaxApi["session"]
+          rawOutputCursor: 0,
+        }),
+      } as unknown as ArgmaxApi["session"],
     } as unknown as ArgmaxApi;
 
     let resolveLoad!: (snapshot: DashboardSnapshot) => void;
@@ -496,19 +516,19 @@ describe("useDashboardSession — refresh / delta race", () => {
             message: "",
             payload: {},
             createdAt: "2026-05-12T15:00:30.000Z",
-            rowCursor: 10
-          }
+            rowCursor: 10,
+          },
         ],
         rawOutputs: [],
         eventCursor: 10,
-        rawOutputCursor: 0
+        rawOutputCursor: 0,
       });
       // The DB already shows the session complete; status is the only path that
       // flips renderer state.
       statusMock.mockResolvedValue({
         workspaces: [makeWorkspace({ state: "complete" })],
         sessions: [makeSession({ state: "complete", completedAt: "2026-05-12T15:00:30.000Z" })],
-        checks: []
+        checks: [],
       });
 
       // Tick 1 pulls the terminal event (snapshot ref commits at the act
@@ -535,7 +555,7 @@ describe("useDashboardSession — refresh / delta race", () => {
     // Entering `waiting` must pull the durable tail once.
     baseSnapshot = {
       ...baseSnapshot,
-      sessions: [makeSession({ state: "waiting", attention: "question-asked" })]
+      sessions: [makeSession({ state: "waiting", attention: "question-asked" })],
     };
     const questionEvent: TimelineEvent = {
       id: "ev-question",
@@ -546,17 +566,19 @@ describe("useDashboardSession — refresh / delta race", () => {
         id: "que_1",
         name: "AskUserQuestion",
         delivery: "blocking",
-        input: { delivery: "blocking", requestId: "req-1", questions: [] }
+        input: { delivery: "blocking", requestId: "req-1", questions: [] },
       },
       createdAt: "2026-05-12T15:00:20.000Z",
-      rowCursor: 20
+      rowCursor: 20,
     };
-    (window.argmax!.session.eventsSince as Mock<ArgmaxApi["session"]["eventsSince"]>).mockResolvedValueOnce({
+    (
+      window.argmax!.session.eventsSince as Mock<ArgmaxApi["session"]["eventsSince"]>
+    ).mockResolvedValueOnce({
       events: [questionEvent],
       rawOutputs: [],
       eventCursor: 20,
       rawOutputCursor: 0,
-      changeCursor: 20
+      changeCursor: 20,
     });
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
@@ -568,7 +590,9 @@ describe("useDashboardSession — refresh / delta race", () => {
     });
 
     await waitFor(() =>
-      expect(result.current.timelines.getSnapshot("session-existing").events).toEqual([questionEvent])
+      expect(result.current.timelines.getSnapshot("session-existing").events).toEqual([
+        questionEvent,
+      ]),
     );
   });
 
@@ -589,9 +613,9 @@ describe("useDashboardSession — refresh / delta race", () => {
             type: "session.completed",
             message: "",
             payload: {},
-            createdAt: "2026-05-12T15:00:10.000Z"
-          }
-        ]
+            createdAt: "2026-05-12T15:00:10.000Z",
+          },
+        ],
       };
       const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(seeded);
       const { result } = renderHook(() => useDashboardSession(loadSnapshot));
@@ -624,17 +648,17 @@ describe("useDashboardSession — refresh / delta race", () => {
             message: "",
             payload: {},
             createdAt: "2026-05-12T15:00:40.000Z",
-            rowCursor: 20
-          }
+            rowCursor: 20,
+          },
         ],
         rawOutputs: [],
         eventCursor: 20,
-        rawOutputCursor: 0
+        rawOutputCursor: 0,
       });
       statusMock.mockResolvedValue({
         workspaces: [makeWorkspace({ state: "complete" })],
         sessions: [makeSession({ state: "complete", completedAt: "2026-05-12T15:00:40.000Z" })],
-        checks: []
+        checks: [],
       });
 
       await act(async () => {
@@ -676,7 +700,8 @@ describe("useDashboardSession — refresh / delta race", () => {
       });
       expect(statusMock).not.toHaveBeenCalled();
       expect(
-        (window.argmax!.session.eventsSince as unknown as Mock<ArgmaxApi["session"]["eventsSince"]>).mock.calls.length
+        (window.argmax!.session.eventsSince as unknown as Mock<ArgmaxApi["session"]["eventsSince"]>)
+          .mock.calls.length,
       ).toBeGreaterThan(0);
 
       // Past the throttle window: exactly one mid-turn status refresh fires,
@@ -705,19 +730,19 @@ describe("useDashboardSession — refresh / delta race", () => {
         () =>
           new Promise((resolve) => {
             resolveSlow = resolve;
-          })
+          }),
       )
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
             resolveFast = resolve;
-          })
+          }),
       )
       .mockResolvedValue({
         events: [],
         rawOutputs: [],
         eventCursor: 0,
-        rawOutputCursor: 0
+        rawOutputCursor: 0,
       });
 
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
@@ -748,7 +773,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       sessionId: "session-existing",
       changeCursor: null,
       eventCursor: 20,
-      rawOutputCursor: 10
+      rawOutputCursor: 10,
     });
   });
 
@@ -761,7 +786,7 @@ describe("useDashboardSession — refresh / delta race", () => {
         message: "spawn_agent",
         payload: { id: "trace-spawn-child", traceSyntheticLaunch: true },
         createdAt: "2026-05-12T15:00:01.000Z",
-        rowCursor: 1
+        rowCursor: 1,
       },
       {
         id: "synthetic-end",
@@ -770,8 +795,8 @@ describe("useDashboardSession — refresh / delta race", () => {
         message: "spawn_agent",
         payload: { id: "trace-spawn-child", traceSyntheticLaunch: true },
         createdAt: "2026-05-12T15:00:02.000Z",
-        rowCursor: 2
-      }
+        rowCursor: 2,
+      },
     ];
     baseSnapshot = { ...baseSnapshot, events: syntheticRows };
     const tombstoneResponse = {
@@ -780,15 +805,17 @@ describe("useDashboardSession — refresh / delta race", () => {
         payload: {
           id: "trace-spawn-child",
           traceSyntheticSuperseded: true,
-          traceSupersededBy: "real-spawn"
+          traceSupersededBy: "real-spawn",
         },
-        rowCursor: 10 + index
+        rowCursor: 10 + index,
       })),
       rawOutputs: [],
       eventCursor: 11,
-      rawOutputCursor: 0
+      rawOutputCursor: 0,
     };
-    (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mockResolvedValue(tombstoneResponse);
+    (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mockResolvedValue(
+      tombstoneResponse,
+    );
 
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
@@ -799,7 +826,9 @@ describe("useDashboardSession — refresh / delta race", () => {
       await result.current.loadSessionEvents("session-existing");
     });
 
-    await waitFor(() => expect(result.current.timelines.getSnapshot("session-existing").events).toHaveLength(0));
+    await waitFor(() =>
+      expect(result.current.timelines.getSnapshot("session-existing").events).toHaveLength(0),
+    );
   });
 
   it("delivers transcript pushes without rerendering dashboard metadata", async () => {
@@ -828,9 +857,9 @@ describe("useDashboardSession — refresh / delta race", () => {
             type: "message.delta",
             message: "Hello",
             payload: {},
-            createdAt: "2026-05-12T15:00:06.000Z"
-          }
-        ]
+            createdAt: "2026-05-12T15:00:06.000Z",
+          },
+        ],
       });
     });
     expect(result.current.snapshot).toBe(metadata);
@@ -847,11 +876,13 @@ describe("useDashboardSession — refresh / delta race", () => {
       return () => {};
     };
     let resolveRead!: (value: Awaited<ReturnType<ArgmaxApi["session"]["eventsSince"]>>) => void;
-    (window.argmax!.session.eventsSince as Mock<ArgmaxApi["session"]["eventsSince"]>).mockImplementation(
+    (
+      window.argmax!.session.eventsSince as Mock<ArgmaxApi["session"]["eventsSince"]>
+    ).mockImplementation(
       () =>
         new Promise((resolve) => {
           resolveRead = resolve;
-        })
+        }),
     );
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
@@ -867,12 +898,12 @@ describe("useDashboardSession — refresh / delta race", () => {
             type: "message.completed",
             message: "late",
             payload: {},
-            createdAt: "2026-05-12T15:00:06.000Z"
-          }
+            createdAt: "2026-05-12T15:00:06.000Z",
+          },
         ],
         rawOutputs: [],
         eventCursor: 10,
-        rawOutputCursor: 0
+        rawOutputCursor: 0,
       });
       await read;
     });
@@ -887,10 +918,12 @@ describe("useDashboardSession — refresh / delta race", () => {
       message: "old",
       payload: {},
       createdAt: "2026-05-12T15:00:06.000Z",
-      rowCursor: 1
+      rowCursor: 1,
     };
     baseSnapshot = { ...baseSnapshot, events: [event, { ...event, id: "deleted" }] };
-    const eventsSince = window.argmax!.session.eventsSince as Mock<ArgmaxApi["session"]["eventsSince"]>;
+    const eventsSince = window.argmax!.session.eventsSince as Mock<
+      ArgmaxApi["session"]["eventsSince"]
+    >;
     eventsSince
       .mockResolvedValueOnce({
         events: [event, { ...event, id: "deleted" }],
@@ -898,7 +931,7 @@ describe("useDashboardSession — refresh / delta race", () => {
         eventCursor: 2,
         rawOutputCursor: 0,
         changeCursor: 10,
-        resetRequired: true
+        resetRequired: true,
       })
       .mockResolvedValueOnce({
         events: [{ ...event, message: "new" }],
@@ -906,7 +939,7 @@ describe("useDashboardSession — refresh / delta race", () => {
         eventCursor: 2,
         rawOutputCursor: 0,
         changeCursor: 11,
-        hasMore: true
+        hasMore: true,
       })
       .mockResolvedValueOnce({
         events: [],
@@ -914,7 +947,7 @@ describe("useDashboardSession — refresh / delta race", () => {
         eventCursor: 2,
         rawOutputCursor: 0,
         changeCursor: 12,
-        deletedEventIds: ["deleted"]
+        deletedEventIds: ["deleted"],
       });
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
@@ -929,9 +962,11 @@ describe("useDashboardSession — refresh / delta race", () => {
       sessionId: "session-existing",
       eventCursor: 2,
       rawOutputCursor: 0,
-      changeCursor: 11
+      changeCursor: 11,
     });
-    expect(result.current.timelines.getSnapshot("session-existing").events).toEqual([{ ...event, message: "new" }]);
+    expect(result.current.timelines.getSnapshot("session-existing").events).toEqual([
+      { ...event, message: "new" },
+    ]);
   });
 
   it("pulls hinted visible sessions and leaves inactive histories for their next open", async () => {
@@ -952,7 +987,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       sessionId: "session-existing",
       eventCursor: null,
       rawOutputCursor: null,
-      changeCursor: null
+      changeCursor: null,
     });
     unsubscribe();
   });
@@ -970,9 +1005,13 @@ describe("useDashboardSession — refresh / delta race", () => {
       type: "message.completed",
       message: "old",
       payload: {},
-      createdAt: "2026-05-12T15:00:06.000Z"
+      createdAt: "2026-05-12T15:00:06.000Z",
     };
-    const initial = { ...baseSnapshot, sessions: [...baseSnapshot.sessions, removedSession], events: [event] };
+    const initial = {
+      ...baseSnapshot,
+      sessions: [...baseSnapshot.sessions, removedSession],
+      events: [event],
+    };
     let resolveRecovery!: (snapshot: DashboardSnapshot) => void;
     const loadSnapshot = vi
       .fn<() => Promise<DashboardSnapshot>>()
@@ -981,7 +1020,7 @@ describe("useDashboardSession — refresh / delta race", () => {
         () =>
           new Promise((resolve) => {
             resolveRecovery = resolve;
-          })
+          }),
       );
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
     await waitFor(() => expect(result.current.loadState).toBe("ready"));
@@ -996,9 +1035,11 @@ describe("useDashboardSession — refresh / delta race", () => {
     });
     await waitFor(() => expect(window.argmax!.session.eventsSince).toHaveBeenCalledOnce());
     expect(result.current.snapshot.sessions.map((session) => session.id)).toEqual(
-      expect.arrayContaining(["session-existing", "concurrent"])
+      expect.arrayContaining(["session-existing", "concurrent"]),
     );
-    expect(result.current.snapshot.sessions.some((session) => session.id === "removed")).toBe(false);
+    expect(result.current.snapshot.sessions.some((session) => session.id === "removed")).toBe(
+      false,
+    );
     expect(result.current.snapshot.pendingMessages).toEqual({});
     expect(result.current.timelines.getSnapshot("session-existing").events).toEqual([]);
     unsubscribe();
@@ -1042,10 +1083,13 @@ describe("useDashboardSession — refresh / delta race", () => {
         saved: { text: "Project orientation", sources: [], generatedAt: null },
         draft: null,
         status: "idle" as const,
-        error: null
-      }
+        error: null,
+      },
     };
-    const initial = { ...baseSnapshot, projects: [generated, { ...original, id: "removed-project" }] };
+    const initial = {
+      ...baseSnapshot,
+      projects: [generated, { ...original, id: "removed-project" }],
+    };
     const loadSnapshot = vi
       .fn<() => Promise<DashboardSnapshot>>()
       .mockResolvedValueOnce(initial)
@@ -1067,7 +1111,7 @@ describe("useDashboardSession — refresh / delta race", () => {
         message: "hi",
         payload: {},
         createdAt: "2026-05-12T15:00:05.000Z",
-        rowCursor: 3
+        rowCursor: 3,
       },
       {
         id: "ev-answer",
@@ -1076,15 +1120,15 @@ describe("useDashboardSession — refresh / delta race", () => {
         message: "hello",
         payload: {},
         createdAt: "2026-05-12T15:00:06.000Z",
-        rowCursor: 4
-      }
+        rowCursor: 4,
+      },
     ];
     const eventsSince = window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>;
     eventsSince.mockResolvedValueOnce({
       events: tail,
       rawOutputs: [],
       eventCursor: 4,
-      rawOutputCursor: 0
+      rawOutputCursor: 0,
     });
 
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
@@ -1099,7 +1143,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       sessionId: "session-existing",
       changeCursor: null,
       eventCursor: null,
-      rawOutputCursor: null
+      rawOutputCursor: null,
     });
     expect(result.current.timelines.getSnapshot("session-existing").events).toHaveLength(2);
 
@@ -1113,7 +1157,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       events: tail,
       rawOutputs: [],
       eventCursor: 4,
-      rawOutputCursor: 0
+      rawOutputCursor: 0,
     });
     await act(async () => {
       await result.current.loadSessionEvents("session-existing");
@@ -1123,7 +1167,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       sessionId: "session-existing",
       changeCursor: null,
       eventCursor: null,
-      rawOutputCursor: null
+      rawOutputCursor: null,
     });
     expect(result.current.timelines.getSnapshot("session-existing").events).toHaveLength(2);
   });
@@ -1136,12 +1180,12 @@ describe("useDashboardSession — refresh / delta race", () => {
       message: `busy ${i}`,
       payload: {},
       createdAt: new Date(Date.parse("2026-05-12T16:00:00.000Z") + i).toISOString(),
-      rowCursor: 1_000 + i
+      rowCursor: 1_000 + i,
     }));
     baseSnapshot = {
       ...baseSnapshot,
       events: busyTail,
-      sessions: [...baseSnapshot.sessions, makeSession({ id: "busy-session" })]
+      sessions: [...baseSnapshot.sessions, makeSession({ id: "busy-session" })],
     };
 
     const commandRows: TimelineEvent[] = [
@@ -1153,10 +1197,10 @@ describe("useDashboardSession — refresh / delta race", () => {
         payload: {
           id: "item_4",
           name: "file_change",
-          input: { changes: [{ kind: "update", path: "/repo/src/ModelSelector.tsx" }] }
+          input: { changes: [{ kind: "update", path: "/repo/src/ModelSelector.tsx" }] },
         },
         createdAt: "2026-05-12T15:00:02.000Z",
-        rowCursor: 10
+        rowCursor: 10,
       },
       {
         id: "codex-edit-end",
@@ -1166,18 +1210,18 @@ describe("useDashboardSession — refresh / delta race", () => {
         payload: {
           id: "item_4",
           name: "file_change",
-          input: { changes: [{ kind: "update", path: "/repo/src/ModelSelector.tsx" }] }
+          input: { changes: [{ kind: "update", path: "/repo/src/ModelSelector.tsx" }] },
         },
         createdAt: "2026-05-12T15:00:03.000Z",
-        rowCursor: 11
-      }
+        rowCursor: 11,
+      },
     ];
     const eventsSince = window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>;
     eventsSince.mockResolvedValueOnce({
       events: commandRows,
       rawOutputs: [],
       eventCursor: 11,
-      rawOutputCursor: 0
+      rawOutputCursor: 0,
     });
 
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
@@ -1190,7 +1234,9 @@ describe("useDashboardSession — refresh / delta race", () => {
       await result.current.loadSessionEvents("session-existing");
     });
 
-    const ids = new Set(result.current.timelines.getSnapshot("session-existing").events.map((event) => event.id));
+    const ids = new Set(
+      result.current.timelines.getSnapshot("session-existing").events.map((event) => event.id),
+    );
     expect(ids.has("codex-edit-start")).toBe(true);
     expect(ids.has("codex-edit-end")).toBe(true);
   });
@@ -1203,7 +1249,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       events: [],
       rawOutputs: [],
       eventCursor: 7,
-      rawOutputCursor: 0
+      rawOutputCursor: 0,
     });
 
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
@@ -1222,7 +1268,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       sessionId: "session-existing",
       changeCursor: null,
       eventCursor: 7,
-      rawOutputCursor: 0
+      rawOutputCursor: 0,
     });
   });
 
@@ -1238,7 +1284,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       riskLevel: "low",
       status: "pending",
       createdAt: "2026-05-12T15:00:02.000Z",
-      resolvedAt: null
+      resolvedAt: null,
     };
     baseSnapshot = { ...baseSnapshot, approvals: [approvalA] };
 
@@ -1269,7 +1315,7 @@ describe("useDashboardSession — refresh / delta race", () => {
     resolveApprovalMock.mockReturnValueOnce(
       new Promise<ApprovalRequest>((resolve) => {
         acknowledge = resolve;
-      })
+      }),
     );
     let retry!: Promise<void>;
     act(() => {
@@ -1281,7 +1327,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       acknowledge({
         ...approvalA,
         status: "approved",
-        resolvedAt: "2026-05-12T15:00:04.000Z"
+        resolvedAt: "2026-05-12T15:00:04.000Z",
       });
       await retry;
     });

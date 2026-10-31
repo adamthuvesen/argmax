@@ -16,7 +16,7 @@ const PLACEHOLDERS = "{type}, {slug}, {word}, {id}, {date}";
  */
 export function BranchTemplatePanel({
   project,
-  onProjectUpdated
+  onProjectUpdated,
 }: {
   project: ProjectSummary;
   onProjectUpdated: (updated: ProjectSummary) => void;
@@ -36,7 +36,7 @@ export function BranchTemplatePanel({
     onData: (settings) => {
       setAppTemplate(settings.template ?? "");
       setDefaultTemplate(settings.defaultTemplate);
-    }
+    },
   });
 
   async function saveApp(): Promise<void> {
@@ -47,7 +47,7 @@ export function BranchTemplatePanel({
     setStatus(null);
     try {
       const saved = await settings.setBranchTemplate({
-        template: appTemplate.trim() === "" ? null : appTemplate.trim()
+        template: appTemplate.trim() === "" ? null : appTemplate.trim(),
       });
       setAppTemplate(saved.template ?? "");
       setStatus("Default branch template saved.");
@@ -67,7 +67,7 @@ export function BranchTemplatePanel({
     try {
       const updated = await projects.setBranchTemplate({
         projectId: project.id,
-        template: projectTemplate.trim() === "" ? null : projectTemplate.trim()
+        template: projectTemplate.trim() === "" ? null : projectTemplate.trim(),
       });
       setProjectTemplate(updated.branchTemplate ?? "");
       onProjectUpdated(updated);
@@ -83,8 +83,8 @@ export function BranchTemplatePanel({
     <section id="settings-branch-names" className="settings-card" aria-label="Branch names">
       <h3>Branch names</h3>
       <p className="settings-note">
-        Names the branch of each new worktree chat. Placeholders: {PLACEHOLDERS}. A taken name gets a numeric suffix.
-        Existing branches keep their names.
+        Names the branch of each new worktree chat. Placeholders: {PLACEHOLDERS}. A taken name gets
+        a numeric suffix. Existing branches keep their names.
       </p>
       <div className="settings-field">
         <label className="settings-field-label" htmlFor="settings-branch-template-app">
@@ -105,7 +105,12 @@ export function BranchTemplatePanel({
           </p>
         ) : null}
         <div className="settings-form-footer">
-          <button type="button" className="settings-button" disabled={busy} onClick={() => void saveApp()}>
+          <button
+            type="button"
+            className="settings-button"
+            disabled={busy}
+            onClick={() => void saveApp()}
+          >
             Save default
           </button>
         </div>
@@ -129,7 +134,12 @@ export function BranchTemplatePanel({
           </p>
         ) : null}
         <div className="settings-form-footer">
-          <button type="button" className="settings-button" disabled={busy} onClick={() => void saveProject()}>
+          <button
+            type="button"
+            className="settings-button"
+            disabled={busy}
+            onClick={() => void saveProject()}
+          >
             Save project template
           </button>
         </div>

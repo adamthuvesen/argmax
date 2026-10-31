@@ -14,13 +14,13 @@ const base: WindowSnapshotStatus = {
   chord: "CommandOrControl+Alt+Shift+S",
   defaultChord: "CommandOrControl+Alt+Shift+S",
   registered: false,
-  registrationError: null
+  registrationError: null,
 };
 
 const api = {
   status: vi.fn(),
   configure: vi.fn(),
-  requestPermission: vi.fn()
+  requestPermission: vi.fn(),
 };
 
 beforeEach(() => {
@@ -43,8 +43,12 @@ describe("WindowSnapshotSettings", () => {
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "Window snapshot shortcut" }));
 
-    await waitFor(() => expect(api.configure).toHaveBeenCalledWith({ enabled: true, chord: base.chord }));
-    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Window snapshot shortcut" })).toBeChecked());
+    await waitFor(() =>
+      expect(api.configure).toHaveBeenCalledWith({ enabled: true, chord: base.chord }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "Window snapshot shortcut" })).toBeChecked(),
+    );
   });
 
   it("records a new chord and sends it", async () => {
@@ -54,7 +58,9 @@ describe("WindowSnapshotSettings", () => {
     fireEvent.click(await screen.findByRole("button", { name: /change shortcut/i }));
     fireEvent.keyDown(window, { code: "KeyK", metaKey: true, altKey: true });
 
-    await waitFor(() => expect(api.configure).toHaveBeenCalledWith({ enabled: false, chord: "Command+Alt+K" }));
+    await waitFor(() =>
+      expect(api.configure).toHaveBeenCalledWith({ enabled: false, chord: "Command+Alt+K" }),
+    );
   });
 
   it("refuses a key with no modifier before asking the host", async () => {
@@ -94,7 +100,11 @@ describe("WindowSnapshotSettings", () => {
   });
 
   it("says a registration failure out loud while the chord is enabled", async () => {
-    api.status.mockResolvedValue({ ...base, enabled: true, registrationError: "was rejected by the OS" });
+    api.status.mockResolvedValue({
+      ...base,
+      enabled: true,
+      registrationError: "was rejected by the OS",
+    });
     render(<WindowSnapshotSettings />);
     expect(await screen.findByRole("alert")).toHaveTextContent("was rejected by the OS");
   });

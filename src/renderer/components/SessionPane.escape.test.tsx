@@ -18,7 +18,7 @@ interface PaneOptions {
 function pane({
   session = baseSession({ state: "running" }),
   isFocused = true,
-  onTerminateSession = vi.fn<TerminateSession>().mockResolvedValue(undefined)
+  onTerminateSession = vi.fn<TerminateSession>().mockResolvedValue(undefined),
 }: PaneOptions = {}): JSX.Element {
   return (
     <SessionPane
@@ -40,7 +40,7 @@ function pane({
 function renderPane({
   session = baseSession({ state: "running" }),
   isFocused = true,
-  onTerminateSession = vi.fn<TerminateSession>().mockResolvedValue(undefined)
+  onTerminateSession = vi.fn<TerminateSession>().mockResolvedValue(undefined),
 }: PaneOptions = {}): Mock<TerminateSession> {
   render(pane({ session, isFocused, onTerminateSession }));
   return onTerminateSession;
@@ -65,7 +65,11 @@ describe("SessionPane Escape", () => {
   it("ignores repeated, composing, and modified Escape", () => {
     const terminate = renderPane();
     const prompt = screen.getByLabelText("Chat prompt");
-    const consumed = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    const consumed = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
     consumed.preventDefault();
     prompt.dispatchEvent(consumed);
     fireEvent.keyDown(prompt, { key: "Escape", repeat: true });
@@ -106,7 +110,7 @@ describe("SessionPane Escape", () => {
       () =>
         new Promise<void>((resolve) => {
           resolveTermination = resolve;
-        })
+        }),
     );
     renderPane({ onTerminateSession: terminate });
     const prompt = screen.getByLabelText("Chat prompt");
@@ -122,13 +126,13 @@ describe("SessionPane Escape", () => {
       (sessionId) =>
         new Promise<void>((resolve) => {
           resolvers.set(sessionId, resolve);
-        })
+        }),
     );
     const { rerender } = render(
       pane({
         session: baseSession({ id: "session-a", state: "running" }),
-        onTerminateSession: terminate
-      })
+        onTerminateSession: terminate,
+      }),
     );
     const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.keyDown(prompt, { key: "Escape" });
@@ -136,8 +140,8 @@ describe("SessionPane Escape", () => {
     rerender(
       pane({
         session: baseSession({ id: "session-b", state: "running" }),
-        onTerminateSession: terminate
-      })
+        onTerminateSession: terminate,
+      }),
     );
     fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Escape" });
     await act(async () => {
@@ -146,7 +150,10 @@ describe("SessionPane Escape", () => {
     });
     fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Escape" });
 
-    expect(terminate.mock.calls.map(([sessionId]) => sessionId)).toEqual(["session-a", "session-b"]);
+    expect(terminate.mock.calls.map(([sessionId]) => sessionId)).toEqual([
+      "session-a",
+      "session-b",
+    ]);
     resolvers.get("session-b")?.();
   });
 

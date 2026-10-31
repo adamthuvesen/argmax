@@ -1,12 +1,22 @@
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { baseSession, event, renderConversation, STARTED_TURN } from "../../test/sessionConversationTestHarness.js";
+import {
+  baseSession,
+  event,
+  renderConversation,
+  STARTED_TURN,
+} from "../../test/sessionConversationTestHarness.js";
 import type { ArgmaxApi } from "../../shared/types.js";
 import type { DiffNoteInput } from "../lib/composerAnnotations.js";
 
 const EVENTS = [
   event("u1", "user.message", "compare the score distributions", "2026-05-12T15:00:00.000Z"),
-  event("m1", "message.completed", "Day two looks reassuringly boring.", "2026-05-12T15:00:01.000Z")
+  event(
+    "m1",
+    "message.completed",
+    "Day two looks reassuringly boring.",
+    "2026-05-12T15:00:01.000Z",
+  ),
 ];
 
 const DIFF_NOTE: DiffNoteInput = {
@@ -15,7 +25,7 @@ const DIFF_NOTE: DiffNoteInput = {
   side: "addition",
   lineText: "let y = 0;",
   comment: "why mutable?",
-  base: "working tree vs HEAD"
+  base: "working tree vs HEAD",
 };
 
 function selectAssistantText(): void {
@@ -40,11 +50,11 @@ describe("SessionConversation selection annotations", () => {
       height: 16,
       x: 40,
       y: 200,
-      toJSON: () => ({})
+      toJSON: () => ({}),
     });
     window.localStorage.clear();
     window.argmax = {
-      prs: { listForSession: vi.fn(() => new Promise(() => {})) }
+      prs: { listForSession: vi.fn(() => new Promise(() => {})) },
     } as unknown as ArgmaxApi;
   });
 
@@ -78,9 +88,11 @@ describe("SessionConversation selection annotations", () => {
     expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(
       "Regarding this excerpt from our conversation above:\n\n" +
         "> Day two looks reassuringly boring.\n\n" +
-        "why is that good?"
+        "why is that good?",
     );
-    await waitFor(() => expect(screen.queryByLabelText("Annotation: Day two looks reassuringly boring.")).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Annotation: Day two looks reassuringly boring.")).toBeNull(),
+    );
   });
 
   it.each(["click", "Enter"])("sends only a conversation excerpt via %s", async (method) => {
@@ -98,7 +110,7 @@ describe("SessionConversation selection annotations", () => {
 
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalledOnce());
     expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(
-      "Regarding this excerpt from our conversation above:\n\n> Day two looks reassuringly boring."
+      "Regarding this excerpt from our conversation above:\n\n> Day two looks reassuringly boring.",
     );
     await waitFor(() => expect(screen.queryByLabelText(/^Annotation:/)).toBeNull());
   });
@@ -164,7 +176,7 @@ describe("SessionConversation selection annotations", () => {
       onSendSessionInput,
       registerAnnotationSink: (next) => {
         sink = next;
-      }
+      },
     });
 
     expect(sink).not.toBeNull();
@@ -183,7 +195,7 @@ describe("SessionConversation selection annotations", () => {
     expect(sent).toContain("not a comment on a GitHub pull request");
     expect(sent).toContain(
       '<argmax-diff-note file="src/x.ts" line="9" side="added" base="working tree vs HEAD">\n' +
-        "> let y = 0;\nwhy mutable?\n</argmax-diff-note>"
+        "> let y = 0;\nwhy mutable?\n</argmax-diff-note>",
     );
     expect(sent.endsWith("\n\nfix it")).toBe(true);
   });
@@ -195,7 +207,7 @@ describe("SessionConversation selection annotations", () => {
       onSendSessionInput,
       registerAnnotationSink: (next) => {
         sink = next;
-      }
+      },
     });
 
     const send = screen.getByRole("button", { name: "Send follow-up" });

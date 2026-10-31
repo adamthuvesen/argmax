@@ -23,7 +23,7 @@ export function ProjectSourcesPanel({ projectId }: { projectId: string }): JSX.E
       const message = reason instanceof Error ? reason.message : "Could not load sources.";
       if (explicitRefreshInFlight.current) showErrorToast(message);
       else setError(message);
-    }
+    },
   });
   const loading = sourcesQuery.isLoading;
   useEffect(() => {
@@ -69,11 +69,15 @@ export function ProjectSourcesPanel({ projectId }: { projectId: string }): JSX.E
   }
 
   return (
-    <section id="settings-project-sources" className="settings-card project-sources" aria-label="Project sources">
+    <section
+      id="settings-project-sources"
+      className="settings-card project-sources"
+      aria-label="Project sources"
+    >
       <h3>Project sources</h3>
       <p className="settings-note">
-        Save repository paths and web links with guidance on when to consult them. Agents can add references as they
-        work and read current content on demand. Source reads appear in the chat.
+        Save repository paths and web links with guidance on when to consult them. Agents can add
+        references as they work and read current content on demand. Source reads appear in the chat.
       </p>
       <div className="project-source-actions">
         <button
@@ -94,7 +98,9 @@ export function ProjectSourcesPanel({ projectId }: { projectId: string }): JSX.E
           Refresh sources
         </button>
       </div>
-      {!sourceActions() ? <p className="settings-note">Open the Argmax app to manage project sources.</p> : null}
+      {!sourceActions() ? (
+        <p className="settings-note">Open the Argmax app to manage project sources.</p>
+      ) : null}
       {error ? (
         <p role="alert" className="settings-note">
           {error}
@@ -106,7 +112,9 @@ export function ProjectSourcesPanel({ projectId }: { projectId: string }): JSX.E
         </p>
       ) : null}
       {!loading && !error && sources.length === 0 ? (
-        <p className="settings-note">No sources yet. Try docs/architecture.md or a project specification URL.</p>
+        <p className="settings-note">
+          No sources yet. Try docs/architecture.md or a project specification URL.
+        </p>
       ) : null}
       {sources.length > 0 ? (
         <ul className="project-source-list">
@@ -116,7 +124,8 @@ export function ProjectSourcesPanel({ projectId }: { projectId: string }): JSX.E
               <code>{source.location}</code>
               {source.guidance ? <p>{source.guidance}</p> : null}
               <p className="settings-note">
-                Added by {source.addedBy} on <time dateTime={source.createdAt}>{source.createdAt.slice(0, 10)}</time>.{" "}
+                Added by {source.addedBy} on{" "}
+                <time dateTime={source.createdAt}>{source.createdAt.slice(0, 10)}</time>.{" "}
                 {source.updatedAt !== source.createdAt ? (
                   <>
                     Edited <time dateTime={source.updatedAt}>{source.updatedAt.slice(0, 10)}</time>.
@@ -155,8 +164,9 @@ export function ProjectSourcesPanel({ projectId }: { projectId: string }): JSX.E
         />
       ) : null}
       <p className="settings-note">
-        Only references are saved here. Adding or editing a source does not verify its contents. Removing it leaves the
-        original file or page intact. Engram is optional and configured separately.
+        Only references are saved here. Adding or editing a source does not verify its contents.
+        Removing it leaves the original file or page intact. Engram is optional and configured
+        separately.
       </p>
     </section>
   );
@@ -166,7 +176,7 @@ function SourceForm({
   source,
   busy,
   onSave,
-  onCancel
+  onCancel,
 }: {
   source: ProjectSource | null;
   busy: boolean;
@@ -218,7 +228,11 @@ function SourceForm({
         />
       </label>
       <div className="project-source-actions">
-        <button className="settings-button" disabled={busy || !title.trim() || !location.trim()} type="submit">
+        <button
+          className="settings-button"
+          disabled={busy || !title.trim() || !location.trim()}
+          type="submit"
+        >
           {busy ? "Saving…" : "Save source"}
         </button>
         <button className="settings-button" disabled={busy} type="button" onClick={onCancel}>

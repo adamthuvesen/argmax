@@ -6,7 +6,7 @@ import {
   type ChangeEvent,
   type DragEvent as ReactDragEvent,
   type RefObject,
-  type SetStateAction
+  type SetStateAction,
 } from "react";
 import {
   appendReferencesToPrompt,
@@ -19,7 +19,7 @@ import {
   isImageDragType,
   isSupportedImageMime,
   listDragTypes,
-  readBlobAsBase64
+  readBlobAsBase64,
 } from "../lib/composerAttachments.js";
 import { COMPOSER_CLIPBOARD_MIME } from "../lib/composerContext.js";
 import { readDraft, writeDraftAttachments } from "../lib/composerDrafts.js";
@@ -29,7 +29,9 @@ import type { ComposerField } from "../components/composerEditor/composerField.j
 import { showErrorToast } from "../state/toast.js";
 
 function createAttachmentPreviewUrl(blob: Blob): string | null {
-  return typeof URL !== "undefined" && typeof URL.createObjectURL === "function" ? URL.createObjectURL(blob) : null;
+  return typeof URL !== "undefined" && typeof URL.createObjectURL === "function"
+    ? URL.createObjectURL(blob)
+    : null;
 }
 
 function revokeAttachmentPreviewUrl(url: string): void {
@@ -114,11 +116,20 @@ interface ComposerAttachmentsDeps {
  * screenshot never has to be taken twice.
  */
 export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerAttachmentsApi {
-  const { draftKey, workspacePath, setInput, fieldRef, carriedOnRetarget = false, persist = true } = deps;
+  const {
+    draftKey,
+    workspacePath,
+    setInput,
+    fieldRef,
+    carriedOnRetarget = false,
+    persist = true,
+  } = deps;
   const [pendingAttachments, setPendingAttachments] = useState<ComposerAttachment[]>(
-    () => readDraft(draftKey ?? null).attachments
+    () => readDraft(draftKey ?? null).attachments,
   );
-  const [pendingAttachmentPreviews, setPendingAttachmentPreviews] = useState<Record<string, string>>({});
+  const [pendingAttachmentPreviews, setPendingAttachmentPreviews] = useState<
+    Record<string, string>
+  >({});
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const dragDepth = useRef(0);
@@ -216,7 +227,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
       if (refs.length === 0) return;
       setInput((prev) => appendReferencesToPrompt(prev, refs));
     },
-    [workspacePath, setInput]
+    [workspacePath, setInput],
   );
 
   const attachImageBlobs = useCallback(
@@ -239,7 +250,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
           const saved = await api.attachments.saveImage({
             sessionId: draftKey,
             mimeType,
-            dataBase64
+            dataBase64,
           });
           // The pane can retarget to another draft while the save is in flight
           // (pick a different project in the launcher). Appending now would
@@ -251,8 +262,8 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
             {
               filePath: saved.filePath,
               mimeType,
-              sizeBytes: saved.sizeBytes
-            }
+              sizeBytes: saved.sizeBytes,
+            },
           ]);
           rememberPreviewUrl(saved.filePath, processed);
         }
@@ -260,7 +271,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
         showErrorToast(error instanceof Error ? error.message : "Could not attach image.");
       }
     },
-    [draftKey, rememberPreviewUrl]
+    [draftKey, rememberPreviewUrl],
   );
 
   const removePendingAttachment = useCallback(
@@ -268,7 +279,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
       removePreviewUrl(filePath);
       setPendingAttachments((prev) => prev.filter((a) => a.filePath !== filePath));
     },
-    [removePreviewUrl]
+    [removePreviewUrl],
   );
 
   const onComposerDragEnter = useCallback((event: ReactDragEvent<HTMLFormElement>): void => {
@@ -306,7 +317,9 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
         }
         const mime = isSupportedImageMime(file.type) ? file.type : imageMimeFromFileName(file.name);
         if (!mime) continue;
-        imageBlobs.push(file.type === mime ? file : new File([file], file.name || "image", { type: mime }));
+        imageBlobs.push(
+          file.type === mime ? file : new File([file], file.name || "image", { type: mime }),
+        );
       }
       if (withPath.length > 0) attachFiles(withPath);
       if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
@@ -314,7 +327,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
         showErrorToast("Only files with a disk path or images can be attached.");
       }
     },
-    [attachFiles, attachImageBlobs]
+    [attachFiles, attachImageBlobs],
   );
 
   const onComposerDrop = useCallback(
@@ -334,7 +347,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
       event.preventDefault();
       splitAndAttach(files);
     },
-    [splitAndAttach]
+    [splitAndAttach],
   );
 
   const onComposerPaste = useCallback(
@@ -364,7 +377,11 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
       const html = clipboard.getData("text/html");
       // A copy from this composer carries its own typed entry; the field takes
       // it whole, chips and all, and the HTML flavor has nothing to add.
-      if (!html || !shouldPreferHtmlFlavor(html) || Array.from(clipboard.types ?? []).includes(COMPOSER_CLIPBOARD_MIME))
+      if (
+        !html ||
+        !shouldPreferHtmlFlavor(html) ||
+        Array.from(clipboard.types ?? []).includes(COMPOSER_CLIPBOARD_MIME)
+      )
         return;
       event.preventDefault();
       const field = fieldRef?.current ?? null;
@@ -389,10 +406,10 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
       // pasted.
       void import("../lib/htmlToMarkdown.js").then(
         ({ htmlToMarkdown }) => insert(htmlToMarkdown(html)),
-        () => insert(plain)
+        () => insert(plain),
       );
     },
-    [attachImageBlobs, fieldRef, setInput]
+    [attachImageBlobs, fieldRef, setInput],
   );
 
   const onAttachmentInputChange = useCallback(
@@ -403,7 +420,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
       // Clear so the same file can be selected again next time.
       event.target.value = "";
     },
-    [splitAndAttach]
+    [splitAndAttach],
   );
 
   const openFilePicker = useCallback((): void => {
@@ -415,17 +432,25 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
     setPendingAttachments([]);
   }, [clearPreviewUrls]);
 
-  const restoreAttachments = useCallback((attachments: SetStateAction<ComposerAttachment[]>): void => {
-    setPendingAttachments(attachments);
-  }, []);
+  const restoreAttachments = useCallback(
+    (attachments: SetStateAction<ComposerAttachment[]>): void => {
+      setPendingAttachments(attachments);
+    },
+    [],
+  );
 
   const [attachmentLabels, setAttachmentLabels] = useState<Record<string, string>>({});
-  const attachSavedAttachment = useCallback((attachment: ComposerAttachment, label?: string): void => {
-    if (label) setAttachmentLabels((prev) => ({ ...prev, [attachment.filePath]: label }));
-    setPendingAttachments((prev) =>
-      prev.some((existing) => existing.filePath === attachment.filePath) ? prev : [...prev, attachment]
-    );
-  }, []);
+  const attachSavedAttachment = useCallback(
+    (attachment: ComposerAttachment, label?: string): void => {
+      if (label) setAttachmentLabels((prev) => ({ ...prev, [attachment.filePath]: label }));
+      setPendingAttachments((prev) =>
+        prev.some((existing) => existing.filePath === attachment.filePath)
+          ? prev
+          : [...prev, attachment],
+      );
+    },
+    [],
+  );
 
   return {
     attachSavedAttachment,
@@ -443,6 +468,6 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
     onAttachmentInputChange,
     openFilePicker,
     clearAttachments,
-    restoreAttachments
+    restoreAttachments,
   };
 }

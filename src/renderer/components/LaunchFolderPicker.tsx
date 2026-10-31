@@ -4,7 +4,7 @@ import type { ProjectFolder } from "../../shared/types.js";
 import {
   useAnchoredPopover,
   PICKER_MENU_EDGE_PADDING_PX,
-  PICKER_MENU_MAX_HEIGHT_PX
+  PICKER_MENU_MAX_HEIGHT_PX,
 } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
@@ -19,7 +19,7 @@ export function LaunchFolderPicker({
   open,
   onOpenChange,
   onPick,
-  children
+  children,
 }: {
   children: ReactNode;
   folders: ProjectFolder[];
@@ -35,7 +35,7 @@ export function LaunchFolderPicker({
     strategy: "absolute",
     capHeight: true,
     edgePadding: PICKER_MENU_EDGE_PADDING_PX,
-    maxHeight: PICKER_MENU_MAX_HEIGHT_PX
+    maxHeight: PICKER_MENU_MAX_HEIGHT_PX,
   });
   useDismissOnOutsideOrEscape(anchorRef, open, () => onOpenChange(false));
   const listRef = useRef<HTMLUListElement | null>(null);
@@ -44,20 +44,21 @@ export function LaunchFolderPicker({
       listRef.current = node;
       setPopover(node);
     },
-    [setPopover]
+    [setPopover],
   );
   const pick = (folder: ProjectFolder): void => {
     onPick(folder);
     onOpenChange(false);
   };
-  const folderLabel = (folder: ProjectFolder): string => repoNameFromPath(folder.rootPath) ?? folder.name;
+  const folderLabel = (folder: ProjectFolder): string =>
+    repoNameFromPath(folder.rootPath) ?? folder.name;
   const filter = useTypeToFilter({
     open,
     items: folders,
     toLabel: folderLabel,
     listRef,
     initialIndex: folders.findIndex((folder) => folder.id === selected?.id),
-    onPick: pick
+    onPick: pick,
   });
   return (
     <div className="project-picker-anchor" ref={setAnchor}>
@@ -76,7 +77,11 @@ export function LaunchFolderPicker({
           <li className="launch-folder-menu-heading" role="presentation">
             Work in
           </li>
-          <PickerFilterRow query={filter.query} matchCount={filter.matches.length} totalCount={folders.length} />
+          <PickerFilterRow
+            query={filter.query}
+            matchCount={filter.matches.length}
+            totalCount={folders.length}
+          />
           {filter.matches.map((folder, index) => (
             <li
               key={folder.id}
@@ -95,7 +100,9 @@ export function LaunchFolderPicker({
                 </PickerLead>
                 <span className="launch-folder-menu-label">
                   <span className="picker-label">{folderLabel(folder)}</span>
-                  {folders.some((other) => other.id !== folder.id && folderLabel(other) === folderLabel(folder)) ? (
+                  {folders.some(
+                    (other) => other.id !== folder.id && folderLabel(other) === folderLabel(folder),
+                  ) ? (
                     <span className="picker-meta">{collapseHome(folder.rootPath)}</span>
                   ) : null}
                 </span>

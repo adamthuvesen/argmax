@@ -1,7 +1,12 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { JSX } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
+import type {
+  EventType,
+  SessionSummary,
+  TimelineEvent,
+  WorkspaceSummary,
+} from "../../shared/types.js";
 import { useAgentTabs, type AgentTabsState } from "../hooks/useAgentTabs.js";
 import { SessionTimelineProvider } from "../hooks/useSessionTimeline.js";
 import type { MultitaskChild } from "../lib/multitask.js";
@@ -14,7 +19,7 @@ function event(
   type: EventType,
   createdAt: string,
   message = id,
-  payload: Record<string, unknown> = {}
+  payload: Record<string, unknown> = {},
 ): TimelineEvent {
   return { id, sessionId: "s1", type, message, payload, createdAt };
 }
@@ -37,7 +42,7 @@ const session: SessionSummary = {
   tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextTokens: 0,
   imported: false,
-  launchKind: "agent"
+  launchKind: "agent",
 };
 
 const workspace: WorkspaceSummary = {
@@ -63,14 +68,23 @@ const workspace: WorkspaceSummary = {
   prCreatedAt: null,
   prMergedAt: null,
   prCheckState: null,
-  prActivityAt: null
+  prActivityAt: null,
 };
+
+/** The transcript pane for a tab, hidden or shown; null when it is not mounted. */
+function agentPane(tabId: string): HTMLElement | null {
+  return (
+    screen
+      .getAllByRole("tabpanel", { hidden: true })
+      .find((pane) => pane.id === `review-agent-${tabId}`) ?? null
+  );
+}
 
 function launch(id: string, description: string, at = "2026-05-12T15:00:01.000Z"): TimelineEvent {
   return event(`start-${id}`, "command.started", at, "Task", {
     id,
     name: "Task",
-    input: { description, prompt: `Do ${description}.` }
+    input: { description, prompt: `Do ${description}.` },
   });
 }
 
@@ -82,11 +96,15 @@ function agentTabs(overrides: Partial<AgentTabsState> = {}): AgentTabsState {
     closeTab: vi.fn(),
     closeAllTabs: vi.fn(),
     replaceTab: vi.fn(),
-    ...overrides
+    ...overrides,
   };
 }
 
-function renderView(state: AgentTabsState, events: TimelineEvent[], multitasks?: MultitaskChild[]): void {
+function renderView(
+  state: AgentTabsState,
+  events: TimelineEvent[],
+  multitasks?: MultitaskChild[],
+): void {
   render(
     <AgentsView
       events={events}
@@ -94,7 +112,7 @@ function renderView(state: AgentTabsState, events: TimelineEvent[], multitasks?:
       agentTabs={state}
       multitasks={multitasks}
       workspace={workspace}
-    />
+    />,
   );
 }
 
@@ -148,17 +166,20 @@ describe("AgentsView", () => {
         providerChildSessionId: "child-native",
         providerParentConversationId: "parent-native",
         agentRootToolUseId: "task-root",
-        agentRunId: "task-root"
+        agentRunId: "task-root",
       }),
       event("task", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
         id: "task-root",
         name: "Task",
         providerInvocationId: "invocation-1",
-        input: { description: "Explore repo" }
-      })
+        input: { description: "Explore repo" },
+      }),
     ]);
 
-    expect(replaceTab).toHaveBeenCalledWith("task-root", "native-agent:task-root:parent-native:child-native");
+    expect(replaceTab).toHaveBeenCalledWith(
+      "task-root",
+      "native-agent:task-root:parent-native:child-native",
+    );
   });
 
   it("upgrades a provisional identity in place and keeps a reused raw id distinct", () => {
@@ -178,19 +199,25 @@ describe("AgentsView", () => {
       id: "task-root",
       name: "Task",
       providerInvocationId: "invocation-1",
-      input: { description: "Explore repo" }
+      input: { description: "Explore repo" },
     });
     const { rerender } = render(<Dock events={[start]} />);
-    const native = event("native-start", "agent.started", "2026-05-12T15:00:02.000Z", "Agent started", {
-      providerInvocationId: "invocation-1",
-      providerChildSessionId: "child-native",
-      providerParentConversationId: "parent-native",
-      agentRootToolUseId: "task-root",
-      agentRunId: "task-root"
-    });
+    const native = event(
+      "native-start",
+      "agent.started",
+      "2026-05-12T15:00:02.000Z",
+      "Agent started",
+      {
+        providerInvocationId: "invocation-1",
+        providerChildSessionId: "child-native",
+        providerParentConversationId: "parent-native",
+        agentRootToolUseId: "task-root",
+        agentRunId: "task-root",
+      },
+    );
     rerender(<Dock events={[native, start]} />);
     expect(screen.getAllByRole("tab")).toHaveLength(1);
-    expect(document.getElementById("review-agent-native-agent:task-root:parent-native:child-native")).not.toBeNull();
+    expect(agentPane("native-agent:task-root:parent-native:child-native")).not.toBeNull();
 
     rerender(
       <Dock
@@ -200,18 +227,18 @@ describe("AgentsView", () => {
             providerChildSessionId: "child-second",
             providerParentConversationId: "parent-native",
             agentRootToolUseId: "task-root",
-            agentRunId: "task-root"
+            agentRunId: "task-root",
           }),
           event("second-task", "command.started", "2026-05-12T15:00:03.000Z", "Task", {
             id: "task-root",
             name: "Task",
             providerInvocationId: "invocation-2",
-            input: { description: "Review repo" }
+            input: { description: "Review repo" },
           }),
           native,
-          start
+          start,
         ]}
-      />
+      />,
     );
     expect(screen.getAllByRole("tab")).toHaveLength(2);
     expect(screen.getByRole("heading", { name: "Explore repo" })).toBeInTheDocument();
@@ -230,7 +257,7 @@ describe("AgentsView", () => {
         agentRootToolUseId: "task-reused",
         agentRunId: "task-reused",
         status: "completed",
-        agentCodename: "Curie"
+        agentCodename: "Curie",
       }),
       event("b-start", "agent.started", "2026-05-12T15:01:01.000Z", "Agent started", {
         providerInvocationId: "invocation-b",
@@ -239,7 +266,7 @@ describe("AgentsView", () => {
         agentRootToolUseId: "task-reused",
         agentRunId: "task-reused",
         status: "running",
-        agentCodename: "Curie"
+        agentCodename: "Curie",
       }),
       event("a-done", "agent.completed", "2026-05-12T15:00:03.000Z", "Child A answer", {
         providerInvocationId: "invocation-a",
@@ -248,7 +275,7 @@ describe("AgentsView", () => {
         agentRootToolUseId: "task-reused",
         agentRunId: "task-reused",
         status: "completed",
-        agentCodename: "Turing"
+        agentCodename: "Turing",
       }),
       event("a-start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
         providerInvocationId: "invocation-a",
@@ -257,12 +284,12 @@ describe("AgentsView", () => {
         agentRootToolUseId: "task-reused",
         agentRunId: "task-reused",
         status: "running",
-        agentCodename: "Turing"
-      })
+        agentCodename: "Turing",
+      }),
     ]);
 
-    const firstPane = document.getElementById(`review-agent-${firstTab}`);
-    const secondPane = document.getElementById(`review-agent-${secondTab}`);
+    const firstPane = agentPane(firstTab);
+    const secondPane = agentPane(secondTab);
     expect(firstPane).not.toBeNull();
     expect(secondPane).not.toBeNull();
     expect(within(firstPane as HTMLElement).getByText("Child A answer")).toBeInTheDocument();
@@ -331,10 +358,10 @@ describe("AgentsView", () => {
         providerChildSessionId: "child-native",
         providerParentConversationId: "parent-native",
         agentRootToolUseId: "task-1",
-        agentRunId: "task-1"
+        agentRunId: "task-1",
       }),
       launch("task-1", "Explore repo"),
-      launch("task-2", "Write tests")
+      launch("task-2", "Write tests"),
     ];
     const tabIds = ["native-agent:task-1:parent-native:child-native", "task-2"];
     const dock = (): JSX.Element => (
@@ -401,7 +428,7 @@ describe("AgentsView", () => {
   it("names each open subagent in the tab strip and shows the active one", () => {
     renderView(agentTabs({ tabIds: ["task-1", "task-2"], activeTabId: "task-2" }), [
       launch("task-1", "Explore repo", "2026-05-12T15:00:01.000Z"),
-      launch("task-2", "Write tests", "2026-05-12T15:00:02.000Z")
+      launch("task-2", "Write tests", "2026-05-12T15:00:02.000Z"),
     ]);
 
     const tabs = screen.getAllByRole("tab");
@@ -410,8 +437,8 @@ describe("AgentsView", () => {
     expect(tabs[0]).toHaveAttribute("aria-selected", "false");
     expect(tabs[1]).toHaveAttribute("aria-selected", "true");
     // Both stay mounted so switching back is instant; only the active one is shown.
-    expect(document.getElementById("review-agent-task-1")).toHaveAttribute("aria-hidden", "true");
-    expect(document.getElementById("review-agent-task-2")).not.toHaveAttribute("aria-hidden");
+    expect(agentPane("task-1")).toHaveAttribute("aria-hidden", "true");
+    expect(agentPane("task-2")).not.toHaveAttribute("aria-hidden");
   });
 
   it("keeps the strip in launch order whichever agent is selected", () => {
@@ -419,23 +446,26 @@ describe("AgentsView", () => {
       event(`done-${id}`, "command.completed", "2026-05-12T15:00:05.000Z", "Task", {
         id,
         name: "Task",
-        status: "completed"
+        status: "completed",
       });
-    renderView(agentTabs({ tabIds: ["task-1", "task-2", "task-3", "task-4"], activeTabId: "task-1" }), [
-      launch("task-1", "Explore repo", "2026-05-12T15:00:01.000Z"),
-      finished("task-1"),
-      launch("task-2", "Write tests", "2026-05-12T15:00:02.000Z"),
-      launch("task-3", "Review diff", "2026-05-12T15:00:03.000Z"),
-      finished("task-3"),
-      launch("task-4", "Fix lint", "2026-05-12T15:00:04.000Z")
-    ]);
+    renderView(
+      agentTabs({ tabIds: ["task-1", "task-2", "task-3", "task-4"], activeTabId: "task-1" }),
+      [
+        launch("task-1", "Explore repo", "2026-05-12T15:00:01.000Z"),
+        finished("task-1"),
+        launch("task-2", "Write tests", "2026-05-12T15:00:02.000Z"),
+        launch("task-3", "Review diff", "2026-05-12T15:00:03.000Z"),
+        finished("task-3"),
+        launch("task-4", "Fix lint", "2026-05-12T15:00:04.000Z"),
+      ],
+    );
 
     // The selected completed agent stays available; the other completed agent
     // moves into the roster. The rest keep the order they launched in.
     expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("title"))).toEqual([
       "Explore repo",
       "Write tests",
-      "Fix lint"
+      "Fix lint",
     ]);
   });
 
@@ -446,14 +476,14 @@ describe("AgentsView", () => {
         id: "spawn",
         name: "spawn_agent",
         providerInvocationId: "invoke-1",
-        input: { description: "Initial review" }
+        input: { description: "Initial review" },
       }),
       event("first-start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
         providerInvocationId: "invoke-1",
         providerParentConversationId: "parent-native",
         providerChildSessionId: "child-native",
         agentRootToolUseId: "spawn",
-        agentRunId: "spawn"
+        agentRunId: "spawn",
       }),
       event("first-done", "agent.completed", "2026-05-12T15:00:02.000Z", "Initial result", {
         providerInvocationId: "invoke-1",
@@ -461,13 +491,13 @@ describe("AgentsView", () => {
         providerChildSessionId: "child-native",
         agentRootToolUseId: "spawn",
         agentRunId: "spawn",
-        status: "completed"
+        status: "completed",
       }),
       event("follow-up", "command.started", "2026-05-12T15:01:00.000Z", "send_input", {
         id: "follow-up",
         name: "send_input",
         providerInvocationId: "invoke-2",
-        input: { prompt: "Check the fix" }
+        input: { prompt: "Check the fix" },
       }),
       event("second-start", "agent.started", "2026-05-12T15:01:01.000Z", "Agent started", {
         providerInvocationId: "invoke-2",
@@ -475,8 +505,8 @@ describe("AgentsView", () => {
         providerChildSessionId: "child-native",
         agentRootToolUseId: "spawn",
         agentRunId: "follow-up",
-        description: "Check the fix"
-      })
+        description: "Check the fix",
+      }),
     ]);
 
     expect(screen.getAllByRole("tab")).toHaveLength(1);
@@ -487,14 +517,14 @@ describe("AgentsView", () => {
 
   it("caps the active strip and exposes excess running agents through the roster", () => {
     const events = Array.from({ length: 6 }, (_, index) =>
-      launch(`task-${index + 1}`, `Task ${index + 1}`, `2026-05-12T15:00:0${index + 1}.000Z`)
+      launch(`task-${index + 1}`, `Task ${index + 1}`, `2026-05-12T15:00:0${index + 1}.000Z`),
     );
     renderView(
       agentTabs({
         tabIds: events.map((_, index) => `task-${index + 1}`),
-        activeTabId: "task-1"
+        activeTabId: "task-1",
       }),
-      events
+      events,
     );
 
     // Unmeasured (jsdom lays nothing out) the strip keeps four. The selection
@@ -503,7 +533,7 @@ describe("AgentsView", () => {
       "Task 1",
       "Task 4",
       "Task 5",
-      "Task 6"
+      "Task 6",
     ]);
     expect(screen.getByRole("button", { name: "+2 active" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "All agents 6" })).toBeInTheDocument();
@@ -511,11 +541,11 @@ describe("AgentsView", () => {
 
   it("draws two tabs in a narrow strip and seven in a wide one", () => {
     const events = Array.from({ length: 8 }, (_, index) =>
-      launch(`task-${index + 1}`, `Task ${index + 1}`, `2026-05-12T15:00:0${index + 1}.000Z`)
+      launch(`task-${index + 1}`, `Task ${index + 1}`, `2026-05-12T15:00:0${index + 1}.000Z`),
     );
     const tabs = agentTabs({
       tabIds: events.map((_, index) => `task-${index + 1}`),
-      activeTabId: "task-1"
+      activeTabId: "task-1",
     });
     const prototype = HTMLElement.prototype;
     const original = Object.getOwnPropertyDescriptor(prototype, "clientWidth");
@@ -524,7 +554,7 @@ describe("AgentsView", () => {
         configurable: true,
         get(this: HTMLElement) {
           return this.classList.contains("agent-active-tabs") ? width : 0;
-        }
+        },
       });
     };
     const restore = (): void => {
@@ -534,7 +564,10 @@ describe("AgentsView", () => {
     try {
       setWidth(200);
       renderView(tabs, events);
-      expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("title"))).toEqual(["Task 1", "Task 8"]);
+      expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("title"))).toEqual([
+        "Task 1",
+        "Task 8",
+      ]);
       cleanup();
 
       setWidth(700);
@@ -546,7 +579,7 @@ describe("AgentsView", () => {
         "Task 5",
         "Task 6",
         "Task 7",
-        "Task 8"
+        "Task 8",
       ]);
     } finally {
       restore();
@@ -559,8 +592,8 @@ describe("AgentsView", () => {
       event("child", "message.completed", "2026-05-12T15:00:02.000Z", "Mapped it.", {
         parent_tool_use_id: "task-1",
         agentModelId: "claude-opus-5-5",
-        agentReasoningEffort: "xhigh"
-      })
+        agentReasoningEffort: "xhigh",
+      }),
     ]);
 
     expect(screen.getByRole("heading", { name: "Explore repo" })).toBeInTheDocument();
@@ -577,21 +610,21 @@ describe("AgentsView", () => {
         workspaceId: "child-workspace",
         launchKind: "multitask",
         launchedBySessionId: session.id,
-        prompt: "Review the implementation"
+        prompt: "Review the implementation",
       },
       workspace,
-      pendingApproval: null
+      pendingApproval: null,
     };
     const timelines = new SessionTimelines();
     timelines.merge(
       [
         {
           ...event("child-answer", "message.completed", "2026-05-12T15:00:03.000Z", "Child result"),
-          sessionId: child.session.id
+          sessionId: child.session.id,
         },
-        event("parent-answer", "message.completed", "2026-05-12T15:00:02.000Z", "Parent result")
+        event("parent-answer", "message.completed", "2026-05-12T15:00:02.000Z", "Parent result"),
       ],
-      []
+      [],
     );
 
     render(
@@ -601,12 +634,12 @@ describe("AgentsView", () => {
           parentSession={session}
           agentTabs={agentTabs({
             tabIds: ["multitask:child-1"],
-            activeTabId: "multitask:child-1"
+            activeTabId: "multitask:child-1",
           })}
           multitasks={[child]}
           workspace={workspace}
         />
-      </SessionTimelineProvider>
+      </SessionTimelineProvider>,
     );
 
     expect(screen.getByText("Child result")).toBeInTheDocument();
@@ -624,47 +657,49 @@ describe("AgentsView", () => {
         lastActivityAt: "2026-05-12T15:00:04.000Z",
         launchKind: "multitask",
         launchedBySessionId: session.id,
-        prompt: "Review the implementation"
+        prompt: "Review the implementation",
       },
       workspace,
-      pendingApproval: null
+      pendingApproval: null,
     };
     const childEvent = (eventValue: TimelineEvent): TimelineEvent => ({
       ...eventValue,
-      sessionId: child.session.id
+      sessionId: child.session.id,
     });
     const timelines = new SessionTimelines();
     timelines.merge(
       [
-        childEvent(event("child-answer", "message.completed", "2026-05-12T15:00:04.000Z", "Child result")),
+        childEvent(
+          event("child-answer", "message.completed", "2026-05-12T15:00:04.000Z", "Child result"),
+        ),
         childEvent(
           event("command-2-done", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
             tool_use_id: "command-2",
-            content: "ok"
-          })
+            content: "ok",
+          }),
         ),
         childEvent(
           event("command-2-start", "command.started", "2026-05-12T15:00:02.000Z", "Bash", {
             id: "command-2",
             name: "Bash",
-            input: { command: "echo two" }
-          })
+            input: { command: "echo two" },
+          }),
         ),
         childEvent(
           event("command-1-done", "command.completed", "2026-05-12T15:00:01.000Z", "tool_result", {
             tool_use_id: "command-1",
-            content: "ok"
-          })
+            content: "ok",
+          }),
         ),
         childEvent(
           event("command-1-start", "command.started", "2026-05-12T15:00:00.000Z", "Bash", {
             id: "command-1",
             name: "Bash",
-            input: { command: "echo one" }
-          })
-        )
+            input: { command: "echo one" },
+          }),
+        ),
       ],
-      []
+      [],
     );
 
     render(
@@ -677,12 +712,12 @@ describe("AgentsView", () => {
           parentSession={session}
           agentTabs={agentTabs({
             tabIds: ["multitask:child-1"],
-            activeTabId: "multitask:child-1"
+            activeTabId: "multitask:child-1",
           })}
           multitasks={[child]}
           workspace={workspace}
         />
-      </SessionTimelineProvider>
+      </SessionTimelineProvider>,
     );
 
     expect(screen.getByText("Child result")).toBeInTheDocument();
@@ -696,9 +731,9 @@ describe("AgentsView", () => {
       event("done-task-1", "command.completed", "2026-05-12T15:00:02.000Z", "Task", {
         id: "task-1",
         name: "Task",
-        status: "completed"
+        status: "completed",
       }),
-      launch("task-2", "Write tests")
+      launch("task-2", "Write tests"),
     ]);
 
     expect(screen.getAllByRole("tab")).toHaveLength(1);

@@ -28,11 +28,11 @@ describe("useSessionCommands", () => {
         terminate: terminateMock,
         sendInput: sendInputMock,
         steerInput: steerInputMock,
-        sendQueuedMessageNow: sendQueuedMessageNowMock
+        sendQueuedMessageNow: sendQueuedMessageNowMock,
       },
       workspaces: {
-        archive: archiveMock
-      }
+        archive: archiveMock,
+      },
     };
   });
 
@@ -43,30 +43,38 @@ describe("useSessionCommands", () => {
       options.map((option): [ProviderId, string, boolean] => [
         provider as ProviderId,
         option.modelId,
-        option.supportsFastMode === true
-      ])
+        option.supportsFastMode === true,
+      ]),
     ),
-    ["codex", "unknown", false]
+    ["codex", "unknown", false],
   ];
 
-  it.each(fastModeCases)("gates the saved Fast preference for %s/%s", async (provider, modelId, supported) => {
-    const { result, rerender } = renderHook(
-      ({ fastMode }) => useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode }),
-      { initialProps: { fastMode: false } }
-    );
-    const model = { provider, label: modelId, modelId };
+  it.each(fastModeCases)(
+    "gates the saved Fast preference for %s/%s",
+    async (provider, modelId, supported) => {
+      const { result, rerender } = renderHook(
+        ({ fastMode }) =>
+          useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode }),
+        { initialProps: { fastMode: false } },
+      );
+      const model = { provider, label: modelId, modelId };
 
-    await act(async () => {
-      await result.current.sendSessionInput("session-1", "continue", model, "auto");
-    });
-    expect(sendInputMock).toHaveBeenLastCalledWith(expect.objectContaining({ provider, modelId, fastMode: false }));
+      await act(async () => {
+        await result.current.sendSessionInput("session-1", "continue", model, "auto");
+      });
+      expect(sendInputMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ provider, modelId, fastMode: false }),
+      );
 
-    rerender({ fastMode: true });
-    await act(async () => {
-      await result.current.sendSessionInput("session-1", "continue", model, "auto");
-    });
-    expect(sendInputMock).toHaveBeenLastCalledWith(expect.objectContaining({ provider, modelId, fastMode: supported }));
-  });
+      rerender({ fastMode: true });
+      await act(async () => {
+        await result.current.sendSessionInput("session-1", "continue", model, "auto");
+      });
+      expect(sendInputMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ provider, modelId, fastMode: supported }),
+      );
+    },
+  );
 
   it("calls onEarlyStop by default on terminateSession", async () => {
     const { result } = renderHook(() =>
@@ -75,8 +83,8 @@ describe("useSessionCommands", () => {
         loadSessionEvents,
         setToast,
         fastMode: false,
-        onEarlyStop
-      })
+        onEarlyStop,
+      }),
     );
 
     await act(async () => {
@@ -88,35 +96,38 @@ describe("useSessionCommands", () => {
     expect(archiveMock).not.toHaveBeenCalled();
   });
 
-  it.each(["queue", "steer"] as const)("omits Auto model echoes from a %s send", async (delivery) => {
-    const { result } = renderHook(() =>
-      useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: true })
-    );
-    await act(async () => {
-      await result.current.sendSessionInput(
-        "session-1",
-        "continue",
-        {
-          provider: "codex",
-          label: "GPT-6 Astra",
-          modelId: "gpt-6-astra",
-          reasoningEffort: "high",
-          autoTier: "balanced"
-        },
-        "auto",
-        undefined,
-        undefined,
-        delivery
+  it.each(["queue", "steer"] as const)(
+    "omits Auto model echoes from a %s send",
+    async (delivery) => {
+      const { result } = renderHook(() =>
+        useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: true }),
       );
-    });
-    const mock = delivery === "steer" ? steerInputMock : sendInputMock;
-    expect(mock).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: "session-1", input: "continue", fastMode: false })
-    );
-    for (const field of ["provider", "modelId", "modelLabel", "reasoningEffort"]) {
-      expect(mock.mock.calls[0]?.[0]).not.toHaveProperty(field);
-    }
-  });
+      await act(async () => {
+        await result.current.sendSessionInput(
+          "session-1",
+          "continue",
+          {
+            provider: "codex",
+            label: "GPT-6 Astra",
+            modelId: "gpt-6-astra",
+            reasoningEffort: "high",
+            autoTier: "balanced",
+          },
+          "auto",
+          undefined,
+          undefined,
+          delivery,
+        );
+      });
+      const mock = delivery === "steer" ? steerInputMock : sendInputMock;
+      expect(mock).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: "session-1", input: "continue", fastMode: false }),
+      );
+      for (const field of ["provider", "modelId", "modelLabel", "reasoningEffort"]) {
+        expect(mock.mock.calls[0]?.[0]).not.toHaveProperty(field);
+      }
+    },
+  );
 
   it("archives the workspace onEarlyStop returns after a successful stop", async () => {
     onEarlyStop.mockReturnValue("workspace-1");
@@ -126,8 +137,8 @@ describe("useSessionCommands", () => {
         loadSessionEvents,
         setToast,
         fastMode: false,
-        onEarlyStop
-      })
+        onEarlyStop,
+      }),
     );
 
     await act(async () => {
@@ -136,7 +147,9 @@ describe("useSessionCommands", () => {
 
     expect(terminateMock).toHaveBeenCalledWith("session-1");
     expect(archiveMock).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: true });
-    expect(terminateMock.mock.invocationCallOrder[0] ?? 0).toBeLessThan(archiveMock.mock.invocationCallOrder[0] ?? 0);
+    expect(terminateMock.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
+      archiveMock.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it("does not archive when terminate fails", async () => {
@@ -148,8 +161,8 @@ describe("useSessionCommands", () => {
         loadSessionEvents,
         setToast,
         fastMode: false,
-        onEarlyStop
-      })
+        onEarlyStop,
+      }),
     );
 
     await act(async () => {
@@ -167,8 +180,8 @@ describe("useSessionCommands", () => {
         loadSessionEvents,
         setToast,
         fastMode: false,
-        onEarlyStop
-      })
+        onEarlyStop,
+      }),
     );
 
     await act(async () => {
@@ -186,7 +199,7 @@ describe("useSessionCommands", () => {
       () =>
         new Promise<void>((resolve) => {
           resolveRefresh = resolve;
-        })
+        }),
     );
     loadSessionEvents.mockImplementation(() => new Promise<void>(() => {}));
     const { result } = renderHook(() =>
@@ -195,8 +208,8 @@ describe("useSessionCommands", () => {
         loadSessionEvents,
         setToast,
         fastMode: false,
-        onEarlyStop
-      })
+        onEarlyStop,
+      }),
     );
 
     await act(async () => {
@@ -204,7 +217,7 @@ describe("useSessionCommands", () => {
         "session-1",
         "continue",
         { provider: "claude", label: "Opus 5", modelId: "claude-opus-5" },
-        "auto"
+        "auto",
       );
     });
 
@@ -220,14 +233,14 @@ describe("useSessionCommands", () => {
     sendQueuedMessageNowMock.mockRejectedValueOnce({
       code: "SERVICE_ERROR",
       sub_code: "QUEUED_MESSAGE_ALREADY_DELIVERED",
-      message: "This follow-up was already collected from the chat inbox."
+      message: "This follow-up was already collected from the chat inbox.",
     });
     const { result } = renderHook(() =>
-      useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: false })
+      useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: false }),
     );
 
     await expect(result.current.sendQueuedMessageNow("session-1", "message-1")).rejects.toThrow(
-      "This follow-up was already collected from the chat inbox."
+      "This follow-up was already collected from the chat inbox.",
     );
     expect(refreshDashboardStatus).toHaveBeenCalled();
     expect(loadSessionEvents).toHaveBeenCalledWith("session-1");
@@ -242,8 +255,8 @@ describe("useSessionCommands", () => {
         loadSessionEvents,
         setToast,
         fastMode: false,
-        onEarlyStop
-      })
+        onEarlyStop,
+      }),
     );
 
     await act(async () => {
@@ -251,7 +264,7 @@ describe("useSessionCommands", () => {
         "session-1",
         "queue me",
         { provider: "claude", label: "Opus 5", modelId: "claude-opus-5" },
-        "auto"
+        "auto",
       );
     });
 

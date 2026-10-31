@@ -10,7 +10,7 @@ import {
   Plus,
   RotateCcw,
   Shapes,
-  X
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type JSX, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
@@ -74,7 +74,15 @@ function TabIcon({ item }: { item: ReviewTabItem }): JSX.Element {
     case "terminal":
       return <TerminalIcon />;
     case "file":
-      return <FileIcon fileName={item.label} autoAssign editFileNameData={SPECIAL_FILE_ICONS} width={14} height={14} />;
+      return (
+        <FileIcon
+          fileName={item.label}
+          autoAssign
+          editFileNameData={SPECIAL_FILE_ICONS}
+          width={14}
+          height={14}
+        />
+      );
   }
 }
 
@@ -93,7 +101,7 @@ export function ReviewTabsBar({
   hasAgents,
   hasBrowser,
   hasTerminal,
-  artifactsEnabled
+  artifactsEnabled,
 }: ReviewTabsBarProps): JSX.Element {
   const [menu, setMenu] = useState<TabMenu | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -103,7 +111,11 @@ export function ReviewTabsBar({
   const [overflow, setOverflow] = useState({ left: false, right: false });
   const addButton = useRef<HTMLButtonElement | null>(null);
   const draggedId = useRef<string | null>(null);
-  const popover = useAnchoredPopover({ open: menu !== null, placement: "bottom-end", capHeight: true });
+  const popover = useAnchoredPopover({
+    open: menu !== null,
+    placement: "bottom-end",
+    capHeight: true,
+  });
   const { anchorToPoint, setAnchor, popoverRef, anchorRef } = popover;
 
   const closeMenu = useCallback(() => {
@@ -118,7 +130,8 @@ export function ReviewTabsBar({
   useEffect(() => {
     if (menu?.kind === "tab") anchorToPoint(menu.point);
     else setAnchor(addButton.current);
-    if (menu) popoverRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+    if (menu)
+      popoverRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
   }, [menu, anchorToPoint, setAnchor, popoverRef]);
 
   useEffect(() => {
@@ -127,7 +140,9 @@ export function ReviewTabsBar({
     const measure = (): void => {
       const left = list.scrollLeft > 1;
       const right = list.scrollWidth - list.clientWidth - list.scrollLeft > 1;
-      setOverflow((previous) => (previous.left === left && previous.right === right ? previous : { left, right }));
+      setOverflow((previous) =>
+        previous.left === left && previous.right === right ? previous : { left, right },
+      );
     };
     const revealActive = (): void => {
       const firstTab = list.firstElementChild;
@@ -135,16 +150,22 @@ export function ReviewTabsBar({
         const style = getComputedStyle(list);
         const tabStyle = getComputedStyle(firstTab);
         const gap = parseFloat(style.columnGap);
-        const available = list.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        const available =
+          list.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
         const slots = Math.min(
           list.childElementCount,
-          Math.max(1, Math.floor((available + gap) / (parseFloat(tabStyle.minWidth) + gap)))
+          Math.max(1, Math.floor((available + gap) / (parseFloat(tabStyle.minWidth) + gap))),
         );
-        const width = Math.min(parseFloat(tabStyle.maxWidth), (available - gap * (slots - 1)) / slots);
+        const width = Math.min(
+          parseFloat(tabStyle.maxWidth),
+          (available - gap * (slots - 1)) / slots,
+        );
         list.style.setProperty("--review-tab-width", `${width}px`);
       }
       if (activeId)
-        tabButtons.current.get(activeId)?.parentElement?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+        tabButtons.current
+          .get(activeId)
+          ?.parentElement?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
       measure();
     };
     revealActive();
@@ -169,7 +190,12 @@ export function ReviewTabsBar({
   const openTabMenu = (id: string, point: AnchorPoint): void => setMenu({ kind: "tab", id, point });
   const handleTabKey = (id: string, event: KeyboardEvent<HTMLButtonElement>): void => {
     const index = items.findIndex((item) => item.id === id);
-    if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") {
+    if (
+      event.key === "ArrowLeft" ||
+      event.key === "ArrowRight" ||
+      event.key === "Home" ||
+      event.key === "End"
+    ) {
       event.preventDefault();
       event.stopPropagation();
       const nextIndex =
@@ -198,7 +224,9 @@ export function ReviewTabsBar({
   const handleMenuKey = (event: KeyboardEvent<HTMLUListElement>): void => {
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
+    const buttons = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"),
+    );
     const currentIndex = buttons.findIndex((button) => button === document.activeElement);
     const nextIndex =
       event.key === "Home"
@@ -215,22 +243,47 @@ export function ReviewTabsBar({
   };
   const selectedItem = menu?.kind === "tab" ? items.find((item) => item.id === menu.id) : null;
   const selectedIndex = selectedItem ? items.indexOf(selectedItem) : -1;
-  const openItems: Array<{ kind: Parameters<ReviewTabsBarProps["onOpen"]>[0]; label: string; icon: JSX.Element }> = [
+  const openItems: Array<{
+    kind: Parameters<ReviewTabsBarProps["onOpen"]>[0];
+    label: string;
+    icon: JSX.Element;
+  }> = [
     { kind: "changes", label: "Changes", icon: <ChangesIcon /> },
     { kind: "files", label: "Files", icon: <Folder size={14} aria-hidden="true" /> },
-    ...(hasAgents ? [{ kind: "agents" as const, label: "Agents", icon: <Bot size={14} aria-hidden="true" /> }] : []),
+    ...(hasAgents
+      ? [{ kind: "agents" as const, label: "Agents", icon: <Bot size={14} aria-hidden="true" /> }]
+      : []),
     ...(hasBrowser
-      ? [{ kind: "browser" as const, label: "Browser Tab", icon: <Globe size={14} aria-hidden="true" /> }]
+      ? [
+          {
+            kind: "browser" as const,
+            label: "Browser Tab",
+            icon: <Globe size={14} aria-hidden="true" />,
+          },
+        ]
       : []),
     ...(hasBrowser && artifactsEnabled
-      ? [{ kind: "artifacts" as const, label: "Claude Artifacts", icon: <Shapes size={14} aria-hidden="true" /> }]
+      ? [
+          {
+            kind: "artifacts" as const,
+            label: "Claude Artifacts",
+            icon: <Shapes size={14} aria-hidden="true" />,
+          },
+        ]
       : []),
-    ...(hasTerminal ? [{ kind: "terminal" as const, label: "Terminal", icon: <TerminalIcon /> }] : [])
+    ...(hasTerminal
+      ? [{ kind: "terminal" as const, label: "Terminal", icon: <TerminalIcon /> }]
+      : []),
   ];
 
   return (
     <div className="review-tabs-bar">
-      <div ref={tabList} className="review-resource-tabs" role="tablist" aria-label="Workspace tabs">
+      <div
+        ref={tabList}
+        className="review-resource-tabs"
+        role="tablist"
+        aria-label="Workspace tabs"
+      >
         {items.map((item, index) => (
           <div
             key={item.id}
@@ -240,7 +293,8 @@ export function ReviewTabsBar({
             data-visible={visibleIds.includes(item.id)}
             data-drop-target={dragOverId === item.id}
             data-drop-side={
-              draggedId.current && items.findIndex((candidate) => candidate.id === draggedId.current) < index
+              draggedId.current &&
+              items.findIndex((candidate) => candidate.id === draggedId.current) < index
                 ? "after"
                 : "before"
             }
@@ -305,7 +359,11 @@ export function ReviewTabsBar({
               </span>
               <span className="review-resource-tab-label">{item.label}</span>
               {item.dirty ? (
-                <span className="review-resource-tab-dirty" aria-label="Unsaved changes" title="Unsaved changes" />
+                <span
+                  className="review-resource-tab-dirty"
+                  aria-label="Unsaved changes"
+                  title="Unsaved changes"
+                />
               ) : null}
             </button>
             <button
@@ -331,7 +389,12 @@ export function ReviewTabsBar({
             className="review-tab-scroll"
             aria-label="Scroll tabs left"
             disabled={!overflow.left}
-            onClick={() => tabList.current?.scrollBy({ left: -tabList.current.clientWidth + 2, behavior: "auto" })}
+            onClick={() =>
+              tabList.current?.scrollBy({
+                left: -tabList.current.clientWidth + 2,
+                behavior: "auto",
+              })
+            }
           >
             <ArrowLeft size={13} aria-hidden="true" />
           </button>
@@ -340,7 +403,9 @@ export function ReviewTabsBar({
             className="review-tab-scroll"
             aria-label="Scroll tabs right"
             disabled={!overflow.right}
-            onClick={() => tabList.current?.scrollBy({ left: tabList.current.clientWidth - 2, behavior: "auto" })}
+            onClick={() =>
+              tabList.current?.scrollBy({ left: tabList.current.clientWidth - 2, behavior: "auto" })
+            }
           >
             <ArrowRight size={13} aria-hidden="true" />
           </button>
@@ -354,7 +419,9 @@ export function ReviewTabsBar({
         title="New workspace tab"
         aria-haspopup="menu"
         aria-expanded={menu?.kind === "new"}
-        onClick={() => (onNewTab ? onNewTab() : setMenu(menu?.kind === "new" ? null : { kind: "new" }))}
+        onClick={() =>
+          onNewTab ? onNewTab() : setMenu(menu?.kind === "new" ? null : { kind: "new" })
+        }
         onContextMenu={(event) => {
           event.preventDefault();
           setMenu({ kind: "new" });
@@ -369,7 +436,9 @@ export function ReviewTabsBar({
               className="project-picker-popover review-resource-tab-menu"
               style={popover.floatingStyles}
               role="menu"
-              aria-label={menu.kind === "new" ? "Open workspace tab" : `${selectedItem?.label} tab actions`}
+              aria-label={
+                menu.kind === "new" ? "Open workspace tab" : `${selectedItem?.label} tab actions`
+              }
               data-browser-overlay="true"
               onKeyDown={handleMenuKey}
             >
@@ -470,7 +539,7 @@ export function ReviewTabsBar({
                 </button>
               </li>
             </ul>,
-            document.body
+            document.body,
           )
         : null}
     </div>

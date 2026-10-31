@@ -14,10 +14,9 @@ describe("CodeBlock", () => {
   it("renders the language label when className declares one", () => {
     render(<CodeBlock className="language-ts">const x = 1;</CodeBlock>);
     expect(screen.getByText("TypeScript")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Copy code" }).closest("[data-label]")).toHaveAttribute(
-      "data-label",
-      "TypeScript"
-    );
+    expect(
+      screen.getByRole("button", { name: "Copy code" }).closest("[data-label]"),
+    ).toHaveAttribute("data-label", "TypeScript");
   });
 
   it("provides an in-flow wrap control for long lines", () => {
@@ -44,7 +43,7 @@ describe("CodeBlock", () => {
     const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
-      value: { writeText }
+      value: { writeText },
     });
     render(<CodeBlock className="language-py">print("hi")</CodeBlock>);
     const button = screen.getByRole("button", { name: "Copy code" });
@@ -70,7 +69,7 @@ describe("CodeBlock", () => {
         <span>const </span>
         <span>x</span>
         <span> = 1;</span>
-      </CodeBlock>
+      </CodeBlock>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Copy code" }));
     expect(writeText).toHaveBeenCalledWith("const x = 1;");

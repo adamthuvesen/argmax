@@ -5,7 +5,7 @@ import {
   useRef,
   useSyncExternalStore,
   type JSX,
-  type KeyboardEvent as ReactKeyboardEvent
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { TerminalInstance } from "./TerminalInstance.js";
 import {
@@ -15,7 +15,7 @@ import {
   markTerminalWorkspaceAttached,
   setActiveTerminalTab,
   subscribeTerminalTabs,
-  type TerminalTabMeta
+  type TerminalTabMeta,
 } from "../lib/terminalTabs.js";
 import { TerminalIcon } from "./ReviewModeIcons.js";
 
@@ -25,7 +25,9 @@ import { TerminalIcon } from "./ReviewModeIcons.js";
  * platform. Users primarily care that tabs are distinguishable, not strictly
  * accurate.
  */
-const SHELL_LABEL = (typeof navigator !== "undefined" ? navigator.platform : "").toLowerCase().includes("win")
+const SHELL_LABEL = (typeof navigator !== "undefined" ? navigator.platform : "")
+  .toLowerCase()
+  .includes("win")
   ? "powershell"
   : "zsh";
 
@@ -59,7 +61,7 @@ export function TerminalTabsPanel({
   workspaceId,
   visible,
   cwdLabel,
-  controlledTabId
+  controlledTabId,
 }: {
   controlledTabId?: string;
   workspaceId: string;
@@ -68,7 +70,7 @@ export function TerminalTabsPanel({
   cwdLabel?: string | null;
 }): JSX.Element {
   const { tabs, activeTabId: storedActiveTabId } = useSyncExternalStore(subscribeTerminalTabs, () =>
-    getWorkspaceTerminalState(workspaceId)
+    getWorkspaceTerminalState(workspaceId),
   );
 
   const activeTabId = controlledTabId ?? storedActiveTabId;
@@ -96,21 +98,24 @@ export function TerminalTabsPanel({
   }, [controlledTabId, tabs, workspaceId]);
 
   const addTab = useCallback(() => {
-    addTerminalTab(workspaceId, nextLabel(getWorkspaceTerminalState(workspaceId).tabs, SHELL_LABEL));
+    addTerminalTab(
+      workspaceId,
+      nextLabel(getWorkspaceTerminalState(workspaceId).tabs, SHELL_LABEL),
+    );
   }, [workspaceId]);
 
   const closeTab = useCallback(
     (tabId: string) => {
       closeTerminalTab(workspaceId, tabId);
     },
-    [workspaceId]
+    [workspaceId],
   );
 
   const activateTab = useCallback(
     (tabId: string) => {
       setActiveTerminalTab(workspaceId, tabId);
     },
-    [workspaceId]
+    [workspaceId],
   );
 
   // Refs to each tab's label button so keyboard nav can move focus along with
@@ -126,7 +131,7 @@ export function TerminalTabsPanel({
           tabButtonRefs.current.set(tabId, node);
         }
       },
-    []
+    [],
   );
 
   const focusTab = useCallback((tabId: string): void => {
@@ -172,7 +177,7 @@ export function TerminalTabsPanel({
           closeTab(tabId);
         }
       },
-    [activateTab, closeTab, focusTab, tabs]
+    [activateTab, closeTab, focusTab, tabs],
   );
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
@@ -199,7 +204,12 @@ export function TerminalTabsPanel({
     <div className="review-terminal">
       {!controlledTabId ? (
         <div className="file-tabs-shell">
-          <div className="file-tabs" role="tablist" aria-label="Terminal tabs" aria-orientation="horizontal">
+          <div
+            className="file-tabs"
+            role="tablist"
+            aria-label="Terminal tabs"
+            aria-orientation="horizontal"
+          >
             {tabs.map((tab) => {
               const isActive = tab.id === activeTabId;
               return (

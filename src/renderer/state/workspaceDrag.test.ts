@@ -6,18 +6,18 @@ import {
   consumeWorkspaceDragClick,
   resetWorkspaceDragForTests,
   subscribeWorkspacePointerDrag,
-  workspaceDragSnapshot
+  workspaceDragSnapshot,
 } from "./workspaceDrag.js";
 
 function dispatchPointer(
   type: "pointermove" | "pointerup" | "pointercancel",
-  input: { pointerId: number; clientX: number; clientY: number }
+  input: { pointerId: number; clientX: number; clientY: number },
 ): Event {
   const event = new MouseEvent(type, {
     bubbles: true,
     cancelable: true,
     clientX: input.clientX,
-    clientY: input.clientY
+    clientY: input.clientY,
   });
   Object.defineProperty(event, "pointerId", { value: input.pointerId });
   window.dispatchEvent(event);
@@ -40,7 +40,7 @@ describe("workspace pointer drag", () => {
       pointerId: 7,
       button: 0,
       clientX: 10,
-      clientY: 20
+      clientY: 20,
     });
     dispatchPointer("pointermove", { pointerId: 7, clientX: 13, clientY: 23 });
     expect(workspaceDragSnapshot()).toBeNull();
@@ -70,7 +70,7 @@ describe("workspace pointer drag", () => {
       button: 0,
       clientX: 0,
       clientY: 0,
-      onFinish
+      onFinish,
     });
     dispatchPointer("pointermove", { pointerId: 2, clientX: 6, clientY: 0 });
     dispatchPointer("pointercancel", { pointerId: 2, clientX: 6, clientY: 0 });

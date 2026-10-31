@@ -7,15 +7,23 @@ import {
   PROVIDER_MODELS,
   reasoningEffortsForModel,
   type ProviderModelSelection,
-  type ReasoningEffort
+  type ReasoningEffort,
 } from "../../shared/providerModels.js";
-import type { AutoTier, DiscoveredProvider, ProviderId, SessionSummary } from "../../shared/types.js";
+import type {
+  AutoTier,
+  DiscoveredProvider,
+  ProviderId,
+  SessionSummary,
+} from "../../shared/types.js";
 
 /** A {@link ProviderModelSelection} plus its provider, for the composer picker
  *  that spans providers (an idle session can switch agent). `autoTier` marks
  *  an Auto row: the router picks provider, model and effort at launch, and the
  *  rest of the selection is only the fallback it overwrites. */
-export type ModelPickerSelection = ProviderModelSelection & { provider: ProviderId; autoTier?: AutoTier };
+export type ModelPickerSelection = ProviderModelSelection & {
+  provider: ProviderId;
+  autoTier?: AutoTier;
+};
 
 /** Picker order: the strongest tier first. */
 export const AUTO_TIERS: readonly AutoTier[] = ["intelligence", "balanced", "cost", "economy"];
@@ -26,14 +34,14 @@ export const AUTO_TIER_SHORT_LABELS: Record<AutoTier, string> = {
   cost: "Speed",
   balanced: "Balance",
   intelligence: "Frontier",
-  economy: "Cost"
+  economy: "Cost",
 };
 
 const AUTO_TIER_LABELS: Record<AutoTier, string> = {
   cost: "Router Speed",
   balanced: "Router Balance",
   intelligence: "Router Frontier",
-  economy: "Router Cost"
+  economy: "Router Cost",
 };
 
 // Prose copy of the routing grid in src-tauri/src/routing/table.rs; edit both
@@ -42,7 +50,7 @@ export const AUTO_TIER_DESCRIPTIONS: Record<AutoTier, string> = {
   cost: "Sonnet and DeepSeek, reviews included",
   balanced: "Sonnet for everyday work, Opus for heavy work and reviews",
   intelligence: "Frontier models, deeper reasoning",
-  economy: "Luna for routine work, Sol for larger work; Sonnet for reviews"
+  economy: "Luna for routine work, Sol for larger work; Sonnet for reviews",
 };
 
 /** Picker row and recency key for an Auto row, apart from every `provider:modelId`. */
@@ -63,7 +71,7 @@ export function autoTierSelection(autoTier: AutoTier): ModelPickerSelection {
     label: AUTO_TIER_LABELS[autoTier],
     modelId: economy ? "gpt-6.1-sol" : "claude-opus-5-5",
     reasoningEffort: "medium",
-    autoTier
+    autoTier,
   };
 }
 
@@ -79,28 +87,34 @@ export function autoSessionChipLabel(session: SessionSummary): string | null {
  *  an editable reasoning effort (fast models don't). */
 type ModelPickerOption = ModelPickerSelection & { supportsReasoningEffort: boolean };
 
-export const allModelOptions: ModelPickerOption[] = (Object.keys(PROVIDER_MODELS) as ProviderId[]).flatMap((provider) =>
+export const allModelOptions: ModelPickerOption[] = (
+  Object.keys(PROVIDER_MODELS) as ProviderId[]
+).flatMap((provider) =>
   PROVIDER_MODELS[provider].map((model) => {
     // Resolve the seed onto what the model actually offers: the OpenCode
     // variant lists are discrete (Qwen3.8 Flash is high/max only), so an unresolved
     // "medium" would show Medium in the picker while the adapter launched a
     // different variant. The row seed is catalog-level, so it uses the
     // built-in default effort rather than the user's preference.
-    const reasoningEffort = model.supportsReasoningEffort ? effortForModel(provider, model.modelId) : undefined;
+    const reasoningEffort = model.supportsReasoningEffort
+      ? effortForModel(provider, model.modelId)
+      : undefined;
     return {
       provider,
       label: model.label,
       modelId: model.modelId,
       supportsReasoningEffort: Boolean(model.supportsReasoningEffort),
-      ...(reasoningEffort ? { reasoningEffort } : {})
+      ...(reasoningEffort ? { reasoningEffort } : {}),
     };
-  })
+  }),
 );
 
 // One row per model now, so the key no longer encodes effort. The cross-provider
 // picker needs the provider in the key (model ids can repeat across providers);
 // a single-provider picker keys on the model id alone.
-export function providerModelKey(model: Pick<ModelPickerSelection, "provider" | "modelId">): string {
+export function providerModelKey(
+  model: Pick<ModelPickerSelection, "provider" | "modelId">,
+): string {
   return `${model.provider}:${model.modelId}`;
 }
 
@@ -110,8 +124,13 @@ export function modelKey(model: Pick<ProviderModelSelection, "modelId">): string
 
 // Eligibility includes the active chat transport. Cursor's legacy CLI suffix
 // does not give its ACP chats a speed control. Unknown models default to off.
-export function modelSupportsFastMode(model: Pick<ModelPickerSelection, "provider" | "modelId">): boolean {
-  return PROVIDER_MODELS[model.provider].find((option) => option.modelId === model.modelId)?.supportsFastMode === true;
+export function modelSupportsFastMode(
+  model: Pick<ModelPickerSelection, "provider" | "modelId">,
+): boolean {
+  return (
+    PROVIDER_MODELS[model.provider].find((option) => option.modelId === model.modelId)
+      ?.supportsFastMode === true
+  );
 }
 
 const EFFORT_LABELS: Record<ReasoningEffort, string> = {
@@ -120,7 +139,7 @@ const EFFORT_LABELS: Record<ReasoningEffort, string> = {
   high: "High",
   xhigh: "Extra High",
   max: "Max",
-  ultra: "Ultra"
+  ultra: "Ultra",
 };
 
 export function effortLabel(reasoningEffort: ReasoningEffort): string {
@@ -133,7 +152,7 @@ export function effortLabel(reasoningEffort: ReasoningEffort): string {
  *  default than the High the catalog names). */
 export function modelDefaultForProvider(
   provider: ProviderId,
-  preferredEffort: ReasoningEffort = DEFAULT_REASONING_EFFORT
+  preferredEffort: ReasoningEffort = DEFAULT_REASONING_EFFORT,
 ): ProviderModelSelection {
   const model = PROVIDER_MODEL_DEFAULTS[provider];
   const allowed = reasoningEffortsForModel(provider, model.modelId);
@@ -145,7 +164,7 @@ export function modelDefaultForProvider(
   return {
     label: model.label,
     modelId: model.modelId,
-    ...(reasoningEffort ? { reasoningEffort } : {})
+    ...(reasoningEffort ? { reasoningEffort } : {}),
   };
 }
 
@@ -154,13 +173,19 @@ export function modelDefaultForProvider(
  *  Must list every ProviderId — a provider missing here is invisible to the
  *  launcher even when it is the only one installed, and the array type won't
  *  catch the omission (see the exhaustiveness test in models.test.ts). */
-export const PROVIDER_LAUNCH_PRIORITY: ProviderId[] = ["claude", "codex", "cursor", "opencode", "grok"];
+export const PROVIDER_LAUNCH_PRIORITY: ProviderId[] = [
+  "claude",
+  "codex",
+  "cursor",
+  "opencode",
+  "grok",
+];
 
 /** Last-resort launcher pick when no provider CLI is installed: OpenCode's
  *  catalog default. */
 export const FALLBACK_LAUNCH_MODEL: ModelPickerSelection = {
   provider: "opencode",
-  ...modelDefaultForProvider("opencode")
+  ...modelDefaultForProvider("opencode"),
 };
 
 /** Unpersisted factory default: highest-priority provider's catalog default. */
@@ -193,7 +218,7 @@ export function preferredLaunchProvider(providers: DiscoveredProvider[]): Provid
  */
 export function preferredLaunchModel(
   providers: DiscoveredProvider[],
-  preferredEffort?: ReasoningEffort
+  preferredEffort?: ReasoningEffort,
 ): ModelPickerSelection {
   const preferred = preferredLaunchProvider(providers);
   if (!preferred) return FALLBACK_LAUNCH_MODEL;
@@ -224,21 +249,25 @@ export function modelSelectionFromSession(session: SessionSummary | null): Provi
   // the ladder: `reasoningEffortsForModel` answers per provider, so it hands
   // Haiku the full Claude ladder for a model that has no effort at all.
   const supportsEffort =
-    PROVIDER_MODELS[session.provider].find((model) => model.modelId === modelId)?.supportsReasoningEffort === true;
+    PROVIDER_MODELS[session.provider].find((model) => model.modelId === modelId)
+      ?.supportsReasoningEffort === true;
   const reasoningEffort =
-    session.reasoningEffort ?? (supportsEffort ? effortForModel(session.provider, modelId) : undefined);
+    session.reasoningEffort ??
+    (supportsEffort ? effortForModel(session.provider, modelId) : undefined);
   return {
     label,
     modelId,
-    ...(reasoningEffort ? { reasoningEffort } : {})
+    ...(reasoningEffort ? { reasoningEffort } : {}),
   };
 }
 
 /** Same as {@link modelSelectionFromSession} but carries the provider, for the
  *  cross-provider composer picker that can switch an idle session's agent. */
-export function modelPickerSelectionFromSession(session: SessionSummary | null): ModelPickerSelection {
+export function modelPickerSelectionFromSession(
+  session: SessionSummary | null,
+): ModelPickerSelection {
   return {
     provider: session?.provider ?? "codex",
-    ...modelSelectionFromSession(session)
+    ...modelSelectionFromSession(session),
   };
 }

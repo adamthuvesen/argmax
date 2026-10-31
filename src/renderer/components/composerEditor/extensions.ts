@@ -8,14 +8,14 @@ import {
   keymap,
   type Command,
   type DecorationSet,
-  type ViewUpdate
+  type ViewUpdate,
 } from "@codemirror/view";
 import {
   COMPOSER_CLIPBOARD_MIME,
   decodeClipboardPayload,
   encodeClipboardPayload,
   findChatReferences,
-  type ChatReference
+  type ChatReference,
 } from "../../lib/composerContext.js";
 import { splitSkillTokens } from "../../lib/slashHighlight.js";
 
@@ -32,14 +32,14 @@ export interface ChatChipEnvironment {
 const NO_CHATS: ChatChipEnvironment = { resolve: () => null, open: () => undefined };
 
 export const chatChipEnvironment = Facet.define<ChatChipEnvironment, ChatChipEnvironment>({
-  combine: (values) => values[values.length - 1] ?? NO_CHATS
+  combine: (values) => values[values.length - 1] ?? NO_CHATS,
 });
 
 /** Which `/name` tokens are real skills or commands, to tint. */
 type SkillPredicate = (lowercaseName: string) => boolean;
 
 export const skillTokenPredicate = Facet.define<SkillPredicate, SkillPredicate | null>({
-  combine: (values) => values[values.length - 1] ?? null
+  combine: (values) => values[values.length - 1] ?? null,
 });
 
 /** A pasted wall of text is not worth re-scanning on every keystroke. */
@@ -49,7 +49,7 @@ class ChatChipWidget extends WidgetType {
   constructor(
     private readonly reference: ChatReference,
     private readonly resolvedTitle: string | null,
-    private readonly open: (sessionId: string) => void
+    private readonly open: (sessionId: string) => void,
   ) {
     super();
   }
@@ -72,7 +72,9 @@ class ChatChipWidget extends WidgetType {
     chip.setAttribute("role", resolved ? "button" : "img");
     chip.setAttribute(
       "aria-label",
-      resolved ? `Chat reference: ${title}. Open chat` : `Chat reference: ${title}. No longer available`
+      resolved
+        ? `Chat reference: ${title}. Open chat`
+        : `Chat reference: ${title}. No longer available`,
     );
     chip.title = resolved ? `Open chat: ${title}` : "This chat is no longer available";
     if (resolved) chip.tabIndex = 0;
@@ -117,8 +119,10 @@ function buildDecorations(view: EditorView): ChipSets {
     const resolved = environment.resolve(match.reference.sessionId);
     chips.push(
       Decoration.replace({
-        widget: new ChatChipWidget(match.reference, resolved?.title ?? null, (sessionId) => environment.open(sessionId))
-      }).range(match.from, match.to)
+        widget: new ChatChipWidget(match.reference, resolved?.title ?? null, (sessionId) =>
+          environment.open(sessionId),
+        ),
+      }).range(match.from, match.to),
     );
   }
   const all = [...chips];
@@ -153,14 +157,17 @@ const promptDecorations = ViewPlugin.fromClass(
   },
   {
     decorations: (plugin) => plugin.sets.all,
-    provide: (plugin) => EditorView.atomicRanges.of((view) => view.plugin(plugin)?.sets.chips ?? Decoration.none)
-  }
+    provide: (plugin) =>
+      EditorView.atomicRanges.of((view) => view.plugin(plugin)?.sets.chips ?? Decoration.none),
+  },
 );
 
 /** Open the chat reference at the selection, if it names a chat the app has. */
 const openReferenceAtCaret: Command = (view) => {
   const { from, to } = view.state.selection.main;
-  const touching = findChatReferences(view.state.doc.toString()).find((match) => from <= match.to && to >= match.from);
+  const touching = findChatReferences(view.state.doc.toString()).find(
+    (match) => from <= match.to && to >= match.from,
+  );
   if (!touching) return false;
   const environment = view.state.facet(chatChipEnvironment);
   if (!environment.resolve(touching.reference.sessionId)) return false;
@@ -203,7 +210,7 @@ function clipboardHandlers(): Extension {
   };
   return EditorView.domEventHandlers({
     copy: (event, view) => write(event, view, false),
-    cut: (event, view) => write(event, view, true)
+    cut: (event, view) => write(event, view, true),
   });
 }
 
@@ -232,7 +239,7 @@ export function promptExtensions(callbacks: { current: PromptCallbacks }): Exten
     { key: "Enter", run: breakLine },
     { key: "Shift-Enter", run: breakLine },
     ...standardKeymap.filter((binding) => !(binding.key ?? "").includes("Enter")),
-    ...historyKeymap
+    ...historyKeymap,
   ];
   return [
     history(),
@@ -264,15 +271,15 @@ export function promptExtensions(callbacks: { current: PromptCallbacks }): Exten
         if (!payload) return false;
         view.dispatch(view.state.replaceSelection(payload.text), {
           userEvent: "input.paste",
-          scrollIntoView: true
+          scrollIntoView: true,
         });
         event.preventDefault();
         return true;
       },
       // A dropped file is the attachment hook's to take. CodeMirror would
       // read it as text and type it into the prompt.
-      drop: (event) => (event.dataTransfer?.files.length ?? 0) > 0
+      drop: (event) => (event.dataTransfer?.files.length ?? 0) > 0,
     }),
-    keymap.of(keys)
+    keymap.of(keys),
   ];
 }

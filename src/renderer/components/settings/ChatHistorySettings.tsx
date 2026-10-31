@@ -97,11 +97,23 @@ export function ChatHistorySettings(): JSX.Element {
           description="This cannot be undone. These chats will also stay excluded from chat sync."
           control={
             <>
-              <button type="button" className="settings-button" disabled={busy} onClick={() => setPreview(null)}>
+              <button
+                type="button"
+                className="settings-button"
+                disabled={busy}
+                onClick={() => setPreview(null)}
+              >
                 Cancel
               </button>
-              <button type="button" className="settings-button" disabled={busy} onClick={() => void deleteChats()}>
-                {busy ? "Deleting…" : `Delete ${preview.chatCount} ${preview.chatCount === 1 ? "chat" : "chats"}`}
+              <button
+                type="button"
+                className="settings-button"
+                disabled={busy}
+                onClick={() => void deleteChats()}
+              >
+                {busy
+                  ? "Deleting…"
+                  : `Delete ${preview.chatCount} ${preview.chatCount === 1 ? "chat" : "chats"}`}
               </button>
             </>
           }

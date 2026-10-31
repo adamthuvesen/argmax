@@ -14,7 +14,12 @@ const ELAPSED_VISIBLE_AFTER_MS = 3_000;
 /** The jokes only work while they stay surprises, so they are drawn from their
  *  own band rather than earning a regular slot. They also read as honest on a
  *  long wait, which is exactly when the label is being stared at. */
-const EASTER_EGG_WORDS = ["Yak-shaving", "Tail-chasing", "Overthinking", "Gradient-descending"] as const;
+const EASTER_EGG_WORDS = [
+  "Yak-shaving",
+  "Tail-chasing",
+  "Overthinking",
+  "Gradient-descending",
+] as const;
 const RARE_THINKING_WORDS: readonly string[] = ["Argmaxing", ...EASTER_EGG_WORDS];
 const REGULAR_THINKING_WORDS = THINKING_WORDS.filter((word) => !RARE_THINKING_WORDS.includes(word));
 // Draws per hundred. Integers, because the seeded path buckets its hash into a
@@ -59,7 +64,7 @@ function chooseThinkingWord(seed: string | undefined): (typeof THINKING_WORDS)[n
 export function ThinkingLabel({
   phaseKey,
   startedAtMs,
-  leaving = false
+  leaving = false,
 }: {
   phaseKey?: string | undefined;
   /** When this silent stretch began (epoch ms), so a remount mid-gap keeps
@@ -73,7 +78,7 @@ export function ThinkingLabel({
   leaving?: boolean;
 }): JSX.Element {
   const [word] = useState(() =>
-    chooseThinkingWord(startedAtMs === undefined ? undefined : `${phaseKey ?? ""}:${startedAtMs}`)
+    chooseThinkingWord(startedAtMs === undefined ? undefined : `${phaseKey ?? ""}:${startedAtMs}`),
   );
   // The label mounts when the wait starts and unmounts when it ends, so its own
   // lifetime *is* the gap being counted. Each new silent stretch counts from
@@ -90,8 +95,13 @@ export function ThinkingLabel({
   useLayoutEffect(() => {
     const node = elapsedRef.current;
     if (!node) return;
-    const getMs = startedAtMs === undefined ? () => performance.now() - mountAnchor : () => Date.now() - startedAtMs;
-    return registerLiveTimer(node, getMs, (ms) => (ms < ELAPSED_VISIBLE_AFTER_MS ? "" : formatElapsedSeconds(ms)));
+    const getMs =
+      startedAtMs === undefined
+        ? () => performance.now() - mountAnchor
+        : () => Date.now() - startedAtMs;
+    return registerLiveTimer(node, getMs, (ms) =>
+      ms < ELAPSED_VISIBLE_AFTER_MS ? "" : formatElapsedSeconds(ms),
+    );
   }, [startedAtMs, mountAnchor]);
 
   return (

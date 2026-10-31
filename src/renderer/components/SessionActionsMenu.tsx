@@ -9,7 +9,7 @@ import {
   PanelRightDashed,
   SquareArrowOutUpRight,
   SquarePen,
-  Workflow
+  Workflow,
 } from "lucide-react";
 import { useCallback, useContext, useEffect, useState, type JSX } from "react";
 import { prActions, windowActions } from "../data/bridgeActions.js";
@@ -40,7 +40,7 @@ export function SessionActionsMenu({
   onToggleLog,
   onToggleWorkspaceCard,
   session,
-  workspace
+  workspace,
 }: {
   defaultIde?: IdeId | null;
   detectedIdes?: DetectedIde[];
@@ -69,7 +69,8 @@ export function SessionActionsMenu({
 }): JSX.Element {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [cloudDialogOpen, setCloudDialogOpen] = useState(false);
-  const cloudProvider = session && isHostedCloudProvider(session.provider) ? session.provider : null;
+  const cloudProvider =
+    session && isHostedCloudProvider(session.provider) ? session.provider : null;
   const developerToolsEnabled = useContext(DeveloperToolsContext);
   const closeActions = useCallback(() => {
     setActionsOpen(false);
@@ -86,7 +87,8 @@ export function SessionActionsMenu({
     key: ["prs.listForSession", sessionId],
     enabled: sessionId !== undefined,
     read: (api) => api.prs?.listForSession({ sessionId: sessionId ?? "" }),
-    onError: (error) => showErrorToast(error instanceof Error ? error.message : "Could not load pull requests.")
+    onError: (error) =>
+      showErrorToast(error instanceof Error ? error.message : "Could not load pull requests."),
   });
   useEffect(() => {
     if (!sessionId || !prActions()) return;
@@ -97,11 +99,13 @@ export function SessionActionsMenu({
   // GUI IDE *is* the "Ask each time" setting — guessing a favorite here would
   // silently override an explicit choice.
   const guiIdes = detectedIdes.filter((entry) => entry.id !== "terminal" && entry.id !== "iterm");
-  const pinnedIde = defaultIde && detectedIdes.some((entry) => entry.id === defaultIde) ? defaultIde : null;
+  const pinnedIde =
+    defaultIde && detectedIdes.some((entry) => entry.id === defaultIde) ? defaultIde : null;
   const ideChoices = pinnedIde ? detectedIdes.filter((entry) => entry.id === pinnedIde) : guiIdes;
   // Tearing off is a desktop gesture from the main window: the phone has no
   // windows, and a window already torn off would only focus itself.
-  const canOpenInWindow = typeof window !== "undefined" && windowActions() !== undefined && !isSecondaryWindow();
+  const canOpenInWindow =
+    typeof window !== "undefined" && windowActions() !== undefined && !isSecondaryWindow();
 
   return (
     <>
@@ -154,7 +158,10 @@ export function SessionActionsMenu({
                             role="menuitem"
                             className="project-picker-item"
                             disabled={onStartArc.disabledReason !== null}
-                            title={onStartArc.disabledReason ?? "This chat becomes the coordinator of a new arc"}
+                            title={
+                              onStartArc.disabledReason ??
+                              "This chat becomes the coordinator of a new arc"
+                            }
                             onClick={() => {
                               closeActions();
                               onStartArc.run();
@@ -181,7 +188,7 @@ export function SessionActionsMenu({
                             Send Task to {cloudProviderName(cloudProvider)}…
                           </button>
                         </li>
-                      ) : null
+                      ) : null,
                     ],
                     [
                       session?.launchedBySessionId && onOpenLaunchingChat ? (
@@ -246,7 +253,9 @@ export function SessionActionsMenu({
                                 ?.openSession({ sessionId: session.id })
                                 .catch((error: unknown) => {
                                   showErrorToast(
-                                    error instanceof Error ? error.message : "Couldn't open a new window."
+                                    error instanceof Error
+                                      ? error.message
+                                      : "Couldn't open a new window.",
                                   );
                                 });
                             }}
@@ -279,7 +288,7 @@ export function SessionActionsMenu({
                               </button>
                             </li>
                           ))
-                        : null
+                        : null,
                     ],
                     [
                       <li role="none">
@@ -315,13 +324,13 @@ export function SessionActionsMenu({
                             Debug Log
                           </button>
                         </li>
-                      ) : null
-                    ]
+                      ) : null,
+                    ],
                   ]}
                 />
               </ul>
             </div>,
-            document.body
+            document.body,
           )}
       </div>
       {session && cloudProvider ? (

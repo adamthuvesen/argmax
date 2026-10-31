@@ -1,6 +1,12 @@
 import type { JSX } from "react";
 import type { ActivityPullRequest, ActivitySummary } from "./activityContract.js";
-import { formatAdded, formatCount, formatDuration, formatRemoved, formatShortDate } from "./activityFormat.js";
+import {
+  formatAdded,
+  formatCount,
+  formatDuration,
+  formatRemoved,
+  formatShortDate,
+} from "./activityFormat.js";
 import { repositorySlots } from "./activityPresentation.js";
 import { ActivityGithubNotice } from "./ActivityGithubNotice.js";
 
@@ -17,7 +23,7 @@ const VISIBLE_ROWS = 8;
 const STATE_TITLE: Record<ActivityPullRequest["state"], string> = {
   merged: "Merged",
   open: "Open",
-  closed: "Closed without merging"
+  closed: "Closed without merging",
 };
 
 /**
@@ -50,7 +56,9 @@ function cycle(pr: ActivityPullRequest, now: number): JSX.Element {
   if (pr.state === "open") {
     const waiting = (now - new Date(pr.createdAt).getTime()) / 1000;
     return (
-      <span className="activity-pr-quiet">{waiting > 0 ? `${formatDuration(waiting)} so far` : "just opened"}</span>
+      <span className="activity-pr-quiet">
+        {waiting > 0 ? `${formatDuration(waiting)} so far` : "just opened"}
+      </span>
     );
   }
   return (
@@ -80,7 +88,8 @@ export function ActivityPullRequests({ summary }: { summary: ActivitySummary }):
         <h2 className="activity-card-title">Pull requests</h2>
         {github.available ? (
           <p className="activity-card-note">
-            <strong>{formatCount(totals.prsMerged)}</strong> merged · <strong>{formatCount(stillOpen)}</strong> open ·{" "}
+            <strong>{formatCount(totals.prsMerged)}</strong> merged ·{" "}
+            <strong>{formatCount(stillOpen)}</strong> open ·{" "}
             <strong>{formatCount(totals.prsClosed)}</strong> closed
           </p>
         ) : null}
@@ -122,7 +131,11 @@ export function ActivityPullRequests({ summary }: { summary: ActivitySummary }):
                           the title's, and three states read faster as violet /
                           sage / an empty ring than as three more labels. The
                           `title` carries the word for a reader who needs it. */}
-                      <span className="activity-pr-state" data-state={pr.state} title={STATE_TITLE[pr.state]} />
+                      <span
+                        className="activity-pr-state"
+                        data-state={pr.state}
+                        title={STATE_TITLE[pr.state]}
+                      />
                       <span className="activity-pr-label">{pr.title}</span>
                       {pr.isDraft ? <span className="activity-pr-draft">Draft</span> : null}
                     </span>
@@ -151,7 +164,9 @@ export function ActivityPullRequests({ summary }: { summary: ActivitySummary }):
                 itself on the definition instead of repeating the figure. */}
             <span>Cycle time is opened → merged, over pull requests you authored.</span>
             {summary.pullRequests.length > rows.length ? (
-              <span className="activity-ledger-more">{formatCount(summary.pullRequests.length)} in this window</span>
+              <span className="activity-ledger-more">
+                {formatCount(summary.pullRequests.length)} in this window
+              </span>
             ) : null}
           </p>
         </>

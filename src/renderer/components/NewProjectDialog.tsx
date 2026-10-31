@@ -7,7 +7,7 @@ import { ProjectFoldersForm, type ProjectFoldersDraft } from "./ProjectFoldersFo
 
 export function NewProjectDialog({
   onClose,
-  onCreate
+  onCreate,
 }: {
   onClose: () => void;
   onCreate: (draft: ProjectFoldersDraft) => Promise<void>;
@@ -19,7 +19,7 @@ export function NewProjectDialog({
   };
   useDismissOnOutsideOrEscape(dialogRef, true, dismiss, undefined, {
     trapFocus: true,
-    dismissOnOutsideMouseDown: false
+    dismissOnOutsideMouseDown: false,
   });
   useRestoreFocus(true);
 
@@ -60,6 +60,6 @@ export function NewProjectDialog({
         />
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

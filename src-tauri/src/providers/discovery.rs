@@ -5,9 +5,10 @@ use specta::Type;
 use tokio::{process::Command, sync::Mutex};
 
 use super::{
-    adapters::get_provider_definition, environment::build_provider_environment,
-    opencode_isolation::IsolatedOpenCodeData, ApprovalSupport, ProviderId,
+    adapters::get_provider_definition, opencode_isolation::IsolatedOpenCodeData, ApprovalSupport,
+    ProviderId,
 };
+use argmax_process::environment::build_provider_environment;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]

@@ -8,12 +8,12 @@ use std::sync::{Arc, LazyLock, Mutex};
 use rusqlite::OptionalExtension;
 use serde_json::Value;
 
-use crate::git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
 use crate::git::ops::{
     extract_github_remote_from_url, extract_pr_number, extract_pr_url, parse_github_remote,
 };
 use crate::util::gh_runner::{default_gh_runner, GhRunner};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::git_exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
 use argmax_store::database::Database;
 use argmax_store::gh::{
     list_gh_pr_for_session, list_refreshable_pr_numbers_for_session, pr_branch_for_session,

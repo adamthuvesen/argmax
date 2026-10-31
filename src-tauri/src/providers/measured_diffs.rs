@@ -462,15 +462,19 @@ mod tests {
             vec!["config", "user.email", "test@example.com"],
             vec!["config", "user.name", "Test"],
         ] {
-            crate::git::exec::run_git_text(root, args, std::time::Duration::from_secs(30))
+            argmax_process::git_exec::run_git_text(root, args, std::time::Duration::from_secs(30))
                 .await
                 .expect("git setup");
         }
         std::fs::write(root.join("model.sql"), "one\ntwo\n").expect("write");
-        crate::git::exec::run_git_text(root, ["add", "-A"], std::time::Duration::from_secs(30))
-            .await
-            .expect("git add");
-        crate::git::exec::run_git_text(
+        argmax_process::git_exec::run_git_text(
+            root,
+            ["add", "-A"],
+            std::time::Duration::from_secs(30),
+        )
+        .await
+        .expect("git add");
+        argmax_process::git_exec::run_git_text(
             root,
             ["commit", "-m", "init"],
             std::time::Duration::from_secs(30),

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use argmax_lib::git::exec::{run_git_text_blocking, GIT_DEFAULT_TIMEOUT};
+use argmax_process::git_exec::{run_git_text_blocking, GIT_DEFAULT_TIMEOUT};
 use tempfile::TempDir;
 
 pub struct SeededGitRepo {

@@ -12,7 +12,6 @@ pub(crate) mod continuity_tests;
 pub mod cursor_acp;
 pub mod cursor_cloud;
 pub mod discovery;
-pub use argmax_process::environment;
 pub mod flush_queue;
 pub(crate) mod follow_up;
 pub mod fork_merge;
@@ -32,7 +31,6 @@ pub mod pricing;
 pub mod runtime;
 pub mod session_service;
 pub mod subagent_trace;
-pub use argmax_store::tool_activity;
 pub mod unified_diff;
 pub mod verification;
 

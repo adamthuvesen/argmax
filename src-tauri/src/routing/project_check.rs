@@ -838,7 +838,7 @@ fn build_profile(
 ) -> Profile {
     let repo = Path::new(&project.repo_path);
     let files: Vec<String> =
-        crate::git::exec::run_git_text_blocking(repo, ["ls-files"], GIT_TIMEOUT)
+        argmax_process::git_exec::run_git_text_blocking(repo, ["ls-files"], GIT_TIMEOUT)
             .map(|stdout| stdout.lines().map(str::to_string).collect())
             .unwrap_or_default();
     let history = project_history(connection, project, data_dir);

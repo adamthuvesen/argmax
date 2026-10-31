@@ -36,17 +36,11 @@ use super::lifecycle::{ArchiveOutcome, WorkspaceArchiveLease, WorkspaceLifecycle
 use super::watcher::WatcherRegistry;
 use crate::approvals::service::ApprovalService;
 use crate::checks::service::{CheckService, RunWorkspaceCheckInput};
-use crate::git::exec::{
-    run_git_text, run_git_text_blocking, run_git_text_with_allowed_exit_codes, GIT_DEFAULT_TIMEOUT,
-};
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::session_service::ProviderSessionService;
 use crate::terminal::service::TerminalService;
 use crate::util::workspace_paths::normalize;
-use crate::workspaces::branch_names::{
-    render_branch_step, BranchNameParts, BranchStep, DEFAULT_BRANCH_TEMPLATE,
-};
 use crate::workspaces::inputs::{
     OpenIdeChoice, ScratchWorkspaceKind, WorkspacesArchiveInput, WorkspacesAutotitleInput,
     WorkspacesCreateCurrentInput, WorkspacesCreateInCheckoutInput, WorkspacesCreateIsolatedInput,
@@ -55,8 +49,14 @@ use crate::workspaces::inputs::{
     WorkspacesSetPinnedInput, WorkspacesSetPriorityAddedInput, WorkspacesSetPriorityDismissedInput,
     WorkspacesSetSnoozedUntilInput,
 };
+use argmax_contracts::branch_names::{
+    render_branch_step, BranchNameParts, BranchStep, DEFAULT_BRANCH_TEMPLATE,
+};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::state::SessionState;
+use argmax_process::git_exec::{
+    run_git_text, run_git_text_blocking, run_git_text_with_allowed_exit_codes, GIT_DEFAULT_TIMEOUT,
+};
 use argmax_store::arcs::{get_arc, set_arc_coordinator_session};
 use argmax_store::database::Database;
 use argmax_store::events::{

@@ -25,7 +25,6 @@ use tokio::time::MissedTickBehavior;
 use uuid::Uuid;
 
 use super::adapters::codex_effort_value;
-use super::environment::build_provider_environment;
 use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
@@ -39,6 +38,7 @@ use crate::session_control::{
     SessionLaunchProcessConfig, SESSION_LAUNCH_SOCKET_ENV, SESSION_LAUNCH_TOKEN_ENV,
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::environment::build_provider_environment;
 use argmax_store::sync::LockOrRecover;
 use argmax_store::time::now_iso;
 

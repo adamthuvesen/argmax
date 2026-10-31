@@ -2,7 +2,6 @@
 //! Wire reference: anthropics/claude-agent-sdk-python, _internal/query.py.
 use super::{
     adapters::get_provider_definition,
-    environment::build_provider_environment,
     normalizer::ProviderOutputStream,
     runtime::{
         BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType,
@@ -12,6 +11,7 @@ use super::{
 };
 use crate::{approvals::service::ApprovalService, session_control::SessionLaunchProcessConfig};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::environment::build_provider_environment;
 use argmax_store::time::now_iso;
 use serde_json::{json, Value};
 use std::{

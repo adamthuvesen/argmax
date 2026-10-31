@@ -9,7 +9,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-pub use argmax_contracts::branch_names;
 pub mod inputs;
 pub mod lifecycle;
 pub mod orchestration;

@@ -234,11 +234,8 @@ pub(crate) async fn review_revert_hunk_impl(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT},
-        review::git_review::ReviewComparison,
-        workspaces::WorkspaceTargetKind,
-    };
+    use crate::{review::git_review::ReviewComparison, workspaces::WorkspaceTargetKind};
+    use argmax_process::git_exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
     use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
     use argmax_store::Database;
     use std::{path::Path, sync::Arc};

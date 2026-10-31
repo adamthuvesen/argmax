@@ -78,7 +78,7 @@ pub struct BranchTemplateSettings {
 fn settings(template: Option<String>) -> BranchTemplateSettings {
     BranchTemplateSettings {
         template,
-        default_template: crate::workspaces::branch_names::DEFAULT_BRANCH_TEMPLATE,
+        default_template: argmax_contracts::branch_names::DEFAULT_BRANCH_TEMPLATE,
     }
 }
 

@@ -4452,10 +4452,10 @@ Apply the merge gate before merging.\n{PR_URL}"
             let remote_at_archive = Arc::clone(&remote_at_archive);
             let main = repo.main.clone();
             Arc::new(move |_| {
-                let listing = crate::git::exec::run_git_text_blocking(
+                let listing = argmax_process::git_exec::run_git_text_blocking(
                     &main,
                     ["ls-remote", "--heads", "origin", "fix-parser"],
-                    crate::git::exec::GIT_DEFAULT_TIMEOUT,
+                    argmax_process::git_exec::GIT_DEFAULT_TIMEOUT,
                 )
                 .expect("ls-remote");
                 remote_at_archive.lock().expect("archive").push(listing);

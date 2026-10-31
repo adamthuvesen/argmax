@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 
 use uuid::Uuid;
 
-use crate::git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::git_exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
 use argmax_store::database::Database;
 use argmax_store::projects::{
     parse_github_remote, persist_project, PersistProjectInput, ProjectRemote, ProjectSettings,

@@ -244,7 +244,7 @@ fn native_plan(
 /// The source's current uncommitted state as a patch, so an isolated fork
 /// starts from the files the person sees now.
 async fn current_files_patch(source_path: &Path) -> ArgmaxResult<Option<PathBuf>> {
-    use crate::git::exec::{run_git_text_with_options, GitExecOptions};
+    use argmax_process::git_exec::{run_git_text_with_options, GitExecOptions};
     let scratch = tempfile::tempdir().map_err(|error| {
         ArgmaxError::service(
             "FORK_SCRATCH",

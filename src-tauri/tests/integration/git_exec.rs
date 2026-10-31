@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::support::git_repo::seed_git_repo;
-use argmax_lib::git::exec::{
+use argmax_process::git_exec::{
     reject_leading_dash, run_git_buffer, run_git_buffer_with_options, run_git_text,
     run_git_text_with_allowed_exit_codes, run_git_text_with_options, GitExecOptions,
 };

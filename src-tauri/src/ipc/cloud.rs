@@ -574,10 +574,10 @@ mod tests {
         };
 
         let root = tempfile::tempdir().unwrap();
-        crate::git::exec::run_git_text_blocking(
+        argmax_process::git_exec::run_git_text_blocking(
             root.path(),
             ["init", "-q"],
-            crate::git::exec::GIT_DEFAULT_TIMEOUT,
+            argmax_process::git_exec::GIT_DEFAULT_TIMEOUT,
         )
         .unwrap();
         let database = Database::open_in_memory().expect("database");
@@ -609,10 +609,10 @@ mod tests {
         assert_eq!(checkout.path, root.path());
         assert!(checkout.brief.is_empty());
         let secondary = tempfile::tempdir().unwrap();
-        crate::git::exec::run_git_text_blocking(
+        argmax_process::git_exec::run_git_text_blocking(
             secondary.path(),
             ["init", "-q"],
-            crate::git::exec::GIT_DEFAULT_TIMEOUT,
+            argmax_process::git_exec::GIT_DEFAULT_TIMEOUT,
         )
         .unwrap();
         let plain = tempfile::tempdir().unwrap();

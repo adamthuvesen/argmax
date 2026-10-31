@@ -51,12 +51,9 @@ use super::{
     registry::{ParentLaunchSettings, SessionLaunchRegistry},
     PROTOCOL_VERSION,
 };
-use crate::{
-    git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT},
-    providers::session_service::ProviderSessionService,
-    workspaces::WorkspaceService,
-};
+use crate::{providers::session_service::ProviderSessionService, workspaces::WorkspaceService};
 use argmax_contracts::validation::{TerminalCols, TerminalRows};
+use argmax_process::git_exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
 use argmax_store::{
     database::Database,
     projects::{list_projects, ProjectSummary},

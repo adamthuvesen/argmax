@@ -18,11 +18,11 @@ use tempfile::tempdir;
 use uuid::Uuid;
 
 use crate::git::{
-    exec::{run_git_text, run_git_text_with_options, GitExecOptions},
     ops::checkout_write_lock,
     tree_snapshot::{index_tree, snapshot_visible_worktree},
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::git_exec::{run_git_text, run_git_text_with_options, GitExecOptions};
 use argmax_store::{
     checkpoints::{
         find_checkpoint, finish_rewind, list_checkpoints, mark_interrupted_rewinds,

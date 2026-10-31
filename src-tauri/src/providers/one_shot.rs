@@ -22,7 +22,6 @@ use tokio::process::Command;
 
 use super::{
     adapters::{get_provider_definition, opencode_variant_args_on},
-    environment::build_provider_environment,
     model_catalogue::ModelId,
     opencode_gateway::{self, OpencodeGateway},
     opencode_isolation::IsolatedOpenCodeData,
@@ -30,6 +29,7 @@ use super::{
     ProviderId, ReasoningEffort,
 };
 use crate::goals::GoalVerdict;
+use argmax_process::environment::build_provider_environment;
 
 /// Generous upper bound — a cold CLI start (auth refresh, model spin-up) can
 /// take several seconds. Past this we give up and the caller keeps its default.

@@ -19,7 +19,6 @@ use uuid::Uuid;
 
 use super::acp::{AcpClient, AcpPermissionDecision, AcpPermissionHandler, AcpPermissionRequest};
 use super::adapters::grok_launch_model_id;
-use super::environment::build_provider_environment;
 use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
@@ -31,6 +30,7 @@ use crate::approvals::service::ApprovalService;
 use crate::session_control::SessionLaunchProcessConfig;
 use crate::usage::grok::billed_models;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::environment::build_provider_environment;
 use argmax_store::sync::LockOrRecover;
 use argmax_store::time::now_iso;
 

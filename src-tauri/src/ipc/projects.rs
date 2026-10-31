@@ -10,10 +10,10 @@ use uuid::Uuid;
 use super::inputs::*;
 use super::{live_database, read_off_main};
 use crate::application::project_registration::*;
-use crate::git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
 use crate::routing::project_check::ProjectCheck;
 use crate::state::AppState;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::git_exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
 use argmax_store::database::Database;
 use argmax_store::projects::{
     delete_project, list_projects, persist_project, require_project, update_project_settings,
@@ -454,7 +454,7 @@ pub(crate) async fn projects_get_folder_context_impl(
         )?;
         let is_git = argmax_store::project_folders::folder_is_git(&project.repo_path)?;
         if is_git {
-            let branch = crate::git::exec::run_git_text_blocking(
+            let branch = argmax_process::git_exec::run_git_text_blocking(
                 Path::new(&project.repo_path),
                 ["branch", "--show-current"],
                 GIT_DEFAULT_TIMEOUT,

@@ -15,12 +15,12 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::gh::service::{gh_working_directory, GhService};
-use crate::git::exec::{
-    reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes, GIT_DEFAULT_TIMEOUT,
-};
 use crate::git::ops::{checkout_write_lock, resolve_project_remote};
 use crate::workspaces::orchestration::comparable_worktree_path;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::git_exec::{
+    reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes, GIT_DEFAULT_TIMEOUT,
+};
 use argmax_store::database::Database;
 use argmax_store::sessions::find_session_by_id;
 use argmax_store::workspaces::find_workspace_by_id;
@@ -627,9 +627,9 @@ pub(crate) mod test_repo {
 
     use tempfile::TempDir;
 
-    use crate::git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
     use crate::util::gh_runner::GhRunner;
     use argmax_contracts::sessions::state::SessionState;
+    use argmax_process::git_exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
     use argmax_store::database::Database;
     use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
     use argmax_store::sessions::{persist_session, PersistSessionInput};

@@ -1052,7 +1052,7 @@ pub(crate) fn timeline_event(
     mut payload: Value,
 ) -> PersistTimelineEventInput {
     let event_type = event_type.into();
-    crate::providers::tool_activity::enrich_tool_activity(&event_type, &mut payload);
+    argmax_store::tool_activity::enrich_tool_activity(&event_type, &mut payload);
     PersistTimelineEventInput {
         id: Uuid::new_v4().to_string(),
         session_id: event.session_id.clone(),

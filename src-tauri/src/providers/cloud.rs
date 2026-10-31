@@ -6,8 +6,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::git::exec::{run_git_text_with_options, GitExecOptions};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::git_exec::{run_git_text_with_options, GitExecOptions};
 use argmax_store::events::PersistTimelineEventInput;
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(30);

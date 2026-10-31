@@ -11,7 +11,6 @@
 use super::AgentMode;
 use super::{
     adapters::opencode_variant_args_on,
-    environment::build_provider_environment,
     mcp_injection,
     normalizer::ProviderOutputStream,
     opencode_gateway::{self, OpencodeGateway},
@@ -27,6 +26,7 @@ use crate::{
     session_control::SessionLaunchProcessConfig,
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::environment::build_provider_environment;
 use argmax_store::time::now_iso;
 use serde_json::{json, Map, Value};
 use std::{

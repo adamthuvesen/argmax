@@ -21,12 +21,12 @@ use tokio::{fs as tokio_fs, io::AsyncReadExt};
 use super::git_grep_parser::{
     parse_git_grep_output, GrepParseOptions, WorkspaceContentSearchResult,
 };
-use crate::git::exec::{
-    run_git_text, run_git_text_with_allowed_exit_codes_and_options, GitExecOptions,
-};
 use crate::util::workspace_paths::{resolve_inside, PathError};
 use crate::workspaces::WorkspaceTargetKind;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::git_exec::{
+    run_git_text, run_git_text_with_allowed_exit_codes_and_options, GitExecOptions,
+};
 use argmax_store::database::Database;
 use argmax_store::project_folders::require_active_project_folder;
 use argmax_store::projects::require_project;

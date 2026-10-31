@@ -7,8 +7,8 @@ use std::{
 
 use regex::Regex;
 
-use crate::git::exec::run_git_text;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::git_exec::run_git_text;
 use argmax_store::projects::ProjectRemote;
 use argmax_store::sync::LockOrRecover;
 

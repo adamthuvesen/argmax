@@ -40,7 +40,6 @@ use super::acp::{
     AcpQuestionHandler, AcpQuestionRequest,
 };
 use super::adapters::cursor_fast_mode;
-use super::environment::build_provider_environment;
 use super::model_catalogue::catalogue_model;
 use super::normalizer::todo::is_todo_tool;
 use super::normalizer::ProviderOutputStream;
@@ -58,6 +57,7 @@ use crate::session_control::SessionLaunchProcessConfig;
 #[cfg(test)]
 use crate::session_control::SESSION_LAUNCH_TOKEN_ENV;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::environment::build_provider_environment;
 use argmax_store::sync::LockOrRecover;
 use argmax_store::time::now_iso;
 

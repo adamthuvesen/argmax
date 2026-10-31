@@ -21,8 +21,8 @@ use std::{
 use tempfile::tempdir;
 use tokio::fs as async_fs;
 
-use super::exec::{run_git_text_with_options, GitExecOptions};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::git_exec::{run_git_text_with_options, GitExecOptions};
 
 const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(60);
 const INDEX_CAPTURE_ATTEMPTS: usize = 3;

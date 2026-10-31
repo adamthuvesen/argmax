@@ -21,10 +21,12 @@ use super::super::{
 };
 use super::move_archive::run_after_turn;
 use super::workspace_tools::resolve_session_workspace;
-use crate::git::exec::{run_git_text, run_git_text_with_allowed_exit_codes, GIT_DEFAULT_TIMEOUT};
 use crate::git::pr_cleanup::PrCleanupReport;
 use crate::providers::session_service::ProviderSessionService;
 use crate::workspaces::WorkspaceService;
+use argmax_process::git_exec::{
+    run_git_text, run_git_text_with_allowed_exit_codes, GIT_DEFAULT_TIMEOUT,
+};
 use argmax_store::{
     after_turn::{AfterTurnAction, ArchiveRequest, MergedPrRequest},
     database::Database,

@@ -33,13 +33,13 @@ use nix::{
 use serde_json::json;
 
 use super::{
-    adapters::get_provider_definition, discovery::ProviderDiscovery,
-    environment::build_provider_environment, flush_queue::DashboardDelta,
+    adapters::get_provider_definition, discovery::ProviderDiscovery, flush_queue::DashboardDelta,
     normalizer::ProviderOutputStream, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput,
     ReasoningEffort,
 };
 use crate::providers::inputs::ComposerAttachmentInput;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::environment::build_provider_environment;
 use argmax_store::time::now_iso;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;

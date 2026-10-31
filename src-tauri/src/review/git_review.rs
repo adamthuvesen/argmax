@@ -12,10 +12,6 @@ use tokio::{sync::Semaphore, task::JoinSet};
 
 use crate::{
     git::{
-        exec::{
-            reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes,
-            run_git_text_with_options, GitExecOptions,
-        },
         ops::checkout_write_lock,
         tree_snapshot::{fingerprint_worktree, index_tree},
     },
@@ -23,6 +19,10 @@ use crate::{
     workspaces::WorkspaceTargetKind,
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::git_exec::{
+    reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes,
+    run_git_text_with_options, GitExecOptions,
+};
 use argmax_store::database::Database;
 use argmax_store::project_folders::{
     project_for_folder, require_active_project_folder, require_workspace_project,

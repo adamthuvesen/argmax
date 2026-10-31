@@ -514,7 +514,7 @@ async fn launch_once(
                 parent.reasoning_effort,
             ),
             (None, false) => {
-                let defaults = crate::provider_defaults(provider.as_str());
+                let defaults = crate::provider_defaults(provider);
                 (
                     defaults.model_label.to_string(),
                     defaults.model_id.to_string(),
@@ -872,7 +872,7 @@ fn provider_effort(
     if provider == parent.provider {
         return parent.reasoning_effort;
     }
-    parse_reasoning_effort(crate::provider_defaults(provider.as_str()).reasoning_effort)
+    parse_reasoning_effort(crate::provider_defaults(provider).reasoning_effort)
 }
 
 fn parse_reasoning_effort(value: Option<&str>) -> Option<crate::providers::ReasoningEffort> {

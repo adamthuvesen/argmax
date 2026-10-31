@@ -23,6 +23,7 @@ use tokio::process::Command;
 use super::{
     adapters::{get_provider_definition, opencode_variant_args_on},
     environment::build_provider_environment,
+    model_catalogue::ModelId,
     opencode_gateway::{self, OpencodeGateway},
     opencode_isolation::IsolatedOpenCodeData,
     opencode_server::merge_launch_environment,
@@ -140,18 +141,8 @@ pub async fn suggest_follow_up(
 /// `PROVIDER_TITLE_MODEL` in `src/shared/providerModels.ts` is the source of
 /// truth: the renderer reads it and passes the id into `workspaces:autotitle`
 /// and `session:suggest-follow-up`. The Goal evaluator runs entirely in Rust
-/// with no renderer in the loop, so it reads the same table from here. Keep
-/// the two in step, the way `provider_defaults` in `lib.rs` is kept in step
-/// with `PROVIDER_MODEL_DEFAULTS`.
-pub fn helper_model(provider: ProviderId) -> &'static str {
-    match provider {
-        ProviderId::Claude => "claude-sonnet-5-5",
-        ProviderId::Codex => "gpt-6-luna",
-        ProviderId::Cursor => "composer-2.5",
-        ProviderId::Opencode => "openrouter/z-ai/glm-5.3-flash",
-        ProviderId::Grok => "grok-4.7",
-    }
-}
+/// with no renderer in the loop, so it reads the generated copy.
+pub use super::model_catalogue::helper_model;
 
 /// Summarizes only the supplied repository sample. The helper has no file or shell tools.
 pub async fn summarize_repository(
@@ -656,6 +647,7 @@ fn one_shot_command(
 /// model offers: a title needs no thinking. The variant is looked up on the
 /// catalog id; `-m` names the model on the selected gateway.
 fn opencode_command(model_id: &str, instruction: &str, gateway: OpencodeGateway) -> OneShotCommand {
+    let model_id = ModelId::resolve(ProviderId::Opencode, model_id);
     let mut args: Vec<String> = vec![
         "run".into(),
         "--format".into(),
@@ -663,10 +655,10 @@ fn opencode_command(model_id: &str, instruction: &str, gateway: OpencodeGateway)
         "--agent".into(),
         "plan".into(),
         "-m".into(),
-        gateway.route_model_id(model_id),
+        gateway.route_model_id(&model_id),
     ];
     args.extend(opencode_variant_args_on(
-        model_id,
+        &model_id,
         Some(ReasoningEffort::Low),
         gateway,
     ));

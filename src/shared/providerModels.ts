@@ -34,6 +34,10 @@ interface ProviderModelOption {
   contextWindow?: number;
   description?: string;
   badge?: string;
+  /** Vercel AI Gateway's slug, when it differs from the OpenRouter part of `modelId`. */
+  vercelSlug?: string;
+  /** The separate SKU a Fast launch runs on, for a model whose Fast is not a flag. */
+  fastModeModelId?: string;
 }
 
 /** A {@link ProviderModelOption} plus a seeded effort. Used for each
@@ -73,15 +77,16 @@ export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultr
  * Cursor Grok 4.7 goes to Extra High; Cursor Grok 4.6/4.5 and Gemini 3.8 Flash
  * stop at High. OpenCode's OpenRouter models ship non-prefix variant lists
  * because their CLI exposes only certain discrete levels (e.g. low/high/max).
- * Kept in sync with the Rust adapters' effort → model mapping.
+ * A retired id reads its successor's ladder. The Rust adapters read these
+ * ladders from the generated model_catalogue.generated.rs.
  */
-export function reasoningEffortsForModel(provider: ProviderId, modelId: string): readonly ReasoningEffort[] {
+export function reasoningEffortsForModel(provider: ProviderId, storedModelId: string): readonly ReasoningEffort[] {
+  const modelId: string = resolveModelId(provider, storedModelId);
   if (provider === "claude") return REASONING_EFFORTS; // low → ultra
   if (provider === "codex") {
     if (
       modelId === "gpt-6-astra" ||
       modelId === "gpt-6.1-sol" ||
-      modelId === "gpt-6-sol" ||
       modelId === "gpt-5.6-sol" ||
       modelId === "gpt-5.6-terra"
     ) {
@@ -129,7 +134,7 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
   };
   if (provider === "opencode" && modelId in opencodeVariants) return opencodeVariants[modelId];
   // Grok Build's --reasoning-effort accepts only low/medium/high/xhigh; the CLI
-  // rejects anything above with "unknown effort level". Mirrors grok_reasoning_args.
+  // rejects anything above with "unknown effort level".
   if (provider === "grok") return ["low", "medium", "high", "xhigh"];
   return REASONING_EFFORTS.slice(0, 4); // low → xhigh
 }
@@ -254,15 +259,16 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   // OpenCode runs every model through the OpenCode gateway chosen in Settings
   // (OpenRouter or Vercel AI Gateway). Ids keep the
   // `openrouter/<vendor>/<model>` form whatever the gateway; the launch maps
-  // them (opencode_gateway.rs). Effort variants ride the CLI's `--variant`
-  // flag; keep the variant map in reasoningEffortsForModel and the Rust
-  // adapter in sync with these. No fast-mode control.
+  // them (opencode_gateway.rs) with `vercelSlug` where Vercel's slug differs.
+  // Check a new model's slug against Vercel's catalog (all of these were on
+  // 2026-10-15). Effort variants ride the CLI's `--variant` flag and come from
+  // the variant map in reasoningEffortsForModel. No fast-mode control.
   //
   // Muse Spark 1.3 Contributor is cheap because Meta trains on the prompts and
   // completions it sees, which is what "contributor" in its id means.
   opencode: [
-    { label: "GLM-5.3-Flash", modelId: "openrouter/z-ai/glm-5.3-flash", supportsReasoningEffort: true, contextWindow: 1_048_576 },
-    { label: "GLM-5.3", modelId: "openrouter/z-ai/glm-5.3", supportsReasoningEffort: true, contextWindow: 1_048_576 },
+    { label: "GLM-5.3-Flash", modelId: "openrouter/z-ai/glm-5.3-flash", supportsReasoningEffort: true, contextWindow: 1_048_576, vercelSlug: "zai/glm-5.3-flash" },
+    { label: "GLM-5.3", modelId: "openrouter/z-ai/glm-5.3", supportsReasoningEffort: true, contextWindow: 1_048_576, vercelSlug: "zai/glm-5.3" },
     {
       label: "DeepSeek V4.1 Flash 1017",
       modelId: "openrouter/deepseek/deepseek-v4.1-flash-1017",
@@ -276,22 +282,52 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       contextWindow: 1_048_576
     },
     { label: "Kimi K3", modelId: "openrouter/moonshotai/kimi-k3", supportsReasoningEffort: true, contextWindow: 1_048_576 },
-    { label: "Qwen3.8 Max", modelId: "openrouter/qwen/qwen3.8-max-0902", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "Qwen3.8 Flash", modelId: "openrouter/qwen/qwen3.8-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    { label: "Qwen3.8 Max", modelId: "openrouter/qwen/qwen3.8-max-0902", supportsReasoningEffort: true, contextWindow: 1_000_000, vercelSlug: "alibaba/qwen3.8-max-0902" },
+    { label: "Qwen3.8 Flash", modelId: "openrouter/qwen/qwen3.8-flash", supportsReasoningEffort: true, contextWindow: 1_000_000, vercelSlug: "alibaba/qwen3.8-flash" },
     {
       label: "Muse Spark 1.3 Contributor",
       modelId: "openrouter/meta/muse-spark-1.3-contributor",
       supportsReasoningEffort: true,
       contextWindow: 1_048_576
     },
-    { label: "Muse Wonder", modelId: "openrouter/meta/muse-wonder", supportsReasoningEffort: true, contextWindow: 1_048_576 }
+    { label: "Muse Wonder", modelId: "openrouter/meta/muse-wonder", supportsReasoningEffort: true, contextWindow: 1_048_576, vercelSlug: "meta/muse-wonder-1.0" }
   ],
   // The picker offers Grok 4.7. It takes --reasoning-effort up to xhigh (the
   // CLI rejects max/ultra). Fast is the advertised SKU `grok-4.7-build-fast`.
-  // 500K window per xAI's published model card. 4.6 and 4.5 stay priced for
-  // sessions already launched on them.
+  // 500K window per xAI's published model card.
   grok: [
-    { label: "Grok 4.7", modelId: "grok-4.7", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 500_000 }
+    {
+      label: "Grok 4.7",
+      modelId: "grok-4.7",
+      supportsReasoningEffort: true,
+      supportsFastMode: true,
+      contextWindow: 500_000,
+      fastModeModelId: "grok-4.7-build-fast"
+    }
+  ]
+};
+
+/**
+ * Ids the picker no longer offers that still launch as themselves, because a
+ * stored chat names them and no successor replaced them. Rust reads their
+ * launch facts from the generated catalogue, so they need a row as well.
+ */
+export const STORED_ONLY_MODELS: Partial<
+  Record<ProviderId, readonly Pick<ProviderModelOption, "modelId" | "supportsReasoningEffort" | "supportsFastMode" | "contextWindow">[]>
+> = {
+  claude: [{ modelId: "claude-opus-5", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 1_000_000 }],
+  codex: [
+    { modelId: "gpt-5.6-sol", supportsReasoningEffort: true, supportsFastMode: true },
+    { modelId: "gpt-5.6-luna", supportsReasoningEffort: true, supportsFastMode: true }
+  ],
+  cursor: [
+    { modelId: "claude-opus-5-thinking-medium", supportsReasoningEffort: true, supportsFastMode: true },
+    { modelId: "cursor-grok-4.6-medium", supportsReasoningEffort: true, supportsFastMode: true },
+    { modelId: "cursor-grok-4.5-medium", supportsReasoningEffort: true, supportsFastMode: true }
+  ],
+  grok: [
+    { modelId: "grok-4.6", supportsReasoningEffort: true },
+    { modelId: "grok-4.5", supportsReasoningEffort: true }
   ]
 };
 
@@ -494,9 +530,8 @@ export function normalizeModelId(modelId: string): string {
  * Retired ids and the catalog id that replaced each. A stored Sonnet 5
  * session, routine, or launch preference follows Sonnet 5.5 instead of
  * falling through to the provider default. The stored row is left alone;
- * only the pick the user sees and the model the CLI runs move. Mirrored by
- * `successor_model_id` (adapters.rs) and shipped to the phone in
- * providerModels.json.
+ * only the pick the user sees and the model the CLI runs move. Generated into
+ * Rust (model_catalogue.generated.rs) and the phone (providerModels.json).
  */
 export const SUCCESSOR_MODEL_IDS: Partial<Record<ProviderId, Readonly<Record<string, string>>>> = {
   claude: { "claude-sonnet-5": "claude-sonnet-5-5", "claude-haiku-4-5": "claude-haiku-5-5" },
@@ -504,9 +539,16 @@ export const SUCCESSOR_MODEL_IDS: Partial<Record<ProviderId, Readonly<Record<str
   opencode: { "openrouter/deepseek/deepseek-v4.1-flash": "openrouter/deepseek/deepseek-v4.1-flash-1017" }
 };
 
-/** Catalog id that replaced a stored one, or the id itself. */
-export function successorModelId(provider: ProviderId, modelId: string): string {
-  return SUCCESSOR_MODEL_IDS[provider]?.[normalizeModelId(modelId)] ?? modelId;
+/** A model id that has been through {@link resolveModelId}. */
+export type ResolvedModelId = string & { readonly __resolvedModelId: true };
+
+/**
+ * The model a stored id runs on: the catalog id that replaced it, or the id
+ * itself. Every read of a stored id goes through here. The Rust counterpart is
+ * `ModelId::resolve`.
+ */
+export function resolveModelId(provider: ProviderId, modelId: string): ResolvedModelId {
+  return (SUCCESSOR_MODEL_IDS[provider]?.[normalizeModelId(modelId)] ?? modelId) as ResolvedModelId;
 }
 
 /**
@@ -518,7 +560,7 @@ export function successorModelId(provider: ProviderId, modelId: string): string 
  */
 export function modelLabelFor(provider: ProviderId, modelId: string): string | null {
   if (!modelId) return null;
-  const wanted = normalizeModelId(successorModelId(provider, modelId));
+  const wanted = normalizeModelId(resolveModelId(provider, modelId));
   const match = PROVIDER_MODELS[provider]?.find(
     (model) => normalizeModelId(model.modelId) === wanted
   );
@@ -592,7 +634,7 @@ export function __resetUnknownModelLog(): void {
 export function contextWindowForModel(modelId: string): number | null {
   for (const [provider, models] of Object.entries(PROVIDER_MODELS) as [ProviderId, ProviderModelOption[]][]) {
     // A retired id reads its successor's window, the model it now launches on.
-    const id = normalizeModelId(successorModelId(provider, modelId));
+    const id = normalizeModelId(resolveModelId(provider, modelId));
     const match = models.find((model) => model.modelId === id);
     if (match?.contextWindow) return match.contextWindow;
   }

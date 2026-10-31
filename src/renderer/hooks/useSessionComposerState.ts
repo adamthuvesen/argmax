@@ -63,6 +63,7 @@ export function useSessionComposerState({
   }, [sessionId]);
   // A routed session can change its model on a dashboard delta. Reseeding
   // during render prevents a stale chip from briefly appearing as a pin.
+  // eslint-disable-next-line no-restricted-syntax -- a change key, not a read of the model.
   const seededModelKey = [sessionId, session?.provider, session?.modelId, session?.reasoningEffort].join("\n");
   const [seededFor, setSeededFor] = useState(seededModelKey);
   if (seededFor !== seededModelKey) {

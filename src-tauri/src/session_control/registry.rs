@@ -324,7 +324,7 @@ impl SessionLaunchRegistry {
                 session_id: input.session_id.clone(),
                 provider: input.provider,
                 model_label: input.model_label.clone(),
-                model_id: input.model_id.clone(),
+                model_id: input.model_id.to_string(),
                 reasoning_effort: input.reasoning_effort,
                 fast_mode: input.fast_mode,
                 permission_mode: input.permission_mode,
@@ -554,6 +554,7 @@ mod tests {
         sessions::{persist_session, PersistSessionInput},
         workspaces::{persist_workspace, PersistWorkspaceInput},
     };
+    use crate::providers::model_catalogue::ModelId;
     use crate::providers::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
     use crate::session_control::server::SessionLaunchServer;
     use crate::sessions::state::SessionState;
@@ -656,7 +657,7 @@ mod tests {
             workspace_path: PathBuf::from("/tmp/repo"),
             prompt: "parent prompt".to_string(),
             model_label: "GPT-5.6 Sol".to_string(),
-            model_id: "gpt-5.6-sol".to_string(),
+            model_id: ModelId::resolve(ProviderId::Codex, "gpt-5.6-sol"),
             reasoning_effort: Some(ReasoningEffort::High),
             fast_mode: true,
             resume_conversation_id: None,

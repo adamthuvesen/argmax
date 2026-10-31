@@ -351,6 +351,7 @@ pub(crate) fn with_argmax_routing_instruction(
 #[cfg(test)]
 mod routing_tests {
     use super::*;
+    use crate::providers::model_catalogue::ModelId;
     use std::path::PathBuf;
 
     fn input(provider: ProviderId, prompt: &str) -> ProviderLaunchInput {
@@ -360,7 +361,7 @@ mod routing_tests {
             workspace_path: PathBuf::from("/tmp/project"),
             prompt: prompt.to_string(),
             model_label: "Model".to_string(),
-            model_id: "model".to_string(),
+            model_id: ModelId::resolve(provider, "model"),
             reasoning_effort: None,
             fast_mode: false,
             resume_conversation_id: None,
@@ -798,17 +799,9 @@ pub(super) fn composer_payload(
 // Wire coercions for rows read straight out of SQLite. They are lossy; the
 // typed surface in `ipc::inputs` is the entry point everywhere else.
 pub(crate) fn parse_provider(value: &str) -> ArgmaxResult<ProviderId> {
-    match value {
-        "claude" => Ok(ProviderId::Claude),
-        "codex" => Ok(ProviderId::Codex),
-        "cursor" => Ok(ProviderId::Cursor),
-        "opencode" => Ok(ProviderId::Opencode),
-        "grok" => Ok(ProviderId::Grok),
-        _ => Err(ArgmaxError::service(
-            "PROVIDER_UNKNOWN",
-            format!("unknown provider {value}"),
-        )),
-    }
+    ProviderId::parse(value).ok_or_else(|| {
+        ArgmaxError::service("PROVIDER_UNKNOWN", format!("unknown provider {value}"))
+    })
 }
 
 pub(super) fn parse_permission_mode(value: &str) -> ArgmaxResult<PermissionMode> {
@@ -939,7 +932,7 @@ mod process_tests {
             workspace_path: workspace_path.clone(),
             prompt: String::new(),
             model_label: "Grok".to_string(),
-            model_id: "grok".to_string(),
+            model_id: super::super::model_catalogue::ModelId::resolve(ProviderId::Grok, "grok"),
             reasoning_effort: None,
             fast_mode: false,
             resume_conversation_id: None,
@@ -1109,7 +1102,7 @@ mod verification_tests {
             ),
             prompt: prompt.to_string(),
             model_label: "Sonnet 5.5".to_string(),
-            model_id: "claude-sonnet-5-5".to_string(),
+            model_id: ModelId::resolve(ProviderId::Claude, "claude-sonnet-5-5"),
             reasoning_effort: None,
             fast_mode: false,
             resume_conversation_id: resume_conversation_id.map(str::to_string),

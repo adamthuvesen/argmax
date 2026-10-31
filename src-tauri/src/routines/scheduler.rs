@@ -966,7 +966,10 @@ mod tests {
                 .push(input.session_id.clone());
             self.provider_models
                 .lock_or_recover("recorded provider/model")
-                .push((input.provider.as_str().to_string(), input.model_id.clone()));
+                .push((
+                    input.provider.as_str().to_string(),
+                    input.model_id.to_string(),
+                ));
             self.launched.notify_one();
             Box::pin(async {
                 Err(ArgmaxError::service(

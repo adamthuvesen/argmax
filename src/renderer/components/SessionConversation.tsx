@@ -43,7 +43,7 @@ import { useConversationScroll } from "../hooks/useConversationScroll.js";
 import { useSessionComposerState } from "../hooks/useSessionComposerState.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { isAutoTier, type ModelPickerSelection } from "../lib/models.js";
-import { successorModelId } from "../../shared/providerModels.js";
+import { resolveModelId } from "../../shared/providerModels.js";
 import { repoNameFromPath } from "../lib/projects.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
 import type { FontSize } from "../lib/fonts.js";
@@ -906,7 +906,7 @@ export function SessionConversation({
           targetSessionId === session?.id &&
           isAutoTier(session?.autoTier) &&
           model.provider === session?.provider &&
-          model.modelId === successorModelId(session?.provider, session?.modelId) &&
+          model.modelId === resolveModelId(session?.provider, session?.modelId) &&
           (model.reasoningEffort ?? null) === (session?.reasoningEffort ?? null)
             ? { ...model, autoTier: session?.autoTier }
             : model;
@@ -946,6 +946,7 @@ export function SessionConversation({
       if (result.queued && echoed) dropOptimisticSend();
     },
     [onSendSessionInput, session?.id, session?.provider, session?.providerConversationId,
+      // eslint-disable-next-line no-restricted-syntax -- a dependency key, not a read of the model.
       session?.autoTier, session?.modelId, session?.reasoningEffort, toolCalls, agentCodenames]
   );
   const isTurnStarting = turnStartBaseline !== null;

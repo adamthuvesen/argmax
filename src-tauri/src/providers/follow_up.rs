@@ -1,4 +1,5 @@
 use super::runtime::sqlite_error;
+use super::ProviderId;
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
     ipc::inputs::AgentReference,
@@ -75,12 +76,12 @@ pub(super) fn agent_reference_prompt(
         )
         .map_err(sqlite_error)?;
     ensure_agent_references_supported(&provider, &model_id, references)?;
-    let guidance = match provider.as_str() {
-        "claude" => "Use SendMessage to continue a referenced agent when its existing context is relevant.",
-        "codex" => "Use send_input to continue the referenced native child with its existing context, using resume_agent first if the child is no longer active. Wait for the child's terminal status and answer. A successful delivery or pending_init status does not mean the child has completed.",
-        "opencode" => "Use the task tool with the referenced native task_id to continue it with its existing context. Verify the returned task id matches the referenced id before treating it as a continuation. Wait for the task result and answer. Do not use direct dock input.",
-        "cursor" => "Use the Task tool with `resume` set to the referenced native agent ID. Wait for its task result and answer. Do not use direct dock input.",
-        _ => return Err(ArgmaxError::service("AGENT_REFERENCE_UNAVAILABLE", "This provider does not support native agent references.")),
+    let guidance = match ProviderId::parse(&provider) {
+        Some(ProviderId::Claude) => "Use SendMessage to continue a referenced agent when its existing context is relevant.",
+        Some(ProviderId::Codex) => "Use send_input to continue the referenced native child with its existing context, using resume_agent first if the child is no longer active. Wait for the child's terminal status and answer. A successful delivery or pending_init status does not mean the child has completed.",
+        Some(ProviderId::Opencode) => "Use the task tool with the referenced native task_id to continue it with its existing context. Verify the returned task id matches the referenced id before treating it as a continuation. Wait for the task result and answer. Do not use direct dock input.",
+        Some(ProviderId::Cursor) => "Use the Task tool with `resume` set to the referenced native agent ID. Wait for its task result and answer. Do not use direct dock input.",
+        Some(ProviderId::Grok) | None => return Err(ArgmaxError::service("AGENT_REFERENCE_UNAVAILABLE", "This provider does not support native agent references.")),
     };
     Ok(format!(
         "Argmax dock names for this {provider} conversation (JSON name to native agent ID): {roster}\n{guidance} If native continuation fails, report that failure before proposing a fresh agent.\n\n{prompt}"

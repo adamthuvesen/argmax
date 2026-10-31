@@ -32,7 +32,8 @@ function fixture() {
   for (const name of files) writeFileSync(path.join(repository, name), "initial\n");
   for (const name of [
     "static-checks.mjs",
-    "check-bundle.mjs"
+    "check-bundle.mjs",
+    "ios-tests.mjs"
   ]) {
     writeFileSync(path.join(repository, "scripts", name), stub);
   }
@@ -90,7 +91,8 @@ describe("precheck CLI", () => {
     [".github/workflows/ci.yml", ["eslint", "cargo test", "check-bundle.mjs"]],
     ["vite.config.ts", ["vite build", "check-bundle.mjs"]],
     ["src-tauri/src/lib.rs", ["eslint", "cargo test", "check-bundle.mjs"]],
-    ["ios/Argmax/Sources/App.swift", ["eslint", "static-checks.mjs", "check-bundle.mjs"]],
+    ["ios/Argmax/Sources/App.swift", ["eslint", "static-checks.mjs", "check-bundle.mjs", "ios-tests.mjs"]],
+    ["fixtures/parity/inline-math.json", ["eslint", "vitest run --changed", "ios-tests.mjs"]],
     ["assets/browser-blocking/light.txt", ["eslint", "cargo test", "check-bundle.mjs"]],
     ["index.html", ["eslint", "vite build", "check-bundle.mjs"]],
     ["Dockerfile", ["eslint", "cargo test", "check-bundle.mjs"]],

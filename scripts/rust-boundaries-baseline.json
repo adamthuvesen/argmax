@@ -78,7 +78,6 @@
     "session_control/actions/workspace_tools.rs": 1,
     "skills/registry.rs": 1,
     "state.rs": 2,
-    "sync/engine.rs": 1,
     "usage/claude.rs": 1,
     "usage/codex.rs": 1,
     "usage/grok.rs": 1,

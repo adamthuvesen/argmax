@@ -8,6 +8,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use sha2::{Digest, Sha256};
 
 use super::{sqlite_error, time::now_iso};
+use crate::application::validation::ProviderId;
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 /// Registered by migration v65.
@@ -159,12 +160,12 @@ fn binding_from_row(row: &Row<'_>) -> rusqlite::Result<ProviderBinding> {
 /// means the id must not be resumed. Only a hash is stored: a base URL may
 /// carry credentials.
 pub fn config_identity(provider: &str) -> String {
-    let keys: &[&str] = match provider {
-        "claude" => &["CLAUDE_CONFIG_DIR", "ANTHROPIC_BASE_URL", "HOME"],
-        "codex" => &["CODEX_HOME", "OPENAI_BASE_URL", "HOME"],
-        "opencode" => &["OPENCODE_CONFIG", "XDG_DATA_HOME", "HOME"],
-        "grok" => &["GROK_HOME", "HOME"],
-        _ => &["HOME"],
+    let keys: &[&str] = match ProviderId::parse(provider) {
+        Some(ProviderId::Claude) => &["CLAUDE_CONFIG_DIR", "ANTHROPIC_BASE_URL", "HOME"],
+        Some(ProviderId::Codex) => &["CODEX_HOME", "OPENAI_BASE_URL", "HOME"],
+        Some(ProviderId::Opencode) => &["OPENCODE_CONFIG", "XDG_DATA_HOME", "HOME"],
+        Some(ProviderId::Grok) => &["GROK_HOME", "HOME"],
+        Some(ProviderId::Cursor) | None => &["HOME"],
     };
     let environment = crate::providers::environment::build_provider_environment([]);
     let mut hasher = Sha256::new();

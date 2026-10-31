@@ -1,6 +1,7 @@
 use std::{process::Command, time::Duration};
 
 use super::runtime::{signal_process, SignalKind};
+use super::ProviderId;
 
 #[derive(Debug, Clone)]
 pub(super) struct RecoveredProviderSession {
@@ -94,32 +95,38 @@ fn provider_command_matches_session(command: &str, session: &RecoveredProviderSe
     let Some(binary) = args.next() else {
         return false;
     };
-    if provider_binary_name(binary) != Some(session.provider.as_str()) {
+    let Some(provider) = ProviderId::parse(&session.provider) else {
+        return false;
+    };
+    let binary_name = std::path::Path::new(binary)
+        .file_name()
+        .and_then(|name| name.to_str());
+    if binary_name != Some(provider_binary_name(provider)) {
         return false;
     }
     let args = args.collect::<Vec<_>>();
-    match session.provider.as_str() {
+    match provider {
         // Grok Build takes the same `--session-id` / `--resume` flag pair as
         // Claude Code, so one arm covers both.
-        "claude" | "grok" => {
+        ProviderId::Claude | ProviderId::Grok => {
             has_flag_value(&args, "--session-id", &session.id)
                 || session
                     .provider_conversation_id
                     .as_deref()
                     .is_some_and(|id| has_flag_value(&args, "--resume", id))
         }
-        "cursor" => session
+        ProviderId::Cursor => session
             .provider_conversation_id
             .as_deref()
             .is_some_and(|id| has_flag_value(&args, "--resume", id)),
         // OpenCode resumes with `run -s <sessionID>` (long form `--session`).
-        "opencode" => session
+        ProviderId::Opencode => session
             .provider_conversation_id
             .as_deref()
             .is_some_and(|id| {
                 has_flag_value(&args, "-s", id) || has_flag_value(&args, "--session", id)
             }),
-        "codex" => session
+        ProviderId::Codex => session
             .provider_conversation_id
             .as_deref()
             .is_some_and(|id| {
@@ -131,19 +138,16 @@ fn provider_command_matches_session(command: &str, session: &RecoveredProviderSe
                         .windows(2)
                         .any(|window| window[0] == "resume" && window[1] == id)
             }),
-        _ => false,
     }
 }
 
-fn provider_binary_name(binary: &str) -> Option<&'static str> {
-    let basename = std::path::Path::new(binary).file_name()?.to_str()?;
-    match basename {
-        "claude" => Some("claude"),
-        "codex" => Some("codex"),
-        "cursor-agent" => Some("cursor"),
-        "opencode" => Some("opencode"),
-        "grok" => Some("grok"),
-        _ => None,
+fn provider_binary_name(provider: ProviderId) -> &'static str {
+    match provider {
+        ProviderId::Claude => "claude",
+        ProviderId::Codex => "codex",
+        ProviderId::Cursor => "cursor-agent",
+        ProviderId::Opencode => "opencode",
+        ProviderId::Grok => "grok",
     }
 }
 

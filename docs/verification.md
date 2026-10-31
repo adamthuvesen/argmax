@@ -1,231 +1,50 @@
 # Verification
 
-How to prove a change works — not just that the suites pass, but that the app
-behaves and looks right. The rungs are ordered by cost; climb only as high as
-the claim you need to make. An agent working in this repo should treat the
-ladder as the definition of "verified".
+How to prove a change works, beyond suites passing. The rungs are ordered by cost. Climb only as high as the claim you need to make.
+
+| Rung | Proves | Cost |
+|---|---|---|
+| 1. `npm test` and checks | logic, budgets, parity gates | seconds |
+| 2. Renderer in a browser | how the UI renders, per theme | ~10 s |
+| 3. Scratch instance and bridge | real sessions through the real backend | ~1 min |
+| 4. Real-window screenshot | pixel truth, native chrome included | seconds |
+| Scenario runner | production backend and native UI with a scripted provider | minutes |
+| Dev instance next to the installed app | the change, hands-on | ~1 min |
+
+The `verify-argmax` skill at `.agents/skills/verify-argmax/SKILL.md` drives these for user-facing changes.
 
 ## Local scenario verification
 
 ```bash
 npm run doctor
-npm run verify -- --scenario chat-resume
-npm run verify -- --scenario queued-restart
-npm run verify -- --scenario persistent-subagent --native off
-npm run verify -- --scenario persistent-codex-subagent --native off
-npm run verify -- --scenario codex-user-input
-npm run verify -- --scenario persistent-opencode-subagent --native off
-npm run verify -- --scenario persistent-cursor-subagent --native off
-npm run verify -- --scenario cancellation
-npm run verify -- --scenario provider-error
-npm run verify -- --scenario session-move
-npm run verify -- --scenario staged-revert
-npm run verify -- --scenario composer-reference
-npm run verify -- --scenario composer-editor
-npm run verify -- --scenario browser-focus
-npm run verify -- --scenario browser-frames
-npm run verify -- --scenario fork-merge
-npm run verify -- --scenario workspace-settings
+npm run verify -- --scenario <name> [--native off] [--out <dir>] [--keep]
 ```
 
-Verification mode must never reach the host's credentials. The routing settings read
-the Keychain for the Jev key on every app start, so `routing/api_key.rs` returns no key
-in verification mode and refuses writes. The `launch` tripwires (`security`, `defaults`,
-`op`, `launchctl`, `brew`, `crontab`, `systemctl`) stay in place and a test runs them to
-prove they fail and log a call.
+[scripts/verify.mjs](../scripts/verify.mjs) lists the scenarios and owns each one's assertions. Each run prints a JSON result with its evidence location, and per-phase PNG and JSON files show the UI and its state. These are local checks, not part of CI or the pre-push gate.
 
-The scenario runner builds a verification binary and renderer from the current
-checkout, creates a temporary project and app profile, and drives the real
-backend with a scripted provider. Native UI verification is required by
-default. The fixture exercises the production launcher and normalizer without
-calling a paid provider. Other providers remain unavailable in this profile.
+The runner builds a verification binary and renderer from the current checkout, creates a temporary project and profile, and drives the real backend with a scripted provider. That exercises the production launcher and normalizer without calling a paid provider.
 
-`codex-user-input` checks a synchronous Codex question through the production
-app-server adapter, its visible question dock, and `questions:resolve`. The
-fixture completes only after receiving the expected structured answer on the
-original JSON-RPC request.
+Rules that make the evidence mean something:
 
-`chat-resume` checks streaming and a follow-up turn. `cancellation` checks that
-a running provider can be stopped. `provider-error` checks that a provider
-failure becomes a failed session. These commands are local checks and are not
-part of CI or the pre-push gate.
+- **Verification mode must never reach the host's credentials.** `routing/api_key.rs` returns no key and refuses writes. The `launch` tripwires (`security`, `defaults`, `op`, `launchctl`, `brew`, `crontab`, `systemctl`) stay in place, and a test proves they fail and log a call.
+- **The driver exists only with the nondefault `verification` Cargo feature.** A verification request sent to an ordinary binary fails before startup instead of falling back to installed providers.
+- **Finish edits before starting a run.** The runner checks the source fingerprint before and after the build and after the scenario, and an edit fails the stability check.
+- **Native UI is the default.** `--native off` selects the remote-browser path, and its report records that narrower coverage. Use the native path for desktop UI claims.
+- **A fixture does not establish provider support.** For the `persistent-*-subagent` scenarios, also run a live exchange through the scratch app, restart it, and continue the same child.
 
-`queued-restart` holds a first turn mid-stream, queues a follow-up through the
-native composer, then restarts the app on the same isolated profile. It checks
-that the dashboard and SQLite each contain only that pending-message id and
-text, the persisted first-turn delta sequence stays unchanged, startup does
-not replay the follow-up, and the composer labels it paused or
-delivery-uncertain with one explicit Send action. Sending that recovered row
-must record and complete the follow-up exactly once, then leave the session's
-dashboard and SQLite pending-message queues empty.
+Run `doctor` from the host that will run verification, because it reports that process's capabilities. Whole-window screenshots and native interaction may need Screen Recording or Accessibility permission. A foreground failure is classified `foreground-activation-timeout`, with diagnostics in its evidence.
 
-`staged-revert` launches the failed provider fixture to leave an idle native
-session, then creates one staged file and one file with unstaged edits in its
-disposable workspace. A backend-bridge subcase proves an obsolete diff
-revision fails with `REVIEW_STALE_REVISION` without changing the newer file
-bytes or index. The native Review action then reverts the fresh unstaged file,
-records its recovery checkpoint, refreshes the UI, and preserves the cached
-diff and index tree exactly.
-
-`session-move` creates a sibling worktree and has the Claude fixture call the
-production `argmax session move --path` CLI from an active turn. It checks the
-scheduled request, keeps the source workspace, carries the provider
-conversation as a fork, and completes the continuation in the sibling
-checkout. The native window must follow the move without another click and
-show the destination seam, branch, and response. Its evidence also records
-both checkout paths, provider invocations, timeline seams, and unchanged
-fixture files. This scenario requires native verification.
-
-`composer-reference` pins the launcher to the fixture model, checks that the usage
-chip shows `63% left in the 5-hour window` within five seconds (from the scripted
-remaining-usage source) and that its popover lists both windows, then uses native
-keys in the New chat composer: it attaches a seeded chat from the `@` menu as a
-chip, leaves for another chat and returns to find the draft restored, and sends
-with Alt+Enter. The launcher must stay open and empty, a new chat in the same
-project must hold the `argmax://chat/<id>` link once, and the chip in that
-chat must open the source. This scenario requires native verification.
-
-`composer-editor` waits for the real CodeMirror editor (the field is a textarea
-until its chunk loads), then checks typing, undo after an `@` pick, whole-chip
-Backspace, copy and cut payloads, an empty selection cutting nothing, and Enter
-right after a menu pick sending the full text. It describes correct behavior, so
-it fails on a build with those defects. This scenario requires native verification.
-
-`browser-focus` opens a hidden agent browser tab for the seeded chat, types in
-the New chat composer, and has the tab's page focus its own input. The app
-document must keep `document.hasFocus()`, the composer must keep the active
-element, and the window must see no `blur`: WebKit otherwise hands the hidden
-tab the window's keyboard. This scenario requires native verification.
-
-`browser-frames` opens a hidden agent tab on a host page whose content lives
-in a sandboxed iframe on another origin, with focus on the iframe and a host
-that cannot scroll. Through the agent IPC channels it checks that the snapshot
-splices the frame's tree in with frame-qualified refs, that a key press with no
-click follows focus into the frame, that get-text, click, wait-for, scroll and
-a ref-cropped screenshot all reach the frame. This scenario requires native
-verification.
-
-`fork-merge` clicks "Fork from this turn" on turn one of a two-turn chat and
-checks the boundary in SQLite, sends the fork's first message from the native
-composer, and checks that the fresh provider conversation was told turn one and
-not turn two. While the source runs a held turn it clicks "Bring findings back"
-and "Queue for source": the message queues once, drains once, and the next merge
-carries only new work. A final click forks into an isolated checkout. IPC and
-SQLite are the second read. This scenario requires native verification.
-
-`workspace-settings` snoozes and unsnoozes the seeded chat from its sidebar
-row, then uses Settings → Projects: an unknown branch placeholder is rejected,
-a project template saves, a relative path and the project's own checkout are
-rejected through linked-repository IPC. The native panel connects a sibling directory from a scripted folder selection, automatically generates and saves a summary through the provider fixture, toggles the link off, and removes it. The OS folder sheet is not driven by this scenario. Two worktree chats created over IPC
-then show `adam/feat-hello-world` and `adam/feat-hello-world-2`. This scenario
-requires native verification.
-
-`persistent-subagent --native off` checks the Claude native child identity,
-separate lifecycle runs for the initial launch and a `SendMessage` continuation,
-queryability after a scratch backend restart, and the Agents pane in light and
-dark browser renders. It uses the remote browser path because the scenario
-restarts the scratch backend. This fixture does not establish provider support.
-Also run a live Claude exchange through the scratch app, restart it, and verify
-that `SendMessage` continues the same native child with its earlier context.
-
-`persistent-codex-subagent --native off` exercises Codex app-server's
-`spawnAgent`, `sendInput`, and `wait` events through the same restart and dock checks. It
-requires persisted lifecycle rows for both assignments. A successful `wait`
-reporting `pending_init` must leave the child running. Verify provider support
-separately with a live Codex exchange through the scratch app, then restart and
-continue the same child with `send_input` and `resume_agent` when needed.
-
-`persistent-opencode-subagent --native off` exercises OpenCode's native HTTP
-and SSE protocol for the `task` tool, including a continuation with the same
-`task_id`, persisted lifecycle rows across a scratch backend restart, and the
-Agents pane in light and dark browser renders. OpenCode emits the child result
-in the parent's completed task part, so this fixture verifies native identity
-and dock history rather than child transcript streaming.
-
-`persistent-cursor-subagent --native off` exercises Cursor's ACP task lifecycle
-through a backend restart. It checks the translation from pending `rawInput` to
-completed `rawOutput`, the authoritative child id from the completed task
-result, a fresh invocation id on resume, two completed dock runs, and both
-light and dark browser renders.
-
-Each run prints a JSON result with its evidence location. Failures retain the
-diagnostics needed to reproduce the assertion. `--out <dir>` selects the
-evidence destination, which must be empty or new. `--keep` retains the
-temporary profile and project for inspection, but still stops the app and its
-children. Per-phase PNG and JSON files show the UI and its diagnostic state.
-
-Verification uses `dist/verification` and `src-tauri/target/verification` so a
-normal build cannot replace its assets. The runner copies the built binary
-into the temporary run directory and records its hash. It checks the source
-fingerprint before and after building and after the scenario. Finish edits
-before starting a run. An edit during verification fails the stability check.
-
-`--native off` selects the remote-browser path explicitly. Its report records
-that narrower coverage. Use the default native path for desktop UI claims.
-
-The desktop driver is compiled only with the nondefault `verification` Cargo
-feature and starts only when verification mode is requested. Ordinary builds
-do not include the driver. A verification request sent to an ordinary binary
-fails before app startup instead of falling back to installed providers.
-Before native interaction, the runner brings its isolated app window to the
-foreground and fails if that window remains hidden.
-Foreground activation timeouts are classified as
-`foreground-activation-timeout`. Their evidence includes the console lock
-state, activation request result, candidate activation and window state, and
-the frontmost process identity. A diagnostic probe failure remains explicit.
-
-Native `cancellation` waits beyond the ten-second early-stop window, checks
-that the session is still running, then clicks Stop. This verifies a retained
-cancelled session. The renderer tests separately cover early stop restoring
-the draft and archiving the workspace.
-
-Run `doctor` from the same host that will run verification. It reports the
-capabilities available to that process. OS permission checks it cannot prove
-remain unverified. Whole-window screenshots and native OS interaction may need
-Screen Recording or Accessibility permissions for that host.
-The doctor and browser screenshots use Chromium's mock keychain so disposable
-profiles do not open macOS keychain prompts.
-
-| Rung | Proves | Cost |
-|---|---|---|
-| `npm test` + checks | logic, budgets, parity gates | seconds |
-| Renderer in a browser | how the UI renders, per theme | ~10 s |
-| Scratch instance + bridge | real sessions through the real backend | ~1 min |
-| Dev instance next to the installed app | the change, hands-on, while the installed app keeps hosting the work | ~1 min |
-| Real-window screenshot | pixel truth, native chrome included | seconds |
+Native `cancellation` waits past the early-stop window to verify a retained cancelled session. Renderer tests cover early stop.
 
 ## Rung 1: suites and checks
 
-`npm run precheck` runs the CI checks (`npm test`, `npm run lint`,
-`npm run lint:rust`, `npm run typecheck`, the `check:*` scripts) scoped to what
-the branch changed, and `git push` runs it as the pre-push hook
-([testing.md](testing.md)). Cheap, deterministic, run them always. Everything
-above this rung exists for the claims these cannot make: "the app starts",
-"the session streams", "the launcher looks right".
+`npm run precheck` runs the CI checks scoped to what the branch changed, and `git push` runs it as a hook ([testing.md](testing.md)). Run them always. Everything above this rung exists for claims these cannot make.
 
-For the Usage page there is a fourth kind of claim, "the numbers are right",
-and a rung for it: `node scripts/check-usage-oracle.mjs --days 7` compares
-Argmax's per-day, per-model token totals with ccusage and CodexBar reading the
-same transcripts. Token counts must match; see [usage.md](usage.md).
+For the Usage page, `node scripts/check-usage-oracle.mjs --days 7` proves the numbers ([usage.md](usage.md#checking-the-numbers)).
 
 ## Rung 2: the renderer in a real browser
 
-Headless Chrome cannot show a WebKit paint bug. A composited-clip seam, a mask edge, or a `backdrop-filter` artifact needs rung 3 or 4 (the dev instance), not this rung. One session spent about 20 calls on a Chrome repro that could not show the seam.
-
-For chat scrolling, run `node scripts/check-chat-scroll.mjs`. It mounts the
-production scroll controller in a browser fixture and checks small upward
-gestures during streaming, folding content, nested scrolling, viewport
-resizes, and returning to live output. The command exits nonzero on a failed
-position assertion. These real-layout checks complement the hook's unit tests.
-
-Use `node scripts/check-chat-scroll.mjs --serve` to open the printed fixture
-URL in Argmax's WebKit browser. Run `window.chatScrollCheck.runChecks()` there
-and inspect the resolved results. This exercises the browser engine without
-replacing or restarting the application hosting the chat.
-
-Without `window.argmax` the renderer boots against the demo snapshot
-([loadDashboardSnapshot.ts](../src/renderer/lib/loadDashboardSnapshot.ts)), so
-the full UI renders in any browser with no Rust backend.
+Without `window.argmax`, the renderer boots against a demo snapshot ([loadDashboardSnapshot.ts](../src/renderer/lib/loadDashboardSnapshot.ts)), so the full UI renders with no Rust backend.
 
 ```bash
 node scripts/ui-screenshot.mjs --out scratch/shot.png --theme dark
@@ -233,80 +52,42 @@ node scripts/ui-screenshot.mjs --mobile --width 390 --height 844
 node scripts/ui-screenshot.mjs --eval 'document.querySelector("[aria-label=\"Customize\"]").click()'
 ```
 
-The script serves the renderer with vite, opens it in headless Chrome over
-CDP, and captures a PNG. `--theme` seeds `localStorage["argmax.theme.mode"]`
-before boot; `--scale 2` captures at that device pixel ratio; `--eval` runs
-arbitrary JS after load, so the UI can be clicked
-into the state under test, and the expression's value comes back as `eval` in
-the ready line — an async expression can click a row, wait, and return a
-measurement (a scroll gap, a row count, a text probe) alongside the PNG. An
-agent can read the PNG back and *look* at it, and assert on the value.
+`--eval` runs JS after load, and its value comes back in the ready line. An async expression can click a row, wait, and return a measurement alongside the PNG. An agent can read the PNG back and look at it.
 
-The composers' prompt editor has its own scripted browser check, because its
-behavior (chips, atomic Backspace, undo, IME, clipboard, the `@` menu, background
-send and its restore, the usage popover) depends on a real `contenteditable`
-that jsdom cannot host:
+**Headless Chrome cannot show a WebKit paint bug.** A composited-clip seam, a mask edge, or a `backdrop-filter` artifact needs the dev instance.
 
-```bash
-node scripts/verification/composer-editor.mjs --out scratch/composer-editor
-```
+**Chat scrolling:** `node scripts/check-chat-scroll.mjs` mounts the production controller in a browser fixture. Add `--serve` to open the fixture in Argmax's WebKit browser, without restarting the app hosting the chat, and run `window.chatScrollCheck.runChecks()`.
 
-It serves the renderer on its own port (`--port`, default 5291), opens the New
-chat launcher in headless Chrome, and sends trusted input over CDP
-(`Input.insertText`, `Input.dispatchKeyEvent`, `Input.imeSetComposition`). It
-prints one JSON report, writes a PNG per state beside it, and exits 1 when a
-check fails. It cannot show a real input method's candidate window or anything
-native; those stay with rungs 3 and 4.
+**The prompt editor:** `node scripts/verification/composer-editor.mjs --out scratch/composer-editor` sends trusted input over CDP, because chips, undo, IME, and the clipboard depend on a real `contenteditable` that jsdom cannot host. It cannot show a real input method's candidate window.
+
+**The Agents pane:** the demo snapshot carries one subagent run, so click the last `.agent-launch-row-button`.
 
 ## The dev instance next to the installed app
 
-Argmax is developed from inside Argmax: the installed app
-(`/Applications/Argmax.app`) hosts the chats doing the work, and the build under
-test runs as a second, real instance on its own profile:
+Argmax is developed from inside Argmax. The installed app hosts the chats doing the work, and the build under test is a second instance on its own profile:
 
 ```bash
 npm run tauri:dev:isolated      # ARGMAX_DATA_DIR=~/.argmax-dev tauri dev
 ```
 
-Plain `npm run tauri:dev` shares the installed app's data dir
-(`~/Library/Application Support/com.argmax.rs`), hits the instance lock, and
-exits with "Argmax is already running". The override moves everything that
-would collide — database, instance lock, attachments, `remote.json`, logs, and
-the worktree root (`~/.argmax-dev/local-state/worktrees`) — while the
-session-launch socket is per-process and the `argmax` MCP server is the
-instance's own binary, so nothing else is shared.
+Plain `npm run tauri:dev` shares the installed app's data dir, hits the instance lock, and exits. The override moves everything that would collide: database, lock, attachments, `remote.json`, logs, and worktrees. The session-launch socket is per process, and the MCP server is the instance's own binary.
 
-What to expect from the dev instance:
+What to expect:
 
-- **The profile persists** across restarts. Register the argmax repo once. Do
-  not copy the installed app's database over: its session rows point at
-  worktrees the installed app owns.
-- **No desktop notifications.** `tauri dev` runs unbundled, so there is no
-  bundle identifier for `UNUserNotificationCenter` ([runtime.md](runtime.md)).
-- **Remote bridge is off** until enabled in its Settings. If enabled, pick a
-  port other than 8790; that one belongs to the installed app and a bind
-  failure leaves the bridge silently off.
-- **Provider CLIs are shared.** Both instances use the same `~/.claude` and
-  `~/.codex`; session sync imports the same transcripts into both databases.
-- **A Rust edit restarts the binary** and kills every session it hosts. Keep
-  only throwaway verification chats there.
-- **Never quit, kill, or replace the installed app** from a chat it hosts;
-  that ends the provider mid-turn. Build in the workspace and give the user the
-  install steps.
+- **The profile persists.** Do not copy the installed app's database over, because its rows point at worktrees the installed app owns.
+- **No desktop notifications.** `tauri dev` is unbundled ([runtime.md](runtime.md)).
+- **Remote bridge is off** until enabled. Pick a port other than 8790, because a bind failure leaves the bridge silently off.
+- **Provider CLIs are shared,** so session sync imports the same transcripts into both databases.
+- **A Rust edit restarts the binary** and kills every session it hosts. Keep only throwaway chats there.
+- **Never quit, kill, or replace the installed app** from a chat it hosts, because that ends the provider mid-turn. Build in the workspace and give the user the install steps.
 
-To stop it, end the `tauri dev` process and the app binary it spawned. The
-binary's command line is the bare `target/debug/argmax` (cargo runs it from
-`src-tauri`), so match on that suffix; a stale one keeps the profile's lock and
-the next launch exits with the "already running" dialog:
+To stop it, end both processes. A stale binary keeps the profile's lock:
 
 ```bash
 pkill -f 'node_modules/.bin/tauri dev'; pkill -f 'target/debug/argmax$'
 ```
 
-The main checkout carries other sessions' half-finished edits, and one of
-them can break the Rust build for everyone. When that happens, run the dev
-instance from a worktree at a known commit instead, sharing the compiled
-dependencies:
+The main checkout carries other sessions' edits, and one can break the Rust build. Run from a worktree at a known commit instead, sharing compiled dependencies:
 
 ```bash
 git worktree add --detach /tmp/argmax-dev <commit>
@@ -314,128 +95,48 @@ ln -s "$PWD/node_modules" /tmp/argmax-dev/node_modules
 cd /tmp/argmax-dev && CARGO_TARGET_DIR="$OLDPWD/src-tauri/target" npm run tauri:dev:isolated
 ```
 
-For scripted verification without a window, use the scratch rung below; it
-is the same override with a throwaway directory.
-
 ## Rung 3: a scratch instance, driven over the bridge
 
-`ARGMAX_DATA_DIR` points the app at an alternate data directory —
-database, instance lock, attachments, `remote.json`, logs all move with it
-([util/data_dir.rs](../src-tauri/src/util/data_dir.rs)). A scratch profile
-therefore runs a second, fully real instance alongside the daily one.
+`ARGMAX_DATA_DIR` moves the app to an alternate data directory ([data_dir.rs](../src-tauri/src/util/data_dir.rs)), so a scratch profile is a second, fully real instance.
 
 ```bash
-# Boot (add --build to compile first; stays in the foreground, Ctrl-C stops it)
 node scripts/scratch-app.mjs --data-dir /tmp/argmax-scratch --build
-# → {"ready":true,"port":59665,"token":"…","dataDir":"/tmp/argmax-scratch",…}
 ```
 
-The binary must be built with the `custom-protocol` feature
-(`cargo build --manifest-path src-tauri/Cargo.toml --features custom-protocol`)
-— without it a debug binary tries to load the vite dev server instead of its
-bundled renderer.
+The binary needs the `custom-protocol` feature, or a debug build tries to load the vite dev server.
 
-The scratch `remote.json` is seeded with the bridge enabled, so the instance
-is scriptable through the remote bridge ([remote.md](remote.md)) — the same
-`*_impl` handlers the desktop IPC uses:
+The scratch `remote.json` enables the bridge, so the instance is scriptable through the same `*_impl` handlers the desktop IPC uses ([remote.md](remote.md)). [scripts/bridge.mjs](../scripts/bridge.mjs) documents its commands:
 
 ```bash
 node scripts/bridge.mjs call dashboard:list --data-dir /tmp/argmax-scratch
-node scripts/bridge.mjs watch --seconds 30            # stream dashboard:delta
-node scripts/bridge.mjs logs                          # system:debug-snapshot: log ring + IPC p50/p99
+node scripts/bridge.mjs logs        # log ring, IPC p50 and p99
 node scripts/bridge.mjs chat --repo /tmp/some-repo --prompt 'do the thing'
-```
-
-`chat` is the end-to-end rung: it registers the repo, creates a workspace,
-launches a real provider session, streams timeline events as NDJSON, and exits
-0 / 2 / 3 for complete / failed / timeout, with the cost summary on the last
-line. Model defaults mirror `PROVIDER_MODEL_DEFAULTS`
-([providerModels.ts](../src/shared/providerModels.ts)); the copy in
-`scripts/bridge.mjs` is pinned by `src/test/bridgeDefaults.test.ts`.
-
-Without `--data-dir` the bridge CLI targets the real app's profile
-(`~/Library/Application Support/com.argmax.rs`), which works once remote
-access is enabled in Settings → Integrations.
-
-`reply` sends a follow-up turn to an existing session — the resume path, which
-`chat` never exercises — and streams it the same way. `terminal` spawns a PTY
-in a workspace, runs one command, and reports how its output reached a remote
-client (chunk count, bytes, largest chunk), which is the observable side of
-terminal push conflation:
-
-```bash
 node scripts/bridge.mjs reply --session <id> --prompt 'now add tests'
-node scripts/bridge.mjs terminal --workspace <id> --run 'cat big.txt' --seconds 8
 ```
+
+`chat` is the end-to-end rung. It exits 0, 2, or 3 for complete, failed, or timeout. `reply` exercises the resume path. Without `--data-dir`, the CLI targets the real app's profile once remote access is enabled.
 
 ### The desktop renderer against the scratch backend
 
-The remote server serves the desktop renderer too, so the browser rung and the
-scratch rung compose: point `ui-screenshot.mjs` at the instance with `?remote`
-and the pairing token in the fragment, and headless Chrome runs the full
-desktop UI over the WebSocket bridge against real sessions. This is the rung
-for the chat surface — streaming, Thought blocks, tool rows, follow-scroll —
-because `--eval` can open a session row and sample the page while a real
-provider streams into it:
+The remote server also serves the desktop renderer, so point `ui-screenshot.mjs` at it. This is the rung for streaming, Thought blocks, tool rows, and follow-scroll:
 
 ```bash
 TOKEN=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("/tmp/argmax-scratch/remote.json")).token)')
 node scripts/ui-screenshot.mjs --url "http://127.0.0.1:<port>/?remote#token=$TOKEN" \
-  --eval "$(cat open-session.js)" --out chat.png
+  --eval "<JS that opens a session row and measures>" --out chat.png
 ```
 
-where `open-session.js` is an async IIFE that clicks the sidebar row (rows are
-`.session-link` buttons titled by task label and state; every group starts
-collapsed, so open them via the `Show <group> chats` buttons first), then
-returns whatever it measured. Start the provider session with `bridge.mjs chat`
-in the background first and time the capture into the stream.
+Rows are `.session-link` buttons, and groups start collapsed. Start `bridge.mjs chat` in the background first. [readme-hero.mjs](../scripts/readme-hero.mjs) holds the recipe for the README hero.
 
-The README hero is made this way: a scratch instance on a plain-path clone,
-a few `bridge.mjs chat --worktree` runs given short titles with
-`workspaces:set-label`, two `--scale 2` captures (one with the review pane
-open, one with the sidebar hidden), and `node scripts/readme-hero.mjs --main
-<png> --side <png>` to draw the window chrome and backdrop around them.
+For the Agents pane, the parent repo must live at a plain path, because the CLI's transcript slug is lossy. Sample `.agent-activity-scroll`. An entrance animation on an existing bubble is a remount, and a `scrollHeight` drop while pinned is what a reader sees.
 
-The demo snapshot carries one subagent run with its own thinking, narration,
-and tool calls, so the Agents pane renders on rung 2 as well: click the last
-`.agent-launch-row-button` in the demo transcript and read the pane back. That
-covers folding, the `Worked for Xs` chip, and every verbosity level. Rung 3
-below is for what a fixture cannot show — a live run streaming in.
+For the agent tools, see [agent-tools.md](agent-tools.md#verifying).
 
-For the Agents pane the same recipe applies with two extra conditions. The
-parent repo must live at a plain path (the CLI's transcript slug is lossy, so a
-temp directory full of dots and dashes strands the child transcript), and the
-subagent must do something the CLI forwards: tool calls always are, text and
-thinking only with `--forward-subagent-text`, which the Claude adapter passes.
-Open the pane by clicking the last `.agent-launch-row-button` in the parent
-transcript, then sample `.agent-activity-scroll` (`scrollTop`, `scrollHeight`,
-`.turn-block-body` height) and count `animationstart` events on it: an
-entrance animation firing on a bubble that already existed is a remount, and a
-`scrollHeight` decrease while pinned to the bottom is the drop a reader sees.
+**Grok and Cursor's non-composer models** write a config into the checkout, so they need extra checks. Confirm that `git status` is clean, a seeded `.cursor/mcp.json` is byte-identical afterwards, and no line remains in `.git/info/exclude`. Run with `GROK_HOME=<dir>` and copied auth, so the trust grant never lands in the real `~/.grok/trusted_folders.toml`.
 
-For the agent tools, prompt a `chat` run to use them and read the tool rows out
-of the NDJSON stream: `mcp__argmax__session_list` and friends must show JSON
-results, and the launched session must appear in `dashboard:list` with
-`launchedBySessionId` naming the caller ([agent-tools.md](agent-tools.md)).
-`pgrep -f "argmax mcp"` is the teardown check — empty once the instance is
-gone.
+For performance claims, measure through the bridge against a release build ([performance.md](performance.md)).
 
-Grok and Cursor's non-composer models reach the tools through a config file
-written into the checkout, so they need two checks the other providers do not.
-Run the Grok scenario and a Cursor one with a *non-composer* `--model-id` (the
-composer path goes through ACP and proves nothing about this), then confirm
-`git status` in the scratch repo is clean, that a `.cursor/mcp.json` seeded with
-the user's own server is byte-identical afterwards, and that no `.grok/` or
-`.cursor/` line is left in `.git/info/exclude`. Point the app at a throwaway
-Grok home first — `GROK_HOME=<dir> node scripts/scratch-app.mjs …`, with
-`auth.json` and `agent_id` copied in — so the folder-trust grant lands there
-and never in the real `~/.grok/trusted_folders.toml`; that file must come back
-unchanged.
-
-`system:debug-snapshot` is served over the bridge precisely for this loop:
-a script can assert on log lines and per-channel latency instead of eyeballing
-the debug panel ([debugging.md](debugging.md)). For performance claims,
-measure through the bridge against a release build ([performance.md](performance.md)).
+The bridge covers the channels the catalogue exposes. It cannot verify desktop-only behavior such as native browser tabs, folder dialogs, or routines. The `desktop` policy in [catalogue.rs](../src-tauri/src/ipc/catalogue.rs) is the boundary.
 
 ## Rung 4: the real window
 
@@ -443,16 +144,4 @@ measure through the bridge against a release build ([performance.md](performance
 node scripts/app-screenshot.mjs --out real.png [--pid <pid>]
 ```
 
-Captures an on-screen Argmax window with `screencapture` (window id via a
-Swift `CGWindowList` lookup; a debug binary reports its owner as `argmax`, a
-packaged build as `Argmax`, and both match). `--pid` picks between the real
-app and a scratch instance — `scratch-app.mjs` prints its pid. Needs the
-Screen Recording permission for whatever runs the script — an agent's host
-process usually lacks it, and granting it is a Privacy & Security change the
-user makes — and a window on another Space is not capturable.
-
-The browser rung against the scratch backend exercises the channels supported
-by the remote bridge. It cannot verify desktop-only behavior such as native
-browser tabs, folder dialogs, session-sync controls, or routines. See
-the catalogue’s `desktop` policy in
-[catalogue.rs](../src-tauri/src/ipc/catalogue.rs) for the exact boundary.
+`--pid` picks between the real app and a scratch instance. It needs Screen Recording permission for whatever runs the script, which is a change the user makes. A window on another Space is not capturable.

@@ -5,8 +5,6 @@
     "scripts/**/*.d.mts",
     ".agents/skills/verify-argmax/*.mjs",
     "public/sw.js",
-    "src/renderer/main.tsx",
-    "src/renderer/mobile/main.tsx",
     "src/shared/visualization/runtime.ts"
   ],
   "project": [
@@ -14,13 +12,9 @@
     "scripts/**/*.mjs"
   ],
   "ignore": [
-    "src/shared/bindings.d.ts",
-    "docs/**",
-    "src-tauri/**",
     "src/shared/ipcSchemas.ts"
   ],
   "ignoreDependencies": [
-    "typescript-7",
     "@fontsource/geist-sans",
     "lucide"
   ],

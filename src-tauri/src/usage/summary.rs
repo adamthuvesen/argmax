@@ -19,7 +19,7 @@ use crate::persistence::usage_scan::{self, HourlyBucket};
 use crate::providers::pricing;
 use crate::usage::cursor::{calls_between, cursor_rates, CursorCall};
 use crate::usage::records::UsageRecordTokens;
-use crate::usage::scanner::{hour_start_secs, provider_from_key, provider_key};
+use crate::usage::scanner::hour_start_secs;
 use crate::usage::{
     UsageCostSource, UsageDayRow, UsageModelRow, UsagePreviousPeriod, UsageProviderSummary,
     UsageResolution, UsageScanState, UsageSeriesPoint, UsageSeriesValue, UsageSummary,
@@ -296,7 +296,7 @@ fn previous_period(
             .iter()
             .any(|call| call.call.created_at >= from && call.call.created_at < to)
     } else {
-        usage_scan::earliest_hour(connection, provider.map(provider_key))?
+        usage_scan::earliest_hour(connection, provider.map(ProviderId::as_str))?
             .is_some_and(|hour| hour <= previous_start.timestamp())
     };
     if !covered {
@@ -344,7 +344,7 @@ fn previous_period(
 /// list-price table applies, and a model the table does not know is counted
 /// but not priced.
 fn price_bucket(bucket: HourlyBucket, start_secs: &[i64]) -> Option<PricedBucket> {
-    let provider = provider_from_key(&bucket.provider)?;
+    let provider = ProviderId::parse(&bucket.provider)?;
     let bucket_index = start_secs
         .iter()
         .rposition(|start| *start <= bucket.hour_utc)?;

@@ -1,0 +1,161 @@
+{
+  "rule": "What each of the four chat-detail levels does, and which prose Minimal folds into the work it narrates.",
+  "desktop": "src/renderer/lib/sessionTurnView.ts, src/renderer/lib/uiPreferences.ts",
+  "phone": "ios/Argmax/Sources/Design/MobileChatDetail.swift, ios/Argmax/Sources/Transcript/MobileTranscriptRows.swift",
+  "levels": [
+    {
+      "level": 1, "label": "Minimal", "foldsActivity": true, "hidesNarration": true, "thoughtDisplay": "collapsed",
+      "opensLatestOutputs": false, "hidesSettledThoughts": true,
+      "phone": {
+        "hidesSettledThoughts": false,
+        "reason": "The desktop's Worked chip brings hidden thoughts back. The phone has no chip, so a thought with no tool beside it keeps its own row."
+      }
+    },
+    { "level": 2, "label": "Compact", "foldsActivity": true, "hidesNarration": false, "thoughtDisplay": "collapsed", "opensLatestOutputs": false, "hidesSettledThoughts": false },
+    { "level": 3, "label": "Steps", "foldsActivity": false, "hidesNarration": false, "thoughtDisplay": "preview", "opensLatestOutputs": false, "hidesSettledThoughts": false },
+    { "level": 4, "label": "Detailed", "foldsActivity": false, "hidesNarration": false, "thoughtDisplay": "inline", "opensLatestOutputs": true, "hidesSettledThoughts": false }
+  ],
+  "narration": [
+    { "name": "a one-line remark", "text": "Let me check the docs.", "isNarration": true },
+    { "name": "a few sentences", "text": "First part done. Moving on to the second. Then the tests.", "isNarration": true },
+    { "name": "padding is trimmed", "text": "  \n Let me check.\n ", "isNarration": true },
+    { "name": "a soft line break", "text": "Looked at the code.\nNow the tests.", "isNarration": true },
+    { "name": "a heading", "text": "# Findings", "isNarration": false },
+    { "name": "a deep heading", "text": "###### Findings", "isNarration": false },
+    { "name": "a list", "text": "- one\n- two", "isNarration": false },
+    { "name": "a numbered list", "text": "1. one", "isNarration": false },
+    { "name": "a paren list", "text": "1) one", "isNarration": false },
+    { "name": "a quote", "text": "> quoted", "isNarration": false },
+    { "name": "a table", "text": "| a | b |", "isNarration": false },
+    { "name": "a backtick fence", "text": "```\ncode\n```", "isNarration": false },
+    { "name": "a tilde fence", "text": "~~~\ncode\n~~~", "isNarration": false },
+    { "name": "a list inside a remark", "text": "Done:\n- one", "isNarration": false },
+    { "name": "up to three spaces of indent", "text": "   - one", "isNarration": false },
+    { "name": "leading indent is trimmed before the list check", "text": "    - one", "isNarration": false },
+    { "name": "a blank line", "text": "First.\n\nSecond.", "isNarration": false },
+    { "name": "a blank line of spaces", "text": "First.\n   \nSecond.", "isNarration": false },
+    { "name": "a blank line with a carriage return", "text": "First.\n\r\nSecond.", "isNarration": false },
+    { "name": "two lone carriage returns are no blank line", "text": "First.\r\rSecond.", "isNarration": true },
+    { "name": "a visualization marker", "text": "Drawing \ue200visualize\ue202 now", "isNarration": false },
+    { "name": "exactly at the cap", "text": "400:", "repeatToUtf16": 400, "isNarration": true },
+    { "name": "past the cap", "text": "401:", "repeatToUtf16": 401, "isNarration": false },
+    { "name": "the cap counts UTF-16 units", "text": "😀", "repeatToUtf16": 402, "isNarration": false },
+    { "name": "a non-ASCII digit is not a list", "text": "١. build it", "isNarration": true },
+    { "name": "a bullet needs its space", "text": "-not a list", "isNarration": true }
+  ],
+  "turns": [
+    {
+      "name": "narration folds, the answer stays",
+      "items": [
+        { "kind": "user", "id": "u1" },
+        { "kind": "assistant", "id": "narration", "text": "Let me look at the repository first." },
+        { "kind": "tools", "id": "t1" },
+        { "kind": "assistant", "id": "answer", "text": "The last two published runs both landed at nine out of ten, and the third is still queued." }
+      ],
+      "hidden": ["narration"]
+    },
+    {
+      "name": "a turn with no tool hides nothing",
+      "items": [
+        { "kind": "user", "id": "u1" },
+        { "kind": "assistant", "id": "a1", "text": "Thinking about it." },
+        { "kind": "thought", "id": "th1" },
+        { "kind": "assistant", "id": "a2", "text": "Here it is." }
+      ],
+      "hidden": []
+    },
+    {
+      "name": "the last prose stays even before the last tool",
+      "items": [
+        { "kind": "user", "id": "u1" },
+        { "kind": "assistant", "id": "a1", "text": "Reading the repo now." },
+        { "kind": "tools", "id": "t1" },
+        { "kind": "assistant", "id": "a2", "text": "Writing the file now." },
+        { "kind": "tools", "id": "t2" }
+      ],
+      "hidden": ["a1"]
+    },
+    {
+      "name": "a long block of writing before a tool stays",
+      "items": [
+        { "kind": "user", "id": "u1" },
+        { "kind": "assistant", "id": "section", "text": "## Section one\n\nReal writing." },
+        { "kind": "tools", "id": "t1" },
+        { "kind": "assistant", "id": "answer", "text": "And this is the rest of the answer, long enough that it is no sign-off at all." }
+      ],
+      "hidden": []
+    },
+    {
+      "name": "an answer followed by a closing edit and a sign-off stays",
+      "items": [
+        { "kind": "user", "id": "u1" },
+        { "kind": "assistant", "id": "answer", "text": "No, that file does not exist anywhere in this repository or its history." },
+        { "kind": "tools", "id": "t1" },
+        { "kind": "assistant", "id": "signoff", "text": "Done." }
+      ],
+      "hidden": []
+    },
+    {
+      "name": "a tail half the length of the writing is an answer, not a sign-off",
+      "items": [
+        { "kind": "user", "id": "u1" },
+        { "kind": "assistant", "id": "narration", "text": "Chronicle isn't available, so I'll fall back to the repository for this." },
+        { "kind": "tools", "id": "t1" },
+        { "kind": "assistant", "id": "answer", "text": "The last two published runs both landed at nine." }
+      ],
+      "hidden": ["narration"]
+    },
+    {
+      "name": "only the prose right before the last tool can be the answer",
+      "items": [
+        { "kind": "user", "id": "u1" },
+        { "kind": "assistant", "id": "early", "text": "Reading the repository, then the tests, then the docs." },
+        { "kind": "tools", "id": "t1" },
+        { "kind": "assistant", "id": "answer", "text": "No, that file does not exist anywhere in this repository or its history." },
+        { "kind": "tools", "id": "t2" },
+        { "kind": "assistant", "id": "signoff", "text": "Saved." }
+      ],
+      "hidden": ["early"]
+    },
+    {
+      "name": "a steering message stays inside its turn",
+      "items": [
+        { "kind": "user", "id": "u1" },
+        { "kind": "assistant", "id": "narration", "text": "Reading the repository first, then the tests." },
+        { "kind": "tools", "id": "t1" },
+        { "kind": "steering", "id": "s1" },
+        { "kind": "assistant", "id": "answer", "text": "With that steer, the answer is that the test suite covers it after all, on both sides." }
+      ],
+      "hidden": ["narration"]
+    },
+    {
+      "name": "a live latest turn keeps its narration and an older turn does not",
+      "live": true,
+      "items": [
+        { "kind": "user", "id": "u1" },
+        { "kind": "assistant", "id": "old", "text": "Reading the repository first, then the tests." },
+        { "kind": "tools", "id": "t1" },
+        { "kind": "assistant", "id": "a1", "text": "The first answer is long enough here that it reads as a real answer and not a remark." },
+        { "kind": "user", "id": "u2" },
+        { "kind": "assistant", "id": "new", "text": "Reading the repository again, then the docs." },
+        { "kind": "tools", "id": "t2" },
+        { "kind": "assistant", "id": "a2", "text": "The second answer is also long enough here that it reads as a real answer and not a remark." }
+      ],
+      "hidden": ["old"]
+    },
+    {
+      "name": "narration carrying an attachment",
+      "items": [
+        { "kind": "user", "id": "u1" },
+        { "kind": "assistant", "id": "shot", "text": "Here is the screenshot before I go on.", "attachments": true },
+        { "kind": "tools", "id": "t1" },
+        { "kind": "assistant", "id": "answer", "text": "The layout holds at every width I tried, and the header no longer jumps when it scrolls." }
+      ],
+      "hidden": ["shot"],
+      "phone": {
+        "hidden": [],
+        "reason": "A phone row draws the attachment on the message, so folding it would hide the image. Desktop assistant groups carry no attachments."
+      }
+    }
+  ]
+}

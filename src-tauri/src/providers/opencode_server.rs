@@ -10,7 +10,7 @@
 #[cfg(test)]
 use super::AgentMode;
 use super::{
-    adapters::{opencode_variant_args_on, successor_model_id},
+    adapters::opencode_variant_args_on,
     environment::build_provider_environment,
     mcp_injection,
     normalizer::ProviderOutputStream,
@@ -1371,7 +1371,6 @@ fn opencode_variant(input: &ProviderLaunchInput, gateway: OpencodeGateway) -> Op
 }
 
 fn split_model_id(model_id: &str) -> ArgmaxResult<(String, String)> {
-    let model_id = successor_model_id(ProviderId::Opencode, model_id);
     let (provider, model) = model_id.split_once('/').ok_or_else(|| {
         server_error(
             "OPENCODE_MODEL",
@@ -1734,6 +1733,7 @@ impl Drop for OpencodeServerHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::model_catalogue::ModelId;
     use axum::{
         body::Body,
         extract::{Path, State},
@@ -1751,7 +1751,7 @@ mod tests {
             workspace_path: "/workspace".into(),
             prompt: "Do the work".to_string(),
             model_label: "GLM".to_string(),
-            model_id: "openrouter/z-ai/glm-5.3-flash".to_string(),
+            model_id: ModelId::resolve(ProviderId::Opencode, "openrouter/z-ai/glm-5.3-flash"),
             reasoning_effort: Some(super::super::ReasoningEffort::High),
             fast_mode: false,
             resume_conversation_id: None,
@@ -1913,7 +1913,8 @@ mod tests {
     #[test]
     fn retired_deepseek_prompts_use_the_successor_on_both_gateways() {
         let mut deepseek = input(PermissionMode::AutoApprove, AgentMode::Auto);
-        deepseek.model_id = "openrouter/deepseek/deepseek-v4.1-flash".into();
+        deepseek.model_id =
+            ModelId::resolve(deepseek.provider, "openrouter/deepseek/deepseek-v4.1-flash");
         deepseek.reasoning_effort = Some(super::super::ReasoningEffort::Medium);
         for gateway in [OpencodeGateway::Openrouter, OpencodeGateway::Vercel] {
             let body = prompt_body(&deepseek, gateway).unwrap();
@@ -1929,7 +1930,7 @@ mod tests {
     #[test]
     fn qwen_variants_follow_vercels_ladder_on_vercel() {
         let mut qwen = input(PermissionMode::AutoApprove, AgentMode::Auto);
-        qwen.model_id = "openrouter/qwen/qwen3.8-flash".into();
+        qwen.model_id = ModelId::resolve(qwen.provider, "openrouter/qwen/qwen3.8-flash");
         qwen.reasoning_effort = Some(super::super::ReasoningEffort::Max);
         assert_eq!(
             prompt_body(&qwen, OpencodeGateway::Openrouter).unwrap()["variant"],

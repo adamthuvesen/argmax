@@ -746,6 +746,7 @@ impl Drop for ControlHandle {
 mod tests {
     use super::*;
     use crate::persistence::database::Database;
+    use crate::providers::model_catalogue::ModelId;
     fn launch_input(
         permission_mode: PermissionMode,
         agent_mode: super::super::AgentMode,
@@ -756,7 +757,7 @@ mod tests {
             workspace_path: "/tmp".into(),
             prompt: "p".into(),
             model_label: "Opus 5".into(),
-            model_id: "claude-opus-5".into(),
+            model_id: ModelId::resolve(ProviderId::Claude, "claude-opus-5"),
             reasoning_effort: None,
             fast_mode: false,
             resume_conversation_id: None,
@@ -1374,7 +1375,7 @@ done
         input.session_id = uuid::Uuid::new_v4().to_string();
         input.workspace_path = temp.path().to_path_buf();
         input.model_label = "Haiku 4.5".into();
-        input.model_id = "claude-haiku-4-5".into();
+        input.model_id = ModelId::resolve(input.provider, "claude-haiku-4-5");
         input.prompt = format!(
             "Use the Bash tool to run sleep 5, then finish the original task by including this exact token in your final response: {original_token}"
         );

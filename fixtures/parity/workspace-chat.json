@@ -1,0 +1,68 @@
+{
+  "rule": "Which session a workspace shows as its chat: the most recently active, ties broken by the larger id.",
+  "desktop": "src/renderer/lib/workspaceChat.ts",
+  "phone": "ios/Argmax/Sources/Chats/ChatSections.swift",
+  "cases": [
+    {
+      "name": "one session is the chat",
+      "sessions": [{ "id": "s-1", "workspaceId": "w-1", "lastActivityAt": "2026-09-10T12:00:00.000Z" }],
+      "chats": { "w-1": "s-1" }
+    },
+    {
+      "name": "the most recently active wins when it arrives first",
+      "sessions": [
+        { "id": "s-new", "workspaceId": "w-1", "lastActivityAt": "2026-09-10T13:00:00.000Z" },
+        { "id": "s-old", "workspaceId": "w-1", "lastActivityAt": "2026-09-10T12:00:00.000Z" }
+      ],
+      "chats": { "w-1": "s-new" }
+    },
+    {
+      "name": "the most recently active wins when it arrives last",
+      "sessions": [
+        { "id": "s-old", "workspaceId": "w-1", "lastActivityAt": "2026-09-10T12:00:00.000Z" },
+        { "id": "s-new", "workspaceId": "w-1", "lastActivityAt": "2026-09-10T13:00:00.000Z" }
+      ],
+      "chats": { "w-1": "s-new" }
+    },
+    {
+      "name": "activity outranks the id",
+      "sessions": [
+        { "id": "s-z", "workspaceId": "w-1", "lastActivityAt": "2026-09-10T12:00:00.000Z" },
+        { "id": "s-a", "workspaceId": "w-1", "lastActivityAt": "2026-09-10T13:00:00.000Z" }
+      ],
+      "chats": { "w-1": "s-a" }
+    },
+    {
+      "name": "a tie goes to the larger id in either order",
+      "sessions": [
+        { "id": "s-a", "workspaceId": "w-1", "lastActivityAt": "2026-09-10T12:00:00.000Z" },
+        { "id": "s-b", "workspaceId": "w-1", "lastActivityAt": "2026-09-10T12:00:00.000Z" },
+        { "id": "s-a2", "workspaceId": "w-1", "lastActivityAt": "2026-09-10T12:00:00.000Z" }
+      ],
+      "chats": { "w-1": "s-b" }
+    },
+    {
+      "name": "timestamps compare as strings, the way the host query orders them",
+      "sessions": [
+        { "id": "s-short", "workspaceId": "w-1", "lastActivityAt": "2026-09-10T12:00:00Z" },
+        { "id": "s-long", "workspaceId": "w-1", "lastActivityAt": "2026-09-10T12:00:00.000Z" }
+      ],
+      "chats": { "w-1": "s-short" }
+    },
+    {
+      "name": "each workspace picks on its own",
+      "sessions": [
+        { "id": "s-1", "workspaceId": "w-1", "lastActivityAt": "2026-09-10T12:00:00.000Z" },
+        { "id": "s-2", "workspaceId": "w-2", "lastActivityAt": "2026-09-10T11:00:00.000Z" },
+        { "id": "s-3", "workspaceId": "w-1", "lastActivityAt": "2026-09-10T10:00:00.000Z" },
+        { "id": "s-4", "workspaceId": "w-2", "lastActivityAt": "2026-09-10T13:00:00.000Z" }
+      ],
+      "chats": { "w-1": "s-1", "w-2": "s-4" }
+    },
+    {
+      "name": "no sessions, no chats",
+      "sessions": [],
+      "chats": {}
+    }
+  ]
+}

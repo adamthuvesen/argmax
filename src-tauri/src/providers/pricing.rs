@@ -232,6 +232,21 @@ fn logged_unknown_models() -> &'static Mutex<HashSet<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::model_catalogue::{CATALOGUE_MODELS, SUCCESSOR_MODEL_IDS};
+
+    #[test]
+    fn every_catalogue_model_and_retired_id_has_a_price() {
+        let catalogue = CATALOGUE_MODELS
+            .iter()
+            .flat_map(|model| std::iter::once(model.model_id).chain(model.fast_mode_model_id));
+        let retired = SUCCESSOR_MODEL_IDS.iter().map(|(_, retired, _)| *retired);
+        for model_id in catalogue.chain(retired) {
+            assert!(
+                list_price(model_id).is_some(),
+                "{model_id} has no price. Add it to MODEL_PRICING in src-tauri/src/providers/pricing.rs, or to STORED_MODEL_PRICING_ALIASES for a retired id"
+            );
+        }
+    }
 
     #[test]
     fn strips_date_suffix() {

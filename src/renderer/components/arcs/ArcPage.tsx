@@ -14,7 +14,7 @@ import type {
   SessionState,
   SessionSummary
 } from "../../../shared/types.js";
-import { PROVIDER_DISPLAY_NAMES } from "../../../shared/providerModels.js";
+import { PROVIDER_DISPLAY_NAMES, modelLabelFor, resolveModelId } from "../../../shared/providerModels.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
 import { readStoredManualLaunchModel } from "../../lib/launchModelPreference.js";
 import { describeSchedule } from "../../lib/schedule.js";
@@ -49,8 +49,8 @@ function resolveCoordinatorModel(
   if (previousSession) {
     return {
       provider: previousSession.provider,
-      label: previousSession.modelLabel,
-      modelId: previousSession.modelId,
+      label: modelLabelFor(previousSession.provider, previousSession.modelId) ?? previousSession.modelLabel,
+      modelId: resolveModelId(previousSession.provider, previousSession.modelId),
       ...(previousSession.reasoningEffort ? { reasoningEffort: previousSession.reasoningEffort } : {})
     };
   }
@@ -78,7 +78,7 @@ function demoDetail(snapshot: DashboardSnapshot, arcId: string): ArcDetail | nul
         state: session.state,
         provider: session.provider,
         modelLabel: session.modelLabel,
-        modelId: session.modelId,
+        modelId: resolveModelId(session.provider, session.modelId),
         startedAt: session.startedAt,
         isCoordinator: session.id === summary.coordinatorSessionId,
         prNumber: workspace?.prNumber ?? null,

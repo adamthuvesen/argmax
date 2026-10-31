@@ -2,7 +2,7 @@ import {
   DEFAULT_REASONING_EFFORT,
   effortForModel,
   modelLabelFor,
-  successorModelId,
+  resolveModelId,
   PROVIDER_MODEL_DEFAULTS,
   PROVIDER_MODELS,
   reasoningEffortsForModel,
@@ -215,7 +215,7 @@ export function modelSelectionFromSession(session: SessionSummary | null): Provi
   }
   // A replaced id follows its successor before the catalog lookup, so a
   // Sonnet 5 chat keeps a Sonnet row instead of dropping to the provider default.
-  const modelId = successorModelId(session.provider, session.modelId);
+  const modelId = resolveModelId(session.provider, session.modelId);
   // The catalog wins over the stored label when it recognizes the id: an
   // imported session's label is the provider's raw API id, not a chip name.
   const label = modelLabelFor(session.provider, modelId);

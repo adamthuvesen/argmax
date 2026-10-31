@@ -13,7 +13,8 @@ src/
 └── test/         Vitest setup
 
 src-tauri/        Rust runtime, services, IPC handlers, persistence, packaging
-ios/Argmax/       SwiftUI phone app: Sources/, Tests/ (XCTest, not run in CI), Resources/ (providerModels.json is generated); see docs/ios-performance.md
+ios/Argmax/       SwiftUI phone app: Sources/, Tests/ (XCTest, `npm run test:ios`), Resources/ (providerModels.json is generated); see docs/ios-performance.md
+fixtures/parity/  Case tables both the desktop and the phone run, for rules that exist in both
 scripts/          Lightweight CI/check scripts
 docs/             Deeper subsystem docs; see Index
 assets/           App icon sources the icon generator reads, and the mascot sprite
@@ -27,6 +28,7 @@ release/          Packaged distributable output (gitignored)
 npm run tauri:dev       # Tauri dev app (refuses to start while the installed app runs; see below)
 npm run tauri:dev:isolated  # dev app on its own profile (~/.argmax-dev), side by side with the installed app
 npm test                # Vitest + perf + Cargo tests
+npm run test:ios        # XCTest suite on a simulator
 npm run lint            # eslint
 npm run typecheck       # renderer/shared tsc
 npm run precheck        # pre-push gate: CI's checks, scoped to what the branch changed
@@ -53,7 +55,7 @@ npm run tauri:build && osascript -e 'quit app "Argmax"' && rm -rf /Applications/
 - **Three themes: Light / Dark / System.** Tokens live in [src/renderer/styles/tokens.css](src/renderer/styles/tokens.css); see [docs/styling.md](docs/styling.md).
 - **A visual-design ask gets 3 mockups before code.** Build only the one the user picks.
 - **Every visual change ships light and dark screenshots.** `node .agents/skills/verify-argmax/verify.mjs ui` writes `ui-light.png` and `ui-dark.png` under `.verify/runs/`; put both in the report.
-- **Shared values, not duplicates.** Model labels, ids, reasoning levels, and pricing live in [src/shared/providerModels.ts](src/shared/providerModels.ts), but a model id is also read by Rust, the routing grid, and the generated iPhone catalogue. Use the checklist in [docs/providers.md](docs/providers.md#adding-or-retiring-a-model) to add or retire one.
+- **Shared values, not duplicates.** Model labels, ids, reasoning levels, and pricing live in [src/shared/providerModels.ts](src/shared/providerModels.ts), and Rust and the iPhone read generated copies. Use the recipe in [docs/providers.md](docs/providers.md#adding-or-retiring-a-model) to add or retire one.
 - **Provider protocol output is not chat.** Visible chat comes from normalized timeline events; raw transcript fallback is only for human-readable stdout/stderr.
 - **An image reaches the user only through Markdown.** `![what it shows](path)` on its own line, pointing inside the checkout or at a path Argmax handed you (a `browser_screenshot`'s `path`). An image a tool returned lands in the model's context, not the chat, and a remote `http(s)` image is drawn as a link rather than fetched. See [docs/chat-cards.md](docs/chat-cards.md).
 - **A diagram reaches the user as a mermaid fence.** A fenced `mermaid` / `mmd` block in the answer is drawn as SVG, wider than the prose column. Prefer mermaid for architecture, sequence, and flow; prefer a Markdown image for a screenshot or chart already on disk. Skip hex `classDef` / `style` colors — Argmax themes the diagram. See [docs/chat-cards.md](docs/chat-cards.md).
@@ -83,6 +85,15 @@ npm run tauri:build && osascript -e 'quit app "Argmax"' && rm -rf /Applications/
 | An action on a project folder carries a required `ProjectTarget` | TypeScript | 2026-11-04 |
 | Do not hand-edit the appearance script in `index.html` or `mobile.html` | `check:static`, `scripts/build-appearance-bootstrap.mjs --check` | 2026-11-04 |
 | Exports and dependencies stay in use | `knip` in `check:static` | 2026-11-04 |
+| Model facts live in `src/shared/providerModels.ts`; Rust and the phone read generated copies | `check:provider-models`, list in `scripts/generated-files.json` | 2026-11-04 |
+| Production code does not name a retired model id | `check:provider-models` | 2026-11-04 |
+| Every catalogue model has a price and a routing answer | `cargo test catalogue` (`pricing.rs`, `routing/table.rs`) | 2026-11-04 |
+| A stored model id reaches a launch or a route only as a resolved id | Rust type `ModelId`, TS type `ResolvedModelId`, ESLint `no-restricted-syntax` | 2026-11-04 |
+| A dispatch on a provider names every provider | Exhaustive `ProviderId` match, parsed with `ProviderId::parse` | 2026-11-04 |
+| Chat-detail levels, inline-math pairing, and the workspace's chat agree on desktop and phone | One table in `fixtures/parity/`, run by `parityTables.test.ts` and `ParityTableTests.swift` | 2026-11-04 |
+| The phone's chat-list and transcript responses come from the Rust bindings | `export-swift-contracts.mjs --check` in `check:static` | 2026-11-04 |
+| A change the phone's suite can see runs that suite | `npm run test:ios` in precheck and in the CI `ios` job | 2026-11-04 |
+| Transcript scroll decisions live in `TranscriptScrollModel`, not the view | Recorded sequences in `TranscriptScrollModelTests` | 2026-11-04 |
 
 ## Agent Feedback
 

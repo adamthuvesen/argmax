@@ -121,6 +121,10 @@ export default tseslint.config(
         {
           selector: "MemberExpression[object.name='payload'][computed=true][property.value=/^(thinking|traceImported|traceSyntheticSuperseded|item_type|item|thread_id|sender_thread_id|parent_tool_use_id|preTokens|postTokens|from|provider|modelLabel|checkoutMode|sourceProjectName|destinationProjectName|sourceArchiveState|direction|sourceSessionId|destinationSessionId|destinationWorkspaceId|childSessionId|taskLabel|prompt|worktree|state|answer|id|call_id|tool_use_id|providerInvocationId|name|status|raw|traceSyntheticLaunch)$/]",
           message: "Route timeline semantics through decodeTimelineEvent(). Keep raw payload access for lossless debug bodies and large tool input or output only."
+        },
+        {
+          selector: "MemberExpression[property.name='modelId'][object.name=/^(session|routine|previousSession|openSession|parentSession|sourceSession)$/]:not(CallExpression[callee.name=/^(resolveModelId|modelLabelFor|contextWindowForModel)$/] > MemberExpression):not(CallExpression[callee.name=/^(resolveModelId|modelLabelFor|contextWindowForModel)$/] > ChainExpression > MemberExpression)",
+          message: "A stored model id can be retired. Read it through resolveModelId(provider, id) from src/shared/providerModels.ts."
         }
       ]
     }

@@ -48,7 +48,7 @@ import {
   isHostedCloudProvider,
   type HostedCloudProvider
 } from "../../shared/cloudProviders.js";
-import { PROVIDER_DISPLAY_NAMES, successorModelId } from "../../shared/providerModels.js";
+import { PROVIDER_DISPLAY_NAMES, resolveModelId } from "../../shared/providerModels.js";
 import { goalActions, systemActions } from "../data/bridgeActions.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { selectionOfQueuedMessage } from "../lib/queuedSelection.js";
@@ -354,7 +354,7 @@ export function SessionComposer({
   const autoChipLabel =
     session &&
     selectedModel.provider === session.provider &&
-    selectedModel.modelId === successorModelId(session.provider, session.modelId)
+    selectedModel.modelId === resolveModelId(session.provider, session.modelId)
       ? (autoSessionChipLabel(session) ?? undefined)
       : undefined;
   const autoChipTitle = autoChipLabel ? (session?.autoRoute ?? undefined) : undefined;

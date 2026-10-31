@@ -29,15 +29,14 @@ pub struct DefaultAgent {
 }
 
 impl DefaultAgent {
-    /// Mirrors PROVIDER_MODEL_DEFAULTS.claude and DEFAULT_REASONING_EFFORT in
-    /// src/shared/providerModels.ts — what the launcher shows on a fresh
-    /// install, before anything is chosen.
+    /// What the launcher shows on a fresh install, before anything is chosen.
     pub fn factory() -> Self {
+        let defaults = crate::provider_defaults(crate::providers::ProviderId::Claude);
         Self {
-            provider: "claude".to_string(),
-            model_label: "Opus 5.5".to_string(),
-            model_id: "claude-opus-5-5".to_string(),
-            reasoning_effort: Some("medium".to_string()),
+            provider: crate::providers::ProviderId::Claude.as_str().to_string(),
+            model_label: defaults.model_label.to_string(),
+            model_id: defaults.model_id.to_string(),
+            reasoning_effort: defaults.reasoning_effort.map(str::to_string),
             permission_mode: crate::providers::PermissionMode::ProviderDefaults,
             permission_modes: HashMap::new(),
         }

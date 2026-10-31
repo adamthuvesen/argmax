@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::ipc::validation::{ProviderId, ReasoningEffort};
+use crate::providers::model_catalogue::ModelId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
@@ -44,9 +45,9 @@ enum Column {
     Frontier,
 }
 
-/// A model the grid can route to, with the effort levels its CLI accepts
-/// (mirrors `reasoningEffortsForModel` in src/shared/providerModels.ts for
-/// these ids). Empty means the provider picks the effort itself.
+/// A model the grid can route to, with the effort levels the grid uses. A test
+/// holds these to the model's catalogue row. Empty means the provider picks the
+/// effort itself.
 #[derive(Debug, PartialEq, Eq)]
 pub struct RouteModel {
     pub provider: ProviderId,
@@ -358,7 +359,7 @@ pub fn follow_up_target(
                     effort: target.effort,
                 });
             }
-            _ => {}
+            ProviderId::Cursor | ProviderId::Opencode | ProviderId::Grok => {}
         }
     }
     let (_, mut effort) = column_and_effort(tier, difficulty);
@@ -434,12 +435,11 @@ pub fn follow_up_target(
 pub(crate) fn capability(model_id: &str) -> Option<usize> {
     match model_id {
         "composer-2.5"
-        | "openrouter/deepseek/deepseek-v4.1-flash"
         | "openrouter/deepseek/deepseek-v4.1-flash-1017"
         | "grok-4.7"
         | "claude-sonnet-5-5"
         | "gpt-6-luna" => Some(0),
-        "claude-opus-5-5" | "claude-opus-5-5-medium" | "gpt-6.1-sol" | "gpt-6-sol" => Some(1),
+        "claude-opus-5-5" | "claude-opus-5-5-medium" | "gpt-6.1-sol" => Some(1),
         "claude-fable-5-1" | "gpt-6-astra" => Some(2),
         _ => None,
     }
@@ -464,19 +464,14 @@ pub fn fallback(tier: AutoTier) -> RoutedModel {
     }
 }
 
-/// The routable model for a stored id. A retired id resolves to its
-/// successor, so a saved Auto chat on it keeps a known capability instead of
-/// reaching the follow-up path's `expect`.
-pub fn route_model(model_id: &str) -> Option<&'static RouteModel> {
-    let model_id = match model_id {
-        "gpt-6-sol" => "gpt-6.1-sol",
-        "openrouter/deepseek/deepseek-v4.1-flash" => DEEPSEEK.model_id,
-        other => other,
-    };
+/// The routable model for a resolved id. Resolving first gives a saved Auto
+/// chat on a retired id a known capability instead of reaching the follow-up
+/// path's `expect`.
+pub fn route_model(model_id: &ModelId) -> Option<&'static RouteModel> {
     ROUTE_MODELS
         .iter()
         .copied()
-        .find(|model| model.model_id == model_id)
+        .find(|model| *model_id == model.model_id)
 }
 
 pub(crate) fn rank(effort: ReasoningEffort) -> usize {
@@ -511,6 +506,97 @@ pub(crate) fn clamp_effort(effort: ReasoningEffort, model: &RouteModel) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::model_catalogue::{
+        catalogue_model, CATALOGUE_MODELS, SUCCESSOR_MODEL_IDS,
+    };
+
+    /// Picker models the router has no capability for on purpose: a chat on one
+    /// keeps its model on follow-ups.
+    const KEEPS_ITS_MODEL: &[&str] = &[
+        "claude-haiku-5-5",
+        "gpt-5.6-terra",
+        "auto-smart[optimize_for=cost]",
+        "auto-smart[optimize_for=balanced]",
+        "auto-smart[optimize_for=intelligence]",
+        "grok-4.7-medium",
+        "gemini-3.8-flash-medium",
+        "gpt-5.6-sol-medium",
+        "gpt-5.6-terra-medium",
+        "gpt-5.6-luna-medium",
+        "claude-sonnet-5-5-medium",
+        "openrouter/z-ai/glm-5.3-flash",
+        "openrouter/z-ai/glm-5.3",
+        "openrouter/deepseek/deepseek-v4-pro-0813",
+        "openrouter/moonshotai/kimi-k3",
+        "openrouter/qwen/qwen3.8-max-0902",
+        "openrouter/qwen/qwen3.8-flash",
+        "openrouter/meta/muse-spark-1.3-contributor",
+        "openrouter/meta/muse-wonder",
+    ];
+
+    #[test]
+    fn every_catalogue_model_has_a_routing_answer() {
+        let picker = || {
+            CATALOGUE_MODELS
+                .iter()
+                .filter(|model| model.label.is_some())
+        };
+        for model in picker() {
+            assert!(
+                capability(model.model_id).is_some() || KEEPS_ITS_MODEL.contains(&model.model_id),
+                "{} has no routing answer. In src-tauri/src/routing/table.rs add it to capability(), or to KEEPS_ITS_MODEL if a chat on it keeps its model",
+                model.model_id
+            );
+            if capability(model.model_id).is_some() {
+                let resolved = ModelId::resolve(model.provider, model.model_id);
+                assert!(
+                    route_model(&resolved).is_some(),
+                    "{} has a capability but no RouteModel, so a follow-up would panic. Add it to ROUTE_MODELS in src-tauri/src/routing/table.rs",
+                    model.model_id
+                );
+            }
+        }
+        for kept in KEEPS_ITS_MODEL {
+            assert!(
+                picker().any(|model| model.model_id == *kept),
+                "{kept} left the catalogue. Remove it from KEEPS_ITS_MODEL in src-tauri/src/routing/table.rs"
+            );
+        }
+    }
+
+    #[test]
+    fn every_route_model_matches_its_catalogue_row() {
+        for route in ROUTE_MODELS {
+            let row = catalogue_model(route.provider, route.model_id).unwrap_or_else(|| {
+                panic!(
+                    "{} left the catalogue. Point its RouteModel in src-tauri/src/routing/table.rs at the successor",
+                    route.model_id
+                )
+            });
+            assert_eq!(
+                row.label,
+                Some(route.label),
+                "label of {} in src-tauri/src/routing/table.rs",
+                route.model_id
+            );
+            assert!(
+                route.efforts.iter().all(|effort| row.efforts.contains(effort)),
+                "{} routes at an effort its catalogue ladder lacks. Fix src-tauri/src/routing/table.rs",
+                route.model_id
+            );
+        }
+    }
+
+    #[test]
+    fn a_retired_catalogue_id_routes_as_its_successor() {
+        for (provider, retired, successor) in SUCCESSOR_MODEL_IDS {
+            assert_eq!(
+                route_model(&ModelId::resolve(*provider, retired)),
+                route_model(&ModelId::resolve(*provider, successor)),
+                "{retired}"
+            );
+        }
+    }
 
     fn cell_text(routed: RoutedModel) -> String {
         match routed.effort {

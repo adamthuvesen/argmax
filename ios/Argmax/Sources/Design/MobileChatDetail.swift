@@ -34,6 +34,31 @@ enum MobileChatDetail: Int, CaseIterable, Identifiable, Sendable {
             return "Steps and thoughts in full."
         }
     }
+
+    /// Work folds into one activity row between messages. The desktop's
+    /// `toolCallGroupsExpanded` is the inverse.
+    var foldsActivity: Bool { self == .minimal || self == .compact }
+
+    /// Pre-answer remarks fold into the work they narrate, in finished turns.
+    var hidesNarration: Bool { self == .minimal }
+
+    /// The latest turn's tool outputs start open.
+    var opensLatestOutputs: Bool { self == .detailed }
+
+    /// The desktop's `thinkingDisplay`.
+    var thoughtDisplay: MobileThoughtDisplay {
+        switch self {
+        case .minimal, .compact: return .collapsed
+        case .steps: return .preview
+        case .detailed: return .inline
+        }
+    }
+}
+
+enum MobileThoughtDisplay: String, Sendable {
+    case collapsed
+    case preview
+    case inline
 }
 
 private struct MobileChatDetailKey: EnvironmentKey {

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { resolveModelId } from "../../shared/providerModels.js";
 import type { SessionSummary } from "../../shared/types.js";
 import { isAutoTier } from "../lib/models.js";
 import {
@@ -40,7 +41,7 @@ function routedModel(session: SessionSummary | null): RoutedModel | null {
   if (!session || !isAutoTier(session.autoTier)) return null;
   return {
     provider: session.provider,
-    modelId: session.modelId,
+    modelId: resolveModelId(session.provider, session.modelId),
     modelLabel: session.modelLabel,
     reasoningEffort: session.reasoningEffort ?? null
   };

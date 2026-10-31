@@ -20,6 +20,7 @@ jobs:
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       js: ${{ steps.filter.outputs.js }}
+      ios: ${{ steps.filter.outputs.ios }}
       docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@v6
@@ -33,6 +34,7 @@ jobs:
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
             echo "js=true" >> "$GITHUB_OUTPUT"
+            echo "ios=true" >> "$GITHUB_OUTPUT"
             echo "docs=true" >> "$GITHUB_OUTPUT"
             echo "deps=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -42,10 +44,12 @@ jobs:
           printf '%s\n' "$changed"
           match() { printf '%s\n' "$changed" | grep -Eq "$1" && echo true || echo false; }
           rust_pattern='^(src-tauri/|assets/browser-blocking/|\.cargo/|rust-toolchain\.toml|\.github/workflows/)'
-          js_pattern='^(src/|src-tauri/|ios/|assets/|public/|index\.html$|mobile\.html$|package(-lock)?\.json$|tsconfig\.json$|vite.*\.config\.ts$|eslint\.config\.js$|scripts/|\.github/workflows/)'
+          js_pattern='^(src/|src-tauri/|ios/|fixtures/parity/|assets/|public/|index\.html$|mobile\.html$|package(-lock)?\.json$|tsconfig\.json$|vite.*\.config\.ts$|eslint\.config\.js$|scripts/|\.github/workflows/)'
+          ios_pattern='^(ios/|fixtures/parity/|scripts/ios-tests\.mjs$|\.github/workflows/ci\.yml$)'
           inert_pattern='^(docs/|\.githooks/|[^/]*\.md$|LICENSE$|\.gitignore$|\.gitattributes$)'
           rust=$(match "$rust_pattern")
           js=$(match "$js_pattern")
+          ios=$(match "$ios_pattern")
           docs=$(match "$inert_pattern")
           unmatched=$(printf '%s\n' "$changed" | grep -Ev "$rust_pattern|$js_pattern|$inert_pattern" || true)
           if [ -z "$changed" ] || [ -n "$unmatched" ]; then
@@ -55,6 +59,7 @@ jobs:
           fi
           echo "rust=$rust" >> "$GITHUB_OUTPUT"
           echo "js=$js" >> "$GITHUB_OUTPUT"
+          echo "ios=$ios" >> "$GITHUB_OUTPUT"
           echo "docs=$docs" >> "$GITHUB_OUTPUT"
 
   rust:
@@ -225,6 +230,25 @@ jobs:
 
       - run: npm run check:bundle
 
+  ios:
+    name: ios tests
+    needs: changes
+    if: ${{ needs.changes.outputs.ios == 'true' }}
+    # The same command precheck runs. macOS minutes bill at 10x, so only a
+    # change the phone's suite can see pays for this runner.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - run: brew install xcodegen
+
+      - run: npm run test:ios
+
   dependency-audit:
     name: dependency audit
     needs: changes
@@ -268,6 +292,7 @@ jobs:
       - js-static
       - js-tests
       - bundle
+      - ios
       - dependency-audit
     if: ${{ always() }}
     steps:

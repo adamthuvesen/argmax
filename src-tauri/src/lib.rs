@@ -1651,46 +1651,7 @@ fn build_check_failure_follow_up_input(
     .map_err(|error| error::ArgmaxError::service("GH_FOLLOW_UP_INPUT_INVALID", error.to_string()))
 }
 
-/// Per-provider catalog default, mirroring PROVIDER_MODEL_DEFAULTS in
-/// src/shared/providerModels.ts. Used where a provider is already fixed and
-/// only its model needs filling in (session control, imported sessions); the
-/// app-wide default agent lives in [`default_agent`].
-#[derive(Clone, Copy)]
-pub struct ProviderDefaults {
-    pub model_label: &'static str,
-    pub model_id: &'static str,
-    pub reasoning_effort: Option<&'static str>,
-}
-
-pub fn provider_defaults(provider: &str) -> ProviderDefaults {
-    match provider {
-        "codex" => ProviderDefaults {
-            model_label: "GPT-6.1 Sol",
-            model_id: "gpt-6.1-sol",
-            reasoning_effort: Some("medium"),
-        },
-        "cursor" => ProviderDefaults {
-            model_label: "Grok 4.7 (Cursor)",
-            model_id: "grok-4.7-medium",
-            reasoning_effort: Some("medium"),
-        },
-        "opencode" => ProviderDefaults {
-            model_label: "GLM-5.3-Flash",
-            model_id: "openrouter/z-ai/glm-5.3-flash",
-            reasoning_effort: Some("high"),
-        },
-        "grok" => ProviderDefaults {
-            model_label: "Grok 4.7",
-            model_id: "grok-4.7",
-            reasoning_effort: Some("medium"),
-        },
-        _ => ProviderDefaults {
-            model_label: "Opus 5.5",
-            model_id: "claude-opus-5-5",
-            reasoning_effort: Some("medium"),
-        },
-    }
-}
+pub use providers::model_catalogue::{provider_defaults, ProviderDefaults};
 
 /// Sidebar label for a model id the catalog may not list. Rust has no label
 /// catalog (labels live in `src/shared/providerModels.ts`), so a Claude API id

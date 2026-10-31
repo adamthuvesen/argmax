@@ -67,38 +67,8 @@ extension TranscriptJSONValue {
     }
 }
 
-struct TranscriptEvent: Codable, Hashable, Sendable, Identifiable {
-    var id: String
-    var sessionId: String
-    var type: String
-    var message: String
-    var payload: TranscriptJSONValue
-    var semantic: TimelineSemantics? = nil
-    var createdAt: String
-    var rowCursor: Int64?
-
+extension TranscriptEvent {
     var payloadObject: [String: TranscriptJSONValue] { payload.object ?? [:] }
-}
-
-struct TranscriptRawOutput: Codable, Hashable, Sendable, Identifiable {
-    var id: String
-    var sessionId: String
-    var stream: String
-    var content: String
-    var createdAt: String
-    var rowCursor: Int64?
-}
-
-struct TranscriptPage: Codable, Hashable, Sendable {
-    var events: [TranscriptEvent]
-    var rawOutputs: [TranscriptRawOutput]
-    var eventCursor: Int64
-    var rawOutputCursor: Int64
-    var changeCursor: Int64?
-    var deletedEventIds: [String]
-    var deletedRawOutputIds: [String]
-    var resetRequired: Bool
-    var hasMore: Bool
 }
 
 enum TranscriptMessageRole: String, Hashable, Sendable {

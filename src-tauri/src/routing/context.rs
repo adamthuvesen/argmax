@@ -9,6 +9,7 @@ use crate::{
     error::ArgmaxResult,
     ipc::validation::{ProviderId, ReasoningEffort},
     persistence::{events::routing_visible_messages, turn_routes::recent_routing_decisions},
+    providers::model_catalogue::ModelId,
     skills::registry::SkillRegistry,
 };
 
@@ -30,7 +31,7 @@ pub struct FollowUpContext {
 pub struct ContextRoute {
     pub id: String,
     pub provider: ProviderId,
-    pub model_id: String,
+    pub model_id: ModelId,
     pub effort: Option<ReasoningEffort>,
     pub user_task: Option<String>,
 }
@@ -179,11 +180,11 @@ pub fn build_follow_up_context(
         if route.reason_truncated {
             state.push_str(" [reason excerpt]");
         }
-        if let Some(provider) = parse_provider(&route.provider) {
+        if let Some(provider) = ProviderId::parse(&route.provider) {
             routes.push(ContextRoute {
                 id,
                 provider,
-                model_id: route.model_id,
+                model_id: ModelId::resolve(provider, &route.model_id),
                 effort: route.effort.as_deref().and_then(parse_effort),
                 user_task: route.user_task,
             });
@@ -203,17 +204,6 @@ pub fn build_follow_up_context(
         downgrade_safe,
         routes,
     })
-}
-
-fn parse_provider(value: &str) -> Option<ProviderId> {
-    match value {
-        "claude" => Some(ProviderId::Claude),
-        "codex" => Some(ProviderId::Codex),
-        "cursor" => Some(ProviderId::Cursor),
-        "opencode" => Some(ProviderId::Opencode),
-        "grok" => Some(ProviderId::Grok),
-        _ => None,
-    }
 }
 
 fn parse_effort(value: &str) -> Option<ReasoningEffort> {

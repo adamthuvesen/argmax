@@ -150,7 +150,7 @@ struct TranscriptThoughtRow: View {
     @Environment(\.activityIconColorMode) private var activityIconColorMode
 
     var body: some View {
-        if detail == .detailed {
+        if detail.thoughtDisplay == .inline {
             TranscriptMarkdown(text: thought.text, sourceEventID: thought.sourceEventID, client: client, onOpenFile: onOpenFile, isThinking: true)
         } else {
         // Steps previews the burst still being written and folds every settled
@@ -188,7 +188,7 @@ struct TranscriptThoughtRow: View {
             }
             .disclosureGroupStyle(TranscriptDisclosureStyle(chevron: false, minHeight: TranscriptActivityRow<EmptyView>.height))
             .tint(Theme.muted)
-            if detail == .steps, thought.isStreaming {
+            if detail.thoughtDisplay == .preview, thought.isStreaming {
                 // Plain text, not Markdown: three lines of the reasoning's tail
                 // are a progress cue, and mounting a Markdown tree per delta
                 // for them is what made a long burst cost O(n²).
@@ -235,7 +235,7 @@ struct TranscriptToolsRow: View {
 
     var body: some View {
         // A row reserves its own height, so the rows stack without a gap.
-        if detail == .steps || detail == .detailed || activityToolsAreRevealed {
+        if !detail.foldsActivity || activityToolsAreRevealed {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(group.tools) { tool in
                     TranscriptToolRow(tool: tool, holdsBeat: tool.id == beatToolID,
@@ -483,7 +483,7 @@ private struct TranscriptToolRow: View {
     /// watching; older turns stay folded so scrolling back is not a wall of
     /// payloads. A row the reader toggled keeps their choice.
     private var opensByDefault: Bool {
-        guard detail == .detailed, inLatestTurn else { return false }
+        guard detail.opensLatestOutputs, inLatestTurn else { return false }
         return [tool.output, tool.error].contains { text in
             text.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
         }

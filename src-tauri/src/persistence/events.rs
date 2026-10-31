@@ -11,6 +11,7 @@ use specta::Type;
 use super::authorship::PromptAuthor;
 use super::timeline_semantics::{self, TimelineSemantics};
 use super::{json_error, sqlite_error, time::now_iso};
+use crate::application::validation::ProviderId;
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 
 /// Rows before the last `/clear` or provider switch belong to a conversation
@@ -914,12 +915,13 @@ fn current_native_agent_parent_conversation_id(
     let Some((provider, parent_conversation_id, resume_fork)) = current else {
         return Ok(None);
     };
-    if resume_fork
-        || !matches!(
-            provider.as_str(),
-            "claude" | "codex" | "cursor" | "opencode"
-        )
-    {
+    let resumes_parent = match ProviderId::parse(&provider) {
+        Some(
+            ProviderId::Claude | ProviderId::Codex | ProviderId::Cursor | ProviderId::Opencode,
+        ) => true,
+        Some(ProviderId::Grok) | None => false,
+    };
+    if resume_fork || !resumes_parent {
         return Ok(None);
     }
     Ok(parent_conversation_id.filter(|id| !id.is_empty()))

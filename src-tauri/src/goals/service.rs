@@ -477,10 +477,11 @@ impl GoalService {
             .reasoning_effort
             .as_deref()
             .and_then(crate::providers::runtime::parse_reasoning_effort);
+        let provider = parse_provider(&session.provider)?;
         let Some(route) = crate::routing::reroute::escalate(
             tier,
-            parse_provider(&session.provider)?,
-            &session.model_id,
+            provider,
+            &crate::providers::model_catalogue::ModelId::resolve(provider, &session.model_id),
             effort,
             &available,
             "escalated: the goal came back not met twice in a row",

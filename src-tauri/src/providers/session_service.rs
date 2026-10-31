@@ -27,6 +27,7 @@ use specta::Type;
 use tokio::sync::{broadcast, watch};
 use uuid::Uuid;
 
+use super::model_catalogue::ModelId;
 use super::{
     adapters::get_provider_definition,
     completion_notices::{CompletionNotice, CompletionNoticePolicy, COMPLETION_BATCH_WINDOW},
@@ -1016,6 +1017,7 @@ impl ProviderSessionService {
         }
 
         let provider_invocation_id = Uuid::new_v4().to_string();
+        let launch_model_id = ModelId::resolve(provider, input.model_id.as_str());
         self.flush_queue
             .lock_or_recover("flush queue")
             .initialize_session(
@@ -1024,7 +1026,7 @@ impl ProviderSessionService {
                 provider_invocation_id.clone(),
                 NormalizerSessionContext::for_provider(
                     provider,
-                    usage_model_id(provider, input.model_id.as_str()),
+                    usage_model_id(provider, &launch_model_id),
                 ),
             );
         self.mark_turn_start(&session_id, workspace_path.clone());
@@ -1039,7 +1041,7 @@ impl ProviderSessionService {
             workspace_path,
             prompt: input.prompt.as_str().to_string(),
             model_label: input.model_label.as_str().to_string(),
-            model_id: input.model_id.as_str().to_string(),
+            model_id: launch_model_id,
             reasoning_effort: input.reasoning_effort,
             fast_mode: input.fast_mode,
             resume_conversation_id: None,
@@ -1428,7 +1430,7 @@ impl ProviderSessionService {
         let pinned = input
             .model_id
             .as_ref()
-            .is_some_and(|model_id| model_id.as_str() != session.model_id)
+            .is_some_and(|model_id| !runs_stored_model(&session, model_id.as_str()))
             || input
                 .provider
                 .is_some_and(|provider| provider != current_provider)
@@ -1540,7 +1542,7 @@ impl ProviderSessionService {
             tier,
             provider: current_provider,
             available,
-            model_id: session.model_id.clone(),
+            model_id: ModelId::resolve(current_provider, &session.model_id),
             effort: current_effort,
             context_tokens: session.context_tokens.max(0) as u64,
             last_turn,
@@ -2052,7 +2054,7 @@ impl ProviderSessionService {
                 workspace_path: PathBuf::from(workspace.path),
                 prompt: launch_prompt,
                 model_label: session.model_label.clone(),
-                model_id: session.model_id.clone(),
+                model_id: ModelId::resolve(provider, &session.model_id),
                 reasoning_effort: session
                     .reasoning_effort
                     .as_deref()
@@ -2083,7 +2085,7 @@ impl ProviderSessionService {
                 {
                     let context = NormalizerSessionContext::for_provider(
                         provider,
-                        usage_model_id(provider, launch_input.model_id.as_str()),
+                        usage_model_id(provider, &launch_input.model_id),
                     );
                     if provider == ProviderId::Codex
                         && launch_input.resume_conversation_id.is_some()
@@ -2866,7 +2868,7 @@ impl ProviderSessionService {
                 || message
                     .model_id
                     .as_deref()
-                    .is_some_and(|id| id != session.model_id)
+                    .is_some_and(|id| !runs_stored_model(&session, id))
                 || message
                     .reasoning_effort
                     .as_deref()
@@ -3952,7 +3954,7 @@ impl ProviderSessionService {
                 let picks_model = input
                     .model_id
                     .as_ref()
-                    .is_some_and(|model_id| model_id.as_str() != session.model_id)
+                    .is_some_and(|model_id| !runs_stored_model(&session, model_id.as_str()))
                     || input.reasoning_effort.is_some_and(|effort| {
                         Some(effort)
                             != session
@@ -5159,7 +5161,18 @@ pub struct SendInputResult {
 /// The id a turn's usage is recorded under. An OpenCode turn on Vercel names
 /// the model as Vercel does, matching what OpenCode stores, so its own cost
 /// figure (the bill there) is trusted rather than OpenRouter's table.
-fn usage_model_id(provider: ProviderId, model_id: &str) -> String {
+/// Whether a model id a client sent names the model this chat already runs. A
+/// client echoes the successor of a retired id, which is not a new pick.
+fn runs_stored_model(session: &SessionSummary, model_id: &str) -> bool {
+    match ProviderId::parse(&session.provider) {
+        Some(provider) => {
+            ModelId::resolve(provider, &session.model_id) == ModelId::resolve(provider, model_id)
+        }
+        None => session.model_id == model_id,
+    }
+}
+
+fn usage_model_id(provider: ProviderId, model_id: &ModelId) -> String {
     if provider == ProviderId::Opencode {
         super::opencode_gateway::selected().route_model_id(model_id)
     } else {

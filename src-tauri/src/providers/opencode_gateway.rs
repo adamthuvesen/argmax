@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
 
+use super::model_catalogue::{ModelId, VERCEL_SLUGS};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::{sqlite_error, time::now_iso};
 use crate::util::keychain::KeychainSecret;
@@ -53,18 +54,6 @@ static VERCEL_KEY: KeychainSecret = KeychainSecret::new(
 /// The choice, mirrored from `ui_state` so launch paths with no database
 /// handle (one-shot helpers, the usage meter) read the same gateway.
 static SELECTED: RwLock<OpencodeGateway> = RwLock::new(OpencodeGateway::Openrouter);
-
-/// Vercel slugs that differ from OpenRouter's, keyed by the OpenRouter model
-/// part of a catalog id. Any other catalog model has the same slug on both,
-/// checked against Vercel's catalog on 2026-10-15. Adding an OpenCode model
-/// means checking its Vercel slug (docs/providers.md has the checklist).
-const VERCEL_SLUGS: &[(&str, &str)] = &[
-    ("z-ai/glm-5.3-flash", "zai/glm-5.3-flash"),
-    ("z-ai/glm-5.3", "zai/glm-5.3"),
-    ("qwen/qwen3.8-max-0902", "alibaba/qwen3.8-max-0902"),
-    ("qwen/qwen3.8-flash", "alibaba/qwen3.8-flash"),
-    ("meta/muse-wonder", "meta/muse-wonder-1.0"),
-];
 
 impl OpencodeGateway {
     /// OpenCode's provider id for the gateway.
@@ -102,8 +91,7 @@ impl OpencodeGateway {
     }
 
     /// `<provider>/<model>` for a CLI `-m` flag.
-    pub fn route_model_id(self, model_id: &str) -> String {
-        let model_id = super::adapters::successor_model_id(super::ProviderId::Opencode, model_id);
+    pub fn route_model_id(self, model_id: &ModelId) -> String {
         match model_id.split_once('/') {
             Some((provider, model)) => {
                 let (provider, model) = self.route(provider, model);
@@ -219,6 +207,7 @@ pub fn select(connection: &Connection, gateway: OpencodeGateway) -> ArgmaxResult
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::ProviderId;
 
     #[test]
     fn openrouter_keeps_catalog_ids() {
@@ -228,7 +217,10 @@ mod tests {
             ("openrouter", "z-ai/glm-5.3")
         );
         assert_eq!(
-            gateway.route_model_id("openrouter/z-ai/glm-5.3-flash"),
+            gateway.route_model_id(&ModelId::resolve(
+                ProviderId::Opencode,
+                "openrouter/z-ai/glm-5.3-flash"
+            )),
             "openrouter/z-ai/glm-5.3-flash"
         );
     }
@@ -237,7 +229,10 @@ mod tests {
     fn retired_deepseek_cli_ids_follow_the_successor_on_both_gateways() {
         for gateway in [OpencodeGateway::Openrouter, OpencodeGateway::Vercel] {
             assert_eq!(
-                gateway.route_model_id("openrouter/deepseek/deepseek-v4.1-flash"),
+                gateway.route_model_id(&ModelId::resolve(
+                    ProviderId::Opencode,
+                    "openrouter/deepseek/deepseek-v4.1-flash"
+                )),
                 format!(
                     "{}/deepseek/deepseek-v4.1-flash-1017",
                     gateway.provider_id()
@@ -275,7 +270,11 @@ mod tests {
             ),
             ("openrouter/meta/muse-wonder", "vercel/meta/muse-wonder-1.0"),
         ] {
-            assert_eq!(gateway.route_model_id(catalog), vercel, "{catalog}");
+            assert_eq!(
+                gateway.route_model_id(&ModelId::resolve(ProviderId::Opencode, catalog)),
+                vercel,
+                "{catalog}"
+            );
         }
     }
 

@@ -364,7 +364,10 @@ fn credential(
         workspace_path: PathBuf::from(repo),
         prompt: "Task".to_string(),
         model_label: "GPT-5.6 Sol".to_string(),
-        model_id: "gpt-5.6-sol".to_string(),
+        model_id: argmax_lib::providers::model_catalogue::ModelId::resolve(
+            ProviderId::Codex,
+            "gpt-5.6-sol",
+        ),
         reasoning_effort: None,
         fast_mode: false,
         resume_conversation_id: None,

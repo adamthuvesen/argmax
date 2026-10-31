@@ -115,7 +115,7 @@ function changedFiles(base) {
   return new Set(`${tracked}${untracked}`.split("\0").filter(Boolean));
 }
 
-const IOS_PATHS = [/^ios\//];
+const IOS_PATHS = [/^ios\//, /^fixtures\/parity\//, /^scripts\/ios-tests\.mjs$/];
 const RUST_PATHS = [
   /^src-tauri\/(?!target\/)/,
   /^assets\/browser-blocking\//,
@@ -127,6 +127,7 @@ const JS_PATHS = [
   /^src\//,
   /^src-tauri\/(?!target\/)/,
   /^ios\//,
+  /^fixtures\/parity\//,
   /^assets\//,
   /^public\//,
   /^(index|mobile)\.html$/,
@@ -296,6 +297,10 @@ if (scope.rust) {
 if (scope.bundle) {
   step("renderer build", "npx", ["vite", "build"]);
   step("bundle budget", "node", ["scripts/check-bundle.mjs"]);
+}
+
+if (scope.ios) {
+  step("iOS tests", "node", ["scripts/ios-tests.mjs"]);
 }
 
 console.log("\nprecheck: all checks passed.");

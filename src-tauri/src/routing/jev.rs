@@ -559,7 +559,10 @@ mod tests {
             routes: vec![super::super::context::ContextRoute {
                 id: "R0".to_string(),
                 provider: crate::ipc::validation::ProviderId::Codex,
-                model_id: "gpt-6-astra".to_string(),
+                model_id: crate::providers::model_catalogue::ModelId::resolve(
+                    crate::ipc::validation::ProviderId::Codex,
+                    "gpt-6-astra",
+                ),
                 effort: Some(crate::ipc::validation::ReasoningEffort::Xhigh),
                 user_task: Some("Investigate the hard bug".to_string()),
             }],

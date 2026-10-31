@@ -162,6 +162,7 @@ function DebugIdentity({
         {session ? (
           <>
             <b>{session.provider}</b>
+            {/* eslint-disable-next-line no-restricted-syntax -- the debug panel shows the stored id. */}
             <span>{session.modelId}</span>
             <span>{session.state}</span>
           </>

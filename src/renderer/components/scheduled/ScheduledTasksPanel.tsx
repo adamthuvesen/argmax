@@ -24,7 +24,8 @@ import {
   PROVIDER_MODEL_DEFAULTS,
   PROVIDER_MODELS,
   modelLabelFor,
-  successorModelId
+  resolveModelId,
+  type ResolvedModelId
 } from "../../../shared/providerModels.js";
 import {
   buildSchedule,
@@ -60,7 +61,7 @@ interface DraftState {
   name: string;
   projectId: string;
   provider: ProviderId;
-  modelId: string;
+  modelId: ResolvedModelId;
   prompt: string;
   runTarget: RoutineRunTarget;
   /** The Arc an `arc_coordinator` target sends runs to. Unused otherwise. */
@@ -77,7 +78,7 @@ function newDraft(projectId: string): DraftState {
     name: "",
     projectId,
     provider,
-    modelId: PROVIDER_MODEL_DEFAULTS[provider].modelId,
+    modelId: resolveModelId(provider, PROVIDER_MODEL_DEFAULTS[provider].modelId),
     prompt: "",
     runTarget: "worktree",
     arcId: null,
@@ -94,8 +95,7 @@ function draftFromRoutine(routine: Routine): DraftState {
     name: routine.name,
     projectId: routine.projectId,
     provider: routine.provider,
-    // A routine stored on a retired model edits and saves as its successor.
-    modelId: successorModelId(routine.provider, routine.modelId),
+    modelId: resolveModelId(routine.provider, routine.modelId),
     prompt: routine.prompt,
     runTarget: routine.runTarget,
     arcId: routine.arcId,
@@ -874,7 +874,7 @@ function ScheduledTaskEditor({
                           provider,
                           modelId: known
                             ? draft.modelId
-                            : PROVIDER_MODEL_DEFAULTS[provider].modelId
+                            : resolveModelId(provider, PROVIDER_MODEL_DEFAULTS[provider].modelId)
                         });
                       }}
                       options={(Object.keys(PROVIDER_MODELS) as ProviderId[]).map((provider) => ({
@@ -890,7 +890,7 @@ function ScheduledTaskEditor({
                     <SettingsListPicker
                       ariaLabel="Model"
                       value={draft.modelId}
-                      onChange={(modelId) => patch({ modelId })}
+                      onChange={(modelId) => patch({ modelId: resolveModelId(draft.provider, modelId) })}
                       options={modelOptions}
                     />
                   </div>

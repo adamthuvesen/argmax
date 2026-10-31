@@ -13,8 +13,10 @@ for the boundary and maintenance tradeoff.
 
 - `Sources/Bridge/BridgeClient.swift` — one authenticated WebSocket to the
   paired Mac, speaking the protocol in [docs/remote.md](../../docs/remote.md).
-- `Sources/Bridge/Models.swift` — Codable mirrors of the TypeScript dashboard
-  shapes, tolerant of fields and enum values this app has not heard of.
+- `Sources/Bridge/GeneratedWireResponses.swift` — the dashboard and transcript
+  rows, generated from the Rust bindings by `scripts/export-swift-contracts.mjs`.
+  `Sources/Bridge/Models.swift` holds the enums and containers around them,
+  tolerant of fields and enum values this app has not heard of.
 - `Sources/Chats/DashboardStore.swift` — one snapshot, kept current by
   `dashboard:delta`, grouped into Pinned / Priority / Chats by the same rules
   the desktop sidebar and `mobile.html` apply.

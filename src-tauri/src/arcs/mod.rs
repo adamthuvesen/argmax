@@ -63,7 +63,7 @@ pub async fn launch_coordinator(
         ));
     }
 
-    let defaults = crate::provider_defaults(request.provider.as_str());
+    let defaults = crate::provider_defaults(request.provider);
     let model_label = request
         .model_label
         .clone()

@@ -1,5 +1,5 @@
 import type { PendingMessage, SessionSummary } from "../../shared/types.js";
-import { successorModelId } from "../../shared/providerModels.js";
+import { resolveModelId } from "../../shared/providerModels.js";
 
 /**
  * Leave enough room for the steered continuation and its first tool result.
@@ -47,7 +47,7 @@ export function canSteerQueuedMessage(
       session.provider === "claude" ||
       session.provider === "opencode") &&
     hasSteeringContextHeadroom(session) &&
-    (entry.modelId === undefined || entry.modelId === successorModelId(session.provider, session.modelId)) &&
+    (entry.modelId === undefined || entry.modelId === resolveModelId(session.provider, session.modelId)) &&
     (entry.reasoningEffort === undefined || entry.reasoningEffort === session.reasoningEffort)
   );
 }

@@ -14,6 +14,7 @@ npm test                # Run unit, perf, and Rust test suites
 npm run test:unit       # Vitest unit and component tests
 npm run test:perf       # Vitest performance benchmarks
 npm run test:rust       # Cargo test suite for src-tauri (includes the bindings freshness test)
+npm run test:ios        # XCTest suite on a simulator (see "iPhone Tests" below)
 npm run lint:rust       # cargo clippy over every target, warnings are errors
 npm run check:static    # Every static gate; precheck and CI run this same list
 npm run check:rust-boundaries # Rust layer rules, with a ratchet on existing violations
@@ -49,9 +50,10 @@ touches:
 | Touched | Runs |
 |---|---|
 | any path, docs included | `check:static` ([scripts/static-checks.mjs](../scripts/static-checks.mjs)) |
-| `src/**`, `src-tauri/**`, `ios/**`, assets, HTML entrypoints, package or tool config, `scripts/**` | eslint, tsc, `vitest run --changed <merge-base>`, perf budgets |
+| `src/**`, `src-tauri/**`, `ios/**`, `fixtures/parity/**`, assets, HTML entrypoints, package or tool config, `scripts/**` | eslint, tsc, `vitest run --changed <merge-base>`, perf budgets |
 | `src-tauri/**`, browser-blocking assets, Cargo or workflow config | `cargo fmt --check`, `cargo test`, `cargo clippy -D warnings` |
 | any JS lane change | `vite build` + the bundle budget |
+| `ios/**`, `fixtures/parity/**`, `scripts/ios-tests.mjs` | `npm run test:ios` |
 
 `npm run typecheck` (the tsc lane here and in CI) runs TypeScript 7, the native
 compiler, installed as the `typescript-7` alias: it checks the renderer in about
@@ -59,7 +61,7 @@ compiler, installed as the `typescript-7` alias: it checks the renderer in about
 `typescript` 5.9 package stays because typescript-eslint's type-aware rules
 support only `<6.1`, and editors load their language service from it.
 
-`cargo fmt --check` runs first in the Rust lane, because it takes about a second and is the likeliest push-time failure. `git push` re-runs the whole script through the pre-push hook, so a tool call that pushes needs a 600 s timeout. The iOS XCTest suite is not part of CI or precheck (macOS minutes bill 10x); run it from `ios/Argmax` per [ios-performance.md](ios-performance.md) when you change Swift.
+`cargo fmt --check` runs first in the Rust lane, because it takes about a second and is the likeliest push-time failure. `git push` re-runs the whole script through the pre-push hook, so a tool call that pushes needs a 600 s timeout.
 
 Workflow changes run both language lanes. Paths are read from Git without quoting,
 so spaces and non-ASCII filenames cannot hide a change. Documentation-only
@@ -109,6 +111,56 @@ it lands.
 - **The prompt editor:** jsdom has no layout, so the suite renders the composers' lazy `ComposerEditor` as the textarea it shows while the CodeMirror chunk loads (`ComposerFallbackField`, wired in [composerEditorMock.tsx](../src/test/composerEditorMock.tsx)), the way it already swaps the file editor. That mock proves the composers' own behavior and nothing about CodeMirror. The editor is covered against a real `EditorView` in [composerEditor/extensions.test.tsx](../src/renderer/components/composerEditor/extensions.test.tsx) and [ComposerEditorView.test.tsx](../src/renderer/components/ComposerEditorView.test.tsx) (chips, atomic Backspace, clipboard, IME guard, undo) and [ComposerEditor.test.tsx](../src/renderer/components/ComposerEditor.test.tsx) (the hand-over from the textarea), and in a real browser by `node scripts/verification/composer-editor.mjs`. A test that needs the real wrapper calls `vi.unmock("./ComposerEditor.js")`; one that needs the editor inside a composer remaps the module to the view (`vi.mock("./ComposerEditor.js", ...)` returning `ComposerEditorView`), as [SessionComposer.editor.test.tsx](../src/renderer/components/SessionComposer.editor.test.tsx) and [LaunchSurface.editor.test.tsx](../src/renderer/components/LaunchSurface.editor.test.tsx) do for undo, cut, submit and the draft switch. [jsdomCodeMirror.ts](../src/test/jsdomCodeMirror.ts) gives jsdom the zeroed layout CodeMirror measures.
 - **Timers:** A test that waits on a `setInterval` or `setTimeout` in the component must fake it (`vi.useFakeTimers`, or `toFake: ["setInterval", "clearInterval"]` when `waitFor` still needs real `setTimeout`) and advance it with `vi.advanceTimersByTimeAsync`. Sleeping through a real interval is the suite's largest cost and its main flake source on shared CI runners.
 - **Performance Benchmarks:** Run through [vitest.perf.config.ts](../vitest.perf.config.ts) and [src/test/perf.test.ts](../src/test/perf.test.ts).
+
+## iPhone Tests
+
+`npm run test:ios` ([scripts/ios-tests.mjs](../scripts/ios-tests.mjs)) regenerates
+the Xcode project, builds the `ArgmaxTests` target, and runs it on a simulator
+named "Argmax Test Lane", which it creates when it is missing. Precheck runs it
+when the diff touches the paths in the table above. CI runs the same command in
+a path-filtered macOS job, and on every push to `main`. The log goes to
+`node_modules/.cache/ios-tests/last-run.log`. `--only ParityTableTests` narrows a
+run to one class, or to `Class/testMethod`.
+
+On 4 November 2026 the suite ran 494 tests on an already booted simulator in
+81 s from empty DerivedData (59 s build, 22 s tests) and 21 s with nothing to
+rebuild. Booting the simulator first raised the test step to 50–60 s.
+
+UI tests and `NativePerformanceTests` stay out of this lane. See
+[ios-performance.md](ios-performance.md#run-the-checks).
+
+When `xcodebuild -checkFirstLaunchStatus` fails, xcodebuild lists no simulator.
+The script then warns and injects the test bundle into the app through the
+CoreSimulator `simctl`, so a push from that machine still gets a real result.
+The fix is `sudo xcodebuild -runFirstLaunch`, which needs an administrator.
+
+### Rules that exist on both platforms
+
+A rule that the desktop and the phone both implement has one case table in
+[fixtures/parity](../fixtures/parity):
+
+| Table | Desktop | Phone |
+|---|---|---|
+| `chat-detail.json` | `sessionTurnView.ts`, `uiPreferences.ts` | `MobileChatDetail.swift`, `MobileTranscriptRows.swift` |
+| `inline-math.json` | `normalizeMathDelimiters.ts`, read back through remark-math | `TranscriptMarkdownPreparation.swift` |
+| `workspace-chat.json` | `workspaceChat.ts` | `ChatSections.swift` |
+
+[parityTables.test.ts](../src/renderer/lib/parityTables.test.ts) and
+[ParityTableTests.swift](../ios/Argmax/Tests/ParityTableTests.swift) run each table
+against the real functions. To change a rule, change the table first, then both
+functions. Where the platforms really differ, a case carries a `desktop` or
+`phone` object with that platform's expected value and a `reason`. A new mirrored
+rule gets a new table.
+
+### Recorded scroll sequences
+
+[TranscriptScrollModel](../ios/Argmax/Sources/Transcript/TranscriptScrollModel.swift)
+holds every transcript scroll decision. The `scroll-*.json` files in
+`ios/Argmax/Tests/Fixtures` are event sequences recorded from the real list in
+hosted `NativeTranscriptListTests` runs. Each step holds the event, the props, and
+the decisions the model made. A deliberate behavior change needs a new recording.
+Sequences a hosted test cannot perform, such as a drag during layout, are written
+out in [TranscriptScrollModelTests](../ios/Argmax/Tests/TranscriptScrollModelTests.swift).
 
 ## Rust Tests
 

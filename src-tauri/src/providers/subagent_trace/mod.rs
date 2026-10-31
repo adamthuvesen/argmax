@@ -13,6 +13,7 @@ pub(crate) use cursor::cursor_project_slug;
 use rusqlite::Connection;
 use serde_json::Value;
 
+use super::ProviderId;
 use crate::{
     error::ArgmaxResult,
     persistence::{
@@ -304,11 +305,11 @@ fn agent_trace_context(
     let workspace_path = find_workspace_by_id(connection, &session.workspace_id)
         .ok()
         .map(|workspace| workspace.path);
-    let provider = match session.provider.as_str() {
-        "codex" => TraceProvider::Codex,
-        "cursor" => TraceProvider::Cursor,
-        "grok" => TraceProvider::Grok,
-        _ => return Ok(None),
+    let provider = match ProviderId::parse(&session.provider) {
+        Some(ProviderId::Codex) => TraceProvider::Codex,
+        Some(ProviderId::Cursor) => TraceProvider::Cursor,
+        Some(ProviderId::Grok) => TraceProvider::Grok,
+        Some(ProviderId::Claude | ProviderId::Opencode) | None => return Ok(None),
     };
     let tail = list_session_agent_events(connection, session_id, parent_tool_use_id)?;
     let mut parent_created_at = None;

@@ -5,6 +5,7 @@ use std::path::Path;
 use rusqlite::Connection;
 use serde_json::{json, Value};
 
+use super::model_catalogue::ModelId;
 use super::{
     continuity::{
         fresh_retry_input, is_definite_rejection, latest_turn_starter, observe_provider_line,
@@ -332,7 +333,7 @@ fn launch_with(fallback: Option<&str>) -> ProviderLaunchInput {
         workspace_path: WORKSPACE.into(),
         prompt: "native prompt".to_string(),
         model_label: "Model".to_string(),
-        model_id: "model-id".to_string(),
+        model_id: ModelId::resolve(ProviderId::Claude, "model-id"),
         reasoning_effort: None,
         fast_mode: false,
         resume_conversation_id: Some("claude-conv".to_string()),

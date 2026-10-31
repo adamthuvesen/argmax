@@ -421,6 +421,7 @@ mod tests {
     use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
     use crate::persistence::sessions::{persist_session, PersistSessionInput};
     use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
+    use crate::providers::model_catalogue::ModelId;
     use tempfile::TempDir;
 
     fn setup() -> (Arc<Database>, String, TempDir) {
@@ -508,7 +509,7 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"d
             workspace_path: dir.path().to_path_buf(),
             prompt: "test".into(),
             model_label: "test".into(),
-            model_id: "test".into(),
+            model_id: ModelId::resolve(ProviderId::Claude, "test"),
             reasoning_effort: None,
             fast_mode: false,
             resume_conversation_id: None,

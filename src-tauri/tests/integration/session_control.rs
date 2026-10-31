@@ -185,7 +185,10 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
         workspace_path: PathBuf::from(repo.path()),
         prompt: "Parent task".to_string(),
         model_label: "GPT-5.6 Sol".to_string(),
-        model_id: "gpt-5.6-sol".to_string(),
+        model_id: argmax_lib::providers::model_catalogue::ModelId::resolve(
+            ProviderId::Codex,
+            "gpt-5.6-sol",
+        ),
         reasoning_effort: Some(ReasoningEffort::High),
         fast_mode: true,
         resume_conversation_id: None,
@@ -992,7 +995,10 @@ fn credential(
         workspace_path: PathBuf::from(repo),
         prompt: "Task".to_string(),
         model_label: "GPT-5.6 Sol".to_string(),
-        model_id: "gpt-5.6-sol".to_string(),
+        model_id: argmax_lib::providers::model_catalogue::ModelId::resolve(
+            ProviderId::Codex,
+            "gpt-5.6-sol",
+        ),
         reasoning_effort: None,
         fast_mode: false,
         resume_conversation_id: None,

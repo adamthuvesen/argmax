@@ -715,30 +715,40 @@ The `argmax session …` CLI still speaks the same socket from a terminal. See
 
 ## Adding or retiring a model
 
-A model id lives in more than one place. Work through this list, then run
-`npm run check:provider-models` and `npm run precheck`.
+[providerModels.ts](../src/shared/providerModels.ts) is the source. Edit it, then
+run `npm run export:provider-models` and `npm run precheck`. The export writes
+`ios/Argmax/Resources/providerModels.json` and
+`src-tauri/src/providers/model_catalogue.generated.rs`, and every other copy of an
+id, ladder, default, or Vercel slug reads those files.
 
-- [providerModels.ts](../src/shared/providerModels.ts): the catalogue row
-  (`label`, `modelId`, `contextWindow`, `supportsReasoningEffort`,
-  `supportsFastMode`). For a retired id, add it to `SUCCESSOR_MODEL_IDS`:
-  `successorModelId`, `modelLabelFor`, and `contextWindowForModel` follow it.
-- [adapters.rs](../src-tauri/src/providers/adapters.rs): `claude_model_arg` and
-  the Cursor and Codex model arguments. [pricing.rs](../src-tauri/src/providers/pricing.rs)
-  prices the id.
-- [models.ts](../src/renderer/lib/models.ts): launch defaults, the Auto tier
-  blurbs `AUTO_TIER_DESCRIPTIONS`, and the routing grid copy (see
-  [routing.md](routing.md)); `src-tauri/src/routing/table.rs` is the source.
-- `ScheduledTasksPanel.tsx` (`draftFromRoutine`) maps a stored routine's model
-  through the successor.
-- The phone reads a generated copy: `npm run export:provider-models` rewrites
-  `ios/Argmax/Resources/providerModels.json`. `ProviderCatalogTests.swift`
-  names ids too. CI cannot run the iOS suite, so `check:provider-models` fails
-  on a stale file or a test id the catalogue no longer lists.
-- An OpenCode model also runs on Vercel AI Gateway: check its slug in Vercel's
-  catalogue and add it to `VERCEL_SLUGS` in
-  [opencode_gateway.rs](../src-tauri/src/providers/opencode_gateway.rs) when it
-  differs from OpenRouter's, with a case in its mapping test.
-- Tests that name the old id: `grep -rn "<old-id>" src src-tauri ios`.
+- **Add:** add the row to `PROVIDER_MODELS` and its effort ladder to
+  `reasoningEffortsForModel`. For an OpenCode model, check its slug in Vercel's
+  catalogue and set `vercelSlug` when it differs from OpenRouter's. Add its rate to
+  `MODEL_PRICING` in `providerModels.ts` and `pricing.rs`.
+- **Retire:** remove the row and add `old id: successor` to
+  `SUCCESSOR_MODEL_IDS`. For an id that keeps launching as itself, add a
+  `STORED_ONLY_MODELS` row instead.
+- **Follow the failures.** Each one names the file to edit:
+  - `check:provider-models`: a stale output, a default or title model that left the
+    catalogue, a priced id with no successor, or production code that names a
+    retired id.
+  - `cargo test --manifest-path src-tauri/Cargo.toml catalogue`: a missing price (`pricing.rs`), or a model with no
+    routing answer (`routing/table.rs`). The Router grid and its copy in
+    `AUTO_TIER_DESCRIPTIONS` and [routing.md](routing.md) are policy, so the catalogue
+    does not generate them.
+
+A stored id reaches a launch or a routing decision only as a resolved id:
+`ModelId::resolve` in Rust and `resolveModelId` in the renderer. The stored row
+keeps its id. `ProviderLaunchInput.model_id` and `FollowUpState.model_id` have the
+type `ModelId`, and ESLint rejects a raw `session.modelId` or `routine.modelId`.
+
+## Adding a provider
+
+Add the variant to `ProviderId` in
+[validation.rs](../src-tauri/src/application/validation.rs). The compiler then
+lists every provider dispatch, and `Record<ProviderId, ...>` lists every TypeScript
+table. Add the provider to `PROVIDER_MODELS` and run `npm run export:provider-models`.
+Parse stored strings with `ProviderId::parse` and match without a wildcard.
 
 ### DeepSeek Flash 1017
 

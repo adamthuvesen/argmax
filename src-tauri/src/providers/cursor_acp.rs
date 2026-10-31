@@ -41,6 +41,7 @@ use super::acp::{
 };
 use super::adapters::cursor_fast_mode;
 use super::environment::build_provider_environment;
+use super::model_catalogue::catalogue_model;
 use super::normalizer::todo::is_todo_tool;
 use super::normalizer::ProviderOutputStream;
 use super::runtime::{
@@ -782,21 +783,13 @@ fn cursor_model_matches(advertised: &str, input: &ProviderLaunchInput) -> bool {
 /// there, and Cursor advertises one `optimize_for` value regardless of which
 /// one the catalog entry names.
 fn cursor_acp_family(model_id: &str) -> Option<&str> {
-    match model_id {
-        "composer-2.5" => Some("composer-2.5"),
-        "grok-4.7-medium" => Some("grok-4.7"),
-        "cursor-grok-4.6-medium" => Some("grok-4.6"),
-        "cursor-grok-4.5-medium" => Some("grok-4.5"),
-        "gemini-3.8-flash-medium" => Some("gemini-3.8-flash"),
-        "gpt-5.6-sol-medium" => Some("gpt-5.6-sol"),
-        "gpt-5.6-terra-medium" => Some("gpt-5.6-terra"),
-        "gpt-5.6-luna-medium" => Some("gpt-5.6-luna"),
-        "claude-opus-5-thinking-medium" => Some("claude-opus-5"),
-        "claude-opus-5-5-medium" => Some("claude-opus-5-5"),
-        "claude-sonnet-5-5-medium" => Some("claude-sonnet-5-5"),
-        _ if model_id.starts_with("auto-smart[") => Some("auto-smart"),
-        _ => None,
+    catalogue_model(ProviderId::Cursor, model_id)?;
+    if model_id.starts_with("auto-smart[") {
+        return Some("auto-smart");
     }
+    let family = model_id.strip_suffix("-medium").unwrap_or(model_id);
+    let family = family.strip_prefix("cursor-").unwrap_or(family);
+    Some(family.strip_suffix("-thinking").unwrap_or(family))
 }
 
 fn model_family(model_id: &str) -> &str {
@@ -1718,6 +1711,7 @@ impl ProviderRuntimeHandle for AcpTurnHandle {
 mod tests {
     use super::*;
     use crate::persistence::events::PersistTimelineEventInput;
+    use crate::providers::model_catalogue::ModelId;
     use crate::providers::normalizer::{
         normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent,
     };
@@ -1733,7 +1727,7 @@ mod tests {
             workspace_path: "/tmp".into(),
             prompt: "p".into(),
             model_label: model_id.into(),
-            model_id: model_id.into(),
+            model_id: ModelId::resolve(ProviderId::Cursor, model_id),
             reasoning_effort: None,
             fast_mode: false,
             resume_conversation_id: None,
@@ -2404,7 +2398,7 @@ mod tests {
     fn eligibility_covers_all_cursor_models_except_forks() {
         let mut input = launch_input("composer-2.5");
         assert!(is_acp_eligible(&input));
-        input.model_id = "gpt-5.6-sol-medium".into();
+        input.model_id = ModelId::resolve(input.provider, "gpt-5.6-sol-medium");
         assert!(is_acp_eligible(&input));
         input.resume_fork = true;
         assert!(!is_acp_eligible(&input));
@@ -2540,7 +2534,7 @@ mod tests {
             "gpt-5.6-luna[context=272k,reasoning=medium,fast=false]",
             &input
         ));
-        input.model_id = "not-a-cursor-model".into();
+        input.model_id = ModelId::resolve(input.provider, "not-a-cursor-model");
         assert!(!cursor_model_matches("gpt-5.6-sol", &input));
     }
 
@@ -2551,17 +2545,17 @@ mod tests {
             "grok-4.7[effort=xhigh,fast=true]",
             &input
         ));
-        input.model_id = "cursor-grok-4.6-medium".into();
+        input.model_id = ModelId::resolve(input.provider, "cursor-grok-4.6-medium");
         assert!(cursor_model_matches(
             "grok-4.6[effort=high,fast=true]",
             &input
         ));
-        input.model_id = "claude-opus-5-5-medium".into();
+        input.model_id = ModelId::resolve(input.provider, "claude-opus-5-5-medium");
         assert!(cursor_model_matches(
             "claude-opus-5-5[effort=high,fast=false]",
             &input
         ));
-        input.model_id = "claude-sonnet-5-5-medium".into();
+        input.model_id = ModelId::resolve(input.provider, "claude-sonnet-5-5-medium");
         assert!(cursor_model_matches(
             "claude-sonnet-5-5[effort=high,fast=false]",
             &input
@@ -2572,7 +2566,7 @@ mod tests {
         ));
         // Every `auto-smart` entry maps onto the one variant Cursor lists,
         // whichever `optimize_for` the catalog entry names.
-        input.model_id = "auto-smart[optimize_for=cost]".into();
+        input.model_id = ModelId::resolve(input.provider, "auto-smart[optimize_for=cost]");
         assert!(cursor_model_matches(
             "auto-smart[optimize_for=balanced]",
             &input
@@ -2668,7 +2662,7 @@ mod tests {
             [("effort".into(), "low".into())]
         );
 
-        input.model_id = "grok-4.7-medium".into();
+        input.model_id = ModelId::resolve(input.provider, "grok-4.7-medium");
         input.reasoning_effort = Some(ReasoningEffort::Max);
         assert_eq!(
             changes("grok-4.7", &input),

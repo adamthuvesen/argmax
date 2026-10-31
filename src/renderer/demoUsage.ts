@@ -456,7 +456,7 @@ export function demoRouterCost(): RouterCostSummary {
         [6_800, 1_900_000],
         [
           ["claude", "claude-sonnet-5-5", 112, 96.2],
-          ["opencode", "openrouter/deepseek/deepseek-v4.1-flash", 61, 9.1],
+          ["opencode", "openrouter/deepseek/deepseek-v4.1-flash-1017", 61, 9.1],
           ["claude", "claude-opus-5-5", 4, 4.3],
           ["cursor", "composer-2.5", 1, 0.18],
           ["grok", "grok-4.7", 1, 0.3]
@@ -468,7 +468,7 @@ export function demoRouterCost(): RouterCostSummary {
         [71, 5.6, 30],
         [3_200, 250_000],
         [
-          ["opencode", "openrouter/deepseek/deepseek-v4.1-flash", 15, 2.1],
+          ["opencode", "openrouter/deepseek/deepseek-v4.1-flash-1017", 15, 2.1],
           ["codex", "gpt-6.1-sol", 6, 8.9],
           ["claude", "claude-sonnet-5-5", 1, 0.74]
         ]

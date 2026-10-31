@@ -29,6 +29,7 @@ use crate::persistence::Database;
 use crate::providers::normalizer::{
     normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent, ProviderOutputStream,
 };
+use crate::providers::ProviderId;
 use crate::workspaces::WorkspaceService;
 
 /// Providers whose transcript format Argmax can read today.
@@ -283,9 +284,10 @@ fn normalize_events(
     byte_cursor: u64,
     line_cursor: Option<u64>,
 ) -> ArgmaxResult<(claude::TranscriptCursor, Vec<PersistTimelineEventInput>)> {
-    let provider_id = match provider {
-        "claude" => crate::ipc::validation::ProviderId::Claude,
-        _ => {
+    let provider_id = match ProviderId::parse(provider) {
+        Some(ProviderId::Claude) => ProviderId::Claude,
+        Some(ProviderId::Codex | ProviderId::Cursor | ProviderId::Opencode | ProviderId::Grok)
+        | None => {
             return Ok((
                 claude::TranscriptCursor {
                     byte_offset: byte_cursor,
@@ -403,7 +405,11 @@ fn model_label(session: &DiscoveredSession, provider: &str) -> String {
         .model_id
         .as_deref()
         .map(crate::fallback_model_label)
-        .unwrap_or_else(|| crate::provider_defaults(provider).model_label.to_string())
+        .unwrap_or_else(|| {
+            crate::provider_defaults(import_provider(provider))
+                .model_label
+                .to_string()
+        })
 }
 
 /// The model to resume the imported conversation with. A transcript swept up
@@ -411,10 +417,16 @@ fn model_label(session: &DiscoveredSession, provider: &str) -> String {
 /// and an empty one is not a launchable session — the CLI rejects
 /// `--model ''` — so the provider default stands in.
 fn model_id(session: &DiscoveredSession, provider: &str) -> String {
-    session
-        .model_id
-        .clone()
-        .unwrap_or_else(|| crate::provider_defaults(provider).model_id.to_string())
+    session.model_id.clone().unwrap_or_else(|| {
+        crate::provider_defaults(import_provider(provider))
+            .model_id
+            .to_string()
+    })
+}
+
+/// Imports only run for `SUPPORTED_PROVIDERS`, all of which parse.
+fn import_provider(provider: &str) -> ProviderId {
+    ProviderId::parse(provider).unwrap_or(ProviderId::Claude)
 }
 
 fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {

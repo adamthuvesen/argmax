@@ -14,7 +14,10 @@ use super::{
 };
 use crate::{
     ipc::validation::{ProviderId, ReasoningEffort},
-    providers::pricing::{cost_of, list_price, ModelPricing, UsageCounts},
+    providers::{
+        model_catalogue::ModelId,
+        pricing::{cost_of, list_price, ModelPricing, UsageCounts},
+    },
 };
 
 /// Escalate only when the user is clearly unhappy with the work (failing,
@@ -89,7 +92,7 @@ fn ladder(provider: ProviderId) -> &'static [(&'static RouteModel, Option<Reason
 pub struct FollowUpState {
     pub tier: AutoTier,
     pub provider: ProviderId,
-    pub model_id: String,
+    pub model_id: ModelId,
     pub effort: Option<ReasoningEffort>,
     /// Providers whose CLI is installed. A ladder rung on another provider is
     /// skipped when it is not in here. Empty means unknown, so nothing is held.
@@ -221,7 +224,7 @@ pub fn follow_up_route(state: &FollowUpState, classification: &Classification) -
             };
         }
     }
-    if candidate.model.model_id == state.model_id && candidate.effort == state.effort {
+    if state.model_id == candidate.model.model_id && candidate.effort == state.effort {
         return kept(state, classification, settled, reason);
     }
     let Some(current_strength) = strength(&state.model_id, state.effort) else {
@@ -234,7 +237,7 @@ pub fn follow_up_route(state: &FollowUpState, classification: &Classification) -
     };
     let candidate_strength = strength(candidate.model.model_id, candidate.effort)
         .expect("follow-up policy contains known models");
-    let same_model = candidate.model.model_id == state.model_id;
+    let same_model = state.model_id == candidate.model.model_id;
 
     if candidate_strength > current_strength {
         // Up goes straight to the target: a turn on too weak a model is the
@@ -381,7 +384,7 @@ fn percent(probability: f64) -> String {
 pub fn escalate(
     tier: AutoTier,
     provider: ProviderId,
-    model_id: &str,
+    model_id: &ModelId,
     effort: Option<ReasoningEffort>,
     available: &[ProviderId],
     reason: &str,
@@ -406,11 +409,10 @@ pub fn escalate(
 fn next_rung(
     tier: AutoTier,
     provider: ProviderId,
-    model_id: &str,
+    model_id: &ModelId,
     effort: Option<ReasoningEffort>,
     available: &[ProviderId],
 ) -> Option<RoutedModel> {
-    let model_id = table::route_model(model_id).map_or(model_id, |model| model.model_id);
     let rungs = if tier == AutoTier::Economy && provider == ProviderId::Codex {
         &[
             (&table::LUNA, Some(Medium)),
@@ -423,7 +425,7 @@ fn next_rung(
     };
     let next = match rungs
         .iter()
-        .position(|(model, rung_effort)| model.model_id == model_id && *rung_effort == effort)
+        .position(|(model, rung_effort)| *model_id == model.model_id && *rung_effort == effort)
     {
         Some(index) => rungs.get(index + 1),
         None => {
@@ -520,9 +522,11 @@ fn kept(
     RouteDecision {
         tier: state.tier,
         provider: state.provider,
-        model_id: state.model_id.clone(),
-        model_label: table::route_model(&state.model_id)
-            .map_or_else(|| state.model_id.clone(), |model| model.label.to_string()),
+        model_id: state.model_id.to_string(),
+        model_label: table::route_model(&state.model_id).map_or_else(
+            || state.model_id.to_string(),
+            |model| model.label.to_string(),
+        ),
         effort: state.effort,
         kind: settled.map(|(kind, _)| kind),
         difficulty: settled.map(|(_, difficulty)| difficulty),
@@ -542,6 +546,14 @@ mod tests {
     const HOUR: Duration = Duration::from_secs(60 * 60);
 
     // The median real Opus 5.5 turn: 4 calls, 737k cache reads, 14k written.
+    fn grid_provider(model_id: &str) -> ProviderId {
+        table::ROUTE_MODELS
+            .iter()
+            .find(|model| model.model_id == model_id)
+            .expect("grid model")
+            .provider
+    }
+
     fn median_turn() -> UsageCounts {
         UsageCounts {
             input: 2_000,
@@ -559,7 +571,7 @@ mod tests {
         FollowUpState {
             tier: AutoTier::Balanced,
             provider,
-            model_id: model_id.to_string(),
+            model_id: ModelId::resolve(provider, model_id),
             effort,
             available: Vec::new(),
             context_tokens: 168_000,
@@ -777,7 +789,7 @@ mod tests {
             let goal = escalate(
                 AutoTier::Economy,
                 ProviderId::Codex,
-                "gpt-6.1-sol",
+                &ModelId::resolve(ProviderId::Codex, "gpt-6.1-sol"),
                 Some(High),
                 &available,
                 "goal incomplete",
@@ -964,7 +976,7 @@ mod tests {
             let goal_route = escalate(
                 AutoTier::Economy,
                 ProviderId::Codex,
-                model,
+                &ModelId::resolve(ProviderId::Codex, model),
                 Some(effort),
                 &[],
                 "goal incomplete",
@@ -1014,7 +1026,7 @@ mod tests {
             ("grok-4.7", Some(High), "claude-opus-5-5", Some(High)),
         ];
         for (model, effort, next_model, next_effort) in climbs {
-            let provider = table::route_model(model).expect("grid model").provider;
+            let provider = grid_provider(model);
             let decision = follow_up_route(&state(provider, model, effort), &correction);
             assert_eq!(decision.decision, RouteDecisionKind::Escalate, "{model}");
             assert_eq!(
@@ -1022,7 +1034,7 @@ mod tests {
                 (next_model, next_effort)
             );
             // Grok's last rung hands the chat to Claude Code.
-            let next_provider = table::route_model(next_model).expect("grid model").provider;
+            let next_provider = grid_provider(next_model);
             assert_eq!(decision.provider, next_provider, "{model} -> {next_model}");
         }
 

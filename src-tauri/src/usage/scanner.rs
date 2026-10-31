@@ -157,7 +157,7 @@ impl UsageScanner {
 
         let connection = self.database.connection();
         for provider in [ProviderId::Claude, ProviderId::Codex, ProviderId::Grok] {
-            for path in usage_scan::list_scan_file_paths(&connection, provider_key(provider))? {
+            for path in usage_scan::list_scan_file_paths(&connection, provider.as_str())? {
                 if !Path::new(&path).exists() {
                     let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
                     usage_scan::forget_file(&transaction, &path)?;
@@ -327,7 +327,7 @@ impl UsageScanner {
             &transaction,
             &ScanFileRecord {
                 path: path_key,
-                provider: provider_key(file.provider).to_owned(),
+                provider: file.provider.as_str().to_owned(),
                 session_id,
                 size: file.size,
                 mtime_ms: file.mtime_ms,
@@ -394,7 +394,7 @@ fn fold_records(
         .into_iter()
         .map(|record| UsageContribution {
             billed_call_key: record.dedupe_key,
-            provider: provider_key(record.provider).to_owned(),
+            provider: record.provider.as_str().to_owned(),
             model_id: normalize_model_id(&record.model_id),
             session_id: record.session_id,
             at_ms: record.at_ms,
@@ -530,27 +530,6 @@ fn guard_matches(path: &Path, cursor_offset: i64, expected: Option<&str>) -> Arg
         return Ok(false);
     };
     Ok(guard_hash_at(path, cursor_offset as u64)?.as_deref() == Some(expected))
-}
-
-pub fn provider_key(provider: ProviderId) -> &'static str {
-    match provider {
-        ProviderId::Claude => "claude",
-        ProviderId::Codex => "codex",
-        ProviderId::Cursor => "cursor",
-        ProviderId::Opencode => "opencode",
-        ProviderId::Grok => "grok",
-    }
-}
-
-pub fn provider_from_key(key: &str) -> Option<ProviderId> {
-    match key {
-        "claude" => Some(ProviderId::Claude),
-        "codex" => Some(ProviderId::Codex),
-        "cursor" => Some(ProviderId::Cursor),
-        "opencode" => Some(ProviderId::Opencode),
-        "grok" => Some(ProviderId::Grok),
-        _ => None,
-    }
 }
 
 /// Unix seconds at the start of the UTC hour containing `at_ms`.

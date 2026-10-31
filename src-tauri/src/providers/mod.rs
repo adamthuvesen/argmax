@@ -22,6 +22,7 @@ mod heredoc_activity;
 pub mod inputs;
 pub mod mcp_injection;
 pub mod measured_diffs;
+pub mod model_catalogue;
 pub mod normalizer;
 pub mod one_shot;
 pub mod opencode_gateway;
@@ -38,8 +39,11 @@ pub mod verification;
 
 use std::path::PathBuf;
 
+use serde::de::IntoDeserializer;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+
+use model_catalogue::ModelId;
 
 pub use crate::application::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
 
@@ -54,15 +58,14 @@ pub enum ApprovalSupport {
     Respondable,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProviderLaunchInput {
     pub provider: ProviderId,
     pub session_id: String,
     pub workspace_path: PathBuf,
     pub prompt: String,
     pub model_label: String,
-    pub model_id: String,
+    pub model_id: ModelId,
     pub reasoning_effort: Option<ReasoningEffort>,
     pub fast_mode: bool,
     pub resume_conversation_id: Option<String>,
@@ -76,7 +79,6 @@ pub struct ProviderLaunchInput {
     pub cols: u16,
     pub rows: u16,
     /// Native-continuity instructions for this launch; see `LaunchContinuity`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub continuity: Option<LaunchContinuity>,
 }
 
@@ -109,6 +111,14 @@ impl ProviderLaunchInput {
 }
 
 impl ProviderId {
+    /// The provider a stored or wire string names, spelled as the wire spells
+    /// it. A string that names no provider is `None`.
+    pub fn parse(value: &str) -> Option<Self> {
+        let value: serde::de::value::StrDeserializer<'_, serde::de::value::Error> =
+            value.into_deserializer();
+        Self::deserialize(value).ok()
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             ProviderId::Claude => "claude",

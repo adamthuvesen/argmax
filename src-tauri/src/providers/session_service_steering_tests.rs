@@ -170,6 +170,24 @@ async fn successful_steer_persists_delivery_and_leaves_session_running() {
 /// message keeps the author the row had: a person's stays theirs, another
 /// session's or an unattested one never becomes theirs.
 #[tokio::test]
+async fn a_row_on_the_successor_of_a_retired_model_can_steer() {
+    let (service, handle, _) = steer_service(true, None);
+    service
+        .database
+        .connection()
+        .execute(
+            "UPDATE sessions SET provider = 'codex', model_id = 'gpt-6-sol' WHERE id = 'session-1'",
+            [],
+        )
+        .unwrap();
+    let mut message = pending("retired", "steer");
+    message.model_id = Some("gpt-6.1-sol".to_string());
+    let id = seed_queue(&service, message);
+    steer_now(&service, &id).await.unwrap();
+    assert_eq!(handle.steer_calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn steering_a_queued_row_keeps_its_author() {
     for (author, expected) in [
         (

@@ -448,7 +448,7 @@ fn spawn_turn(
     });
     let session_id = input.session_id.clone();
     let prompt = input.prompt.clone();
-    let model_id = input.model_id.clone();
+    let model_id = input.model_id.to_string();
     tokio::spawn(async move {
         run_turn(
             Arc::clone(&client),
@@ -945,6 +945,7 @@ impl ProviderRuntimeHandle for GrokTurnHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::model_catalogue::ModelId;
 
     #[test]
     fn message_chunks_from_separate_bursts_get_a_paragraph_break() {
@@ -1029,7 +1030,7 @@ done
                 workspace_path: "/tmp".into(),
                 prompt: "p".into(),
                 model_label: model.into(),
-                model_id: model.into(),
+                model_id: ModelId::resolve(ProviderId::Grok, model),
                 reasoning_effort: Some(effort),
                 fast_mode: false,
                 resume_conversation_id: Some("native-conversation".into()),
@@ -1070,7 +1071,7 @@ done
             workspace_path: "/tmp".into(),
             prompt: "p".into(),
             model_label: "Grok 4.6".into(),
-            model_id: "grok-4.6".into(),
+            model_id: ModelId::resolve(ProviderId::Grok, "grok-4.6"),
             reasoning_effort: Some(ReasoningEffort::High),
             fast_mode: false,
             resume_conversation_id: None,

@@ -16,7 +16,8 @@ import type { SessionSummary } from "../../shared/types.js";
  * and a `.find(...)` (first wins, so the newest) sit in the same app picking
  * opposite sessions for the same row.
  *
- * Mirrored in `ios/Argmax/Sources/Chats/ChatSections.swift`.
+ * Mirrored in `ios/Argmax/Sources/Chats/ChatSections.swift`; fixtures/parity/workspace-chat.json
+ * holds the cases both run.
  */
 function isLaterChat(candidate: SessionSummary, held: SessionSummary): boolean {
   if (candidate.lastActivityAt !== held.lastActivityAt) {

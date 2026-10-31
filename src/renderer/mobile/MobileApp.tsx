@@ -978,6 +978,7 @@ export function MobileApp(): JSX.Element {
   // ladder must not offer one just because `reasoningEffortsForModel` always
   // returns a list.
   const openSessionProvider = openSession?.provider ?? null;
+  // eslint-disable-next-line no-restricted-syntax -- a change key, not a read of the model.
   const openSessionModelId = openSession?.modelId ?? null;
   const openSessionModelLabel = openSession?.modelLabel ?? null;
   const openSessionEffort = openSession?.reasoningEffort ?? null;

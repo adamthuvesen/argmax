@@ -4,5 +4,6 @@
   { "pattern": "^src-tauri/tests/fixtures/channels\\.txt$", "run": "npm run generate:bindings" },
   { "pattern": "^ios/Argmax/Sources/.*/?Generated[^/]*\\.swift$", "run": "npm run generate:contracts" },
   { "pattern": "^ios/Argmax/Resources/providerModels\\.json$", "run": "npm run export:provider-models" },
+  { "pattern": "^src-tauri/src/providers/model_catalogue\\.generated\\.rs$", "run": "npm run export:provider-models" },
   { "pattern": "^(assets/icon|assets/Argmax\\.icon|src-tauri/icons/|ios/Argmax/Sources/Assets\\.xcassets/)", "run": "npm run build:icons" }
 ]

@@ -14,43 +14,6 @@ struct TranscriptAgentEventsInput: Encodable, Sendable {
     var providerChildSessionId: String?
 }
 
-struct TranscriptPendingMessage: Decodable, Hashable, Sendable, Identifiable {
-    var id: String
-    var sessionId: String
-    var content: String
-    /// The provider this follow-up runs under once it drains. `nil` is the
-    /// chat's provider at that moment.
-    var provider: String? = nil
-    var modelLabel: String?
-    var modelId: String?
-    var reasoningEffort: String?
-    var recoveryStatus: String?
-    var queuedAt: String
-}
-
-struct TranscriptSessionMetadata: Codable, Hashable, Sendable, Identifiable {
-    var id: String
-    var workspaceId: String
-    var provider: String
-    var modelLabel: String
-    var modelId: String
-    var prompt: String
-    var state: SessionState
-    var attention: AttentionState
-    var reasoningEffort: String?
-    var contextTokens: Int? = nil
-    var contextWindow: Int? = nil
-    /// The Router tier while the router picks this chat's model; cleared
-    /// once a model is picked by hand.
-    var autoTier: String? = nil
-}
-
-struct TranscriptWorkspaceMetadata: Decodable, Hashable, Sendable, Identifiable {
-    var id: String
-    var taskLabel: String
-    var path: String?
-}
-
 struct TranscriptDashboardSnapshot: Decodable, Hashable, Sendable {
     var sessions: [TranscriptSessionMetadata]
     var workspaces: [TranscriptWorkspaceMetadata]

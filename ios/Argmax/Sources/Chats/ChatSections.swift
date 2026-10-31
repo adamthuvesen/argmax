@@ -419,8 +419,8 @@ struct ChatSections: Hashable, Sendable {
 /// opens another. That one is the most recently active, ties broken the way
 /// the dashboard query breaks them (`last_activity_at DESC, id DESC`).
 ///
-/// Port of `src/renderer/lib/workspaceChat.ts`; a change to one is a change
-/// to both.
+/// Port of `src/renderer/lib/workspaceChat.ts`. A change to one is a change
+/// to both, and to `fixtures/parity/workspace-chat.json`, which both run.
 func chatSessionByWorkspace(_ sessions: [SessionSummary]) -> [String: SessionSummary] {
     var byWorkspace: [String: SessionSummary] = [:]
     for session in sessions {

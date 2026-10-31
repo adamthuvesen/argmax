@@ -3,7 +3,7 @@ import {
   effortForModel,
   REASONING_EFFORTS,
   reasoningEffortsForModel,
-  successorModelId,
+  resolveModelId,
   type ReasoningEffort
 } from "../../shared/providerModels.js";
 import { allModelOptions, type ModelPickerSelection } from "./models.js";
@@ -38,7 +38,7 @@ export function readStoredSessionModel(
     const option = allModelOptions.find(
       (candidate) =>
         candidate.provider === stored.provider &&
-        candidate.modelId === successorModelId(candidate.provider, storedModelId)
+        candidate.modelId === resolveModelId(candidate.provider, storedModelId)
     );
     if (!option) return fallback;
 

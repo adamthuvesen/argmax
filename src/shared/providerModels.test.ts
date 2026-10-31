@@ -12,6 +12,7 @@ import {
   PROVIDER_MODELS,
   PROVIDER_TITLE_MODEL,
   reasoningEffortsForModel,
+  resolveModelId,
   type UsageCounts
 } from "./providerModels.js";
 
@@ -158,6 +159,22 @@ describe("reasoningEffortsForModel", () => {
       "xhigh",
       "max"
     ]);
+  });
+});
+
+describe("resolveModelId", () => {
+  it("follows a retired id, a dated retired id, and only its own provider", () => {
+    expect(resolveModelId("claude", "claude-sonnet-5")).toBe("claude-sonnet-5-5");
+    expect(resolveModelId("claude", "claude-haiku-4-5-20251001")).toBe("claude-haiku-5-5");
+    expect(resolveModelId("claude", "claude-opus-5-5")).toBe("claude-opus-5-5");
+    expect(resolveModelId("cursor", "gpt-6-sol")).toBe("gpt-6-sol");
+  });
+
+  it("gives a retired id its successor's effort ladder", () => {
+    const retired = "openrouter/deepseek/deepseek-v4.1-flash";
+    expect(reasoningEffortsForModel("opencode", retired)).toEqual(
+      reasoningEffortsForModel("opencode", resolveModelId("opencode", retired))
+    );
   });
 });
 

@@ -7,10 +7,16 @@
 //   npm run check
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
+
+if (!existsSync(resolve(ROOT, "node_modules/.package-lock.json"))) {
+  console.error("error: npm dependencies are missing. Run npm ci, then rerun npm run check.");
+  process.exit(1);
+}
 
 const CHECKS = [
   ["oxlint + types", ["scripts/lint.mjs"]],

@@ -447,6 +447,7 @@ async function main() {
     XDG_DATA_HOME: path.join(home, ".local/share"),
     XDG_CACHE_HOME: path.join(home, ".cache"),
     XDG_STATE_HOME: path.join(home, ".local/state"),
+    ARGMAX_VITE_CACHE_DIR: path.join(scratch, "vite-cache"),
     BROWSER: "none",
     CI: "1",
   };
@@ -457,7 +458,16 @@ async function main() {
   const baseUrl = `http://127.0.0.1:${port}/`;
   startGroup(
     process.execPath,
-    [vite, "--port", String(port), "--strictPort", "--host", "127.0.0.1"],
+    [
+      vite,
+      "--configLoader",
+      "runner",
+      "--port",
+      String(port),
+      "--strictPort",
+      "--host",
+      "127.0.0.1",
+    ],
     env,
   );
   const browser = startGroup(

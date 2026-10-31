@@ -247,6 +247,8 @@ const typeText = async (text) => {
   await cdp.send("Input.insertText", { text }, sessionId);
   await sleep(60);
 };
+// CodeMirror merges edits within 500 ms into one undo step; wait it out where a check needs its own step.
+const HISTORY_GROUP_MS = 600;
 const MOD = process.platform === "darwin" ? MODIFIER.meta : MODIFIER.ctrl;
 
 // Copy captures: a listener after the editor's own, reading what the editor put on the clipboard.
@@ -371,15 +373,21 @@ await check("Backspace removes a chip as one character, and undo brings it back"
     5000,
     "the chip",
   );
+  await sleep(HISTORY_GROUP_MS);
   await press("Backspace"); // the space after the chip
   const afterSpace = await evaluate(`document.querySelectorAll('.composer-chat-chip').length`);
   expect(afterSpace === 1, `chip count after deleting the trailing space: ${afterSpace}`);
   await press("Backspace"); // the chip itself
   const afterChip = await evaluate(`document.querySelectorAll('.composer-chat-chip').length`);
   expect(afterChip === 0, "the chip survived Backspace");
+  await sleep(HISTORY_GROUP_MS);
   await press("z", MOD);
-  const afterUndo = await evaluate(`document.querySelectorAll('.composer-chat-chip').length`);
-  expect(afterUndo === 1, "undo did not bring the chip back");
+  await waitFor(
+    () => evaluate(`document.querySelectorAll('.composer-chat-chip').length === 1`),
+    3000,
+    "undo to bring the chip back",
+  );
+  const afterUndo = 1;
   return { afterSpace, afterChip, afterUndo };
 });
 

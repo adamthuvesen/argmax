@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   root: ".",
   base: "./",
+  cacheDir: process.env.ARGMAX_VITE_CACHE_DIR,
   build: {
     outDir: "dist/renderer",
     emptyOutDir: true,

@@ -20,7 +20,6 @@ import {
 } from "./lib/uiPreferences.js";
 import { WINDOW_TRANSLUCENCY_KEY, WINDOW_TRANSLUCENT_KEY } from "./lib/windowTranslucency.js";
 import { USER_BUBBLE_TINT_STORAGE_KEY } from "./lib/userBubbleTint.js";
-import * as tauriBridge from "./lib/tauriBridge.js";
 import {
   diagnosticsStub,
   launchProvider,
@@ -673,19 +672,6 @@ describe("App settings", () => {
     expect(save).toHaveBeenLastCalledWith(
       expect.objectContaining({ modelLabel: "Sonnet 5.5", modelId: "claude-sonnet-5-5" }),
     );
-  });
-
-  it("keeps browser preferences local instead of trying to save desktop defaults", async () => {
-    const remote = vi.spyOn(tauriBridge, "isRemoteBridge").mockReturnValue(true);
-    try {
-      render(<App />);
-      await screen.findByRole("button", { name: "Build dashboard" });
-      expect(window.argmax!.system.setDefaultAgent).not.toHaveBeenCalled();
-      expect(screen.queryByRole("alert")).toBeNull();
-    } finally {
-      cleanup();
-      remote.mockRestore();
-    }
   });
 
   it("toasts a failed host defaults save and retries the current preference", async () => {

@@ -55,7 +55,6 @@ import { isMermaidFenceClass } from "../lib/mermaidFence.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
 import { WebLink } from "./WebLink.js";
 import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters.js";
-import { isRemoteBridge } from "../lib/tauriBridge.js";
 
 const MermaidDiagram = lazy(() =>
   importChunk(async () => ({
@@ -180,10 +179,8 @@ export function FilePreview({
   onCursorChange?: (cursor: EditorCursor | null) => void;
 }): JSX.Element {
   const markdownFile = isMarkdownPath(state.selectedPath);
-  // Absolute path for the asset protocol, which only the desktop webview can
-  // reach — over the mobile bridge there is no scheme to serve the bytes, so
-  // images stay on the "not previewable" message rather than a broken frame.
-  const assetPath = isRemoteBridge() ? null : absoluteFilePath(state.rootPath, state.selectedPath);
+  // Absolute path for the asset protocol.
+  const assetPath = absoluteFilePath(state.rootPath, state.selectedPath);
   const rasterImageFile = assetPath !== null && isRasterImagePath(state.selectedPath);
   const svgFile = assetPath !== null && isSvgPath(state.selectedPath);
   // Per-file render mode. Default to rendered for markdown and SVG; every

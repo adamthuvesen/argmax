@@ -5,7 +5,6 @@ import {
   subscribeBrowserRequest,
 } from "../lib/browserPanel.js";
 import { readStoredLinkTarget } from "../lib/linkTarget.js";
-import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { isSecondaryWindow } from "../lib/windowRole.js";
 import { showErrorToast } from "../state/toast.js";
 
@@ -29,7 +28,6 @@ export function useStandaloneBrowserLinks(options: {
     // opens, which would swap the page the user asked for with the browser.
     handledBrowserSeq.current = pendingBrowserRequest.seq;
     if (!active) return;
-    if (isRemoteBridge()) return;
 
     const url = pendingBrowserRequest.url;
     if (

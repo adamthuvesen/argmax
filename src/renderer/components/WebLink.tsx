@@ -2,7 +2,6 @@ import type { ComponentPropsWithoutRef, JSX } from "react";
 import { systemActions } from "../data/bridgeActions.js";
 import { openInBrowserPanel } from "../lib/browserPanel.js";
 import { readStoredLinkTarget } from "../lib/linkTarget.js";
-import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { isSecondaryWindow } from "../lib/windowRole.js";
 import { withToast } from "../lib/withToast.js";
 import { showToast } from "../state/toast.js";
@@ -26,25 +25,19 @@ export function WebLink({ href, children, onClick, ...rest }: WebLinkProps): JSX
       target="_blank"
       rel="noopener noreferrer"
       onClick={(event) => {
-        // Over the remote bridge both routes are desktop-only: the browser
-        // pane and system:open-path would open the link on the host, not in
-        // the reader's hand. Let the anchor's own target="_blank" carry it
-        // into the phone's browser.
-        if (!isRemoteBridge()) {
-          const flipped = event.metaKey || event.ctrlKey;
-          // A torn-off chat window has no browser surface to open the link in
-          // (docs/browser.md); the system browser takes it instead.
-          if (!isSecondaryWindow() && (readStoredLinkTarget() === "argmax") !== flipped) {
-            event.preventDefault();
-            openInBrowserPanel(href, { newTab: true });
-          } else if (systemActions()) {
-            event.preventDefault();
-            void withToast(
-              () => systemActions()!.openPath({ path: href }),
-              showToast,
-              "Could not open this link.",
-            );
-          }
+        const flipped = event.metaKey || event.ctrlKey;
+        // A torn-off chat window has no browser surface to open the link in
+        // (docs/browser.md); the system browser takes it instead.
+        if (!isSecondaryWindow() && (readStoredLinkTarget() === "argmax") !== flipped) {
+          event.preventDefault();
+          openInBrowserPanel(href, { newTab: true });
+        } else if (systemActions()) {
+          event.preventDefault();
+          void withToast(
+            () => systemActions()!.openPath({ path: href }),
+            showToast,
+            "Could not open this link.",
+          );
         }
         // After the link is handed off. A caller can dismiss a dialog here
         // without replacing the open.

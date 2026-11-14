@@ -130,22 +130,12 @@ pub async fn remote_set_config(
     let ntfy_topic = normalize_ntfy_topic(&input.ntfy_topic)?;
 
     let app_data_dir = state.require_app_data_dir()?;
-    // Persisted so the push publishers can deep-link at boot, where the async
-    // tailnet probe is out of reach. Saving Settings is what keeps it current
-    // after the tailnet name changes. Probed before the update so the config
-    // lock is never held across an await.
-    let mobile_url = mobile_page_url(
-        probe_tailscale().await.as_ref(),
-        input.port,
-        probe_serve_tls_port(input.port).await,
-    );
     // Patched rather than rebuilt, so the pairing token (rotation would
     // strand the paired phone) and the APNs block survive every save here.
     let config = remote::update_config(app_data_dir, |config| {
         config.enabled = input.enabled;
         config.port = input.port;
         config.ntfy_topic = ntfy_topic;
-        config.mobile_url = Some(mobile_url);
     })?;
     remote::apply(&app, config.clone());
 
@@ -351,8 +341,8 @@ fn read_config(state: &AppState) -> ArgmaxResult<RemoteConfig> {
 }
 
 /// The mobile page as the phone reaches it: over the tailnet when Tailscale is
-/// up, else loopback. One definition so the pairing QR, the Settings links, and
-/// the ntfy deep link can never point somewhere different from each other.
+/// up, else loopback. One definition so the pairing QR and the Settings links
+/// can never point somewhere different from each other.
 fn mobile_page_url(
     tailscale: Option<&TailscaleProbe>,
     port: u16,

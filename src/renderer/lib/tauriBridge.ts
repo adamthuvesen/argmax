@@ -55,7 +55,6 @@ import type {
 import { isSecondaryWindow, windowLabelFromRuntime } from "./windowRole.js";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
-import { createWsTransport } from "./wsTransport.js";
 
 declare global {
   interface Window {
@@ -68,9 +67,7 @@ export function isTauriRuntime(): boolean {
 }
 
 /**
- * The two primitives every `window.argmax` method is built from. Tauri IPC is
- * one implementation; the remote WebSocket bridge in `wsTransport.ts` is the
- * other, so the same renderer API object serves both runtimes.
+ * The two primitives every `window.argmax` method is built from.
  */
 export interface BridgeTransport {
   invoke<C extends IpcChannel>(channel: C, ...args: IpcArguments<C>): Promise<IpcOutput<C>>;
@@ -649,59 +646,14 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
   };
 }
 
-/**
- * Opt-in flag for the remote (browser) bridge. `?remote` in the URL turns it on
- * and is remembered so later loads of the same origin skip the query string.
- */
-const REMOTE_BRIDGE_KEY = "argmax.remote";
-
-function remoteBridgeRequested(): boolean {
-  // `?demo` forces the bridge-less browser preview even where the mobile
-  // entry's inline script has armed the remote flag — the only way to iterate
-  // on the mobile UI against the demo snapshot.
-  if (new URLSearchParams(window.location.search).has("demo")) {
-    return false;
-  }
-  if (new URLSearchParams(window.location.search).has("remote")) {
-    return true;
-  }
-  return window.localStorage.getItem(REMOTE_BRIDGE_KEY) === "1";
-}
-
-let remoteBridgeInstalled = false;
-
-/**
- * True when `window.argmax` speaks to the host over the WebSocket bridge
- * rather than Tauri. A handful of channels are desktop-only
- * (the `desktop` policy in the Rust command catalogue) — opening a path in
- * the host's Finder, saving a pasted image — so the affordances that call them
- * check here instead of firing a request that can only fail.
- */
-export function isRemoteBridge(): boolean {
-  return remoteBridgeInstalled;
-}
-
 export function installTauriBridge(): void {
   if (typeof window === "undefined" || window.argmax) {
     return;
   }
+  // Outside the desktop app (browser preview, demo snapshot) stays bridge-less.
   if (isTauriRuntime()) {
     window.argmax = createArgmaxApi(tauriTransport);
-    return;
   }
-  if (!remoteBridgeRequested()) {
-    // Browser preview and the demo snapshot depend on staying bridge-less.
-    return;
-  }
-  try {
-    window.localStorage.setItem(REMOTE_BRIDGE_KEY, "1");
-  } catch {
-    /* private mode: the flag can't persist, so the next load needs `?remote`
-       again. Losing it must not throw out of module evaluation and leave the
-       page with no bridge at all. */
-  }
-  window.argmax = createArgmaxApi(createWsTransport());
-  remoteBridgeInstalled = true;
 }
 
 installTauriBridge();

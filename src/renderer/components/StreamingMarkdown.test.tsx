@@ -34,19 +34,11 @@ vi.mock("../lib/mermaidRuntime.js", async (importOriginal) => {
   };
 });
 
-// Installing the real bridge at import time would arm a WebSocket; the flag is
-// all this component reads from it.
-const remote = vi.hoisted(() => ({ bridge: false }));
-vi.mock("../lib/tauriBridge.js", () => ({
-  isRemoteBridge: () => remote.bridge,
-}));
-
 afterEach(() => {
   resetDrawnMermaidDiagramsForTests();
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
-  remote.bridge = false;
   window.localStorage.removeItem(LINK_TARGET_KEY);
   Object.defineProperty(document, "hidden", { configurable: true, value: false });
 });
@@ -700,29 +692,6 @@ describe("<StreamingMarkdown />", () => {
     fireEvent.click(link, { metaKey: true });
     expect(opened).toEqual([expectedUrl]);
     expect(openPath).toHaveBeenCalledTimes(1);
-    unsubscribe();
-    delete (window as { argmax?: unknown }).argmax;
-  });
-
-  it("leaves web links to the browser on the remote bridge", () => {
-    remote.bridge = true;
-    const openPath = vi.fn().mockResolvedValue({ ok: true });
-    (window as unknown as { argmax: unknown }).argmax = { system: { openPath } };
-    const opened: string[] = [];
-    const unsubscribe = subscribeBrowserRequest(() => {
-      const request = getBrowserRequest();
-      if (request) opened.push(request.url);
-    });
-
-    render(<StreamingMarkdown text="See [docs](https://example.com/docs)." streaming={false} />);
-    const link = screen.getByRole("link", { name: "docs" });
-    const clicked = fireEvent.click(link);
-
-    // Both desktop routes would open the link on the host, so the phone gets
-    // the anchor's own navigation: nothing intercepted, default not prevented.
-    expect(openPath).not.toHaveBeenCalled();
-    expect(opened).toHaveLength(0);
-    expect(clicked).toBe(true);
     unsubscribe();
     delete (window as { argmax?: unknown }).argmax;
   });

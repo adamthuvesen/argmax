@@ -1,9 +1,4 @@
-use std::{
-    env,
-    io::{self, Read, Write},
-    path::PathBuf,
-    time::Duration,
-};
+use std::{env, io::Write, path::PathBuf, time::Duration};
 
 use super::{
     protocol::{
@@ -195,27 +190,6 @@ fn client_read_timeout(action: &SessionControlAction) -> Duration {
         }
         _ => CLIENT_IO_TIMEOUT,
     }
-}
-
-pub(super) fn read_bounded_stdin() -> Result<String, SessionControlError> {
-    let mut bytes = Vec::new();
-    io::stdin()
-        .take((MAX_REQUEST_BYTES + 1) as u64)
-        .read_to_end(&mut bytes)
-        .map_err(|error| {
-            protocol_error(
-                "STDIN_READ_FAILED",
-                format!("Could not read prompt from stdin: {error}"),
-            )
-        })?;
-    if bytes.len() > MAX_REQUEST_BYTES {
-        return Err(protocol_error(
-            "REQUEST_TOO_LARGE",
-            format!("Prompt exceeds the {MAX_REQUEST_BYTES}-byte request limit."),
-        ));
-    }
-    String::from_utf8(bytes)
-        .map_err(|_| protocol_error("PROMPT_INVALID", "Prompt stdin must be valid UTF-8."))
 }
 
 #[cfg(test)]

@@ -82,19 +82,6 @@ describe("SessionComposer goal", () => {
     expect(goals.set).not.toHaveBeenCalled();
   });
 
-  // The phone shell hides this page's composer stack, so a goal bar inside it
-  // is a goal nobody can stop from a phone.
-  it("keeps the goal bar out of the composer stack when the host draws the composer", async () => {
-    goals.get.mockResolvedValue(activeGoal());
-    renderConversation(baseSession(), [], { nativeComposerFloor: true });
-
-    const bar = await screen.findByRole("region", { name: "Goal" });
-    expect(screen.getByRole("form", { name: "Session composer" })).not.toContainElement(bar);
-
-    fireEvent.click(screen.getByRole("button", { name: "Clear goal" }));
-    await waitFor(() => expect(goals.clear).toHaveBeenCalledWith({ sessionId: "session-a" }));
-  });
-
   it("tucks the goal bar into the composer this page draws itself", async () => {
     goals.get.mockResolvedValue(activeGoal());
     renderConversation(baseSession(), []);

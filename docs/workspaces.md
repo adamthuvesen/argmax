@@ -73,7 +73,7 @@ Steps 2 and 3 run under a **worktree registry lock** (`lock_worktree_registry`),
 
 ### Session Moves
 
-An agent moves a chat with `session_move` or `argmax session move` ([agent-tools.md](agent-tools.md#moving-and-archiving)). When the turn settles, `WorkspaceService` creates a destination workspace and copies the timeline into a fresh session.
+An agent moves a chat with `session_move` ([agent-tools.md](agent-tools.md#moving-and-archiving)). When the turn settles, `WorkspaceService` creates a destination workspace and copies the timeline into a fresh session.
 
 - A `path` destination is validated against `git worktree list`, so an arbitrary directory is refused. It is always recorded as shared, because Argmax did not create that worktree and archiving must never delete it. A detached HEAD is refused.
 - A `project` destination uses that project's shared checkout by default.

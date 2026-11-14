@@ -5,9 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    if let Some(exit_code) =
-        argmax_lib::session_control::try_run_session_control_cli(std::env::args_os())
-    {
+    if let Some(exit_code) = argmax_lib::mcp::try_reject_removed_session_cli(std::env::args_os()) {
         std::process::exit(exit_code);
     }
     if let Some(exit_code) = argmax_lib::mcp::try_run_mcp_cli(std::env::args_os()) {

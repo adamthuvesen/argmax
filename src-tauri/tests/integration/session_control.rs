@@ -3303,8 +3303,7 @@ async fn a_schedule_can_be_listed_paused_resumed_or_deleted() {
 }
 
 /// The two tools that need the app's own services. With no window behind the
-/// socket they must refuse by name rather than panicking — this is also the
-/// path a headless `argmax session` CLI call takes.
+/// socket they must refuse by name rather than panicking.
 #[tokio::test]
 async fn checks_and_terminals_refuse_cleanly_without_a_window() {
     let repo = tempfile::tempdir().expect("repo dir");

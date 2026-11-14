@@ -1,6 +1,6 @@
 # Agent Tools
 
-Every session Argmax launches gets one MCP server, `argmax`, whose tools reach the sessions around it. The tools are the same across providers. They run on the same wire protocol as the `argmax session …` CLI: one protocol, two faces.
+Every session Argmax launches gets one MCP server, `argmax`, whose tools reach the sessions around it. The tools are the same across providers. They speak the session-control socket's one wire protocol.
 
 ## The tools
 
@@ -238,7 +238,7 @@ The server is `argmax mcp`, the same binary as the app, forwarding each call ove
 
 [mcp_injection.rs](../src-tauri/src/providers/mcp_injection.rs) is the one place that knows which is which. None of them displaces the user's own servers, so `--strict-mcp-config` is deliberately not passed. A file Argmax cannot parse is left alone and the tools stay off for that launch, which beats destroying a working config.
 
-Host policy lives on the server's `instructions` field. Provider-facing prompts also carry a short Argmax routing instruction. Argmax retains the original user text and strips the instruction from imported transcripts. The `argmax session …` CLI ([cli.rs](../src-tauri/src/session_control/cli.rs)) still reaches a session from a terminal.
+Host policy lives on the server's `instructions` field. Provider-facing prompts also carry a short Argmax routing instruction. Argmax retains the original user text and strips the instruction from imported transcripts.
 
 ### The two that write a file
 

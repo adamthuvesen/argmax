@@ -24,7 +24,6 @@ import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import { emptySnapshot, mergeDashboardDelta, mergeProjectSummary } from "../lib/snapshot.js";
 import { SessionTimelines } from "../lib/sessionTimelines.js";
 import { sessionMoveDestination, type SessionMoveDestination } from "../lib/projectMove.js";
-import { subscribeRemoteConnection } from "../lib/wsTransport.js";
 import { chatSessionFor } from "../lib/workspaceChat.js";
 
 function isTerminalTimelineEvent(event: TimelineEvent): boolean {
@@ -468,14 +467,6 @@ export function useDashboardSession(
       if (recoveryRetry.current !== null) clearTimeout(recoveryRetry.current);
     };
   }, []);
-
-  useEffect(
-    () =>
-      subscribeRemoteConnection((connection) => {
-        if (connection.status === "connected" && connection.resync) void recoverDashboard();
-      }),
-    [recoverDashboard],
-  );
 
   const refresh = useCallback(async (): Promise<void> => {
     if (metadataHintsEnabled.current) {

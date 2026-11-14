@@ -124,7 +124,6 @@ type ConversationOptions = {
   pendingMessages?: PendingMessage[];
   goalEnabled?: boolean;
   /** Stands in for the phone shell drawing the composer card itself. */
-  nativeComposerFloor?: boolean;
   // The conversation's own prop types, not `ReturnType<typeof vi.fn>`:
   // Vitest 4 types a bare `vi.fn()` as `Mock<Procedure | Constructable>`,
   // which no longer widens to a call signature, so a loose option type here
@@ -137,8 +136,6 @@ type ConversationOptions = {
   onClearSession?: ConversationProps["onClearSession"];
   onNewSession?: ConversationProps["onNewSession"];
   onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
-  onOpenDiff?: (path: string) => void;
-  onOpenChanges?: () => void;
   onOpenAgent?: (tool: ToolCall) => void;
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
   onOpenDetails?: (seedPrompt: string) => Promise<void>;
@@ -162,7 +159,6 @@ export function conversationElement(
     <SessionConversation
       isFocused={options.isFocused ?? true}
       goalEnabled={options.goalEnabled ?? true}
-      nativeComposerFloor={options.nativeComposerFloor ?? false}
       events={events}
       eventsBackfilled={options.eventsBackfilled ?? true}
       historyLoadFailed={options.historyLoadFailed ?? false}
@@ -189,8 +185,6 @@ export function conversationElement(
       {...(options.onMultitask ? { onMultitask: options.onMultitask } : {})}
       {...(options.onNewSession ? { onNewSession: options.onNewSession } : {})}
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}
-      {...(options.onOpenDiff ? { onOpenDiff: options.onOpenDiff } : {})}
-      {...(options.onOpenChanges ? { onOpenChanges: options.onOpenChanges } : {})}
       onOpenAgent={options.onOpenAgent ?? vi.fn()}
       {...(options.onOpenSideChat ? { onOpenSideChat: options.onOpenSideChat } : {})}
       {...(options.onOpenDetails ? { onOpenDetails: options.onOpenDetails } : {})}

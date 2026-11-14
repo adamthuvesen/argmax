@@ -56,12 +56,6 @@ pub struct RemoteConfig {
     /// `enabled` — notifications are useful even without the WS bridge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ntfy_topic: Option<String>,
-    /// Mobile page URL pushes deep-link into — the same base the pairing QR
-    /// encodes, so a notification opens wherever the phone was paired.
-    /// Re-derived from the tailnet probe whenever Settings saves, because the
-    /// publisher runs far from the async probe and needs it at boot too.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mobile_url: Option<String>,
     /// Direct-to-Apple push for the native remote app. Absent means disabled,
     /// which is also what a partially filled block means — see
     /// [`ApnsConfig::credentials`].
@@ -78,7 +72,6 @@ impl RemoteConfig {
             port: DEFAULT_PORT,
             token: generate_token(),
             ntfy_topic: None,
-            mobile_url: None,
             apns: ApnsConfig::default(),
         }
     }
@@ -351,9 +344,10 @@ pub fn apply(app: &tauri::AppHandle, config: RemoteConfig) {
 /// the phone that just registered. Takes `&AppState`, not the `AppHandle`,
 /// because the phone pairs itself over the bridge, where there is none.
 pub fn apply_push(state: &crate::state::AppState, config: &RemoteConfig) {
-    let ntfy_publisher = config.ntfy_topic.clone().map(|topic| {
-        std::sync::Arc::new(ntfy::NtfyPublisher::new(topic, config.mobile_url.clone()))
-    });
+    let ntfy_publisher = config
+        .ntfy_topic
+        .clone()
+        .map(|topic| std::sync::Arc::new(ntfy::NtfyPublisher::new(topic)));
     let apns_publisher = build_apns_publisher(state, config);
     if let Ok(mut ntfy) = state.ntfy.write() {
         *ntfy = ntfy_publisher;
@@ -504,6 +498,16 @@ mod tests {
         assert!(config.enabled);
         assert_eq!(config.port, 9001);
         assert_eq!(config.token, "0123456789abcdef0123456789abcdef");
+    }
+
+    /// Files written before the mobile web client was removed still carry it.
+    #[test]
+    fn a_legacy_mobile_url_field_is_ignored() {
+        let config = parse_config(
+            r#"{"enabled":true,"port":9001,"token":"0123456789abcdef0123456789abcdef","mobile_url":"http://x/mobile.html"}"#,
+        )
+        .expect("legacy file loads");
+        assert!(config.enabled);
     }
 
     /// An empty or hand-shortened token would authenticate an empty bearer.

@@ -233,7 +233,7 @@ import {
 } from "./hooks/useAppNavigationHistory.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta, mergeProjectSummary } from "./lib/snapshot.js";
-import { isRemoteBridge, isTauriRuntime } from "./lib/tauriBridge.js";
+import { isTauriRuntime } from "./lib/tauriBridge.js";
 
 const APP_MIN_HEIGHT_PX = 640;
 const STATIC_APP_MIN_WIDTH_PX = 600;
@@ -494,7 +494,7 @@ export function App(): JSX.Element {
   const initialPermissionModes = useRef(permissionModes);
   // Serialize saves so a slow earlier write cannot replace the latest choice.
   useEffect(() => {
-    if (isRemoteBridge() || !window.argmax?.system?.setDefaultAgent) return;
+    if (!window.argmax?.system?.setDefaultAgent) return;
     if (!launchModel.autoTier) lastPinnedLaunchModel.current = launchModel;
     const pinnedModel = lastPinnedLaunchModel.current;
     const permissionsChanged = permissionModes !== initialPermissionModes.current;

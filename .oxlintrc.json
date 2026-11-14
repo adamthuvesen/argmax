@@ -123,7 +123,7 @@
           {
             "object": "crypto",
             "property": "randomUUID",
-            "message": "The mobile remote bridge serves an insecure origin where crypto.randomUUID is undefined. Use uuidV4() from lib/uuid.js."
+            "message": "Use uuidV4() from lib/uuid.js. crypto.randomUUID is undefined on insecure origins."
           }
         ]
       }
@@ -147,7 +147,7 @@
           {
             "object": "crypto",
             "property": "randomUUID",
-            "message": "The mobile remote bridge serves an insecure origin where crypto.randomUUID is undefined. Use uuidV4() from lib/uuid.js."
+            "message": "Use uuidV4() from lib/uuid.js. crypto.randomUUID is undefined on insecure origins."
           },
           {
             "object": "window",
@@ -168,7 +168,7 @@
           {
             "object": "crypto",
             "property": "randomUUID",
-            "message": "The mobile remote bridge serves an insecure origin where crypto.randomUUID is undefined. Use uuidV4() from lib/uuid.js."
+            "message": "Use uuidV4() from lib/uuid.js. crypto.randomUUID is undefined on insecure origins."
           }
         ]
       }

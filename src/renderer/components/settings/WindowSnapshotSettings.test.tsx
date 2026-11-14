@@ -4,9 +4,6 @@ import type { ArgmaxApi, WindowSnapshotStatus } from "../../../shared/types.js";
 import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
 import { WindowSnapshotSettings } from "./WindowSnapshotSettings.js";
 
-const remote = vi.hoisted(() => ({ active: false }));
-vi.mock("../../lib/tauriBridge.js", () => ({ isRemoteBridge: () => remote.active }));
-
 const base: WindowSnapshotStatus = {
   supported: true,
   permission: "granted",
@@ -24,7 +21,6 @@ const api = {
 };
 
 beforeEach(() => {
-  remote.active = false;
   resetToastForTests();
   for (const fn of Object.values(api)) fn.mockReset();
   api.status.mockResolvedValue(base);
@@ -107,15 +103,6 @@ describe("WindowSnapshotSettings", () => {
     });
     render(<WindowSnapshotSettings />);
     expect(await screen.findByRole("alert")).toHaveTextContent("was rejected by the OS");
-  });
-
-  it("renders nothing and asks the host nothing over the remote bridge", async () => {
-    remote.active = true;
-    const { container } = render(<WindowSnapshotSettings />);
-    await Promise.resolve();
-    expect(container).toBeEmptyDOMElement();
-    expect(api.status).not.toHaveBeenCalled();
-    expect(toastSnapshot()).toBeNull();
   });
 
   it("says plainly that it is macOS only elsewhere", async () => {

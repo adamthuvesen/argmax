@@ -96,7 +96,6 @@ import { ComposerUsageSlot } from "./ComposerUsageSlot.js";
 import type { ComposerField } from "./composerEditor/composerField.js";
 import { CloudTaskDialog } from "./CloudTaskDialog.js";
 import { ConnectionDialog } from "./ConnectionDialog.js";
-import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { ContextRing } from "./ContextRing.js";
 import { FilePopover } from "./FilePopover.js";
 import { ImageLightbox } from "./ImageLightbox.js";
@@ -1301,7 +1300,7 @@ export function SessionComposer({
           <FilePopover state={fileAutocomplete} inputRef={inputRef} />
         </div>
         <div className="session-input-toolbar">
-          {isRemoteBridge() || floating ? null : (
+          {floating ? null : (
             <button
               type="button"
               className="composer-tool"
@@ -1420,22 +1419,6 @@ export function SessionComposer({
                 ) : null}
               </div>
             </div>
-          ) : null}
-          {isRemoteBridge() && !floating ? (
-            // On the phone an image is the usual way in — a screenshot of the
-            // thing you are asking about — so attaching is a primary action
-            // rather than one of the workspace's secondary ones. The "…" keeps
-            // that role everywhere else.
-            <button
-              type="button"
-              className="composer-footer-chip composer-attach-chip"
-              title="Attach file"
-              aria-label="Attach file"
-              disabled={!canSend || isSending}
-              onClick={openFilePicker}
-            >
-              <Paperclip size={15} aria-hidden="true" />
-            </button>
           ) : null}
           <span className="session-toolbar-spacer" />
           {onExpandToFullChat ? (

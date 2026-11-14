@@ -3,7 +3,6 @@ import { windowSnapshotActions } from "../../data/bridgeActions.js";
 import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import type { WindowSnapshotStatus } from "../../../shared/types.js";
 import { displayChord, recordChord } from "../../lib/windowSnapshotChord.js";
-import { isRemoteBridge } from "../../lib/tauriBridge.js";
 import { showErrorToast } from "../../state/toast.js";
 import { SettingGroup, SettingNote, SettingRow, Toggle } from "./settingsPrimitives.js";
 
@@ -17,8 +16,7 @@ function message(error: unknown): string {
  * truth, and a failed registration comes back as an error that leaves the old chord.
  */
 export function WindowSnapshotSettings(): JSX.Element | null {
-  // The remote browser has no chord to set and the channels are desktop-only.
-  const api = isRemoteBridge() ? undefined : windowSnapshotActions();
+  const api = windowSnapshotActions();
   const [status, setStatus] = useState<WindowSnapshotStatus | null>(null);
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);

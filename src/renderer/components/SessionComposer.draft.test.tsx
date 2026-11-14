@@ -8,17 +8,8 @@ import {
 } from "../../test/sessionConversationTestHarness.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { ArgmaxApi } from "../../shared/types.js";
-import type * as TauriBridgeModule from "../lib/tauriBridge.js";
 
 const SCREENSHOT_PATH = "/attachments/session-a/shot.png";
-
-// The harness installs its own window.argmax, so the transport flag is the one
-// thing the attachment hook still needs told.
-const remote = vi.hoisted(() => ({ bridge: false }));
-vi.mock("../lib/tauriBridge.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof TauriBridgeModule>();
-  return { ...actual, isRemoteBridge: () => remote.bridge };
-});
 
 function prompt(): HTMLTextAreaElement {
   return screen.getByLabelText("Chat prompt");
@@ -58,7 +49,6 @@ describe("SessionComposer unsent drafts", () => {
 
   afterEach(() => {
     cleanup();
-    remote.bridge = false;
   });
 
   it("brings the unsent text back when the session is opened again", () => {
@@ -160,15 +150,6 @@ describe("SessionComposer unsent drafts", () => {
     cleanup();
     renderConversation(baseSession());
     expect(prompt()).toHaveValue("");
-  });
-
-  it("saves a pasted image through the remote bridge", async () => {
-    remote.bridge = true;
-    renderConversation(baseSession());
-    pasteScreenshot();
-
-    await waitFor(() => expect(window.argmax?.attachments.saveImage).toHaveBeenCalledTimes(1));
-    expect(attachedScreenshots()).toEqual([attachmentProtocolUrl(SCREENSHOT_PATH)]);
   });
 
   it("brings a pasted screenshot back when the session is opened again", async () => {

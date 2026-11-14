@@ -6,8 +6,8 @@ use argmax_contracts::sessions::{attention::AttentionState, state::SessionState}
 
 /// One request on the session-control socket.
 ///
-/// This is the whole wire protocol: the `argmax session …` CLI and the
-/// `argmax mcp` tools both build a [`SessionControlAction`] and hand it to
+/// This is the whole wire protocol: the `argmax mcp` tools and the inbox hook
+/// build a [`SessionControlAction`] and hand it to
 /// [`send_session_control`](super::send_session_control), and the socket
 /// handler matches on the same enum.
 /// Each action carries exactly the fields it uses, so a nonsense combination

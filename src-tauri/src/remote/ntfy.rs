@@ -1,8 +1,8 @@
 // Push notifications to a phone via ntfy (https://ntfy.sh or self-hosted).
 //
 // What fires, and when, lives in `signal.rs` — this module is only the ntfy
-// delivery of it: HTTP headers on a POST to a topic URL, with a Click header
-// deep-linking the mobile page. The APNs sink next door reads the same table.
+// delivery of it: HTTP headers on a POST to a topic URL. The APNs sink next
+// door reads the same table.
 
 use crate::remote::signal::{signal_for, PushSignal, SignalDedupe};
 use argmax_store::sessions::SessionSummary;
@@ -19,20 +19,12 @@ pub struct NtfyMessage {
     /// ntfy tags header value; rendered as emoji by the apps. Empty sends no
     /// Tags header, so the push shows the bare title.
     pub tags: &'static str,
-    /// Where tapping the push should land: the mobile page deep-linked to the
-    /// session that raised it. `None` when no mobile URL is known, which
-    /// leaves the notification inert rather than opening the wrong place.
-    pub click: Option<String>,
 }
 
 type Sink = Box<dyn Fn(NtfyMessage) + Send + Sync>;
 
 pub struct NtfyPublisher {
     sink: Sink,
-    /// Mobile page URL the pushes deep-link into, e.g.
-    /// `http://mac.tail1234.ts.net:8790/mobile.html`. `None` while no remote
-    /// URL is known, which sends pushes without a Click header.
-    mobile_url: Option<String>,
     dedupe: SignalDedupe,
 }
 
@@ -40,39 +32,32 @@ impl NtfyPublisher {
     /// Publisher POSTing to `topic_url` (the full topic URL, e.g.
     /// `https://ntfy.sh/<topic>`). Requests run on a throwaway thread so the
     /// dashboard-delta path never waits on the network.
-    pub fn new(topic_url: String, mobile_url: Option<String>) -> Self {
-        Self::with_sink(
-            Box::new(move |message: NtfyMessage| {
-                let topic_url = topic_url.clone();
-                std::thread::spawn(move || {
-                    let result = ntfy_client()
-                        .and_then(|client| {
-                            let mut request = client
-                                .post(&topic_url)
-                                .header("Title", &message.title)
-                                .header("Priority", message.priority);
-                            if !message.tags.is_empty() {
-                                request = request.header("Tags", message.tags);
-                            }
-                            if let Some(click) = message.click.as_deref() {
-                                request = request.header("Click", click);
-                            }
-                            request.body(message.body).send()
-                        })
-                        .and_then(|response| response.error_for_status());
-                    if let Err(error) = result {
-                        tracing::warn!(%error, "ntfy publish failed");
-                    }
-                });
-            }),
-            mobile_url,
-        )
+    pub fn new(topic_url: String) -> Self {
+        Self::with_sink(Box::new(move |message: NtfyMessage| {
+            let topic_url = topic_url.clone();
+            std::thread::spawn(move || {
+                let result = ntfy_client()
+                    .and_then(|client| {
+                        let mut request = client
+                            .post(&topic_url)
+                            .header("Title", &message.title)
+                            .header("Priority", message.priority);
+                        if !message.tags.is_empty() {
+                            request = request.header("Tags", message.tags);
+                        }
+                        request.body(message.body).send()
+                    })
+                    .and_then(|response| response.error_for_status());
+                if let Err(error) = result {
+                    tracing::warn!(%error, "ntfy publish failed");
+                }
+            });
+        }))
     }
 
-    fn with_sink(sink: Sink, mobile_url: Option<String>) -> Self {
+    fn with_sink(sink: Sink) -> Self {
         Self {
             sink,
-            mobile_url,
             dedupe: SignalDedupe::new("ntfy last signaled"),
         }
     }
@@ -97,10 +82,6 @@ impl NtfyPublisher {
             body: signal.body.clone(),
             priority: signal.priority.ntfy_header(),
             tags: signal.tags,
-            click: self
-                .mobile_url
-                .as_deref()
-                .map(|base| deep_link(base, &signal.session_id)),
         }
     }
 }
@@ -133,21 +114,6 @@ fn ntfy_client() -> reqwest::Result<Client> {
         .build()
 }
 
-/// `<mobile page>?session=<id>`, read once by the phone on load
-/// (`src/renderer/mobile/deepLink.ts`). Session ids are hex/dash ids from
-/// SQLite, so they need no escaping; anything else is dropped rather than
-/// half-escaped into a header the HTTP client would reject.
-fn deep_link(mobile_url: &str, session_id: &str) -> String {
-    if !session_id
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
-        return mobile_url.to_string();
-    }
-    let separator = if mobile_url.contains('?') { '&' } else { '?' };
-    format!("{mobile_url}{separator}session={session_id}")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,22 +122,11 @@ mod tests {
     use argmax_contracts::sessions::state::SessionState;
     use std::sync::mpsc;
 
-    const MOBILE_URL: &str = "http://mac.tail1234.ts.net:8790/mobile.html";
-
     fn capture_publisher() -> (NtfyPublisher, mpsc::Receiver<NtfyMessage>) {
-        capture_publisher_linking(Some(MOBILE_URL.to_string()))
-    }
-
-    fn capture_publisher_linking(
-        mobile_url: Option<String>,
-    ) -> (NtfyPublisher, mpsc::Receiver<NtfyMessage>) {
         let (tx, rx) = mpsc::channel();
-        let publisher = NtfyPublisher::with_sink(
-            Box::new(move |message| {
-                let _ = tx.send(message);
-            }),
-            mobile_url,
-        );
+        let publisher = NtfyPublisher::with_sink(Box::new(move |message| {
+            let _ = tx.send(message);
+        }));
         (publisher, rx)
     }
 
@@ -197,44 +152,5 @@ mod tests {
         let second = rx.try_recv().expect("completion push");
         assert_eq!(second.title, "Argmax: Chat complete");
         assert!(rx.try_recv().is_err(), "duplicate transition must not fire");
-    }
-
-    #[test]
-    fn pushes_deep_link_to_the_session_that_raised_them() {
-        let (publisher, rx) = capture_publisher();
-        publisher.observe(
-            &session(SessionState::Running, AttentionState::ApprovalNeeded),
-            None,
-        );
-        let message = rx.try_recv().expect("signal");
-        assert_eq!(
-            message.click.as_deref(),
-            Some("http://mac.tail1234.ts.net:8790/mobile.html?session=s1")
-        );
-        // The Click value is an HTTP header too, so it carries the same
-        // ASCII-only constraint as the title.
-        assert!(message.click.unwrap().is_ascii());
-    }
-
-    #[test]
-    fn no_mobile_url_sends_a_push_without_a_link() {
-        let (publisher, rx) = capture_publisher_linking(None);
-        publisher.observe(
-            &session(SessionState::Running, AttentionState::ApprovalNeeded),
-            None,
-        );
-        assert_eq!(rx.try_recv().expect("signal").click, None);
-    }
-
-    #[test]
-    fn an_exotic_session_id_falls_back_to_the_bare_page() {
-        let (publisher, rx) = capture_publisher();
-        let mut summary = session(SessionState::Running, AttentionState::Blocked);
-        summary.id = "s 1?&".to_string();
-        publisher.observe(&summary, None);
-        assert_eq!(
-            rx.try_recv().expect("signal").click.as_deref(),
-            Some(MOBILE_URL)
-        );
     }
 }

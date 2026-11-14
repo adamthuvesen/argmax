@@ -216,7 +216,6 @@ export function SessionConversation({
   floating = false,
   goalEnabled = true,
   goalMaxTurns,
-  nativeComposerFloor = false,
   revertEnabled = true,
   registerAnnotationSink,
   defaultIde = null,
@@ -235,8 +234,6 @@ export function SessionConversation({
   onToggleTerminal,
   onToggleWorkspaceCard,
   onOpenFile,
-  onOpenDiff,
-  onOpenChanges,
   onOpenAgent,
   onOpenMultitask,
   onLoadSessionEvents,
@@ -305,10 +302,6 @@ export function SessionConversation({
       `/goal` command; off for revert hides "Revert to here" on a turn. */
   goalEnabled?: boolean;
   goalMaxTurns?: number;
-  /** The phone shell draws the composer natively and this page hides its own
-      stack, which would take the goal bar down with it. Set, the bar rides in
-      its own stack above the native card instead. */
-  nativeComposerFloor?: boolean;
   revertEnabled?: boolean;
   /** Lets the parent pane feed review-panel line comments into this
       conversation's annotation lane. Registered on mount, cleared on unmount. */
@@ -350,11 +343,6 @@ export function SessionConversation({
       provided, the chip routes to the in-app right panel by default, with
       ⌘/Ctrl-click flagged via `preferIde` for the external IDE shortcut. */
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
-  /** A host that owns its own review surface (the phone) routes a tapped
-      changed file here instead of into this pane's dock, which it has none of. */
-  onOpenDiff?: (path: string) => void;
-  /** Same, for the card's Review button. */
-  onOpenChanges?: () => void;
   onOpenAgent?: (tool: ToolCall) => void;
   /** Opens a multitask's chat in this pane's dock, beside the subagents. */
   onOpenMultitask?: (sessionId: string) => void;
@@ -1523,14 +1511,6 @@ export function SessionConversation({
         <GoalStatus key={`goal:${session.id}`} session={session} />
       </Suspense>
     ) : null;
-  // Tucked into the composer everywhere the composer is this page's. Under the
-  // phone shell it is not: `setComposer(true)` hides that whole stack, and a
-  // goal bar hidden with it leaves a running goal with no clear button
-  // anywhere on the phone. So it gets its own stack above the native card,
-  // exempt from that rule the way a docked question is. On desktop it follows
-  // the agent-window scale through the session grid, while the phone keeps its
-  // own native composer scale.
-  const goalInComposer = !nativeComposerFloor;
   // Exactly one line is live: the cue if it is up, otherwise the call that just
   // landed, and nothing once the turn settles.
   const activityBeatToolId =
@@ -1749,8 +1729,8 @@ export function SessionConversation({
                         follow={conversationFollow}
                         restoringTranscript={restoringTranscript}
                         todo={item.todo ?? null}
-                        onOpenDiff={onOpenDiff ?? review.openFile}
-                        onOpenReview={onOpenChanges ?? review.openChangesPanel}
+                        onOpenDiff={review.openFile}
+                        onOpenReview={review.openChangesPanel}
                       />
                     );
                   })
@@ -1819,23 +1799,13 @@ export function SessionConversation({
             ) : null}
             <PrWatchPill prs={workspace?.prs ?? []} chatFontSize={chatFontSize} />
           </div>
-          {goalInComposer || !goalStatus ? null : (
-            <div
-              className="session-composer-stack"
-              data-goal
-              data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
-              data-type-scale={chatFontSize === undefined ? "composer" : undefined}
-            >
-              {goalStatus}
-            </div>
-          )}
           {questionDocked && liveQuestion ? (
             <div
               className="session-composer-stack"
               data-testid="question-composer-stack"
               data-question
             >
-              {goalInComposer ? goalStatus : null}
+              {goalStatus}
               <QuestionDock
                 key={liveQuestion.tool.id}
                 questions={liveQuestion.tool.questions}
@@ -1882,7 +1852,7 @@ export function SessionConversation({
               workspace={workspace}
               goalEnabled={goalEnabled}
               goalMaxTurns={goalMaxTurns}
-              goalStatus={goalInComposer ? goalStatus : null}
+              goalStatus={goalStatus}
             />
           )}
         </section>

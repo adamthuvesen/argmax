@@ -1,11 +1,10 @@
 //! The session-control socket: one private Unix socket that every agent tool
-//! and every `argmax session …` command speaks to. [`protocol`] is the wire
-//! itself, [`registry`] mints and resolves the per-session credential,
-//! [`server`] accepts connections, [`actions`] runs what each request asks
-//! for, and [`cli`] and [`client`] are the two callers on the other end.
+//! speaks to. [`protocol`] is the wire itself, [`registry`] mints and resolves
+//! the per-session credential, [`server`] accepts connections, [`actions`]
+//! runs what each request asks for, and [`client`] is the caller on the other
+//! end.
 
 mod actions;
-mod cli;
 mod client;
 mod protocol;
 mod registry;
@@ -13,7 +12,6 @@ mod server;
 
 pub use actions::resume_after_turn_actions;
 pub(crate) use actions::{check_in_routine_id, launch_with_spec};
-pub use cli::{try_run_session_control_cli, CliPrompt, SessionControlCliInput};
 #[cfg(unix)]
 pub use client::send_session_control;
 pub use protocol::{

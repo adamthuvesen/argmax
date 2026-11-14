@@ -157,8 +157,6 @@ export function SessionPane({
   onLoadAgentEvents,
   onLoadSessionEvents,
   onNewSession,
-  onOpenChanges,
-  onOpenFile,
   onOpenSideChat,
   sideChat,
   onOpenSession,
@@ -184,7 +182,6 @@ export function SessionPane({
   debugLogToggleSignal,
   session,
   agentsViewAvailable = true,
-  nativeComposerFloor = false,
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
   contextIndicatorEnabled = false,
@@ -208,11 +205,6 @@ export function SessionPane({
   isFocused?: boolean;
   /** Close button is shown when provided. Used by the multi-pane grid; absent in single-pane mode. */
   onClose?: () => void;
-  onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
-  /** Opens the host's own changes surface with no file picked. Only a host
-   *  that owns one supplies it (the phone's review screen); the desktop opens
-   *  its dock through this pane's own review state instead. */
-  onOpenChanges?: () => void;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   /** Called on mount and on session.id change to backfill timeline events for this pane's session. */
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
@@ -269,10 +261,6 @@ export function SessionPane({
   /** Whether this surface has a dock to host the Agents view. False on the
       phone, where a launch row is a record of the delegated work, not a way in. */
   agentsViewAvailable?: boolean;
-  /** Whether the host draws the composer natively below the web view. Raising
-   *  the peek hands that floor back, which resizes the page: the sheet waits
-   *  for the new height before it rises rather than animating into it. */
-  nativeComposerFloor?: boolean;
   /** User preference for the floating workspace card. Visible when enabled
       and the conversation column is wide enough to hold it beside the transcript. */
   workspaceCardVisible?: boolean;
@@ -339,7 +327,7 @@ export function SessionPane({
   }, [cursorBackgroundAgentKey, onLoadAgentEvents, sessionId]);
   const reviewState = useReviewState(reviewSource, {
     claimsBrowserRequests: isFocused,
-    preloadChanges: onOpenChanges ? undefined : isFocused,
+    preloadChanges: isFocused,
     sessionId,
   });
   const [isLogOpen, setIsLogOpen] = useState(false);
@@ -472,12 +460,6 @@ export function SessionPane({
   }, [workspaceId]);
   const handleOpenFile = useCallback(
     (path: string, opts?: { line?: number | null; preferIde?: boolean }): void => {
-      // A host that owns its own review surface (the mobile shell) routes the
-      // tap there instead of opening this pane's ReviewPanel.
-      if (onOpenFile) {
-        onOpenFile(path, opts);
-        return;
-      }
       const workspaces = workspaceActions();
       if (opts?.preferIde && workspaceId && workspaces) {
         void workspaces
@@ -510,7 +492,7 @@ export function SessionPane({
         showErrorToast(`Could not find a single ${path} in this workspace.`);
       });
     },
-    [onOpenFile, reviewOpenInFilesView, workspaceId],
+    [reviewOpenInFilesView, workspaceId],
   );
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
   const lastDebugLogToggleSignal = useRef(debugLogToggleSignal);
@@ -550,19 +532,15 @@ export function SessionPane({
         keywords: ["file tree", "explorer"],
         run: toggleFilesPane,
       },
-      ...(onOpenChanges
-        ? []
-        : [
-            {
-              id: "pane:toggle-changes",
-              label: "Toggle changes",
-              subtitle: "This chat's diff",
-              group: "Actions" as const,
-              icon: FileDiff,
-              keywords: ["diff", "review", "git status"],
-              run: reviewState.toggleChangesPanel,
-            },
-          ]),
+      {
+        id: "pane:toggle-changes",
+        label: "Toggle changes",
+        subtitle: "This chat's diff",
+        group: "Actions",
+        icon: FileDiff,
+        keywords: ["diff", "review", "git status"],
+        run: reviewState.toggleChangesPanel,
+      },
       ...(browserActions()
         ? [
             {
@@ -881,8 +859,6 @@ export function SessionPane({
           onForkSession={onForkSession}
           onRunCheck={onRunCheck}
           onOpenFile={handleOpenFile}
-          onOpenDiff={onOpenFile ? handleOpenFile : undefined}
-          onOpenChanges={onOpenChanges}
           onOpenAgent={handleOpenAgent}
           onOpenMultitask={handleOpenMultitask}
           onLoadSessionEvents={onLoadSessionEvents}
@@ -901,7 +877,6 @@ export function SessionPane({
           contextIndicatorEnabled={contextIndicatorEnabled}
           goalEnabled={goalEnabled}
           goalMaxTurns={goalMaxTurns}
-          nativeComposerFloor={nativeComposerFloor}
           revertEnabled={revertEnabled}
         />
 

@@ -4,17 +4,9 @@ import { LINK_TARGET_KEY } from "../lib/linkTarget.js";
 import { getBrowserRequest, subscribeBrowserRequest } from "../lib/browserPanel.js";
 import { SessionConversationUserMessage } from "./SessionConversationTurn.js";
 
-// Installing the real bridge at import time would arm a WebSocket; the flag is
-// all the link needs from it.
-const remote = vi.hoisted(() => ({ bridge: false }));
-vi.mock("../lib/tauriBridge.js", () => ({
-  isRemoteBridge: () => remote.bridge,
-}));
-
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  remote.bridge = false;
   window.localStorage.removeItem(LINK_TARGET_KEY);
   delete (window as { argmax?: unknown }).argmax;
 });

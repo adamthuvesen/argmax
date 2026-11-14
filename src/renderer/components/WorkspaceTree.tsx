@@ -19,7 +19,6 @@ import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopove
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { buildFileTree, type TreeNode } from "../lib/fileTree.js";
 import { readStoredDefaultIde } from "../lib/ide.js";
-import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { showErrorToast } from "../state/toast.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 import { LoadingLine } from "./LoadingLine.js";
@@ -229,9 +228,8 @@ export function WorkspaceTree({
   useEffect(() => () => resizeObserverRef.current?.disconnect(), []);
 
   // Right-click on a row: reveal it in Finder or open it in the default IDE.
-  // Desktop only — over the remote bridge the host's Finder is out of reach.
   const rootPath = state.rootPath;
-  const canOpenExternally = rootPath !== null && !isRemoteBridge();
+  const canOpenExternally = rootPath !== null;
   const [rowMenu, setRowMenu] = useState<{ path: string; point: AnchorPoint } | null>(null);
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[] | null>(null);
   const rowMenuPopover = useAnchoredPopover({ open: rowMenu !== null, gutter: 0, capHeight: true });

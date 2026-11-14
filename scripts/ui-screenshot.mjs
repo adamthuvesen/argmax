@@ -8,7 +8,7 @@
 //
 // Usage:
 //   node scripts/ui-screenshot.mjs [--out shot.png] [--theme dark|light|system]
-//        [--width 1400] [--height 900] [--mobile] [--touch] [--url http://…]
+//        [--width 1400] [--height 900] [--touch] [--url http://…]
 //        [--eval '<js>'] [--settle 900] [--scale 2] [--browser-ws ws://…]
 //
 // --touch emulates a phone: the viewport is overridden rather than sized by the
@@ -53,7 +53,6 @@ function parseArgs(argv) {
     theme: "dark",
     width: 1400,
     height: 900,
-    mobile: false,
     touch: false,
     url: null,
     evaluate: null,
@@ -67,7 +66,6 @@ function parseArgs(argv) {
     else if (arg === "--theme") options.theme = argv[++i];
     else if (arg === "--width") options.width = Number(argv[++i]);
     else if (arg === "--height") options.height = Number(argv[++i]);
-    else if (arg === "--mobile") options.mobile = true;
     else if (arg === "--touch") options.touch = true;
     else if (arg === "--url") options.url = argv[++i];
     else if (arg === "--eval") options.evaluate = argv[++i];
@@ -174,7 +172,6 @@ if (!baseUrl) {
     "the vite dev server",
   );
 }
-const pageUrl = options.mobile ? new URL("mobile.html", baseUrl).href : baseUrl;
 
 async function launchBrowser() {
   const chrome = CHROME_CANDIDATES.find((candidate) => existsSync(candidate));
@@ -253,7 +250,7 @@ if (options.touch) {
   );
 }
 const loaded = cdp.waitForEvent("Page.loadEventFired");
-await cdp.send("Page.navigate", { url: pageUrl }, sessionId);
+await cdp.send("Page.navigate", { url: baseUrl }, sessionId);
 await loaded;
 
 // The expression's value comes back in the ready line as `eval`, so a script
@@ -281,7 +278,7 @@ cdp.close();
 console.log(
   JSON.stringify({
     out,
-    url: pageUrl,
+    url: baseUrl,
     theme: options.theme,
     width: options.width,
     height: options.height,

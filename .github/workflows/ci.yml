@@ -44,7 +44,7 @@ jobs:
           printf '%s\n' "$changed"
           match() { printf '%s\n' "$changed" | grep -Eq "$1" && echo true || echo false; }
           rust_pattern='^(src-tauri/|assets/browser-blocking/|\.cargo/|rust-toolchain\.toml|\.github/workflows/)'
-          js_pattern='^(src/|src-tauri/|ios/|fixtures/parity/|assets/|public/|index\.html$|mobile\.html$|package(-lock)?\.json$|tsconfig\.json$|vite.*\.config\.ts$|\.ox(lint|fmt)rc\.json$|scripts/|\.github/workflows/)'
+          js_pattern='^(src/|src-tauri/|ios/|fixtures/parity/|assets/|index\.html$|package(-lock)?\.json$|tsconfig\.json$|vite.*\.config\.ts$|\.ox(lint|fmt)rc\.json$|scripts/|\.github/workflows/)'
           ios_pattern='^(ios/|fixtures/parity/|scripts/ios-tests\.mjs$|\.github/workflows/ci\.yml$)'
           inert_pattern='^(docs/|\.githooks/|[^/]*\.md$|LICENSE$|\.gitignore$|\.gitattributes$)'
           rust=$(match "$rust_pattern")

@@ -89,7 +89,6 @@ import { buildDetailsSeed, buildSideChatSeed } from "../lib/sideChat.js";
 import { SelectionToolbar, type ChatSelection } from "./SelectionToolbar.js";
 import { QuestionDock } from "./QuestionDock.js";
 import type { QuestionAnswers } from "../lib/questions.js";
-import { postToNative } from "../mobile/nativeHost.js";
 import { SessionComposer, type NewSessionSeed } from "./SessionComposer.js";
 import { importChunk } from "../lib/importChunk.js";
 const GoalStatus = lazy(() =>
@@ -1452,24 +1451,6 @@ export function SessionConversation({
       setDismissedQuestionId(liveQuestion.tool.id);
     }
   }, [blockingQuestionRequest, composerDraftPresent, liveQuestion]);
-  // The native iPhone shell draws its own composer card under this page and
-  // has the page's stack hidden, so the docked panel would be hidden with it.
-  // Tell the shell the slot is taken — the panel stays this page's, the card
-  // stands down — and hand it back when the question leaves. A no-op outside
-  // the shell. Nothing to close before the first open: the card is up from the
-  // moment the chat is.
-  const questionPostedRef = useRef(false);
-  useEffect(() => {
-    if (!questionDocked && !questionPostedRef.current) return;
-    questionPostedRef.current = questionDocked;
-    postToNative({ type: "question", open: questionDocked });
-  }, [questionDocked]);
-  useEffect(
-    () => () => {
-      if (questionPostedRef.current) postToNative({ type: "question", open: false });
-    },
-    [],
-  );
   const answerLiveQuestion = useCallback(
     async (answerText: string, answers: QuestionAnswers): Promise<boolean> => {
       if (!session || !liveQuestion) return Promise.resolve(false);

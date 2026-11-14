@@ -83,7 +83,7 @@ Before you edit a subsystem, read its doc. Start at [architecture.md](docs/archi
 | Renderer imports point down: shared, lib and state, hooks, components | `dependency-cruiser` in `check:static`, with a ratchet |
 | No secrets in staged files | `gitleaks` in `.githooks/pre-commit` |
 | Components read with `useBridgeQuery` and write through `data/bridgeActions.ts`, never `window.argmax` | `.oxlintrc.json::no-restricted-properties` |
-| Do not hand-edit the appearance script in `index.html` or `mobile.html` | `check:static`, `scripts/build-appearance-bootstrap.mjs --check` |
+| Do not hand-edit the appearance script in `index.html` | `check:static`, `scripts/build-appearance-bootstrap.mjs --check` |
 | Model facts live in `src/shared/providerModels.ts`; Rust and the phone read generated copies | `check:provider-models`, list in `scripts/generated-files.json` |
 | Production code does not name a retired model id | `check:provider-models` |
 | Every catalogue model has a price and a routing answer | `cargo test catalogue` (`pricing.rs`, `routing/table.rs`) |

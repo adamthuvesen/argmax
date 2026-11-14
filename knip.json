@@ -3,7 +3,6 @@
   "entry": [
     "scripts/**/*.mjs",
     "scripts/**/*.d.mts",
-    "public/sw.js",
     "src/shared/visualization/runtime.ts"
   ],
   "project": [

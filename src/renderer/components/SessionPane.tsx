@@ -64,8 +64,7 @@ import {
   type ToolCallsDisplay,
 } from "../lib/uiPreferences.js";
 import type { ToolCall } from "../lib/toolCalls.js";
-import { agentTabId, multitaskTabId } from "../lib/agentTabs.js";
-import { useAgentTabs } from "../hooks/useAgentTabs.js";
+import { agentTabId } from "../lib/agentTabs.js";
 import { importChunk } from "../lib/importChunk.js";
 import { ApprovalSurface } from "./ApprovalSurface.js";
 import { DebugPanel } from "./debug/DebugPanel.js";
@@ -75,18 +74,6 @@ import { DebugPanel } from "./debug/DebugPanel.js";
 // most sessions never open one. Named imports so a surface that *can* raise
 // the peek warms them on idle — a lazy chunk fetched on the tap paints an
 // empty sheet for as long as it takes to arrive.
-const importAgentOverlay = () => import("../mobile/AgentOverlay.js");
-const importAgentsView = () => import("./AgentsView.js");
-const AgentOverlay = lazy(() =>
-  importChunk(async () => ({
-    default: (await importAgentOverlay()).AgentOverlay,
-  })),
-);
-const AgentsView = lazy(() =>
-  importChunk(async () => ({
-    default: (await importAgentsView()).AgentsView,
-  })),
-);
 const ReviewPanel = lazy(() =>
   importChunk(async () => ({
     default: (await import("./ReviewPanel.js")).ReviewPanel,
@@ -197,8 +184,6 @@ export function SessionPane({
   debugLogToggleSignal,
   session,
   agentsViewAvailable = true,
-  agentsPresentation = "dock",
-  onAgentsOverlayChange,
   nativeComposerFloor = false,
   workspaceCardVisible = true,
   onWorkspaceCardVisibleChange,
@@ -284,17 +269,6 @@ export function SessionPane({
   /** Whether this surface has a dock to host the Agents view. False on the
       phone, where a launch row is a record of the delegated work, not a way in. */
   agentsViewAvailable?: boolean;
-  /** Where a tapped subagent or multitask row opens. "dock" is the desktop's
-   *  review panel; "overlay" raises a sheet over the transcript, which is what
-   *  the phone has room for. */
-  agentsPresentation?: "dock" | "overlay";
-  /** Phone back-stack: called with a dismisser while the overlay is on
-   *  screen — rising, up, or riding out — and with null once it has gone, so
-   *  a hardware back can pop the peek first and the native host knows when
-   *  its floor is clear to take back. The dismisser is the sheet's own, so
-   *  back rides out the same way a tap on the scrim does; during the ride
-   *  out it is a no-op. */
-  onAgentsOverlayChange?: (dismiss: (() => void) | null) => void;
   /** Whether the host draws the composer natively below the web view. Raising
    *  the peek hands that floor back, which resizes the page: the sheet waits
    *  for the new height before it rises rather than animating into it. */
@@ -453,80 +427,7 @@ export function SessionPane({
     },
     [openAgentInPanel],
   );
-  const agentsInOverlay = agentsPresentation === "overlay";
-  // The overlay keeps its own tab list. `reviewState.openAgent` opens the
-  // desktop dock as a side effect, and the phone has no dock to open — routing
-  // through it laid the review panel over the chat.
-  const overlayTabs = useAgentTabs();
-  const overlayCloseAll = overlayTabs.closeAllTabs;
-  const overlayOpenTab = overlayTabs.openTab;
-  // Whether the peek should be up, and whether it is still on screen. Two
-  // states, not one: the intent drives the ride, and presence keeps the sheet
-  // mounted until it has gone. Presence is also what the phone's composer
-  // floor follows. The floor used to turn back over at the start of the ride
-  // out so the native card could rise behind the departing sheet, but that
-  // card's return shrinks the web view, and the sheet's ride is measured
-  // against the web view's height — it hopped back up a composer's height
-  // mid-ride and dropped again, a dark flicker right above the card.
-  // Tab count used to stand in for both, so closing wiped the tabs before the
-  // sheet could animate.
-  const [peekOpen, setPeekOpen] = useState(false);
-  const [peekPresent, setPeekPresent] = useState(false);
-  const closePeek = useCallback((): void => setPeekOpen(false), []);
-  // Navigating away from the chat takes the peek with it: no ride out, since
-  // the surface it belongs to is going too.
-  const dropPeek = useCallback((): void => {
-    setPeekOpen(false);
-    setPeekPresent(false);
-  }, []);
-  useEffect(() => {
-    if (!agentsInOverlay) return;
-    dropPeek();
-    overlayCloseAll();
-  }, [agentsInOverlay, dropPeek, overlayCloseAll, sessionId]);
-  // Last tab closed from inside the sheet: the peek has nothing left to show.
-  const peekTabCount = overlayTabs.tabIds.length;
-  useEffect(() => {
-    if (!agentsInOverlay || !peekOpen || peekTabCount > 0) return;
-    setPeekOpen(false);
-  }, [agentsInOverlay, peekOpen, peekTabCount]);
-  useEffect(() => {
-    if (!agentsInOverlay) return;
-    onAgentsOverlayChange?.(peekPresent ? closePeek : null);
-    return () => onAgentsOverlayChange?.(null);
-  }, [agentsInOverlay, closePeek, onAgentsOverlayChange, peekPresent]);
-  // Warm the peek's chunks on idle, the way the terminal's are warmed below:
-  // on the phone a launch row is a tap away from the moment the chat opens.
-  useEffect(() => {
-    if (!agentsInOverlay) return undefined;
-    const warm = (): void => {
-      void importAgentOverlay().catch(() => undefined);
-      void importAgentsView().catch(() => undefined);
-    };
-    if (typeof window.requestIdleCallback === "function") {
-      const id = window.requestIdleCallback(warm);
-      return () => window.cancelIdleCallback?.(id);
-    }
-    const timer = window.setTimeout(warm, 1500);
-    return () => window.clearTimeout(timer);
-  }, [agentsInOverlay]);
-  const openPeekTab = useCallback(
-    (tabId: string): void => {
-      overlayOpenTab(tabId);
-      setPeekPresent(true);
-      setPeekOpen(true);
-    },
-    [overlayOpenTab],
-  );
-  const openAgentOverlay = useCallback(
-    (tool: ToolCall): void => openPeekTab(agentTabId(tool)),
-    [openPeekTab],
-  );
-  const handleOpenAgent = agentsInOverlay
-    ? openAgentOverlay
-    : agentsViewAvailable
-      ? openAgent
-      : undefined;
+  const handleOpenAgent = agentsViewAvailable ? openAgent : undefined;
 
   // A multitask row opens its chat in the same dock, one tab over from the
   // subagents: both are work running alongside this one.
@@ -534,15 +435,7 @@ export function SessionPane({
   // (the phone), and its rows open the chat itself instead.
   const openMultitaskInPanel = reviewState.openMultitask;
   const hostsMultitasks = (multitasks?.length ?? 0) > 0;
-  const openMultitaskOverlay = useCallback(
-    (sessionId: string): void => openPeekTab(multitaskTabId(sessionId)),
-    [openPeekTab],
-  );
-  const handleOpenMultitask = useMemo(
-    () =>
-      agentsInOverlay ? openMultitaskOverlay : hostsMultitasks ? openMultitaskInPanel : undefined,
-    [agentsInOverlay, hostsMultitasks, openMultitaskInPanel, openMultitaskOverlay],
-  );
+  const handleOpenMultitask = hostsMultitasks ? openMultitaskInPanel : undefined;
 
   // Review-panel line comments land on the conversation's composer as diff
   // notes. The conversation owns that state; it registers a sink here so its
@@ -1017,57 +910,6 @@ export function SessionPane({
           events={visibleEvents}
           onResolveApproval={onResolveApproval}
         />
-        {agentsInOverlay && peekPresent ? (
-          <Suspense fallback={null}>
-            <AgentOverlay
-              label="Delegated work"
-              open={peekOpen}
-              awaitsFloorChange={nativeComposerFloor}
-              onClose={closePeek}
-              onExited={() => setPeekPresent(false)}
-            >
-              <AgentsView
-                chatFontSize={chatFontSize}
-                events={visibleEvents}
-                defaultToolCallsDisplay={defaultToolCallsDisplay}
-                defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
-                thinkingDisplay={thinkingDisplay}
-                isFocused={isFocused}
-                parentSession={session}
-                agentTabs={overlayTabs}
-                workspace={workspace}
-                onLoadAgentEvents={onLoadAgentEvents}
-                onLoadSessionEvents={onLoadSessionEvents}
-                onOpenAgent={handleOpenAgent}
-                onOpenFile={handleOpenFile}
-                // A multitask's changed-file rows and its Review button open the
-                // containing dock's Changes view on the desktop. The phone has no
-                // dock, so they take the same way in as a file reference tapped in
-                // the transcript: the host's review screen. Both land on this
-                // pane's workspace, which is the checkout a multitask shares by
-                // default — the desktop dock scopes them the same way.
-                onOpenDiff={handleOpenFile}
-                onOpenReview={onOpenChanges}
-                multitasks={multitasks}
-                pendingMessages={pendingMessages}
-                onCancelQueuedMessage={onCancelQueuedMessage}
-                onClearSession={onClearSession}
-                onOpenFullChat={
-                  onOpenSession
-                    ? (sessionId) => {
-                        dropPeek();
-                        overlayCloseAll();
-                        onOpenSession(sessionId);
-                      }
-                    : undefined
-                }
-                onSendQueuedMessageNow={onSendQueuedMessageNow}
-                onSendSessionInput={onSendSessionInput}
-                onTerminateSession={onTerminateSession}
-              />
-            </AgentOverlay>
-          </Suspense>
-        ) : null}
       </div>
       {reviewState.isPanelOpen ? (
         <Suspense fallback={null}>

@@ -1,7 +1,7 @@
 import type { AttachmentMimeType } from "../../shared/types.js";
 import { WORKSPACE_DRAG_MIME } from "./gridState.js";
 
-export const SUPPORTED_IMAGE_MIME_TYPES: readonly AttachmentMimeType[] = [
+const SUPPORTED_IMAGE_MIME_TYPES: readonly AttachmentMimeType[] = [
   "image/png",
   "image/jpeg",
   "image/gif",

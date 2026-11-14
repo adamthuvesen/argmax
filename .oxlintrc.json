@@ -15,7 +15,6 @@
     "node_modules",
     "src-tauri/target/**",
     "src-tauri/src/browser/*.js",
-    "public/sw.js",
     "src/shared/bindings.d.ts",
     ".claude/**",
     ".argmax/worktrees/**",

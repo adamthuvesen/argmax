@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Write the appearance script inlined in index.html and mobile.html, from
+// Write the appearance script inlined in index.html, from
 // src/renderer/lib/appearanceBootstrap.ts.
 //
 //   npm run build:appearance-bootstrap
@@ -13,10 +13,7 @@ import { createServer } from "vite";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const check = process.argv.includes("--check");
-const ENTRIES = [
-  { html: "index.html", surface: "desktop" },
-  { html: "mobile.html", surface: "mobile" },
-];
+const ENTRIES = ["index.html"];
 const REGION = /<!-- appearance-bootstrap:start -->[\s\S]*?<!-- appearance-bootstrap:end -->/;
 
 async function loadScriptBuilder() {
@@ -35,7 +32,7 @@ async function loadScriptBuilder() {
 
 const { appearanceBootstrapScript } = await loadScriptBuilder();
 let stale = false;
-for (const { html, surface } of ENTRIES) {
+for (const html of ENTRIES) {
   const file = path.join(repoRoot, html);
   const current = await readFile(file, "utf8");
   if (!REGION.test(current)) {
@@ -44,7 +41,7 @@ for (const { html, surface } of ENTRIES) {
     );
     process.exit(1);
   }
-  const body = appearanceBootstrapScript(surface)
+  const body = appearanceBootstrapScript()
     .split("\n")
     .map((line) => `      ${line}`)
     .join("\n");

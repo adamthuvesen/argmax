@@ -3,10 +3,10 @@
 // Fail the build if a renderer entry's eager module graph crosses its size
 // budget. The eager graph is what a cold start downloads before the app paints:
 // the `<script type="module">` entry plus every `<link rel="modulepreload">`
-// Vite emits alongside it. Statting only the entry chunk is not enough — with
-// two entries (desktop + mobile) rolldown hoists shared app code into a chunk
-// both HTML files preload, so a heavyweight import can land entirely outside
-// `index-*.js` and still be on the critical path.
+// Vite emits alongside it. Statting only the entry chunk is not enough:
+// rolldown can hoist app code into a chunk the HTML preloads, so a heavyweight
+// import can land entirely outside `index-*.js` and still be on the critical
+// path.
 //
 // Scope: JS only. The render-blocking stylesheet is budgeted separately (it
 // tracks the design tokens, not dependency weight), and the regression this
@@ -21,14 +21,10 @@ import { join, resolve } from "node:path";
 const ROOT = process.cwd();
 const DIST = join(ROOT, "dist/renderer");
 
-// Allow modest headroom above the September 2026 graph (1.70 / 1.58 MiB).
+// Allow modest headroom above the September 2026 graph (1.70 MiB).
 // Desktop is 1.81 after the chat timeline, the multitask card, and the Router
 // and translucency styles joined the first-paint stylesheet. Measured
-// 2026-09-28 at 1.79 MiB. Mobile is tighter: it ships over the tailnet to a
-// phone, not off local disk.
-// Mobile is 1.62 after chat file chips learned anchored paths with spaces,
-// long extensions, and an existence check (+1.2 KB). Measured 2026-10-03 at
-// 1,689,334 bytes; the 1.61 budget had 76 bytes left.
+// 2026-09-28 at 1.79 MiB.
 // Desktop is 1.83 after the composers' chat references, background send, usage
 // chip and window-capture receiver (+14.2 KB eager: 1,891,115 to 1,905,285
 // bytes, lane B alone on b0a921ce). With the runtime, workspace and capture
@@ -40,10 +36,7 @@ const DIST = join(ROOT, "dist/renderer");
 // Desktop is 1.84 after new chats learned to start in an existing worktree
 // (1,918,933 bytes, 39 over 1.83 MiB) and OpenCode's catalog moved to
 // `openrouter/<vendor>/<model>` ids (+148 bytes, 1,919,081, 2026-10-04).
-const ENTRIES = [
-  { html: "index.html", label: "desktop", budgetBytes: 1.84 * 1024 * 1024 },
-  { html: "mobile.html", label: "mobile", budgetBytes: 1.62 * 1024 * 1024 },
-];
+const ENTRIES = [{ html: "index.html", label: "desktop", budgetBytes: 1.84 * 1024 * 1024 }];
 
 function fail(message) {
   console.error(`error: ${message}`);

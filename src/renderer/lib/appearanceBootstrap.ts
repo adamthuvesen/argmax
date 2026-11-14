@@ -1,4 +1,3 @@
-import { ACCENT_OPTIONS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT_ID } from "./accent.js";
 import { APPEARANCE_LEVEL_PATTERN } from "./appearanceLevel.js";
 import {
   BACKGROUND_INTENSITY_STORAGE_KEY,
@@ -9,9 +8,6 @@ import {
 import { CONTRAST_STORAGE_KEY } from "./contrast.js";
 import { DEFAULT_SIDEBAR_INTENSITY, SIDEBAR_INTENSITY_STORAGE_KEY } from "./sidebarIntensity.js";
 import { THEME_OPTIONS, THEME_STORAGE_KEY } from "./theme.js";
-import { USER_BUBBLE_TINT_STORAGE_KEY } from "./userBubbleTint.js";
-
-export type AppearanceSurface = "desktop" | "mobile";
 
 const quoted = JSON.stringify;
 
@@ -51,37 +47,15 @@ root.setAttribute("data-theme", window.matchMedia("(prefers-color-scheme: dark)"
 }`;
 }
 
-function mobileBody(): string {
-  const accents = Object.fromEntries(ACCENT_OPTIONS.map((option) => [option.id, 1]));
-  return `try {
-${resolvedTheme("dark")}
-} catch (e) {
-root.setAttribute("data-theme", "dark");
-}
-try {
-var accent = localStorage.getItem(${quoted(ACCENT_STORAGE_KEY)});
-var accents = ${quoted(accents)};
-root.setAttribute("data-accent", accents[accent] ? accent : ${quoted(DEFAULT_ACCENT_ID)});
-} catch (e) {
-root.setAttribute("data-accent", ${quoted(DEFAULT_ACCENT_ID)});
-}
-try {
-var bubble = localStorage.getItem(${quoted(USER_BUBBLE_TINT_STORAGE_KEY)});
-root.setAttribute("data-user-bubble", bubble === "neutral" ? "neutral" : "accent");
-} catch (e) {
-root.setAttribute("data-user-bubble", "accent");
-}`;
-}
-
 /**
  * The inline script that paints the saved appearance before React mounts, so a
  * cold start has no flash. It runs before any module loads and cannot import, so
- * `scripts/build-appearance-bootstrap.mjs` writes this text into index.html and
- * mobile.html, using the keys and rules of the modules that own them.
+ * `scripts/build-appearance-bootstrap.mjs` writes this text into index.html,
+ * using the keys and rules of the modules that own them.
  */
-export function appearanceBootstrapScript(surface: AppearanceSurface): string {
+export function appearanceBootstrapScript(): string {
   return `(function () {
 var root = document.documentElement;
-${surface === "desktop" ? desktopBody() : mobileBody()}
+${desktopBody()}
 })();`;
 }

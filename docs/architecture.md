@@ -75,7 +75,7 @@ Components reach the bridge through one layer. [useBridgeQuery](../src/renderer/
 
 An action on a project folder carries a required [ProjectTarget](../src/renderer/lib/projectTarget.ts), so a surface cannot leave the folder out.
 
-The saved appearance is painted before any module loads by a script inlined in `index.html` and `mobile.html`. [appearanceBootstrap.ts](../src/renderer/lib/appearanceBootstrap.ts) is its source, and `npm run build:appearance-bootstrap` writes it. Do not edit it in the HTML.
+The saved appearance is painted before any module loads by a script inlined in `index.html`. [appearanceBootstrap.ts](../src/renderer/lib/appearanceBootstrap.ts) is its source, and `npm run build:appearance-bootstrap` writes it. Do not edit it in the HTML.
 
 Snapshot and selection stay in [useDashboardSession](../src/renderer/hooks/useDashboardSession.ts); [useAppGridSelection](../src/renderer/hooks/useAppGridSelection.ts) resolves grid moves against that snapshot and writes them to `paneGrid`.
 

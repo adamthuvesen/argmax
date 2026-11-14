@@ -10,15 +10,14 @@ export default defineConfig({
   build: {
     outDir: "dist/renderer",
     emptyOutDir: true,
-    // The eager-graph budgets are enforced in CI by `npm run check:bundle`
-    // (scripts/check-bundle.mjs: 1.84 MiB for the desktop entry, 1.62 MiB for
-    // mobile). This warning limit is deliberately looser. It flags a single
+    // The eager-graph budget is enforced in CI by `npm run check:bundle`
+    // (scripts/check-bundle.mjs: 1.84 MiB for the desktop entry). This warning
+    // limit is deliberately looser. It flags a single
     // oversized chunk locally; the script is what holds the real budget.
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
       input: {
         index: resolve(import.meta.dirname, "index.html"),
-        mobile: resolve(import.meta.dirname, "mobile.html"),
       },
       output: {
         // Split a few specific heavyweight vendor packages into named chunks
@@ -38,7 +37,7 @@ export default defineConfig({
         // only via MathMarkdown/FilePreview/Mermaid. Do not re-add one
         // without re-measuring `npm run check:bundle`.
         // Lucide also uses automatic chunking so deferred features' icons
-        // stay outside the initial desktop and mobile module graphs.
+        // stay outside the initial module graph.
         manualChunks(id) {
           if (id.includes("node_modules")) {
             if (id.includes("/react-dom/") || id.includes("/react/") || id.includes("scheduler")) {

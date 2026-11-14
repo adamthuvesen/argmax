@@ -64,7 +64,7 @@ const PING_FRAME = JSON.stringify({ type: "ping" });
  * surfaces match on this and stay quiet — the connection banner already covers
  * it, and the transport reconnects on its own.
  */
-export const REMOTE_CONNECTION_LOST_MESSAGE = "Argmax remote connection lost";
+const REMOTE_CONNECTION_LOST_MESSAGE = "Argmax remote connection lost";
 const REMOTE_OUTCOME_UNKNOWN_MESSAGE =
   "The connection was lost before this action's outcome was confirmed. Check the chat or workspace. Retrying the same action will recover its outcome without running it twice.";
 

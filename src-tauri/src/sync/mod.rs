@@ -14,6 +14,7 @@
 
 pub mod claude;
 mod engine;
+pub(crate) mod sweep;
 
 use std::path::{Path, PathBuf};
 

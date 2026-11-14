@@ -57,6 +57,7 @@ pub fn attest_person_for_tests() -> PersonAttestation {
     PersonAttestation::minted_by_ipc()
 }
 
+pub mod bindings_export;
 pub mod catalogue;
 
 use crate::state::{live_database, read_off_main};

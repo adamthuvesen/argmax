@@ -222,6 +222,31 @@ fn extract_url_path(url: &str) -> Option<String> {
     crate::util::protocol_url::extract_scheme_url_path(WORKSPACE_ASSET_PROTOCOL_SCHEME, url)
 }
 
+/// Serve `argmax-asset://file/<abs-path>` image URLs referenced from
+/// rendered workspace files (e.g. relative `<img>` in a previewed
+/// README.md). Without this, those images 404. Serving is confined to
+/// known project/workspace roots (resolved per request from AppState)
+/// and runs off-thread so the webview's IO isn't blocked.
+pub(crate) fn respond(app: tauri::AppHandle, uri: String, responder: tauri::UriSchemeResponder) {
+    tauri::async_runtime::spawn(async move {
+        // Resolved inside the task, not in the callback: the
+        // callback runs on the webview's thread, and the root
+        // lookup is a SQLite read.
+        let roots = known_roots(&app);
+        let response = serve_workspace_asset(&roots, &uri).await;
+        let mut builder = tauri::http::Response::builder().status(response.http_status());
+        if let Some(content_type) = response.content_type {
+            builder = builder.header(tauri::http::header::CONTENT_TYPE, content_type);
+        }
+        match builder.body(response.bytes) {
+            Ok(response) => responder.respond(response),
+            Err(error) => {
+                tracing::warn!(?error, "asset protocol: failed to build response")
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -16,6 +16,7 @@ For UI-only work, `npx vite --host 127.0.0.1` runs browser preview with mock dat
 ## Rust Structure
 
 - [src-tauri/src/lib.rs](../src-tauri/src/lib.rs): App setup, state, services, menus, and shutdown.
+- [src-tauri/src/event_delivery.rs](../src-tauri/src/event_delivery.rs): The `dashboard:delta` and terminal push queues and their main-thread emit workers.
 - [src-tauri/src/state.rs](../src-tauri/src/state.rs): Shared service handles.
 - [src-tauri/src/ipc](../src-tauri/src/ipc): Tauri command handlers.
 - [src-tauri/crates/argmax-store/src](../src-tauri/crates/argmax-store/src): SQLite connection and migrations.

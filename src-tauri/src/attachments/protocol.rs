@@ -156,6 +156,39 @@ pub(crate) fn content_type_for_path(path: &Path) -> &'static str {
     }
 }
 
+/// Serve `argmax-attachment://file/<abs-path>` image URLs from the
+/// on-disk attachment store. Without this, pasted-image previews in the
+/// composer/chat 404. The store dir depends on `app_data_dir` (only
+/// known after setup), so it's resolved per request; serving happens
+/// off-thread so the webview's IO isn't blocked.
+pub(crate) fn respond(app: tauri::AppHandle, uri: String, responder: tauri::UriSchemeResponder) {
+    tauri::async_runtime::spawn(async move {
+        let built = match crate::util::data_dir::app_data_dir(&app) {
+            Ok(app_data) => {
+                let base_dir = app_data.join("local-state").join("attachments");
+                let response = serve_attachment(&base_dir, &uri).await;
+                let mut builder = tauri::http::Response::builder().status(response.http_status());
+                if let Some(content_type) = response.content_type {
+                    builder = builder.header(tauri::http::header::CONTENT_TYPE, content_type);
+                }
+                builder.body(response.bytes)
+            }
+            Err(error) => {
+                tracing::warn!(?error, "attachment protocol: app_data_dir unavailable");
+                tauri::http::Response::builder()
+                    .status(500)
+                    .body(Vec::new())
+            }
+        };
+        match built {
+            Ok(response) => responder.respond(response),
+            Err(error) => {
+                tracing::warn!(?error, "attachment protocol: failed to build response")
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

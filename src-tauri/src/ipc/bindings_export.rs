@@ -6,8 +6,6 @@ use std::path::{Path, PathBuf};
 
 use specta_typescript::{BigIntExportBehavior, Typescript};
 
-use crate::ipc;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BindingsExportChange {
     Unchanged,
@@ -39,14 +37,14 @@ impl Default for BindingsExportTargets {
 }
 
 pub fn render_bindings() -> Result<String, String> {
-    let generated = ipc::catalogue::specta_builder()
+    let generated = super::catalogue::specta_builder()
         .export_str(specta_typescript())
         .map_err(|error| error.to_string())?;
     Ok(normalize_generated_bindings(&generated))
 }
 
 pub fn render_ipc_channels() -> String {
-    ipc::catalogue::REGISTERED_CHANNELS.join("\n") + "\n"
+    super::catalogue::REGISTERED_CHANNELS.join("\n") + "\n"
 }
 
 pub fn render_ipc_schemas() -> String {
@@ -56,14 +54,14 @@ pub fn render_ipc_schemas() -> String {
          import type { commands } from './bindings.js';\n\n\
          export const IPC_CHANNELS = [\n",
     );
-    for channel in ipc::catalogue::REGISTERED_CHANNELS {
+    for channel in super::catalogue::REGISTERED_CHANNELS {
         schemas.push_str("  \"");
         schemas.push_str(channel);
         schemas.push_str("\",\n");
     }
     schemas.push_str("] as const;\n\nexport type IpcChannel = (typeof IPC_CHANNELS)[number];\n");
     schemas.push_str("\ntype Commands = typeof commands;\nexport interface IpcCommands {\n");
-    for contract in ipc::catalogue::COMMAND_CONTRACTS {
+    for contract in super::catalogue::COMMAND_CONTRACTS {
         let mut parts = contract.method.split('_');
         let mut method = parts.next().unwrap_or_default().to_owned();
         for part in parts {

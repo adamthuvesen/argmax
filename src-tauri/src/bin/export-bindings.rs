@@ -1,6 +1,6 @@
 use std::{env, ffi::OsString, path::PathBuf, process};
 
-use argmax_lib::{
+use argmax_lib::bindings_export::{
     plan_bindings_export, write_bindings_export, BindingsExportChange, BindingsExportTargets,
 };
 

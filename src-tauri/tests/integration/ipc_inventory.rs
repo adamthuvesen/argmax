@@ -82,8 +82,9 @@ fn generated_ipc_files_are_current() {
             root.join("../src/shared/ipcSchemas.ts"),
         ),
     ];
-    argmax_lib::export_bindings(&files[0].0).expect("export bindings");
-    argmax_lib::export_ipc_inventory(&files[1].0, &files[2].0).expect("export IPC inventory");
+    argmax_lib::bindings_export::export_bindings(&files[0].0).expect("export bindings");
+    argmax_lib::bindings_export::export_ipc_inventory(&files[1].0, &files[2].0)
+        .expect("export IPC inventory");
 
     for (generated_path, committed_path) in files {
         let generated = fs::read_to_string(&generated_path).expect("read generated file");

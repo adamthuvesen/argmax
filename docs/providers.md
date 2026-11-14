@@ -765,7 +765,7 @@ Vercel usage continues to use OpenCode's reported cost.
 ### Where a session's model label comes from
 
 The picker writes `modelLabel` on launch. Agent-tool launches and imported
-sessions use `fallback_model_label` ([lib.rs](../src-tauri/src/lib.rs)).
+sessions use `fallback_model_label` ([model_catalogue.rs](../src-tauri/src/providers/model_catalogue.rs)).
 It formats Claude ids, such as `claude-opus-5` as "Opus 5", and preserves other ids.
 Clients prefer catalog labels and resolve retired ids through their successors.
 The iPhone resolves labels through `ProviderCatalog.swift`.

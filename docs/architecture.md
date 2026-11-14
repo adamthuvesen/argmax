@@ -28,7 +28,7 @@ Inside the `argmax` crate, `ipc/` and `remote/` are the transport edges. Nothing
 - SQL text and `prepare` or `query_row` calls stay in `argmax-store`. Naming a `Connection` or a `Transaction` to pass it through is fine.
 - Only a person IPC handler mints a `PersonAttestation`. The type lives in the store, so this is a source check, and Rust visibility cannot do it across crates.
 
-The old paths `crate::persistence`, `crate::error`, `crate::sessions`, and `crate::application::validation` are re-exports, so a service reads the same as before.
+Each item has one path. Import it from the crate and module that define it, for example `argmax_store::events` or `argmax_contracts::validation`, not through a re-export in the app crate. One name per thing means a search for a path finds every caller, and a move breaks the build at each caller instead of hiding behind an alias. Two kinds of `pub use` stay. A module may expose items from its private submodules, because that is still the only public path. `ipc::inputs` gathers every command's input type so each IPC handler imports one module.
 
 ## Key directories
 

@@ -101,7 +101,7 @@ Settings → Projects saves the primary folder's policy. Each workspace reads it
 - `archive`: archive the workspace. The checkout is retained for a recovery window ([workspaces.md](workspaces.md#lifecycle--watchers)), and the branch for good.
 - `remove-checkout`: delete the checkout, then run [PR cleanup](workspaces.md#pr-cleanup). The chat stays in its sidebar section, read-only. See [ADR 0014](adr/0014-merged-chats-stay-listed-without-a-checkout.md).
 
-`archive_merged_workspace` in [lib.rs](../src-tauri/src/lib.rs) acts when the workspace's primary PR has merged and every worked PR is merged. A ledger entry means one merge acts once. A busy workspace defers, because both modes drain its processes first.
+`archive_merged_workspace` in [gh/hooks.rs](../src-tauri/src/gh/hooks.rs) acts when the workspace's primary PR has merged and every worked PR is merged. A ledger entry means one merge acts once. A busy workspace defers, because both modes drain its processes first.
 
 - It acts on merges the poller sees, not on history. Turning the setting on does not sweep old merges.
 - Neither mode is ever forced. A worktree with uncommitted or untracked changes returns to `kept`, because work that outlived the PR is not ours to delete.

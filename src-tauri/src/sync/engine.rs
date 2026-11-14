@@ -403,7 +403,7 @@ fn model_label(session: &DiscoveredSession, provider: &str) -> String {
     session
         .model_id
         .as_deref()
-        .map(crate::fallback_model_label)
+        .map(crate::providers::model_catalogue::fallback_model_label)
         .unwrap_or_else(|| {
             crate::providers::model_catalogue::provider_defaults(import_provider(provider))
                 .model_label

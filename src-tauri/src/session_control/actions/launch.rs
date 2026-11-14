@@ -509,7 +509,7 @@ async fn launch_once(
         ),
         None => match (action.model, provider == parent.provider) {
             (Some(model), _) => (
-                crate::fallback_model_label(&model),
+                crate::providers::model_catalogue::fallback_model_label(&model),
                 model,
                 provider_effort(provider, &parent),
             ),

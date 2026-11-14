@@ -107,7 +107,7 @@ tokio.workspace = true
 # `futures-util` is only for splitting the WebSocket into a read half and a
 # write half, which axum's own API does not cover.
 axum = { version = "0.8", features = ["ws"] }
-# Gzip for the bridge's JS/CSS (~4:1); already in the tree transitively, so
+# Gzip for the bridge's HTTP transcript pages; already in the tree transitively, so
 # this only turns on the compression feature. WebSocket upgrades are exempt
 # by default (no content-encoding on 101s).
 tower-http = { version = "0.6", features = ["compression-gzip"] }

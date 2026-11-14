@@ -1,8 +1,8 @@
 // Optional remote bridge.
 //
 // When `remote.json` in the app data dir says `enabled: true`, an axum server
-// binds 127.0.0.1:<port> and serves the renderer bundle plus a token-gated
-// WebSocket that proxies the same IPC channels the desktop webview uses. The
+// binds 127.0.0.1:<port> and serves the iPhone app a token-gated WebSocket
+// that proxies the same IPC channels the desktop webview uses. The
 // listener is loopback-only on purpose: Tailscale Serve owns tailnet exposure,
 // so nothing here should ever bind 0.0.0.0.
 //

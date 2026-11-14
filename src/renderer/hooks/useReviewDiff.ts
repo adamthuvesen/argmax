@@ -5,6 +5,7 @@ import type { ReviewSourceKind } from "../lib/reviewIpc.js";
 import { errorMessage } from "../../shared/error.js";
 import { nextDiffContext } from "../lib/diff.js";
 import type { AsyncState } from "./useReviewState.js";
+import { forgetRetained, retainedReply, startRetainedRead } from "../data/retainedReads.js";
 
 interface UseReviewDiffResult {
   files: ChangedFileSummary[];
@@ -25,6 +26,11 @@ export function useReviewDiff(args: {
   sourceId: string | null;
   sourceKind: ReviewSourceKind | null;
   changedFilesKey: string | null;
+  /**
+   * What a list kept from an earlier mount must match to be shown on a chat
+   * switch without a read. Null keeps nothing: a source with no change signal.
+   */
+  retainFreshness: string | null;
   comparison: ReviewComparison;
   dispatch: ReviewIpcDispatch | null;
   enabled?: boolean;
@@ -36,6 +42,7 @@ export function useReviewDiff(args: {
     sourceId,
     sourceKind,
     changedFilesKey,
+    retainFreshness,
     comparison,
     dispatch,
     enabled = true,
@@ -71,6 +78,12 @@ export function useReviewDiff(args: {
   // refresh. Only a new source/comparison (or the first load) shows loading.
   const filesContextRef = useRef<string | null>(null);
   const loadedFilesKey = useRef<string | null>(null);
+  // The shown list came from the last visit and has not been read again yet.
+  const unrevalidatedKey = useRef(false);
+  // Read through a ref: activity ticks on every streamed token, and the list
+  // must not be read again for each one.
+  const retainFreshnessRef = useRef(retainFreshness);
+  retainFreshnessRef.current = retainFreshness;
 
   // Cache loaded diffs by file path *and* context level so re-selecting a file
   // you've already viewed is instant, and so expanding context can't be served
@@ -118,7 +131,35 @@ export function useReviewDiff(args: {
       changedFilesKey,
       actionRevision,
     ]);
-    if (loadedFilesKey.current === requestKey) return;
+    // A chat switch remounts this hook. A list kept from the last visit is
+    // shown only when the workspace has not moved since that read: same
+    // changed-files signature and same last activity, which a turn advances.
+    // Edits made outside any turn (a terminal, an editor) are not seen until
+    // the count moves. A visible list still revalidates; a closed one waits
+    // until it is opened.
+    const freshness = retainFreshnessRef.current;
+    const retainedKey =
+      freshness === null
+        ? null
+        : changedFilesRetainKey(sourceKind, sourceId, comparison, freshness);
+    const visible = autoSelectFirstFile;
+    if (loadedFilesKey.current === requestKey && !(visible && unrevalidatedKey.current)) return;
+    if (loadedFilesKey.current !== requestKey && retainedKey !== null) {
+      const kept = retainedReply<ChangedFileSummary[]>(retainedKey);
+      if (kept) {
+        filesContextRef.current = `${sourceKind}:${sourceId}:${comparison}`;
+        loadedFilesKey.current = requestKey;
+        setFiles(kept.data);
+        setFilesState("ready");
+        setFilesError(null);
+        setSelectedFilePath((currentPath) =>
+          currentPath && kept.data.some((file) => file.path === currentPath) ? currentPath : null,
+        );
+        unrevalidatedKey.current = !visible;
+        if (!visible) return;
+      }
+    }
+    unrevalidatedKey.current = false;
     loadedFilesKey.current = null;
 
     // Show "loading" only for a genuinely new source/comparison (or the first
@@ -135,6 +176,8 @@ export function useReviewDiff(args: {
     } else {
       setFilesState((prev) => (prev === "ready" ? prev : "loading"));
     }
+    const retainedRead =
+      retainedKey === null ? null : startRetainedRead<ChangedFileSummary[]>(retainedKey);
     void dispatch
       .listChangedFiles(comparison)
       .then((result) => {
@@ -143,6 +186,7 @@ export function useReviewDiff(args: {
         }
         loadedFilesKey.current = requestKey;
         const sorted = [...result].sort((left, right) => left.path.localeCompare(right.path));
+        retainedRead?.keep(sorted);
         setFiles(sorted);
         setFilesState("ready");
         // Keep the open file selected if it survived the refresh. Opening the
@@ -158,7 +202,8 @@ export function useReviewDiff(args: {
         setFiles([]);
         setFilesState("error");
         setFilesError(errorMessage(error) || "Could not load changed files.");
-      });
+      })
+      .finally(() => retainedRead?.discard());
     // Opening Changes retries a failed speculative load. A completed request
     // is reused above, so a successful preload never causes a second Git read.
   }, [
@@ -294,8 +339,12 @@ export function useReviewDiff(args: {
   );
 
   const refreshChanges = useCallback((): void => {
+    if (sourceKind && sourceId) {
+      const prefix = changedFilesRetainPrefix(sourceKind, sourceId);
+      forgetRetained((key) => key.startsWith(prefix));
+    }
     setActionRevision((value) => value + 1);
-  }, []);
+  }, [sourceKind, sourceId]);
 
   const expandDiffContext = useCallback((): void => {
     setExpandedContext((current) => {
@@ -319,4 +368,17 @@ export function useReviewDiff(args: {
     resetForSourceChange,
     expandDiffContext,
   };
+}
+
+function changedFilesRetainPrefix(sourceKind: ReviewSourceKind, sourceId: string): string {
+  return `review.listChangedFiles\u0000${sourceKind}\u0000${sourceId}\u0000`;
+}
+
+function changedFilesRetainKey(
+  sourceKind: ReviewSourceKind,
+  sourceId: string,
+  comparison: ReviewComparison,
+  freshness: string,
+): string {
+  return `${changedFilesRetainPrefix(sourceKind, sourceId)}${comparison}\u0000${freshness}`;
 }

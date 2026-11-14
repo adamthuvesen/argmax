@@ -11,7 +11,7 @@
 //! object database as unreferenced objects, which `git gc` collects.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::ErrorKind,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
@@ -92,14 +92,115 @@ pub async fn snapshot_worktree(
 
 /// Snapshot the complete visible worktree without adding ignored files.
 ///
-/// Checkpoints use this rather than [`snapshot_worktree`]: an ignored build
-/// artifact is deliberately outside a checkpoint and must never be removed by
-/// a later rewind. The returned tree is self-contained and can be pinned by a
-/// ref without touching the user's real index.
+/// The reference rule for checkpoints: an ignored build artifact is
+/// deliberately outside a checkpoint and must never be removed by a later
+/// rewind. Checkpoints compute the same tree with
+/// [`snapshot_visible_worktree_from_status`], and the tests hold the two equal.
+#[cfg(test)]
 pub async fn snapshot_visible_worktree(repo_path: &Path) -> ArgmaxResult<String> {
     let capture = stage_visible_worktree(repo_path).await?;
     drop_force_staged_ignored(repo_path, capture.index.as_path()).await?;
     tree_from_index(repo_path, scratch_options(&capture.index)).await
+}
+
+/// The visible worktree as a tree, staging only what `git status` reported.
+///
+/// [`snapshot_visible_worktree`] runs `add --all`, which re-stats every
+/// tracked file and walks every untracked directory: the scan `status` has
+/// just done. A copy of the checkout's index already holds every path status
+/// calls clean, so staging `changed_paths` (worktree changes and untracked
+/// files) into it writes the same tree.
+///
+/// `added_in_index` are the index entries `HEAD` lacks, the only entries the
+/// force-staged-ignored rule can drop. Empty means the ignore check is skipped.
+/// Returns the tree and the paths that rule dropped.
+pub async fn snapshot_visible_worktree_from_status(
+    repo_path: &Path,
+    changed_paths: &[String],
+    added_in_index: &[String],
+) -> ArgmaxResult<(String, Vec<String>)> {
+    let capture = capture_index(repo_path).await?;
+    if !capture.seeded_from_real {
+        // With no index file, status compares against nothing and its
+        // "changed" list does not describe the worktree. Stage all of it.
+        drop(capture);
+        let capture = stage_visible_worktree(repo_path).await?;
+        let dropped = drop_force_staged_ignored(repo_path, capture.index.as_path()).await?;
+        let tree = tree_from_index(repo_path, scratch_options(&capture.index)).await?;
+        return Ok((tree, dropped));
+    }
+    let index = capture.index.as_path();
+    if !changed_paths.is_empty() {
+        let mut pathspec = Vec::new();
+        for path in changed_paths {
+            pathspec.extend_from_slice(path.as_bytes());
+            pathspec.push(0);
+        }
+        let narrowed = run_git_text_with_options(
+            repo_path,
+            [
+                "add",
+                "--all",
+                "--pathspec-from-file=-",
+                "--pathspec-file-nul",
+            ],
+            scratch_options(index).with_stdin(pathspec),
+        )
+        .await;
+        if let Err(error) = narrowed {
+            // A named path that stopped matching fails the whole `add`: an
+            // untracked file deleted since status ran, or a tracked directory
+            // now behind a symlink. The full scan tolerates both.
+            tracing::debug!(%error, "narrowed add failed; staging the whole worktree");
+            run_git_text_with_options(repo_path, ["add", "--all"], scratch_options(index)).await?;
+        }
+    }
+    let mut dropped = Vec::new();
+    if !added_in_index.is_empty() {
+        dropped = ignored_among(repo_path, scratch_options(index), added_in_index).await?;
+        if !dropped.is_empty() {
+            let mut args = vec!["rm", "--cached", "--quiet", "--"];
+            args.extend(dropped.iter().map(String::as_str));
+            run_git_text_with_options(repo_path, args, scratch_options(index)).await?;
+        }
+    }
+    let tree = tree_from_index(repo_path, scratch_options(index)).await?;
+    Ok((tree, dropped))
+}
+
+/// Ignored entries of the checkout's own index, among `candidates`. Lets a
+/// caller confirm the force-staged-ignored rule still drops what it dropped.
+pub async fn ignored_index_entries(
+    repo_path: &Path,
+    candidates: &[String],
+) -> ArgmaxResult<Vec<String>> {
+    ignored_among(repo_path, snapshot_options(), candidates).await
+}
+
+/// The entries of the index `options` points at that an ignore rule covers,
+/// kept only when they are among `candidates`.
+async fn ignored_among(
+    repo_path: &Path,
+    options: GitExecOptions,
+    candidates: &[String],
+) -> ArgmaxResult<Vec<String>> {
+    let ignored = run_git_text_with_options(
+        repo_path,
+        [
+            "ls-files",
+            "--cached",
+            "--ignored",
+            "--exclude-standard",
+            "-z",
+        ],
+        options,
+    )
+    .await?;
+    let candidates = candidates.iter().collect::<HashSet<_>>();
+    Ok(split_nul(&ignored)
+        .into_iter()
+        .filter(|path| candidates.contains(path))
+        .collect())
 }
 
 /// A tree object standing for the worktree's current content, for use as a
@@ -142,7 +243,7 @@ async fn stage_visible_worktree(repo_path: &Path) -> ArgmaxResult<CapturedIndex>
 /// a snapshot seeded from `HEAD` never saw it. Ignored paths are the caller's,
 /// and a rewind must not restore or remove one, so the `HEAD` answer is the
 /// right one. The listing is empty in every ordinary checkout.
-async fn drop_force_staged_ignored(repo_path: &Path, index: &Path) -> ArgmaxResult<()> {
+async fn drop_force_staged_ignored(repo_path: &Path, index: &Path) -> ArgmaxResult<Vec<String>> {
     let ignored = run_git_text_with_options(
         repo_path,
         [
@@ -157,7 +258,7 @@ async fn drop_force_staged_ignored(repo_path: &Path, index: &Path) -> ArgmaxResu
     .await?;
     let ignored = split_nul(&ignored);
     if ignored.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
 
     // An ignored path that HEAD already tracks belongs in the snapshot: both
@@ -183,17 +284,16 @@ async fn drop_force_staged_ignored(repo_path: &Path, index: &Path) -> ArgmaxResu
         "--quiet".to_owned(),
         "--".to_owned(),
     ];
-    args.extend(
-        ignored
-            .into_iter()
-            .filter(|path| !in_head.contains(path))
-            .collect::<Vec<_>>(),
-    );
-    if args.len() == 4 {
-        return Ok(());
+    let dropped = ignored
+        .into_iter()
+        .filter(|path| !in_head.contains(path))
+        .collect::<Vec<_>>();
+    if dropped.is_empty() {
+        return Ok(dropped);
     }
+    args.extend(dropped.iter().cloned());
     run_git_text_with_options(repo_path, args, scratch_options(index)).await?;
-    Ok(())
+    Ok(dropped)
 }
 
 /// Return the tree represented by the user's current index without changing
@@ -316,7 +416,7 @@ async fn has_shared_index(real_index: &Path) -> bool {
 /// Resolving it is a git process, and the answer holds for as long as the
 /// checkout is where it was, so each checkout is asked once. A path that stops
 /// resolving to a file is dropped and asked again — see [`capture_index`].
-async fn resolve_index_path(repo_path: &Path) -> ArgmaxResult<PathBuf> {
+pub async fn resolve_index_path(repo_path: &Path) -> ArgmaxResult<PathBuf> {
     if let Some(cached) = index_paths()
         .lock()
         .expect("index path cache")

@@ -13,3 +13,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[features]
+# Counts git spawns per checkout (`git_exec::spawn_counts`) for tests.
+test-support = []

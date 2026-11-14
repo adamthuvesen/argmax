@@ -1197,6 +1197,45 @@ done"#,
         handle.terminate().await.unwrap();
     }
 
+    // Claude reads these before it applies `--settings` env, so only the
+    // process environment makes them take effect.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn every_claude_turn_env_pair_is_in_the_process_env_not_the_settings() {
+        let temp = tempfile::tempdir().unwrap();
+        let server = fake_claude(
+            temp.path(),
+            r#"env > env.log
+printf '%s\n' "$@" > args.log
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> stdin.log
+  case "$line" in
+    *'"subtype":"initialize"'*)
+      printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"argmax-initialize","response":{}}}'
+      ;;
+  esac
+done"#,
+        );
+        let launch = gated_launch(server, temp.path(), PromptGate::open());
+        let handle = launch.await.unwrap().expect("launch");
+        wait_until(|| stdin_log(temp.path()).contains("argmax-initialize")).await;
+        handle.terminate().await.unwrap();
+
+        let env = std::fs::read_to_string(temp.path().join("env.log")).unwrap();
+        let args = std::fs::read_to_string(temp.path().join("args.log")).unwrap();
+        // Without it the `result` event waits on an unused summary model call.
+        assert!(env
+            .lines()
+            .any(|line| line == "CLAUDE_CODE_CLASSIFIER_SUMMARY=0"));
+        for (name, value) in super::super::adapters::CLAUDE_TURN_ENV {
+            assert!(
+                env.lines().any(|line| line == format!("{name}={value}")),
+                "{name}={value} missing from the child env:\n{env}"
+            );
+            assert!(!args.contains(name), "{name} is passed in argv:\n{args}");
+        }
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn a_refused_gate_ends_the_launch_with_no_prompt_and_no_process() {

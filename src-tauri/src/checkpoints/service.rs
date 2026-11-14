@@ -7,6 +7,7 @@
 //! atomic: each rewind is journaled and creates a recovery checkpoint first.
 
 use std::{
+    collections::HashSet,
     path::{Component, Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -17,9 +18,16 @@ use specta::Type;
 use tempfile::tempdir;
 use uuid::Uuid;
 
+use super::capture::{
+    file_identity, parse_status, reusable, stat_paths, CaptureRecord, CaptureRecords,
+    CheckoutState, StatusReport, STATUS_ARGS,
+};
 use crate::git::{
     ops::checkout_write_lock,
-    tree_snapshot::{index_tree, snapshot_visible_worktree},
+    tree_snapshot::{
+        ignored_index_entries, index_tree, resolve_index_path,
+        snapshot_visible_worktree_from_status,
+    },
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_process::git_exec::{run_git_text, run_git_text_with_options, GitExecOptions};
@@ -38,6 +46,7 @@ const GIT_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub struct CheckpointService {
     database: Arc<Database>,
+    captures: CaptureRecords,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -85,7 +94,10 @@ pub struct RewindFilesResult {
 
 impl CheckpointService {
     pub fn new(database: Arc<Database>) -> Arc<Self> {
-        Arc::new(Self { database })
+        Arc::new(Self {
+            database,
+            captures: CaptureRecords::default(),
+        })
     }
 
     pub async fn create_checkpoint(
@@ -150,8 +162,7 @@ impl CheckpointService {
         let workspace_path = self.workspace_path(workspace_id)?;
         let lock = checkout_write_lock(&workspace_path).await?;
         let _guard = lock.lock().await;
-        self.ensure_checkout_supported(&workspace_path).await?;
-        let current_fingerprint = checkout_fingerprint(&workspace_path).await?;
+        let current_fingerprint = self.read_checkout(&workspace_path).await?.fingerprint;
         // The worktree-tree diff and the index-tree diff read two independent
         // pinned trees against the checkout; neither writes anything, so they
         // run concurrently instead of back to back.
@@ -186,10 +197,10 @@ impl CheckpointService {
         let lock = checkout_write_lock(&workspace_path).await?;
         let _guard = lock.lock().await;
         self.ensure_no_active_writers(&workspace_path)?;
-        self.ensure_checkout_supported(&workspace_path).await?;
 
-        let current = checkout_fingerprint(&workspace_path).await?;
-        if current != input.expected_fingerprint {
+        let current_state = self.read_checkout(&workspace_path).await?;
+        let current = &current_state.fingerprint;
+        if *current != input.expected_fingerprint {
             return Err(ArgmaxError::service(
                 "CHECKPOINT_REWIND_STALE_PREVIEW",
                 "The checkout changed since this rewind was previewed. Preview it again before restoring files.",
@@ -197,7 +208,7 @@ impl CheckpointService {
         }
         if checkpoint.head_sha.is_empty()
             || checkpoint.head_sha != current.head_sha
-            || checkpoint.branch != current.branch
+            || !same_branch(&checkpoint.branch, &current.branch)
         {
             return Err(ArgmaxError::service(
                 "CHECKPOINT_REWIND_REVISION_CHANGED",
@@ -211,15 +222,14 @@ impl CheckpointService {
         )
         .await?;
 
-        // `current` was fingerprinted above under the write lock taken at the
+        // `current_state` was read above under the write lock taken at the
         // top of this function, and the lock is still held here, so nothing
         // could have changed the checkout in between: reuse it instead of
-        // having the recovery capture redo `ensure_checkout_supported` and
-        // `checkout_fingerprint` (6-8 more git spawns). This is only sound
-        // because the lock is continuous from that fingerprint to this
+        // having the recovery capture read the checkout again. This is only
+        // sound because the lock is continuous from that read to this
         // capture; do not reorder `ensure_no_active_writers` around it.
         let recovery_checkpoint = self
-            .capture_with_fingerprint(
+            .capture_with_state(
                 CreateCheckpointInput {
                     workspace_id: input.workspace_id.clone(),
                     session_id: None,
@@ -229,7 +239,7 @@ impl CheckpointService {
                     recovery_of: Some(checkpoint.id.clone()),
                 },
                 &workspace_path,
-                current,
+                current_state,
             )
             .await?;
         let rewind_id = Uuid::new_v4().to_string();
@@ -312,28 +322,27 @@ impl CheckpointService {
         input: CreateCheckpointInput,
         workspace_path: &Path,
     ) -> ArgmaxResult<Checkpoint> {
-        self.ensure_checkout_supported(workspace_path).await?;
-        let fingerprint = checkout_fingerprint(workspace_path).await?;
-        self.capture_with_fingerprint(input, workspace_path, fingerprint)
-            .await
+        let state = self.read_checkout(workspace_path).await?;
+        self.capture_with_state(input, workspace_path, state).await
     }
 
-    /// Persist a checkpoint from a fingerprint the caller already computed.
+    /// Persist a checkpoint from a checkout state the caller already read.
     ///
     /// Callers that hold the checkout write lock continuously from their own
-    /// `ensure_checkout_supported` + `checkout_fingerprint` through this call
-    /// (see `rewind_files`) can pass that fingerprint straight through: the
-    /// lock rules out anything changing the checkout in between, so redoing
-    /// the support check and fingerprint here would only spend git processes
-    /// to confirm what is already known. `capture_locked` is the normal path
-    /// and still computes its own.
-    async fn capture_with_fingerprint(
+    /// [`Self::read_checkout`] through this call (see `rewind_files`) can pass
+    /// that state straight through: the lock rules out anything changing the
+    /// checkout in between. `capture_locked` is the normal path and reads its
+    /// own.
+    async fn capture_with_state(
         &self,
         input: CreateCheckpointInput,
         workspace_path: &Path,
-        fingerprint: CheckoutFingerprint,
+        state: CheckoutState,
     ) -> ArgmaxResult<Checkpoint> {
-        let untracked_paths = untracked_paths(workspace_path).await?;
+        let CheckoutState {
+            fingerprint,
+            untracked_paths,
+        } = state;
         let provider_conversation_id = self.session_conversation_for_checkpoint(&input)?;
         let checkpoint = Checkpoint {
             id: Uuid::new_v4().to_string(),
@@ -375,22 +384,132 @@ impl CheckpointService {
         Ok(session.provider_conversation_id)
     }
 
-    async fn ensure_checkout_supported(&self, workspace_path: &Path) -> ArgmaxResult<()> {
-        let porcelain = git_text(workspace_path, ["status", "--porcelain=v2", "-z"]).await?;
-        if porcelain.split('\0').any(|entry| entry.starts_with("u ")) {
+    /// Read what a checkpoint records about the checkout, refusing a checkout
+    /// a checkpoint cannot restore. Callers hold the checkout write lock.
+    ///
+    /// One `git status` decides the work. When it, and the stat of every path
+    /// it names, match the last read of this checkout, the last read's trees
+    /// are returned without staging anything: see `checkpoints/capture.rs`.
+    async fn read_checkout(&self, workspace_path: &Path) -> ArgmaxResult<CheckoutState> {
+        let index_path = resolve_index_path(workspace_path).await?;
+        // Stat the index before anything copies it: a rewrite after this
+        // moves the stat, so it cannot pass for the index read below.
+        let index_identity = file_identity(&index_path)?;
+        let previous = self.captures.get(workspace_path);
+        let known_index_tree = previous
+            .as_ref()
+            .filter(|record| index_identity.is_some() && record.index_identity == index_identity)
+            .map(|record| record.state.fingerprint.index_tree.clone());
+        let (status, index_read) = tokio::join!(
+            run_git_text(workspace_path, STATUS_ARGS, GIT_TIMEOUT),
+            async {
+                match known_index_tree {
+                    Some(tree) => ArgmaxResult::Ok(tree),
+                    None => {
+                        let (tree, ()) = tokio::try_join!(
+                            index_tree(workspace_path),
+                            ensure_no_submodules(workspace_path),
+                        )?;
+                        Ok(tree)
+                    }
+                }
+            },
+        );
+        let report = parse_status(&status?)?;
+        if report.unmerged {
             return Err(ArgmaxError::service(
                 "CHECKPOINT_UNMERGED_INDEX",
                 "Checkpoints cannot capture or restore an unresolved merge index.",
             ));
         }
-        let stage = git_text(workspace_path, ["ls-files", "--stage", "-z"]).await?;
-        if stage.split('\0').any(|entry| entry.starts_with("160000 ")) {
+        let index_tree = index_read?;
+        let (Some(head_sha), Some(branch)) = (report.head_sha.clone(), report.branch.clone())
+        else {
             return Err(ArgmaxError::service(
-                "CHECKPOINT_SUBMODULE_UNSUPPORTED",
-                "Checkpoints do not support checkouts containing submodules.",
+                "CHECKPOINT_HEAD_UNSUPPORTED",
+                "Checkpoints need a commit checked out on a branch.",
             ));
+        };
+        validate_relative_paths(&report.untracked)?;
+        validate_relative_paths(&report.worktree_changes)?;
+
+        let changed = report
+            .worktree_changes
+            .iter()
+            .chain(&report.untracked)
+            .cloned()
+            .collect::<Vec<_>>();
+        let (path_stats, racy) = stat_paths(workspace_path, &changed)?;
+
+        // A rewritten index was written to a tree beside status, so a reuse
+        // checks that tree too: it catches an index change status cannot show.
+        if let Some(previous) = previous.filter(|record| {
+            record.matches(&report, &path_stats)
+                && record.state.fingerprint.index_tree == index_tree
+        }) {
+            let ignore_rule_holds = previous.added_in_index.is_empty()
+                || ignored_index_entries(workspace_path, &previous.added_in_index).await?
+                    == previous.dropped;
+            if ignore_rule_holds {
+                let state = previous.state.clone();
+                self.captures.put(
+                    workspace_path,
+                    CaptureRecord {
+                        index_identity,
+                        ..previous
+                    },
+                );
+                return Ok(state);
+            }
         }
-        Ok(())
+
+        // An untracked file that is gone since status ran has nothing left
+        // to stage, and naming it would fail the whole `add`.
+        let untracked = report.untracked.iter().collect::<HashSet<_>>();
+        let stageable = path_stats
+            .iter()
+            .filter(|(path, identity)| identity.is_some() || !untracked.contains(path))
+            .map(|(path, _)| path.clone())
+            .collect::<Vec<_>>();
+        let (worktree_tree, dropped) = if stageable.is_empty() && report.added_in_index.is_empty() {
+            // Nothing differs from the index, so the worktree is the index.
+            (index_tree.clone(), Vec::new())
+        } else {
+            snapshot_visible_worktree_from_status(
+                workspace_path,
+                &stageable,
+                &report.added_in_index,
+            )
+            .await?
+        };
+        let state = CheckoutState {
+            fingerprint: CheckoutFingerprint {
+                head_sha,
+                branch,
+                worktree_tree,
+                index_tree,
+            },
+            untracked_paths: report.untracked.clone(),
+        };
+        let reusable = reusable(&report, racy);
+        let StatusReport {
+            records,
+            added_in_index,
+            ..
+        } = report;
+        self.captures.put(
+            workspace_path,
+            CaptureRecord {
+                records,
+                path_stats,
+                reusable,
+                index_identity,
+                added_in_index,
+                dropped,
+                state: state.clone(),
+            },
+        );
+        Ok(state)
     }
 
     /// Refuse a rewind while any session is mid-turn in this checkout. A rewind
@@ -430,58 +549,34 @@ where
         .to_string())
 }
 
-async fn untracked_paths(workspace_path: &Path) -> ArgmaxResult<Vec<String>> {
-    let raw = run_git_text(
-        workspace_path,
-        ["ls-files", "--others", "--exclude-standard", "-z"],
-        GIT_TIMEOUT,
-    )
-    .await?;
-    let paths = raw
-        .split('\0')
-        .filter(|path| !path.is_empty())
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
-    validate_relative_paths(&paths)?;
-    Ok(paths)
+async fn ensure_no_submodules(workspace_path: &Path) -> ArgmaxResult<()> {
+    let stage = run_git_text(workspace_path, ["ls-files", "--stage", "-z"], GIT_TIMEOUT).await?;
+    if stage.split('\0').any(|entry| entry.starts_with("160000 ")) {
+        return Err(ArgmaxError::service(
+            "CHECKPOINT_SUBMODULE_UNSUPPORTED",
+            "Checkpoints do not support checkouts containing submodules.",
+        ));
+    }
+    Ok(())
 }
 
-async fn checkout_fingerprint(workspace_path: &Path) -> ArgmaxResult<CheckoutFingerprint> {
-    // Four independent reads: two plain git plumbing commands against the
-    // real HEAD, plus two tree snapshots that each work through their own
-    // scratch `GIT_INDEX_FILE` (see git/tree_snapshot.rs). None of them write
-    // to the checkout or share state with each other, so they run
-    // concurrently rather than one after another.
-    let (head_sha, branch, worktree_tree, index_tree) = tokio::try_join!(
-        git_text(workspace_path, ["rev-parse", "--verify", "HEAD"]),
-        git_text(
-            workspace_path,
-            ["symbolic-ref", "--quiet", "--short", "HEAD"],
-        ),
-        snapshot_visible_worktree(workspace_path),
-        index_tree(workspace_path),
-    )?;
-    Ok(CheckoutFingerprint {
-        head_sha,
-        branch,
-        worktree_tree,
-        index_tree,
-    })
-}
-
+/// Pin both trees in one ref transaction: both refs land or neither does.
 async fn pin_checkpoint_trees(workspace_path: &Path, checkpoint: &Checkpoint) -> ArgmaxResult<()> {
-    for (kind, tree) in [
+    let updates = [
         ("worktree", &checkpoint.worktree_tree),
         ("index", &checkpoint.index_tree),
-    ] {
-        let reference = format!("refs/argmax/checkpoints/{}/{kind}", checkpoint.id);
-        run_git_text(
-            workspace_path,
-            ["update-ref", reference.as_str(), tree.as_str()],
-            GIT_TIMEOUT,
+    ]
+    .iter()
+    .map(|(kind, tree)| {
+        format!(
+            "update refs/argmax/checkpoints/{}/{kind} {tree}\n",
+            checkpoint.id
         )
-        .await?;
-    }
+    })
+    .collect::<String>();
+    let mut options = GitExecOptions::default().with_stdin(updates);
+    options.timeout = GIT_TIMEOUT;
+    run_git_text_with_options(workspace_path, ["update-ref", "--stdin"], options).await?;
     Ok(())
 }
 
@@ -594,6 +689,14 @@ async fn materialize_tree(
     )
     .await?;
     Ok(())
+}
+
+/// Checkpoints stored before the status-based capture read the branch with
+/// `symbolic-ref --short`, which writes `heads/foo` when a tag `foo` also
+/// exists. Status always writes `foo`.
+fn same_branch(stored: &str, current: &str) -> bool {
+    let plain = |branch: &str| branch.strip_prefix("heads/").unwrap_or(branch).to_owned();
+    plain(stored) == plain(current)
 }
 
 fn validate_relative_paths(paths: &[String]) -> ArgmaxResult<()> {
@@ -1243,6 +1346,330 @@ mod tests {
             })
             .await
             .expect("a peer mid-turn in the same checkout does not block a checkpoint");
+    }
+
+    /// Push every mtime in the checkout out of the racy window, as a checkout
+    /// no one has written to for a while.
+    fn backdate(root: &Path) {
+        let past = std::time::SystemTime::now() - Duration::from_secs(30);
+        let mut pending = vec![root.to_path_buf()];
+        while let Some(dir) = pending.pop() {
+            for entry in fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.file_name().is_some_and(|name| name == ".git") {
+                    continue;
+                }
+                if path.is_dir() {
+                    pending.push(path);
+                } else {
+                    fs::File::options()
+                        .write(true)
+                        .open(&path)
+                        .unwrap()
+                        .set_times(fs::FileTimes::new().set_modified(past))
+                        .unwrap();
+                }
+            }
+        }
+    }
+
+    /// The checkout state as the pre-status code read it: one `add --all`
+    /// over the whole worktree and a git process per field.
+    async fn reference_state(path: &Path) -> CheckoutState {
+        use crate::git::tree_snapshot::snapshot_visible_worktree;
+        let untracked = run_git_text(
+            path,
+            ["ls-files", "--others", "--exclude-standard", "-z"],
+            GIT_TIMEOUT,
+        )
+        .await
+        .unwrap();
+        CheckoutState {
+            fingerprint: CheckoutFingerprint {
+                head_sha: git_text(path, ["rev-parse", "--verify", "HEAD"])
+                    .await
+                    .unwrap(),
+                branch: git_text(path, ["symbolic-ref", "--quiet", "--short", "HEAD"])
+                    .await
+                    .unwrap(),
+                worktree_tree: snapshot_visible_worktree(path).await.unwrap(),
+                index_tree: index_tree(path).await.unwrap(),
+            },
+            untracked_paths: untracked
+                .split('\0')
+                .filter(|path| !path.is_empty())
+                .map(ToOwned::to_owned)
+                .collect(),
+        }
+    }
+
+    /// Mark the last capture so a reused one is recognisable.
+    fn tag_last_capture(service: &CheckpointService, path: &Path) {
+        let mut record = service.captures.get(path).expect("a capture to tag");
+        record.state.fingerprint.worktree_tree = "reused".into();
+        service.captures.put(path, record);
+    }
+
+    #[tokio::test]
+    async fn status_driven_capture_writes_the_reference_trees() {
+        let (repo, service) = service_with_workspace().await;
+        let path = repo.path();
+        // HEAD tracks an ignored file, the index holds a force-staged ignored
+        // file HEAD lacks, and every kind of worktree change is present.
+        fs::write(path.join(".gitignore"), "out/\nbuilt.log\n").unwrap();
+        fs::write(path.join("built.log"), "tracked though ignored\n").unwrap();
+        git(path, &["add", "--force", ".gitignore", "built.log"]).await;
+        git(path, &["commit", "-m", "ignore rules"]).await;
+        fs::write(path.join("built.log"), "edited\n").unwrap();
+        fs::create_dir(path.join("out")).unwrap();
+        fs::write(path.join("out/forced.bin"), "forced\n").unwrap();
+        fs::write(path.join("out/artifact.bin"), "ignored\n").unwrap();
+        git(path, &["add", "--force", "out/forced.bin"]).await;
+        fs::write(path.join("staged.txt"), "staged\n").unwrap();
+        git(path, &["add", "staged.txt"]).await;
+        fs::write(path.join("staged.txt"), "staged then edited\n").unwrap();
+        fs::write(path.join("added.txt"), "added\n").unwrap();
+        git(path, &["add", "added.txt"]).await;
+        fs::remove_file(path.join("tracked.txt")).unwrap();
+        fs::create_dir_all(path.join("new dir/deep")).unwrap();
+        fs::write(path.join("new dir/deep/file one.txt"), "untracked\n").unwrap();
+        git(path, &["mv", "added.txt", "moved.txt"]).await;
+
+        let expected = reference_state(path).await;
+        let mut captured = service.read_checkout(path).await.unwrap();
+        captured.untracked_paths.sort();
+        let mut expected_untracked = expected.untracked_paths.clone();
+        expected_untracked.sort();
+        assert_eq!(captured.fingerprint, expected.fingerprint);
+        assert_eq!(captured.untracked_paths, expected_untracked);
+
+        // A clean checkout takes the no-staging shortcut and still agrees.
+        git(path, &["add", "--all"]).await;
+        git(path, &["commit", "-m", "everything"]).await;
+        let expected = reference_state(path).await;
+        assert_eq!(
+            service.read_checkout(path).await.unwrap().fingerprint,
+            expected.fingerprint
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unchanged_checkout_reuses_its_last_capture() {
+        let (repo, service) = service_with_workspace().await;
+        let path = repo.path();
+        fs::write(path.join("tracked.txt"), "dirty\n").unwrap();
+        fs::write(path.join("untracked.txt"), "new\n").unwrap();
+        // A force-staged ignored file makes reuse re-read the ignore rule.
+        fs::write(path.join(".git/info/exclude"), "forced.bin\n").unwrap();
+        fs::write(path.join("forced.bin"), "forced\n").unwrap();
+        git(path, &["add", "--force", "forced.bin"]).await;
+        backdate(path);
+        service.read_checkout(path).await.unwrap();
+        tag_last_capture(&service, path);
+        assert_eq!(
+            service
+                .read_checkout(path)
+                .await
+                .unwrap()
+                .fingerprint
+                .worktree_tree,
+            "reused"
+        );
+    }
+
+    // The turn's checkpoint gates the prompt. Reuse brought a second capture
+    // from 13 git processes to `status` and `update-ref --stdin`
+    // (docs/performance.md#the-checkpoint-gate).
+    #[tokio::test]
+    async fn a_second_checkpoint_of_an_unchanged_checkout_runs_two_git_processes() {
+        use argmax_process::git_exec::spawn_counts::git_spawns;
+        let (repo, service) = service_with_workspace().await;
+        let path = repo.path();
+        fs::write(path.join("tracked.txt"), "dirty\n").unwrap();
+        fs::write(path.join("untracked.txt"), "new\n").unwrap();
+        backdate(path);
+        let checkpoint =
+            || service.create_recovery_checkpoint("workspace".into(), None, "before turn".into());
+
+        let start = git_spawns(path);
+        let first = checkpoint().await.unwrap();
+        let after_first = git_spawns(path);
+        let second = checkpoint().await.unwrap();
+        let second_spawns = git_spawns(path) - after_first;
+
+        assert!(after_first - start > 2, "the first capture reads in full");
+        assert!(
+            second_spawns <= 2,
+            "a reused capture ran {second_spawns} git processes"
+        );
+        assert_eq!(second.worktree_tree, first.worktree_tree);
+        assert_eq!(second.index_tree, first.index_tree);
+    }
+
+    #[tokio::test]
+    async fn a_file_written_just_now_is_never_reused() {
+        let (repo, service) = service_with_workspace().await;
+        let path = repo.path();
+        fs::write(path.join("tracked.txt"), "dirty\n").unwrap();
+        service.read_checkout(path).await.unwrap();
+        tag_last_capture(&service, path);
+        assert_ne!(
+            service
+                .read_checkout(path)
+                .await
+                .unwrap()
+                .fingerprint
+                .worktree_tree,
+            "reused"
+        );
+    }
+
+    #[tokio::test]
+    async fn any_change_that_moves_a_tree_forces_a_fresh_capture() {
+        type Change = fn(&Path) -> Vec<Vec<&'static str>>;
+        let changes: [(&str, Change); 5] = [
+            ("a new commit", |path| {
+                fs::write(path.join("staged.txt"), "committed\n").unwrap();
+                vec![vec!["add", "staged.txt"], vec!["commit", "-m", "next"]]
+            }),
+            ("a staged edit", |_| vec![vec!["add", "tracked.txt"]]),
+            ("a tracked file edited again at the same size", |path| {
+                fs::write(path.join("tracked.txt"), "DIRTY\n").unwrap();
+                vec![]
+            }),
+            ("a clean tracked file edited", |path| {
+                fs::write(path.join("staged.txt"), "edited\n").unwrap();
+                vec![]
+            }),
+            ("a new untracked file", |path| {
+                fs::write(path.join("brand new.txt"), "new\n").unwrap();
+                vec![]
+            }),
+        ];
+        for (name, change) in changes {
+            let (repo, service) = service_with_workspace().await;
+            let path = repo.path();
+            fs::write(path.join("tracked.txt"), "dirty\n").unwrap();
+            backdate(path);
+            service.read_checkout(path).await.unwrap();
+            tag_last_capture(&service, path);
+            for args in change(path) {
+                git(path, &args).await;
+            }
+            let captured = service.read_checkout(path).await.unwrap();
+            assert_ne!(captured.fingerprint.worktree_tree, "reused", "{name}");
+            assert_eq!(
+                captured.fingerprint,
+                reference_state(path).await.fingerprint,
+                "{name}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_checkpoint_pins_both_trees_in_one_transaction() {
+        let (repo, service) = service_with_workspace().await;
+        fs::write(repo.path().join("tracked.txt"), "dirty\n").unwrap();
+        let checkpoint = service
+            .create_recovery_checkpoint("workspace".into(), None, "pinned".into())
+            .await
+            .unwrap();
+        for (kind, tree) in [
+            ("worktree", &checkpoint.worktree_tree),
+            ("index", &checkpoint.index_tree),
+        ] {
+            let reference = format!("refs/argmax/checkpoints/{}/{kind}", checkpoint.id);
+            assert_eq!(
+                &git_text(repo.path(), ["rev-parse", "--verify", reference.as_str()])
+                    .await
+                    .unwrap(),
+                tree
+            );
+        }
+    }
+
+    /// An untracked file deleted after status named it would fail the
+    /// narrowed `add`. The capture stages the whole worktree instead.
+    #[tokio::test]
+    async fn a_file_that_vanishes_before_add_still_captures() {
+        use crate::git::tree_snapshot::snapshot_visible_worktree;
+        let (repo, _service) = service_with_workspace().await;
+        let path = repo.path();
+        fs::write(path.join("tracked.txt"), "dirty\n").unwrap();
+        let named = ["tracked.txt".to_string(), "vanished.txt".to_string()];
+        let (tree, dropped) = snapshot_visible_worktree_from_status(path, &named, &[])
+            .await
+            .expect("the full add covers a vanished path");
+        assert!(dropped.is_empty());
+        assert_eq!(tree, snapshot_visible_worktree(path).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_tracked_directory_replaced_by_a_symlink_still_captures() {
+        let (repo, service) = service_with_workspace().await;
+        let path = repo.path();
+        fs::create_dir(path.join("dir")).unwrap();
+        fs::write(path.join("dir/a"), "a\n").unwrap();
+        git(path, &["add", "dir/a"]).await;
+        git(path, &["commit", "-m", "dir"]).await;
+        fs::create_dir(path.join("elsewhere")).unwrap();
+        fs::write(path.join("elsewhere/a"), "elsewhere\n").unwrap();
+        fs::remove_dir_all(path.join("dir")).unwrap();
+        std::os::unix::fs::symlink("elsewhere", path.join("dir")).unwrap();
+        assert_eq!(
+            service.read_checkout(path).await.unwrap().fingerprint,
+            reference_state(path).await.fingerprint
+        );
+    }
+
+    #[tokio::test]
+    async fn a_tracked_directory_replaced_by_a_file_still_captures() {
+        let (repo, service) = service_with_workspace().await;
+        let path = repo.path();
+        fs::create_dir(path.join("dir")).unwrap();
+        fs::write(path.join("dir/a"), "a\n").unwrap();
+        git(path, &["add", "dir/a"]).await;
+        git(path, &["commit", "-m", "dir"]).await;
+        fs::remove_dir_all(path.join("dir")).unwrap();
+        fs::write(path.join("dir"), "now a file\n").unwrap();
+        assert_eq!(
+            service.read_checkout(path).await.unwrap().fingerprint,
+            reference_state(path).await.fingerprint
+        );
+    }
+
+    /// Status reports an embedded repository as one `nested/` record, which a
+    /// commit inside it does not change, so its capture is never reused.
+    #[tokio::test]
+    async fn an_embedded_repository_is_never_reused() {
+        let (repo, service) = service_with_workspace().await;
+        let path = repo.path();
+        let nested = path.join("nested");
+        fs::create_dir(&nested).unwrap();
+        git(&nested, &["init", "--initial-branch=main"]).await;
+        git(&nested, &["config", "user.email", "test@example.com"]).await;
+        git(&nested, &["config", "user.name", "Test User"]).await;
+        fs::write(nested.join("inner.txt"), "one\n").unwrap();
+        git(&nested, &["add", "inner.txt"]).await;
+        git(&nested, &["commit", "-m", "one"]).await;
+        backdate(path);
+        service.read_checkout(path).await.unwrap();
+        tag_last_capture(&service, path);
+        fs::write(nested.join("inner.txt"), "two\n").unwrap();
+        git(&nested, &["commit", "-am", "two"]).await;
+        let captured = service.read_checkout(path).await.unwrap();
+        assert_ne!(captured.fingerprint.worktree_tree, "reused");
+        assert_eq!(
+            captured.fingerprint,
+            reference_state(path).await.fingerprint
+        );
+    }
+
+    #[test]
+    fn a_branch_stored_with_a_heads_prefix_is_the_same_branch() {
+        assert!(same_branch("heads/foo", "foo"));
+        assert!(same_branch("foo", "foo"));
+        assert!(!same_branch("heads/foo", "bar"));
     }
 
     #[test]

@@ -1,6 +1,11 @@
 import { act, cleanup, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Learning, ProjectSummary, WorkspaceFileStat } from "../../shared/types.js";
+import type {
+  DashboardDelta,
+  Learning,
+  ProjectSummary,
+  WorkspaceFileStat,
+} from "../../shared/types.js";
 import { ProjectKnowledgePanel } from "../components/ProjectKnowledgePanel.js";
 import { useBridgeQuery } from "./useBridgeQuery.js";
 
@@ -249,5 +254,90 @@ describe("useBridgeQuery", () => {
     });
     expect(screen.getByDisplayValue("From project B")).toBeInTheDocument();
     expect(screen.queryByDisplayValue("From project A")).not.toBeInTheDocument();
+  });
+
+  it("a retained reply shows on remount without a read, until a delta it names drops it", async () => {
+    let deliver: (delta: DashboardDelta) => void = () => {};
+    installBridge({
+      dashboard: {
+        onDelta: (listener: (delta: DashboardDelta) => void) => {
+          deliver = listener;
+          return () => {};
+        },
+      },
+    });
+    const read = vi.fn().mockResolvedValueOnce("first").mockResolvedValueOnce("second");
+    const options = {
+      key: ["goal", "s1"],
+      read,
+      retain: (delta: DashboardDelta) => (delta.goalChangedIds?.length ?? 0) > 0,
+    };
+    const first = renderHook(() => useBridgeQuery(options));
+    await waitFor(() => expect(first.result.current.data).toBe("first"));
+    first.unmount();
+
+    const second = renderHook(() => useBridgeQuery(options));
+    expect(second.result.current.data).toBe("first");
+    expect(second.result.current.isLoading).toBe(false);
+    expect(read).toHaveBeenCalledTimes(1);
+    second.unmount();
+
+    act(() => deliver({ goalChangedIds: ["g1"] }));
+    const third = renderHook(() => useBridgeQuery(options));
+    await waitFor(() => expect(third.result.current.data).toBe("second"));
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the newest of two overlapping retained reads, not the one that settled last", async () => {
+    const older = deferred<string>();
+    const newer = deferred<string>();
+    const read = vi.fn().mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+    const options = { key: ["checkpoints", "w1"], read, retain: true };
+    const first = renderHook(() => useBridgeQuery(options));
+    const refetching = act(async () => {
+      await first.result.current.refetch();
+    });
+    newer.resolve("newer");
+    await refetching;
+    await act(async () => {
+      older.resolve("older");
+      await older.promise;
+    });
+    first.unmount();
+
+    const second = renderHook(() => useBridgeQuery(options));
+    expect(second.result.current.data).toBe("newer");
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not keep a reply whose read started before a delta that drops it", async () => {
+    let deliver: (delta: DashboardDelta) => void = () => {};
+    installBridge({
+      dashboard: {
+        onDelta: (listener: (delta: DashboardDelta) => void) => {
+          deliver = listener;
+          return () => {};
+        },
+      },
+    });
+    const slow = deferred<string>();
+    const read = vi.fn().mockReturnValueOnce(slow.promise).mockResolvedValueOnce("fresh");
+    const options = {
+      key: ["lineage", "s1"],
+      read,
+      retain: (delta: DashboardDelta) => delta.dashboardChanged === true,
+    };
+    const first = renderHook(() => useBridgeQuery(options));
+    act(() => deliver({ dashboardChanged: true }));
+    await act(async () => {
+      slow.resolve("from before the change");
+      await slow.promise;
+    });
+    expect(first.result.current.data).toBe("from before the change");
+    first.unmount();
+
+    const second = renderHook(() => useBridgeQuery(options));
+    await waitFor(() => expect(second.result.current.data).toBe("fresh"));
+    expect(read).toHaveBeenCalledTimes(2);
   });
 });

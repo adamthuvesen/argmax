@@ -34,8 +34,8 @@ export function TurnWaterfallsCard(): JSX.Element | null {
     <div className="settings-card">
       <h4 className="settings-card-title">Turn waterfalls</h4>
       <p className="settings-note">
-        Milliseconds from the send reaching the backend. Submit is the click, before it. Hover a
-        row for every step.
+        Milliseconds from the send reaching the backend. Submit is the click, before it. Hover a row
+        for every step.
       </p>
       <table className="settings-startup-table" aria-label="Turn waterfalls">
         <thead>
@@ -53,8 +53,7 @@ export function TurnWaterfallsCard(): JSX.Element | null {
           {data.map((turn) => (
             <tr key={turn.id} title={allStamps(turn)}>
               <td>
-                <code>{turn.provider ?? "?"}</code>{" "}
-                {new Date(turn.createdAt).toLocaleTimeString()}
+                <code>{turn.provider ?? "?"}</code> {new Date(turn.createdAt).toLocaleTimeString()}
               </td>
               <td>{offset(turn, "submit")}</td>
               {COLUMNS.map(([name]) => (

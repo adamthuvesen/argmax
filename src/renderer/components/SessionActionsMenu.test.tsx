@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
@@ -134,10 +134,6 @@ describe("SessionActionsMenu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Browse Files" }));
     expect(onBrowseFiles).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("menuitem", { name: "Browse Files" })).toBeNull();
-
-    await waitFor(() => {
-      expect(listForSession).toHaveBeenCalledWith({ sessionId: "session-1" });
-    });
   });
 
   it("opens the browser pane from the menu", async () => {

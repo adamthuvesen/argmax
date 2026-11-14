@@ -62,6 +62,8 @@ export interface ConversationScroll {
   follow: TranscriptFollow;
   scrollToBottom: () => void;
   scrollToElement: (node: HTMLElement) => void;
+  /** Milliseconds since the reader last moved the transcript: wheel, key, touch, or scrollbar. */
+  msSinceScrollInput: () => number;
 }
 
 function contentTop(content: HTMLDivElement, node: Element): number {
@@ -140,7 +142,10 @@ function readViewportAnchor(
   const scrollRect = scroll.getBoundingClientRect();
   if (scrollRect.width < 2 || scrollRect.height < 2) return null;
   const y = scrollRect.top + Math.min(ANCHOR_INSET_PX, scrollRect.height / 3);
+  // A control such as Show earlier stays put while rows mount below it, so it
+  // cannot hold the reader's place.
   const directChild = Array.from(content.children).find((child) => {
+    if (child.hasAttribute("data-scroll-anchor-skip")) return false;
     const rect = child.getBoundingClientRect();
     return rect.bottom >= y;
   });
@@ -199,6 +204,7 @@ export function useConversationScroll({
   const touchYRef = useRef<number | null>(null);
   const touchTargetRef = useRef<EventTarget | null>(null);
   const pointerScrollRef = useRef(false);
+  const lastScrollInputAtRef = useRef(Number.NEGATIVE_INFINITY);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const observedElementsRef = useRef<Set<Element>>(new Set());
   const newBelowCountRef = useRef(0);
@@ -370,6 +376,11 @@ export function useConversationScroll({
     lastMaxScrollTopRef.current = settledMaxTop;
   }, [detach, enabled, rememberAnchor, resetNewBelowCount, startFollowing]);
 
+  const msSinceScrollInput = useCallback(
+    (): number => performance.now() - lastScrollInputAtRef.current,
+    [],
+  );
+
   const scrollToBottom = useCallback((): void => {
     startFollowing();
     lastItemCountRef.current = items.length;
@@ -463,7 +474,11 @@ export function useConversationScroll({
       );
     };
 
+    const markScrollInput = (): void => {
+      lastScrollInputAtRef.current = performance.now();
+    };
     const onWheel = (event: WheelEvent): void => {
+      markScrollInput();
       if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
       if (event.deltaY > 0) {
         // A collapse below can leave a detached reader at the physical
@@ -481,6 +496,7 @@ export function useConversationScroll({
       releaseFollowing();
     };
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (!isEditable(event.target)) markScrollInput();
       if (!upwardKey(event) || isEditable(event.target)) return;
       if (scrollableAncestor(scroll, event.target, -1)) return;
       releaseFollowing();
@@ -493,8 +509,10 @@ export function useConversationScroll({
       }
       touchYRef.current = event.touches[0]?.clientY ?? null;
       touchTargetRef.current = event.target;
+      markScrollInput();
     };
     const onTouchMove = (event: TouchEvent): void => {
+      markScrollInput();
       const previousY = touchYRef.current;
       const touch = event.touches.length === 1 ? event.touches[0] : undefined;
       if (previousY === null || !touch) return;
@@ -515,6 +533,9 @@ export function useConversationScroll({
       pointerScrollRef.current = false;
     };
     const onScroll = (): void => {
+      // Programmatic writes scroll too; only a held pointer (the scrollbar)
+      // marks reader input here.
+      if (pointerScrollRef.current) markScrollInput();
       const previousTop = lastScrollTopRef.current;
       const height = scroll.scrollHeight;
       const maxTop = Math.max(0, height - scroll.clientHeight);
@@ -618,5 +639,6 @@ export function useConversationScroll({
     follow,
     scrollToBottom,
     scrollToElement,
+    msSinceScrollInput,
   };
 }

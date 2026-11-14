@@ -1,15 +1,19 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-type TokenizedLines = {
-  lines: Array<Array<{ content: string; color?: string }>>;
-  grammarState: undefined;
-};
-const tokenizeLinesMock = vi.hoisted(() =>
-  vi.fn<(code: string, lang: string, appearance: "light" | "dark") => TokenizedLines>((code) => {
+type TokenLines = Array<Array<{ content: string; color?: string }>>;
+const requestHighlightMock = vi.hoisted(() =>
+  vi.fn<
+    (
+      code: string,
+      lang: string,
+      appearance: "light" | "dark",
+      done: (lines: TokenLines | null) => void,
+    ) => () => void
+  >((code, _lang, _appearance, done) => {
     // Deterministic stub: tag whitespace runs with no color and non-whitespace
     // runs with a color so the test can assert on a colored token without
-    // pulling in a real grammar.
+    // pulling in a real grammar. Tokens land a task later, as from the worker.
     const lines = code.split("\n").map((content) => {
       const tokens: Array<{ content: string; color?: string }> = [];
       const pattern = /\s+|\S+/g;
@@ -22,10 +26,11 @@ const tokenizeLinesMock = vi.hoisted(() =>
       }
       return tokens.length > 0 ? tokens : [{ content }];
     });
-    return { lines, grammarState: undefined };
+    // oxlint-disable-next-line no-restricted-globals -- stands in for the worker's reply, a task after the request
+    const timer = setTimeout(() => done(lines), 0);
+    return () => clearTimeout(timer);
   }),
 );
-const useHighlighterReadyMock = vi.hoisted(() => vi.fn<() => boolean>(() => true));
 const useHighlightThemeAppearanceMock = vi.hoisted(() =>
   vi.fn<() => "light" | "dark">(() => "light"),
 );
@@ -38,8 +43,7 @@ const langFromPathMock = vi.hoisted(() =>
 );
 
 vi.mock("../lib/highlighter.js", () => ({
-  tokenizeLines: tokenizeLinesMock,
-  useHighlighterReady: useHighlighterReadyMock,
+  requestHighlight: requestHighlightMock,
   useHighlightThemeAppearance: useHighlightThemeAppearanceMock,
   langFromPath: langFromPathMock,
 }));
@@ -92,8 +96,7 @@ function lineCommentButton(line: number): HTMLElement {
 
 describe("DiffBlocks", () => {
   beforeEach(() => {
-    tokenizeLinesMock.mockClear();
-    useHighlighterReadyMock.mockReturnValue(true);
+    requestHighlightMock.mockClear();
     useHighlightThemeAppearanceMock.mockReturnValue("light");
   });
 
@@ -114,7 +117,7 @@ describe("DiffBlocks", () => {
       (node) => node.style.color !== "",
     );
     expect(colored.length).toBeGreaterThan(0);
-    expect(tokenizeLinesMock.mock.calls[0]?.[1]).toBe("typescript");
+    expect(requestHighlightMock.mock.calls[0]?.[1]).toBe("typescript");
   });
 
   it("tokenizes each side of a hunk in one call, not one call per line", async () => {
@@ -131,11 +134,11 @@ describe("DiffBlocks", () => {
     };
     render(<DiffBlocks blocks={[hunk]} filePath="src/x.ts" />);
 
-    await waitFor(() => expect(tokenizeLinesMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(requestHighlightMock).toHaveBeenCalledTimes(2));
     // The new side runs through the context line into the additions, so a
     // template string opened in context colors the added line that closes it.
-    expect(tokenizeLinesMock.mock.calls[0]?.[0]).toBe("const s = `a\nc`;\nrun(s);");
-    expect(tokenizeLinesMock.mock.calls[1]?.[0]).toBe("const s = `a\nb`;");
+    expect(requestHighlightMock.mock.calls[0]?.[0]).toBe("const s = `a\nc`;\nrun(s);");
+    expect(requestHighlightMock.mock.calls[1]?.[0]).toBe("const s = `a\nb`;");
   });
 
   it("falls back to plain text for an unknown language without throwing", () => {
@@ -145,28 +148,19 @@ describe("DiffBlocks", () => {
     // highlighter is consulted.
     expect(screen.queryByTestId("hl-token")).toBeNull();
     expect(screen.getByText("weird format")).toBeInTheDocument();
-    expect(tokenizeLinesMock).not.toHaveBeenCalled();
-  });
-
-  it("renders plain text while the highlighter is still loading", () => {
-    useHighlighterReadyMock.mockReturnValue(false);
-    render(<DiffBlocks blocks={[TS_HUNK]} filePath="src/x.ts" />);
-
-    expect(screen.queryByTestId("hl-token")).toBeNull();
-    expect(screen.getByText("const x = 42;")).toBeInTheDocument();
-    expect(tokenizeLinesMock).not.toHaveBeenCalled();
+    expect(requestHighlightMock).not.toHaveBeenCalled();
   });
 
   it("refreshes highlighting when the theme changes", async () => {
     // A fresh hunk: colors are cached per hunk, and TS_HUNK's already are.
     const hunk = structuredClone(TS_HUNK);
     const { rerender } = render(<DiffBlocks blocks={[hunk]} filePath="src/x.ts" />);
-    await waitFor(() => expect(tokenizeLinesMock).toHaveBeenCalled());
-    tokenizeLinesMock.mockClear();
+    await waitFor(() => expect(requestHighlightMock).toHaveBeenCalled());
+    requestHighlightMock.mockClear();
     useHighlightThemeAppearanceMock.mockReturnValue("dark");
     rerender(<DiffBlocks blocks={[hunk]} filePath="src/x.ts" />);
-    await waitFor(() => expect(tokenizeLinesMock).toHaveBeenCalled());
-    expect(tokenizeLinesMock.mock.calls[0]?.[2]).toBe("dark");
+    await waitFor(() => expect(requestHighlightMock).toHaveBeenCalled());
+    expect(requestHighlightMock.mock.calls[0]?.[2]).toBe("dark");
   });
 
   it("offers no comment affordance without an onAddComment handler", () => {
@@ -214,7 +208,7 @@ describe("DiffBlocks", () => {
   ])("submits a range dragged from %i to %i", (from, to) => {
     const onAddComment = vi.fn();
     render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={onAddComment} />);
-    tokenizeLinesMock.mockClear();
+    requestHighlightMock.mockClear();
     fireEvent.mouseDown(lineCommentButton(from), { button: 0, buttons: 1 });
     fireEvent.mouseEnter(lineCommentButton(to), { buttons: 1 });
     expect(screen.queryByRole("form")).toBeNull();
@@ -223,7 +217,7 @@ describe("DiffBlocks", () => {
     fireEvent.click(lineCommentButton(from), { detail: 1 });
     expect(screen.getByRole("form", { name: "Comment on src/x.ts:21-23" })).toBeInTheDocument();
     expect(screen.getByLabelText("Comment text")).toHaveFocus();
-    expect(tokenizeLinesMock).not.toHaveBeenCalled();
+    expect(requestHighlightMock).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("Comment text"), { target: { value: "range note" } });
     fireEvent.click(screen.getByRole("button", { name: "Comment" }));
     expect(onAddComment).toHaveBeenCalledWith({

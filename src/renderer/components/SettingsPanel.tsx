@@ -235,18 +235,23 @@ export function SettingsPanel({
   const { browserTools, setBrowserTools } = useAgentToolsSettings();
   // First load reuses the cached reports; every explicit "Refresh" (retry)
   // forces a re-probe so a provider installed after boot is actually detected.
-  const hasDiscoveredRef = useRef(false);
+  // The refresh decides that, because a kept reply means the first load may
+  // never read at all.
+  const forceDiscovery = useRef(false);
   const providersQuery = useBridgeQuery<DiscoveredProvider[]>({
     key: ["providers.discover"],
-    read: (api) => {
-      const force = hasDiscoveredRef.current;
-      hasDiscoveredRef.current = true;
-      return api.providers.discover(force);
-    },
+    read: (api) => api.providers.discover(forceDiscovery.current),
+    // Discovery is cached in Rust until a forced refresh, and every forced
+    // refresh lands here under the same key.
+    retain: true,
   });
   const providers = providersQuery.data;
   const refreshingProviders = providersQuery.isLoading;
-  const refreshProviders = providersQuery.refetch;
+  const { refetch: refetchProviders } = providersQuery;
+  const refreshProviders = useCallback(() => {
+    forceDiscovery.current = true;
+    return refetchProviders();
+  }, [refetchProviders]);
   const providerLoadError = providersQuery.isAvailable
     ? refreshingProviders
       ? null

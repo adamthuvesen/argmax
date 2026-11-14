@@ -16,6 +16,9 @@ export function useProviderAvailability(): {
   const { data: discovered } = useBridgeQuery<DiscoveredProvider[]>({
     key: ["providers.discover"],
     read: (api) => api.providers.discover(),
+    // Rust caches discovery until a forced refresh, and Settings and the
+    // welcome pane store their forced refreshes under this same key.
+    retain: true,
   });
   const availability = useMemo<ProviderAvailability | undefined>(() => {
     if (!discovered) return undefined;

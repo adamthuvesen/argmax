@@ -1,5 +1,6 @@
 import { afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
+import { forgetAllRetained } from "../renderer/data/retainedReads.js";
 
 // DOM-only test scaffolding. Node-environment tests (pure logic) never render
 // CodeMirror, and the mock's import chain touches browser globals that emit
@@ -126,4 +127,5 @@ if (typeof HTMLCanvasElement !== "undefined") {
 // value one test writes must not decide what the next test renders.
 afterEach(() => {
   if (typeof window !== "undefined") window.localStorage.clear();
+  forgetAllRetained();
 });

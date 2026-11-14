@@ -1002,6 +1002,59 @@ mod process_tests {
         }
         std::mem::forget(guard);
     }
+
+    // Claude reads these before it applies `--settings` env, so the PTY launch
+    // must put them in the process environment as the stream-json one does.
+    #[tokio::test]
+    async fn a_claude_pty_launch_puts_every_turn_env_pair_in_the_process_env() {
+        let directory = tempfile::tempdir().unwrap();
+        let env_file = directory.path().join("env.log");
+        let input = ProviderLaunchInput {
+            provider: ProviderId::Claude,
+            session_id: uuid::Uuid::new_v4().to_string(),
+            workspace_path: directory.path().to_path_buf(),
+            prompt: String::new(),
+            model_label: "Sonnet 5.5".to_string(),
+            model_id: super::super::model_catalogue::ModelId::resolve(
+                ProviderId::Claude,
+                "claude-sonnet-5-5",
+            ),
+            reasoning_effort: None,
+            fast_mode: false,
+            resume_conversation_id: None,
+            resume_fork: false,
+            continuity: None,
+            permission_mode: PermissionMode::AutoApprove,
+            agent_mode: AgentMode::Auto,
+            cols: 120,
+            rows: 32,
+        };
+        let handle = launch_structured_via_pty(
+            "/bin/sh",
+            "sh",
+            vec![
+                "-c".to_string(),
+                "env > env.pending; mv env.pending env.log".to_string(),
+            ],
+            &input,
+            Arc::new(|_| {}),
+            None,
+        )
+        .expect("launch the env fixture");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !env_file.is_file() {
+            assert!(Instant::now() < deadline, "the fixture wrote no env");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let env = fs::read_to_string(&env_file).unwrap();
+        handle.terminate().await.unwrap();
+        for (name, value) in super::super::adapters::CLAUDE_TURN_ENV {
+            assert!(
+                env.lines().any(|line| line == format!("{name}={value}")),
+                "{name}={value} missing from the child env:\n{env}"
+            );
+        }
+    }
 }
 
 #[cfg(all(test, feature = "verification", unix))]

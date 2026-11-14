@@ -31,6 +31,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
   const query = useBridgeQuery<DiscoveredProvider[]>({
     key: ["providers.discover"],
     read: (api) => api.providers.discover(forceDiscovery.current),
+    retain: true,
   });
   const providers = query.data;
   const refreshing = query.isLoading;

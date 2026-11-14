@@ -5,7 +5,7 @@ import {
   renderConversation,
   STARTED_TURN,
 } from "../../test/sessionConversationTestHarness.js";
-import { SETTLE_MS } from "../hooks/useFollowUpSuggestion.js";
+import { SETTLE_MS } from "../lib/chatOpenSettle.js";
 
 /**
  * Suggestions are cached per session and finished turn, so a test that reused

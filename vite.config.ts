@@ -49,6 +49,9 @@ export default defineConfig({
       },
     },
   },
+  // The highlight worker loads each Shiki grammar as its own chunk, and only
+  // the ES format can split a worker. WebKit runs module workers from Safari 15.
+  worker: { format: "es" },
   server: {
     port: 5173,
     strictPort: true,

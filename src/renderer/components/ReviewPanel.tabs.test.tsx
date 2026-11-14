@@ -19,8 +19,7 @@ vi.mock("./BrowserPanel.js", () => ({
   ),
 }));
 vi.mock("../lib/highlighter.js", () => ({
-  tokenizeLines: () => null,
-  useHighlighterReady: () => true,
+  requestHighlight: () => () => {},
   useHighlightThemeAppearance: () => "light",
   langFromPath: () => null,
 }));

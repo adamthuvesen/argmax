@@ -659,6 +659,34 @@ describe("useReviewState — IPC fan-out resistance", () => {
     await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
   });
 
+  it("a remount (chat switch) reuses the closed panel's list only while the workspace has not moved", async () => {
+    listChangedFiles.mockResolvedValue([
+      { path: "a.ts", status: "M", additions: 1, deletions: 0, staged: false },
+    ]);
+    const idle: Partial<WorkspaceSummary> = {
+      changedFiles: 1,
+      state: "complete",
+      lastActivityAt: "2026-11-13T10:00:00.000Z",
+    };
+    const first = renderHook(() => useReviewState(workspaceSource(makeWorkspace(idle))));
+    await waitFor(() => expect(first.result.current.files).toHaveLength(1));
+    first.unmount();
+
+    const revisit = renderHook(() => useReviewState(workspaceSource(makeWorkspace(idle))));
+    expect(revisit.result.current.files.map((file) => file.path)).toEqual(["a.ts"]);
+    expect(listChangedFiles).toHaveBeenCalledTimes(1);
+    revisit.unmount();
+
+    // A turn edited the same file while the chat was away: the count and the
+    // state are what they were, but the turn's end moved the activity.
+    renderHook(() =>
+      useReviewState(
+        workspaceSource(makeWorkspace({ ...idle, lastActivityAt: "2026-11-13T10:05:00.000Z" })),
+      ),
+    );
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
+  });
+
   it("does refetch listChangedFiles when the workspace completes with a stale changedFiles count", async () => {
     const initial = makeWorkspace({ changedFiles: 0, state: "running" });
     const { rerender } = renderHook(

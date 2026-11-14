@@ -132,6 +132,17 @@ describe("App settings", () => {
     expect(screen.getByText("Claude · Codex · Cursor · OpenCode · Grok")).toBeInTheDocument();
   });
 
+  it("forces a provider re-probe on the first Refresh, even when boot discovery was kept", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Build dashboard" });
+    const menu = await openArgmaxMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /Providers/ }));
+    const refresh = await screen.findByRole("button", { name: "Refresh provider discovery" });
+    await waitFor(() => expect(refresh).toBeEnabled());
+    fireEvent.click(refresh);
+    await waitFor(() => expect(providersDiscover).toHaveBeenLastCalledWith(true));
+  });
+
   // The report is nine `COUNT(*)` scans over the whole database, so it belongs
   // to the one group that shows it — collecting it on every open is what made
   // Settings take a second and a half to appear.

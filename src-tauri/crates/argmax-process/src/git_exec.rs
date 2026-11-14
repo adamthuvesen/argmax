@@ -1,12 +1,13 @@
 use std::{
     ffi::{OsStr, OsString},
-    path::Path,
+    path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
+    sync::OnceLock,
     time::Duration,
 };
 
 use tokio::{
-    io::{AsyncRead, AsyncReadExt},
+    io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
     process::Command,
     time,
 };
@@ -31,6 +32,9 @@ pub struct GitExecOptions {
     /// non-UTF-8 bytes lossily and truncate at the cap instead of failing, so
     /// one legacy-encoded or oversized file cannot fail the whole read.
     pub lossy_display: bool,
+    /// Bytes written to git's stdin, for `--stdin` and `--pathspec-from-file=-`
+    /// forms. `None` leaves stdin as it was.
+    pub stdin: Option<Vec<u8>>,
 }
 
 impl Default for GitExecOptions {
@@ -40,6 +44,7 @@ impl Default for GitExecOptions {
             stdout_cap_bytes: GIT_STDOUT_CAP_BYTES,
             env: Vec::new(),
             lossy_display: false,
+            stdin: None,
         }
     }
 }
@@ -47,6 +52,11 @@ impl Default for GitExecOptions {
 impl GitExecOptions {
     pub fn with_env<K: Into<OsString>, V: Into<OsString>>(mut self, key: K, value: V) -> Self {
         self.env.push((key.into(), value.into()));
+        self
+    }
+
+    pub fn with_stdin(mut self, input: impl Into<Vec<u8>>) -> Self {
+        self.stdin = Some(input.into());
         self
     }
 
@@ -288,12 +298,76 @@ where
     Ok(output.stdout)
 }
 
+/// The git executable every Argmax git call runs, resolved once.
+///
+/// On macOS without Homebrew git, `git` on PATH is `/usr/bin/git`, Apple's
+/// xcrun shim: it looks up the developer directory on every call and then
+/// execs the real binary. Measured 2026-11-13: `--version` 20.6 ms through the
+/// shim against 8.2 ms direct, `status` 27.5 against 13.8 ms. Argmax runs
+/// dozens of git calls around each turn, so it asks `xcrun` once and runs the
+/// real binary. Anything unexpected falls back to plain `git`.
+pub fn git_program() -> &'static OsStr {
+    static PROGRAM: OnceLock<OsString> = OnceLock::new();
+    PROGRAM.get_or_init(resolve_git_program).as_os_str()
+}
+
+fn resolve_git_program() -> OsString {
+    #[cfg(unix)]
+    let path = login_shell::path();
+    #[cfg(not(unix))]
+    let path = std::env::var("PATH").unwrap_or_default();
+    git_program_on(&path, xcrun_git)
+}
+
+/// [`resolve_git_program`] for a given PATH and `xcrun --find git` lookup.
+fn git_program_on(path: &str, xcrun_git: impl FnOnce() -> Option<PathBuf>) -> OsString {
+    let Some(found) = std::env::split_paths(path)
+        .map(|dir| dir.join("git"))
+        .find(|candidate| is_executable(candidate))
+    else {
+        return OsString::from("git");
+    };
+    if cfg!(target_os = "macos") && found == Path::new("/usr/bin/git") {
+        if let Some(real) = xcrun_git() {
+            return real.into_os_string();
+        }
+    }
+    found.into_os_string()
+}
+
+fn xcrun_git() -> Option<PathBuf> {
+    let output = std::process::Command::new("/usr/bin/xcrun")
+        .args(["--find", "git"])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let real = PathBuf::from(String::from_utf8(output.stdout).ok()?.trim());
+    (real.is_absolute() && is_executable(&real)).then_some(real)
+}
+
+fn is_executable(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        path.metadata()
+            .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+    }
+    #[cfg(not(unix))]
+    {
+        path.is_file()
+    }
+}
+
 async fn run_git_command(
     workspace_path: &Path,
     args: &[OsString],
     options: GitExecOptions,
 ) -> ArgmaxResult<GitCommandOutput> {
-    let mut command = Command::new("git");
+    let mut command = Command::new(git_program());
     command
         .arg("-C")
         .arg(workspace_path)
@@ -342,16 +416,32 @@ async fn run_git_command(
     for (key, value) in &options.env {
         command.env(key, value);
     }
+    if options.stdin.is_some() {
+        command.stdin(Stdio::piped());
+    }
 
     let mut child = command.spawn().map_err(|error| {
         ArgmaxError::service("GIT_SPAWN_FAILED", format!("failed to run git: {error}"))
     })?;
+    #[cfg(any(test, feature = "test-support"))]
+    spawn_counts::record(workspace_path);
     let stdout = child.stdout.take().ok_or_else(|| {
         ArgmaxError::service("GIT_SPAWN_FAILED", "git stdout pipe was unavailable")
     })?;
     let stderr = child.stderr.take().ok_or_else(|| {
         ArgmaxError::service("GIT_SPAWN_FAILED", "git stderr pipe was unavailable")
     })?;
+    // Written beside the reads, so a command that answers while it still
+    // reads cannot fill its stdout pipe and deadlock against this write. A
+    // failed write is held until git exits: git that stopped reading early
+    // (a bad argument, a fatal error) says why on stderr.
+    let stdin_pipe = child.stdin.take();
+    let stdin = async {
+        let (Some(input), Some(mut pipe)) = (options.stdin.as_deref(), stdin_pipe) else {
+            return Ok(None);
+        };
+        Ok(pipe.write_all(input).await.err())
+    };
 
     let wait = async {
         time::timeout(options.timeout, child.wait())
@@ -381,7 +471,10 @@ async fn run_git_command(
     };
     let stderr = read_truncated(stderr, GIT_STDERR_CAP_BYTES);
 
-    let (status, stdout, stderr) = tokio::try_join!(wait, stdout, stderr)?;
+    let (status, stdout, stderr, stdin_error) = tokio::try_join!(wait, stdout, stderr, stdin)?;
+    if let Some(error) = stdin_error {
+        return Err(stdin_write_error(status, &stderr, error));
+    }
     Ok(GitCommandOutput {
         status,
         stdout,
@@ -463,6 +556,19 @@ fn decode_stdout(stdout: Vec<u8>, lossy_display: bool) -> ArgmaxResult<String> {
     })
 }
 
+/// A write to git's stdin that failed. Git that exited non-zero stopped
+/// reading for a reason it wrote to stderr, which says more than the pipe.
+#[inline(never)]
+fn stdin_write_error(status: ExitStatus, stderr: &[u8], error: std::io::Error) -> ArgmaxError {
+    if !status.success() {
+        return non_zero_error(status.code().unwrap_or(-1), stderr);
+    }
+    ArgmaxError::service(
+        "GIT_PIPE_WRITE_FAILED",
+        format!("failed to write git stdin: {error}"),
+    )
+}
+
 fn non_zero_error(exit_code: i32, stderr: &[u8]) -> ArgmaxError {
     let detail = String::from_utf8_lossy(stderr);
     let detail = detail.trim();
@@ -472,4 +578,102 @@ fn non_zero_error(exit_code: i32, stderr: &[u8]) -> ArgmaxError {
         detail.chars().take(ERROR_DETAIL_CAP_BYTES).collect()
     };
     ArgmaxError::service("GIT_NON_ZERO_EXIT", format!("git failed: {detail}"))
+}
+
+/// Git processes spawned per checkout, so a test can pin how many git
+/// processes an operation costs. Keyed by the canonical path, so tests that
+/// run in parallel on their own checkouts do not see each other's spawns.
+#[cfg(any(test, feature = "test-support"))]
+pub mod spawn_counts {
+    use std::{
+        collections::HashMap,
+        path::{Path, PathBuf},
+        sync::{Mutex, OnceLock},
+    };
+
+    fn counts() -> &'static Mutex<HashMap<PathBuf, usize>> {
+        static COUNTS: OnceLock<Mutex<HashMap<PathBuf, usize>>> = OnceLock::new();
+        COUNTS.get_or_init(Default::default)
+    }
+
+    fn canonical(path: &Path) -> PathBuf {
+        std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    }
+
+    pub(super) fn record(workspace_path: &Path) {
+        let mut counts = counts().lock().unwrap_or_else(|error| error.into_inner());
+        *counts.entry(canonical(workspace_path)).or_default() += 1;
+    }
+
+    /// Git processes spawned with `-C workspace_path` so far.
+    pub fn git_spawns(workspace_path: &Path) -> usize {
+        let counts = counts().lock().unwrap_or_else(|error| error.into_inner());
+        counts.get(&canonical(workspace_path)).copied().unwrap_or(0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    fn executable(dir: &Path, name: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join(name);
+        std::fs::write(&path, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
+    // The shim looks up the developer directory on every call: 20.6 ms
+    // against 8.2 ms direct for `--version` (measured 2026-11-13).
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_xcrun_shim_on_path_resolves_to_the_real_git() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = executable(dir.path(), "git-real");
+        assert_eq!(git_program_on("/usr/bin", || Some(real.clone())), real);
+        // With no answer from xcrun the shim is still a working git.
+        assert_eq!(git_program_on("/usr/bin", || None), "/usr/bin/git");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_git_ahead_of_usr_bin_on_path_wins_without_asking_xcrun() {
+        let dir = tempfile::tempdir().unwrap();
+        let homebrew = executable(dir.path(), "git");
+        let path = format!("{}:/usr/bin", dir.path().display());
+        assert_eq!(
+            git_program_on(&path, || panic!("xcrun asked for a non-shim git")),
+            homebrew
+        );
+    }
+
+    #[tokio::test]
+    async fn every_git_spawn_is_counted_against_its_checkout() {
+        let dir = tempfile::tempdir().unwrap();
+        let before = spawn_counts::git_spawns(dir.path());
+        run_git_text(dir.path(), ["--version"], GIT_DEFAULT_TIMEOUT)
+            .await
+            .unwrap();
+        run_git_text_blocking(dir.path(), ["--version"], GIT_DEFAULT_TIMEOUT).unwrap();
+        assert_eq!(spawn_counts::git_spawns(dir.path()), before + 2);
+    }
+
+    #[tokio::test]
+    async fn git_that_stops_reading_stdin_reports_its_own_error() {
+        // Far past a pipe buffer, so the write is still running when git
+        // rejects the option and exits.
+        let input = vec![b'x'; 4 * 1024 * 1024];
+        let error = run_git_text_with_options(
+            std::env::temp_dir(),
+            ["hash-object", "--no-such-option", "--stdin"],
+            GitExecOptions::default().with_stdin(input),
+        )
+        .await
+        .expect_err("unknown option");
+        let message = error.to_string();
+        assert!(message.contains("git failed"), "{message}");
+        assert!(!message.contains("failed to write git stdin"), "{message}");
+    }
 }

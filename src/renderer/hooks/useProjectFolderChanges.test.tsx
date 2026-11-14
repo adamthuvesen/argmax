@@ -72,9 +72,10 @@ describe("useProjectFolderChanges", () => {
       undefined,
     );
     rerender({ refreshKey: "ready" });
-    await waitFor(() => expect(getFolders).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(4));
+    expect(getFolders).toHaveBeenCalledTimes(1);
     act(() => result.current.refresh());
-    await waitFor(() => expect(getFolders).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(getFolders).toHaveBeenCalledTimes(2));
   });
 
   it("keeps usable repositories visible when a folder is not a Git repository", async () => {

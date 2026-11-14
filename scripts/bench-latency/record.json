@@ -1,0 +1,572 @@
+{
+  "machine": {
+    "host": "237caa209d05",
+    "cpus": 10
+  },
+  "metrics": {
+    "boot.first-paint": {
+      "p50": 319,
+      "n": 6,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "boot.ready-to-show": {
+      "p50": 267,
+      "n": 6,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "composer.keystroke:painted": {
+      "p50": 34,
+      "n": 36,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "composer.keystroke:settled": {
+      "p50": 6,
+      "n": 36,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "composer.keystroke:shown": {
+      "p50": 3,
+      "n": 36,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "launcher.picker.Switch branch:painted": {
+      "p50": 66,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "launcher.picker.Switch branch:settled": {
+      "p50": 25,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "launcher.picker.Switch branch:shown": {
+      "p50": 33,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "launcher.picker.Switch model effort:painted": {
+      "p50": 33,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "launcher.picker.Switch model effort:settled": {
+      "p50": 7,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "launcher.picker.Switch model effort:shown": {
+      "p50": 7,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "launcher.picker.Switch model:painted": {
+      "p50": 34,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "launcher.picker.Switch model:settled": {
+      "p50": 10,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "launcher.picker.Switch model:shown": {
+      "p50": 10,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "launcher.picker.Switch project:painted": {
+      "p50": 33,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "launcher.picker.Switch project:settled": {
+      "p50": 9,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "launcher.picker.Switch project:shown": {
+      "p50": 8,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "null.noop:painted": {
+      "p50": 33,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "null.noop:settled": {
+      "p50": 0,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "null.noop:shown": {
+      "p50": 0,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "page.activity:painted": {
+      "p50": 88,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "page.activity:settled": {
+      "p50": 82,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "page.activity:shown": {
+      "p50": 54,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "page.new-chat:painted": {
+      "p50": 50,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "page.new-chat:settled": {
+      "p50": 149,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "page.new-chat:shown": {
+      "p50": 18,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "page.schedule:painted": {
+      "p50": 33,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "page.schedule:settled": {
+      "p50": 14,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "page.schedule:shown": {
+      "p50": 13,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "page.usage:painted": {
+      "p50": 127,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "page.usage:settled": {
+      "p50": 101,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "page.usage:shown": {
+      "p50": 88,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "palette.open:painted": {
+      "p50": 33,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "palette.open:settled": {
+      "p50": 22,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "palette.open:shown": {
+      "p50": 19,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "palette.query:painted": {
+      "p50": 34,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "palette.query:settled": {
+      "p50": 155,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "palette.query:shown": {
+      "p50": 4,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "palette.tab.Files:painted": {
+      "p50": 66,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "palette.tab.Files:settled": {
+      "p50": 22,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "palette.tab.Files:shown": {
+      "p50": 33,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "real.followUp.checkpoint_end": {
+      "p50": 76,
+      "n": 5,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "real.followUp.first_painted": {
+      "p50": 793,
+      "n": 5,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "real.followUp.prompt_written": {
+      "p50": 449,
+      "n": 5,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "real.followUp.spawn": {
+      "p50": 5,
+      "n": 5,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "real.newChat.checkpoint_end": {
+      "p50": 159,
+      "n": 5,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "real.newChat.first_painted": {
+      "p50": 1302,
+      "n": 5,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "real.newChat.prompt_written": {
+      "p50": 672,
+      "n": 5,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "real.newChat.spawn": {
+      "p50": 34,
+      "n": 5,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "send.followUp.ack": {
+      "p50": 15,
+      "n": 5,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "send.followUp.first-text": {
+      "p50": 376,
+      "n": 5,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "send.newChat.ack": {
+      "p50": 48,
+      "n": 5,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "send.newChat.first-text": {
+      "p50": 230,
+      "n": 5,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "session.switch.first-visit:painted": {
+      "p50": 55,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "session.switch.first-visit:settled": {
+      "p50": 279,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "session.switch.first-visit:shown": {
+      "p50": 21,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "session.switch.longest:painted": {
+      "p50": 64,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "session.switch.longest:settled": {
+      "p50": 391,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "session.switch.longest:shown": {
+      "p50": 33,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "session.switch.revisit:painted": {
+      "p50": 55,
+      "n": 24,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "session.switch.revisit:settled": {
+      "p50": 69,
+      "n": 24,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "session.switch.revisit:shown": {
+      "p50": 27,
+      "n": 24,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "settings.open:painted": {
+      "p50": 34,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "settings.open:settled": {
+      "p50": 22,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "settings.open:shown": {
+      "p50": 10,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "settings.section:painted": {
+      "p50": 33,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "settings.section:settled": {
+      "p50": 21,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "settings.section:shown": {
+      "p50": 7,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "sidebar.archived.expand:painted": {
+      "p50": 34,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "sidebar.archived.expand:settled": {
+      "p50": 14,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "sidebar.archived.expand:shown": {
+      "p50": 14,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "sidebar.group.toggle:painted": {
+      "p50": 33,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "sidebar.group.toggle:settled": {
+      "p50": 5,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "sidebar.group.toggle:shown": {
+      "p50": 5,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "sidebar.hide-show:painted": {
+      "p50": 34,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "sidebar.hide-show:settled": {
+      "p50": 25,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "sidebar.hide-show:shown": {
+      "p50": 19,
+      "n": 12,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.admitted": {
+      "p50": 0,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.checkpoint_end": {
+      "p50": 86,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.checkpoint_start": {
+      "p50": 4,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.cli_init": {
+      "p50": 108,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.env_ready": {
+      "p50": 4,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.first_content": {
+      "p50": 130,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.first_hint_emitted": {
+      "p50": 137,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.first_painted": {
+      "p50": 162,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.first_persisted": {
+      "p50": 137,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.first_stdout": {
+      "p50": 56,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.initialize_ack": {
+      "p50": 56,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.initialize_sent": {
+      "p50": 4,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.ipc_received": {
+      "p50": 0,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.prompt_gate_waited": {
+      "p50": 86,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.prompt_written": {
+      "p50": 86,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.spawn": {
+      "p50": 4,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    },
+    "turn.submit": {
+      "p50": -2,
+      "n": 10,
+      "commit": "b345b6baebe6cc8e3d4dcd915f2f50ee1b2f9219",
+      "recordedAt": "2026-11-13T11:42:03.864Z"
+    }
+  }
+}

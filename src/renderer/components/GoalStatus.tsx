@@ -25,17 +25,20 @@ const OUTCOME_LABELS: Record<string, string> = {
  * sees.
  */
 export function GoalStatus({ session }: { session: SessionSummary }): JSX.Element | null {
-  const [goal, setGoal] = useState<Goal | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [pending, setPending] = useState(false);
 
   // A goal that cannot be read is not worth an error in the lane; the next
   // goal delta re-reads it.
-  const { refetch } = useBridgeQuery({
+  const {
+    data: goal,
+    refetch,
+    setData: setGoal,
+  } = useBridgeQuery<Goal | null>({
     key: ["goals.get", session.id],
     read: (api) => api.goals?.get({ sessionId: session.id }),
-    onData: setGoal,
+    retain: (delta) => (delta.goalChangedIds?.length ?? 0) > 0,
   });
 
   useEffect(() => {
@@ -62,7 +65,7 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
     try {
       if (active) await goalActions()!.clear({ sessionId: session.id });
       setDismissed(goal.id);
-      setGoal(null);
+      setGoal(() => null);
     } catch (failure) {
       showErrorToast(failure instanceof Error ? failure.message : "Could not clear the goal.");
     } finally {

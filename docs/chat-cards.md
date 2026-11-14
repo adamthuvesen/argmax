@@ -119,6 +119,7 @@ Choices that look odd until you know why:
 - **A detached reader keeps a minimum height.** A folding Thought block below the reader must not clamp them upward.
 - **`overflow-anchor: none`** keeps browser anchoring from competing with the controller.
 - **Windows nest.** A turn and an expanded group each mount a bounded tail ([performance.md](performance.md#transcript-size)). While detached they keep their mounted ids, so new output cannot evict the reader's anchor.
+- **An opened chat fills its window from the bottom up.** The first frame mounts the last few items, and each later frame mounts more above them ([performance.md](performance.md#transcript-size)). Following keeps the bottom pinned through that growth, and a detached reader keeps their anchor, the same as for Show earlier. The anchor is never the Show earlier control (`data-scroll-anchor-skip`), because rows mount below it.
 - **Mouse wheels are eased.** WebKit on macOS applies a phase-less wheel event as an instant jump. JS cannot see the device, so [smoothWheel.ts](../src/renderer/lib/smoothWheel.ts) classifies each gesture by its first event. The listener is non-passive, which is why the scroll path must stay cheap.
 
 Argmax owns this controller because `use-stick-to-bottom`'s reattachment near the bottom conflicts with the detached-reading contract.

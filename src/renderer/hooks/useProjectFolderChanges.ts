@@ -3,6 +3,7 @@ import type { ChangedFileSummary, ProjectFolder, WorkspaceDiff } from "../../sha
 import { errorMessage } from "../../shared/error.js";
 import { nextDiffContext } from "../lib/diff.js";
 import type { ReviewState } from "./useReviewState.js";
+import { forgetRetained, retainedReply, startRetainedRead } from "../data/retainedReads.js";
 
 export interface ProjectFolderChanges {
   folder: ProjectFolder;
@@ -37,8 +38,7 @@ export function useProjectFolderChanges(source: ReviewState["projectChanges"], e
     const bridge = window.argmax;
     if (!enabled || !projectId || !bridge?.projects?.getFolders) return;
     let cancelled = false;
-    void bridge.projects
-      .getFolders({ projectId })
+    void projectFolders(bridge.projects.getFolders, projectId)
       .then(async (folders) => {
         const others = folders.filter(
           (folder) =>
@@ -121,7 +121,10 @@ export function useProjectFolderChanges(source: ReviewState["projectChanges"], e
     setSelection({ folderId, path });
   }, []);
   const clearSelection = useCallback(() => setSelection(null), []);
-  const refresh = useCallback(() => setRevision((value) => value + 1), []);
+  const refresh = useCallback(() => {
+    if (projectId) forgetRetained((key) => key === projectFoldersKey(projectId));
+    setRevision((value) => value + 1);
+  }, [projectId]);
   const expandContext = useCallback(
     () => setContextLines((current) => nextDiffContext(current ?? null) ?? current),
     [],
@@ -147,3 +150,27 @@ export function useProjectFolderChanges(source: ReviewState["projectChanges"], e
 }
 
 export type ProjectFolderChangesState = ReturnType<typeof useProjectFolderChanges>;
+
+/**
+ * A project's folders, kept across chat switches. Folder edits publish a
+ * dashboard change (`projects:configure`), which drops the kept list.
+ */
+function projectFolders(
+  getFolders: (input: { projectId: string }) => Promise<ProjectFolder[]>,
+  projectId: string,
+): Promise<ProjectFolder[]> {
+  const key = projectFoldersKey(projectId);
+  const kept = retainedReply<ProjectFolder[]>(key);
+  if (kept) return Promise.resolve(kept.data);
+  const read = startRetainedRead<ProjectFolder[]>(key, (delta) => delta.dashboardChanged === true);
+  return getFolders({ projectId })
+    .then((folders) => {
+      read.keep(folders);
+      return folders;
+    })
+    .finally(read.discard);
+}
+
+function projectFoldersKey(projectId: string): string {
+  return `projects.getFolders\u0000${projectId}`;
+}

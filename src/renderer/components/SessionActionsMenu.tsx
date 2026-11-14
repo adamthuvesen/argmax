@@ -13,14 +13,13 @@ import {
 } from "lucide-react";
 import { useCallback, useContext, useEffect, useState, type JSX } from "react";
 import { prActions, windowActions } from "../data/bridgeActions.js";
-import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import { createPortal } from "react-dom";
 import type { DetectedIde, IdeId, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { cloudProviderName, isHostedCloudProvider } from "../../shared/cloudProviders.js";
 import { openBrowserPanel } from "../lib/browserPanel.js";
 import { isSecondaryWindow } from "../lib/windowRole.js";
 import { DeveloperToolsContext } from "../lib/uiPreferences.js";
-import { refreshSessionPrs } from "../lib/sessionPrs.js";
+import { refreshSessionPrsOnOpen } from "../lib/sessionPrs.js";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { CloudTaskDialog } from "./CloudTaskDialog.js";
@@ -83,17 +82,11 @@ export function SessionActionsMenu({
   useDismissOnOutsideOrEscape(menu.anchorRef, actionsOpen, closeActions, menu.popoverRef);
 
   const sessionId = session?.id;
-  useBridgeQuery({
-    key: ["prs.listForSession", sessionId],
-    enabled: sessionId !== undefined,
-    read: (api) => api.prs?.listForSession({ sessionId: sessionId ?? "" }),
-    onError: (error) =>
-      showErrorToast(error instanceof Error ? error.message : "Could not load pull requests."),
-  });
+  const branch = workspace?.branch ?? "";
   useEffect(() => {
     if (!sessionId || !prActions()) return;
-    void refreshSessionPrs(sessionId)?.catch(() => undefined);
-  }, [sessionId]);
+    return refreshSessionPrsOnOpen(sessionId, branch);
+  }, [sessionId, branch]);
 
   // One item for the pinned default when detected. Without one, listing every
   // GUI IDE *is* the "Ask each time" setting — guessing a favorite here would

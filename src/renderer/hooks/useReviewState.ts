@@ -282,6 +282,10 @@ export function useReviewState(
     source?.kind === "workspace"
       ? `${source.workspace.changedFiles}:${source.workspace.state}`
       : null;
+  // A turn's end advances `lastActivityAt`, so a turn that edited files whose
+  // count did not change still misses the kept list.
+  const changedFilesRetainFreshness: string | null =
+    source?.kind === "workspace" ? `${changedFilesKey}:${source.workspace.lastActivityAt}` : null;
   const canEdit = sourceKind !== null && (options?.editable ?? true);
 
   const dispatch = useMemo(
@@ -744,6 +748,7 @@ export function useReviewState(
     sourceId,
     sourceKind,
     changedFilesKey,
+    retainFreshness: changedFilesRetainFreshness,
     comparison: "branch",
     dispatch,
     enabled: isPanelOpen || (options?.preloadChanges ?? true),

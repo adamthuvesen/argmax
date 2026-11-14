@@ -32,7 +32,7 @@ import { openWebUrl } from "../lib/openWebUrl.js";
 import type { SubagentCluster } from "../lib/subagentSummary.js";
 import {
   primaryWorkspacePr,
-  refreshSessionPrs,
+  refreshSessionPrsOnOpen,
   workspaceSessionPrs,
   type WorkspaceSessionPr,
 } from "../lib/sessionPrs.js";
@@ -123,7 +123,7 @@ export function WorkspaceCard({
     // The rows land on the actions menu; the card is here for the workspace
     // publish `prs:refresh` performs on its way out, which is why it shares
     // that call rather than making a second one.
-    void refreshSessionPrs(session.id)?.catch(() => undefined);
+    return refreshSessionPrsOnOpen(session.id, workspace.branch);
   }, [session?.id, workspace.kind, workspace.branch]);
 
   const setPrimaryPr = (prNumber: number | null): void => {

@@ -10,13 +10,11 @@ import {
   type ReactNode,
 } from "react";
 import {
-  highlightCode,
   peekHighlightedCode,
   plainCodeLines,
-  queueHighlight,
+  requestHighlight,
   resolveFenceLang,
   useHighlightThemeAppearance,
-  useHighlighterReady,
   type HighlightAppearance,
   type HighlightToken,
 } from "../lib/highlighter.js";
@@ -63,9 +61,6 @@ const FENCE_LABELS: Record<string, string> = {
   toml: "TOML",
 };
 
-// Non-streaming: highlight synchronously, exactly as before. Streaming: show
-// plain text and schedule the highlight; each new keystroke cancels and
-// reschedules, so shiki runs once, when the fence settles.
 /** Past this many lines a fence still being written stays plain until it
     closes: re-tokenizing it on every throttle tick would cost frames. */
 const LIVE_HIGHLIGHT_MAX_LINES = 400;
@@ -77,21 +72,20 @@ function useCodeHighlight(
   appearance: HighlightAppearance,
 ): HighlightToken[][] {
   // A settled fence colored before paints colored; one that has not been
-  // paints plain and queues its highlight, so a chat full of code opens at
+  // paints plain and asks for its colors, so a chat full of code opens at
   // once rather than tokenizing every fence inside its first render.
   const cachedLines = streaming ? null : peekHighlightedCode(code, lang, appearance);
-  const [queued, setQueued] = useState<{ key: string; lines: HighlightToken[][] } | null>(null);
+  const [settled, setSettled] = useState<{ key: string; lines: HighlightToken[][] } | null>(null);
   const settledKey = `${appearance}\u0000${lang}\u0000${code}`;
-  const needsQueue = !streaming && lang !== null && cachedLines === null;
+  const needsRequest = !streaming && lang !== null && cachedLines === null;
   useEffect(() => {
-    if (!needsQueue) return;
-    return queueHighlight(() => {
-      setQueued({ key: settledKey, lines: highlightCode(code, lang, appearance) });
+    if (!needsRequest || lang === null) return;
+    return requestHighlight(code, lang, appearance, (lines) => {
+      if (lines) setSettled({ key: settledKey, lines });
     });
-  }, [needsQueue, settledKey, code, lang, appearance]);
-  const syncLines = streaming
-    ? null
-    : (cachedLines ?? (queued?.key === settledKey ? queued.lines : plainCodeLines(code)));
+  }, [needsRequest, settledKey, code, lang, appearance]);
+  const settledLines =
+    cachedLines ?? (settled?.key === settledKey ? settled.lines : plainCodeLines(code));
   const [deferred, setDeferred] = useState<{
     code: string;
     lang: string | null;
@@ -101,30 +95,42 @@ function useCodeHighlight(
   const latest = useRef({ code, lang, appearance });
   latest.current = { code, lang, appearance };
   const pending = useRef<number | null>(null);
+  const cancelLive = useRef<(() => void) | null>(null);
 
   // A throttle, not a debounce: a reveal that grows the fence every frame
   // would otherwise keep pushing the highlight back until the fence closed.
+  // Each tick replaces the request still in flight, so a slow worker never
+  // queues stale prefixes.
   useEffect(() => {
     if (!streaming || pending.current !== null) return;
     pending.current = window.setTimeout(() => {
       pending.current = null;
       const current = latest.current;
+      if (!current.lang) return;
       if (current.code.split("\n", LIVE_HIGHLIGHT_MAX_LINES + 1).length > LIVE_HIGHLIGHT_MAX_LINES)
         return;
-      setDeferred({
-        ...current,
-        lines: highlightCode(current.code, current.lang, current.appearance, false),
-      });
+      cancelLive.current?.();
+      cancelLive.current = requestHighlight(
+        current.code,
+        current.lang,
+        current.appearance,
+        (lines) => {
+          cancelLive.current = null;
+          if (lines) setDeferred({ ...current, lines });
+        },
+        { keep: false },
+      );
     }, LIVE_HIGHLIGHT_INTERVAL_MS);
   }, [streaming, code, lang, appearance]);
   useEffect(
     () => () => {
       if (pending.current !== null) window.clearTimeout(pending.current);
+      cancelLive.current?.();
     },
     [],
   );
 
-  if (!streaming) return syncLines as HighlightToken[][];
+  if (!streaming) return settledLines;
   if (!deferred || deferred.lang !== lang || deferred.appearance !== appearance) {
     return plainCodeLines(code);
   }
@@ -132,9 +138,9 @@ function useCodeHighlight(
   if (!code.startsWith(deferred.code)) return plainCodeLines(code);
   // The lines highlighted last time keep their colors; the line that was
   // still being written and everything after it stay plain until the next pass.
-  const settled = deferred.lines.length - 1;
+  const settledCount = deferred.lines.length - 1;
   const settledLength = deferred.code.lastIndexOf("\n") + 1;
-  return [...deferred.lines.slice(0, settled), ...plainCodeLines(code.slice(settledLength))];
+  return [...deferred.lines.slice(0, settledCount), ...plainCodeLines(code.slice(settledLength))];
 }
 
 function extractFenceTag(className: string | undefined): string | null {
@@ -192,10 +198,9 @@ export function CodeBlock({
   const fenceTag = useMemo(() => extractFenceTag(className), [className]);
   const codeText = useMemo(() => collectText(children).replace(/\n$/, ""), [children]);
   const [copyFlash, copy] = useCopyToClipboard();
-  const ready = useHighlighterReady();
   const appearance = useHighlightThemeAppearance();
   const streaming = useContext(StreamingCodeContext);
-  const lang = useMemo(() => (ready ? resolveFenceLang(fenceTag) : null), [ready, fenceTag]);
+  const lang = useMemo(() => resolveFenceLang(fenceTag), [fenceTag]);
   const lines = useCodeHighlight(codeText, lang, streaming, appearance);
   const [wrapLines, setWrapLines] = useState(false);
 

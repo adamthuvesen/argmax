@@ -176,7 +176,7 @@ Reverting saves a recovery checkpoint first.
 
 Every provider turn in a Git workspace is preceded by an automatic checkpoint, anchored to the user message it answers. That anchor puts **Revert** in the turn's footer, so there is no checkpoint panel. A failed capture never blocks the turn, and the footer says none was saved.
 
-Reverting binds the restore to the current HEAD, branch, index, and worktree. Restoring is the one action that requires idle sessions on the checkout, because it overwrites files another agent may be editing. It saves a recovery checkpoint and journals the operation, so it is undoable and interrupted restores recover. Unresolved merges and submodules are unsupported.
+Reverting binds the restore to the current HEAD, branch, index, and worktree. Restoring is the one action that requires idle sessions on the checkout, because it overwrites files another agent may be editing. It saves a recovery checkpoint and journals the operation, so it is undoable and interrupted restores recover. Unresolved merges, submodules, and a detached or unborn HEAD are unsupported. A capture reads the checkout with one `git status` and reuses the last capture's trees when nothing moved ([the gate](providers.md#the-pre-turn-checkpoint-gate)).
 
 **Revert restores files, not the conversation.** No provider CLI can resume from an earlier message, so rewinding the transcript would promise what the backend cannot keep. Fork is the way to a clean continuation.
 
@@ -195,6 +195,8 @@ Per-file diffs are capped at `PER_FILE_DIFF_CAP_BYTES`. A capped diff loses trai
 ## Git
 
 [src-tauri/src/git](../src-tauri/src/git) runs Git for checkouts, review, checkpoints, and PR cleanup. Agents own commits, pushes, and PR creation. Git writes from Argmax serialize per canonical checkout.
+
+Every git call goes through `git_exec` in the `argmax-process` crate. `git_program()` resolves the binary once per process from the login-shell `PATH`. On macOS `/usr/bin/git` is Apple's `xcrun` shim, which adds about 12 ms to each call, so the resolver asks `xcrun --find git` for the real binary and runs that. A hand-installed git earlier on `PATH` is used as it is. Do not start git with `Command::new("git")` outside `git_exec`: that call pays the shim again.
 
 ### PR Cleanup
 

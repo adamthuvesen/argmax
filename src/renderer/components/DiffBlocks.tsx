@@ -13,12 +13,11 @@ import { ChevronRight, ChevronsUpDown, Plus } from "lucide-react";
 import { type ParsedDiffBlock } from "../lib/diff.js";
 import {
   langFromPath,
-  useHighlighterReady,
   useHighlightThemeAppearance,
   type HighlightToken,
 } from "../lib/highlighter.js";
 import {
-  highlightHunksInSlices,
+  highlightHunks,
   hunkLineTokens,
   hunkTokensVersion,
   subscribeHunkTokens,
@@ -71,19 +70,14 @@ export const DiffBlocks = memo(function DiffBlocks({
    *  Other callers retain the existing card presentation. */
   presentation?: "card" | "review";
 }): JSX.Element {
-  // Subscribing to the ready signal re-renders the component as soon as the
-  // shiki bundle finishes loading, swapping in highlighted tokens without
-  // blocking the initial paint.
-  const ready = useHighlighterReady();
   const appearance = useHighlightThemeAppearance();
   const lang = useMemo(() => langFromPath(filePath ?? null), [filePath]);
-  const effectiveLang = ready ? lang : null;
   const [selection, setSelection] = useState<CommentSelection | null>(null);
   useEffect(() => {
-    if (!effectiveLang) return;
+    if (!lang) return;
     const hunkLines = blocks.flatMap((block) => (block.kind === "hunk" ? [block.lines] : []));
-    return highlightHunksInSlices(hunkLines, effectiveLang, appearance);
-  }, [blocks, effectiveLang, appearance]);
+    return highlightHunks(hunkLines, lang, appearance);
+  }, [blocks, lang, appearance]);
   // A refreshed diff can reuse hunk ids and line numbers for different code.
   const activeSelection =
     selection && selection.filePath === filePath && blocks.includes(selection.block)
@@ -127,7 +121,7 @@ export const DiffBlocks = memo(function DiffBlocks({
               <UnifiedHunk
                 key={block.id}
                 block={block}
-                lang={effectiveLang}
+                lang={lang}
                 appearance={appearance}
                 filePath={filePath ?? null}
                 onAddComment={onAddComment}
@@ -250,7 +244,7 @@ function UnifiedHunk({
   onSelectionChange: (selection: CommentSelection | null) => void;
 }): JSX.Element {
   const tokensKey = `${lang}:${appearance}`;
-  // Re-render as this hunk's slices of highlighting land, and only this hunk.
+  // Re-render when this hunk's highlighting lands, and only this hunk.
   useSyncExternalStore(
     useCallback(
       (listener: () => void) => subscribeHunkTokens(block.lines, listener),

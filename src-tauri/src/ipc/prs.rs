@@ -121,9 +121,18 @@ pub(crate) async fn prs_refresh_impl(
     input: PrsRefreshInput,
 ) -> ArgmaxResult<Vec<GhPrRecord>> {
     let session_id = input.session_id.as_str();
-    let service = GhService::new(live_database(state)?);
+    let database = live_database(state)?;
+    // Every chat open asks for a refresh, and most change nothing. A publish
+    // of an unchanged row still makes the renderer re-read the whole
+    // dashboard, so only rows the refresh moved are published.
+    let before =
+        argmax_store::workspaces::workspaces_for_pr_refresh(&database.connection(), session_id)
+            .ok();
+    let service = GhService::new(Arc::clone(&database));
     let rows = service.refresh(session_id).await?;
-    if let Err(error) = super::publish_pr_workspaces_for_session(state, session_id) {
+    if let Err(error) =
+        super::publish_changed_pr_workspaces_for_session(state, session_id, before.as_deref())
+    {
         tracing::warn!(
             %session_id,
             ?error,

@@ -2,8 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/highlighter.js", () => ({
-  highlightLine: (content: string) => [{ content }],
-  useHighlighterReady: () => true,
+  requestHighlight: () => () => {},
   useHighlightThemeAppearance: () => "light",
   langFromPath: (path: string | null | undefined) => (path?.endsWith(".ts") ? "typescript" : null),
 }));

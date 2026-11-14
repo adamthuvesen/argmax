@@ -776,8 +776,7 @@ export function setupAppTestMocks(): void {
       setBranchTemplate: ({ template }) =>
         Promise.resolve({ template, defaultTemplate: "argmax/{word}-{id}" }),
       setBrowserTools: setBrowserToolsStub,
-      claudeMcp: () =>
-        Promise.resolve({ preset: "everything", customServers: [], ownServers: [] }),
+      claudeMcp: () => Promise.resolve({ preset: "everything", customServers: [], ownServers: [] }),
       setClaudeMcp: ({ preset, customServers }) =>
         Promise.resolve({ preset, customServers, ownServers: [] }),
       claudeMcpProbe: () => Promise.resolve(null),
@@ -791,8 +790,7 @@ export function setupAppTestMocks(): void {
       openFileIn: () => Promise.resolve({ ok: true }),
       listDetectedIdes: listDetectedIdes,
       diagnostics: diagnosticsStub,
-      debugSnapshot: () =>
-        Promise.resolve({ generatedAt: "2026-05-14T11:00:05.000Z", logs: [] }),
+      debugSnapshot: () => Promise.resolve({ generatedAt: "2026-05-14T11:00:05.000Z", logs: [] }),
       performanceStart: () =>
         Promise.resolve({
           recording: true,

@@ -1,7 +1,8 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
-import type { GrammarState, HighlighterCore, LanguageInput, ThemeInput } from "shiki/core";
+import { useSyncExternalStore } from "react";
+import type { GrammarState, HighlighterCore } from "shiki/core";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
+import type { HighlightWorkerReply, HighlightWorkerRequest } from "./highlight.worker.js";
 import { themeAppearance } from "./theme.js";
 
 export interface HighlightToken {
@@ -46,73 +47,29 @@ export function useHighlightThemeAppearance(): "light" | "dark" {
   return useSyncExternalStore(subscribeToThemeAttribute, readThemeAppearance, () => "light");
 }
 
-// Each curated grammar is a thunk, not a static import: `createHighlighterCore`
-// takes `MaybeGetter` inputs and awaits them, so Vite emits one on-demand chunk
-// per grammar instead of hoisting ~1.1 MB of grammar JSON into the eagerly
-// loaded chunk both entries preload. Nothing is fetched until the first code
-// block asks for highlighting; until then callers render plain text.
-const CURATED_LANGS: LanguageInput[] = [
-  () => import("shiki/langs/typescript.mjs"),
-  () => import("shiki/langs/tsx.mjs"),
-  () => import("shiki/langs/javascript.mjs"),
-  () => import("shiki/langs/jsx.mjs"),
-  () => import("shiki/langs/python.mjs"),
-  () => import("shiki/langs/go.mjs"),
-  () => import("shiki/langs/rust.mjs"),
-  () => import("shiki/langs/json.mjs"),
-  () => import("shiki/langs/markdown.mjs"),
-  () => import("shiki/langs/html.mjs"),
-  () => import("shiki/langs/css.mjs"),
-  () => import("shiki/langs/shellscript.mjs"),
-  () => import("shiki/langs/sql.mjs"),
-  () => import("shiki/langs/yaml.mjs"),
-  () => import("shiki/langs/toml.mjs"),
-];
+/**
+ * Fence and diff colors arrive asynchronously: a caller paints plain text,
+ * asks for tokens, and repaints when they land. Shiki normally runs in a
+ * worker ([highlight.worker.ts](./highlight.worker.ts)), because its first
+ * tokenization was one 466 ms main-thread task in WKWebView. Where the worker
+ * cannot start, the same request runs on the main thread a slice at a time.
+ * Nothing is loaded until the first request: warming Shiki at idle made one
+ * 315 ms task with nothing visible to show for it.
+ */
+type HighlightJob = {
+  code: string;
+  lang: string;
+  theme: string;
+  done: (lines: HighlightToken[][] | null) => void;
+  cancel: () => void;
+};
 
-const CURATED_THEMES: ThemeInput[] = [
-  () => import("shiki/themes/vitesse-light.mjs"),
-  () => import("shiki/themes/vitesse-dark.mjs"),
-];
+// --- Main-thread fallback -------------------------------------------------
 
 let highlighter: HighlighterCore | null = null;
-// Used only as an in-flight re-entrancy guard (null-checked, never awaited by
-// callers), so the resolved value is unused — on init failure the catch above
-// resolves it to undefined rather than re-throwing.
+// An in-flight re-entrancy guard, never awaited by callers.
 let highlighterPromise: Promise<unknown> | null = null;
 const readyCallbacks = new Set<() => void>();
-
-function ensureHighlighter(): HighlighterCore | null {
-  if (highlighter) return highlighter;
-  if (highlighterPromise) return null;
-  highlighterPromise = Promise.all([import("shiki/core"), import("shiki/engine/javascript")])
-    .then(([{ createHighlighterCore }, { createJavaScriptRegexEngine }]) =>
-      createHighlighterCore({
-        themes: CURATED_THEMES,
-        langs: CURATED_LANGS,
-        engine: createJavaScriptRegexEngine(),
-      }),
-    )
-    .then((instance) => {
-      highlighter = instance;
-      for (const cb of readyCallbacks) cb();
-      readyCallbacks.clear();
-      return instance;
-    })
-    .catch((error) => {
-      // If shiki itself fails to initialize, we prefer plain-text output to
-      // crashing the whole review pane. Clear the promise so a future call
-      // can retry; in practice this only fires in degraded environments
-      // (e.g. tests that haven't mocked the module). Log a breadcrumb so a
-      // degraded environment isn't a silent fallback (R-042). Don't re-throw:
-      // this promise is an unawaited re-entrancy guard, so a rejection would
-      // surface as an unhandledrejection with no consumer to catch it.
-      logger.warn("renderer.highlighter", "shiki init failed; falling back to plain text", {
-        error: errorMessage(error),
-      });
-      highlighterPromise = null;
-    });
-  return null;
-}
 
 function onHighlighterReady(cb: () => void): () => void {
   if (highlighter) {
@@ -120,63 +77,170 @@ function onHighlighterReady(cb: () => void): () => void {
     return () => {};
   }
   readyCallbacks.add(cb);
-  ensureHighlighter();
+  highlighterPromise ??= import("./shikiCore.js")
+    .then(({ createArgmaxHighlighter }) => createArgmaxHighlighter())
+    .then((instance) => {
+      highlighter = instance;
+      for (const ready of readyCallbacks) ready();
+      readyCallbacks.clear();
+    })
+    .catch((error) => {
+      // Plain text beats a crashed pane. Clear the promise so a later request
+      // retries, and log so a degraded environment is not a silent fallback.
+      logger.warn("renderer.highlighter", "shiki init failed; falling back to plain text", {
+        error: errorMessage(error),
+      });
+      highlighterPromise = null;
+    });
   return () => {
     readyCallbacks.delete(cb);
   };
 }
 
-export function useHighlighterReady(): boolean {
-  const [ready, setReady] = useState<boolean>(() => highlighter !== null);
-  useEffect(() => {
-    if (ready) return;
-    return onHighlighterReady(() => setReady(true));
-  }, [ready]);
-  return ready;
+/**
+ * Main-thread steps run a few milliseconds at a time between frames, in the
+ * order they were queued. A step returns true while its job has more to do.
+ */
+const highlightSteps = new Set<() => boolean>();
+let highlightTimer: ReturnType<typeof setTimeout> | null = null;
+const HIGHLIGHT_SLICE_MS = 6;
+const FALLBACK_CHUNK_LINES = 200;
+
+function runHighlightSlice(): void {
+  highlightTimer = null;
+  const deadline = performance.now() + HIGHLIGHT_SLICE_MS;
+  for (const step of highlightSteps) {
+    highlightSteps.delete(step);
+    if (step()) highlightSteps.add(step);
+    if (performance.now() >= deadline) break;
+  }
+  if (highlightSteps.size > 0) highlightTimer = setTimeout(runHighlightSlice, 0);
 }
 
-/**
- * Tokenizes several lines in one call, continuing from `grammarState` when the
- * text is the next slice of a longer document. One call per slice rather than
- * per line: each call pays for grammar setup, and a line tokenized alone loses
- * the string or comment it sits inside. `null` while the highlighter or the
- * grammar is unavailable.
- */
-export function tokenizeLines(
-  code: string,
-  lang: string,
-  appearance: HighlightAppearance,
-  grammarState?: GrammarState,
-): { lines: HighlightToken[][]; grammarState?: GrammarState } | null {
-  const instance = ensureHighlighter();
-  if (!instance) return null;
+/** Tokenizes `FALLBACK_CHUNK_LINES` lines per step, carrying the grammar state
+    so a string or comment that spans chunks colors as one block would. */
+function tokenizeOnMainThread(job: HighlightJob): void {
+  const sourceLines = job.code.split("\n");
+  const lines: HighlightToken[][] = [];
+  let grammarState: GrammarState | undefined;
+  let start = 0;
+  const step = (): boolean => {
+    if (!highlighter) return false;
+    try {
+      const result = highlighter.codeToTokens(
+        sourceLines.slice(start, start + FALLBACK_CHUNK_LINES).join("\n"),
+        { theme: job.theme, lang: job.lang, grammarState },
+      );
+      grammarState = result.grammarState;
+      for (const line of result.tokens) lines.push(toHighlightTokens(line));
+    } catch {
+      job.done(null);
+      return false;
+    }
+    start += FALLBACK_CHUNK_LINES;
+    if (start < sourceLines.length) return true;
+    job.done(lines);
+    return false;
+  };
+  let cancelled = false;
+  const stopWaiting = onHighlighterReady(() => {
+    if (cancelled) return;
+    highlightSteps.add(step);
+    highlightTimer ??= setTimeout(runHighlightSlice, 0);
+  });
+  job.cancel = () => {
+    cancelled = true;
+    stopWaiting();
+    highlightSteps.delete(step);
+  };
+}
+
+function toHighlightTokens(line: readonly { content: string; color?: string }[]): HighlightToken[] {
+  return line.map((token) => ({ content: token.content, color: token.color }));
+}
+
+// --- Worker ---------------------------------------------------------------
+
+/** Undefined until first asked for; null once it cannot be used. */
+let worker: Worker | null | undefined;
+let nextJobId = 1;
+const workerJobs = new Map<number, HighlightJob>();
+
+function post(target: Worker, message: HighlightWorkerRequest): void {
+  target.postMessage(message);
+}
+
+/** Moves every job the worker still owes to the main thread, and stops using it. */
+function abandonWorker(reason: string): void {
+  if (worker === null) return;
+  logger.warn(
+    "renderer.highlighter",
+    "highlight worker unavailable; highlighting on the main thread",
+    {
+      error: reason,
+    },
+  );
+  worker?.terminate();
+  worker = null;
+  const orphaned = [...workerJobs.values()];
+  workerJobs.clear();
+  for (const job of orphaned) tokenizeOnMainThread(job);
+}
+
+function highlightWorker(): Worker | null {
+  if (worker !== undefined) return worker;
+  if (typeof Worker === "undefined") return (worker = null);
+  let started: Worker;
   try {
-    const result = instance.codeToTokens(code, {
-      theme: activeThemeName(appearance),
-      lang,
-      grammarState,
+    started = new Worker(new URL("./highlight.worker.ts", import.meta.url), {
+      type: "module",
+      name: "highlight",
     });
-    return {
-      lines: result.tokens.map((line) =>
-        line.map((token) => ({ content: token.content, color: token.color })),
-      ),
-      grammarState: result.grammarState,
-    };
-  } catch {
+  } catch (error) {
+    abandonWorker(errorMessage(error));
     return null;
   }
+  started.addEventListener("message", (event: MessageEvent<HighlightWorkerReply>) => {
+    const reply = event.data;
+    if (reply.type === "init-failed") {
+      abandonWorker(reply.error);
+      return;
+    }
+    const job = workerJobs.get(reply.id);
+    if (!job) return;
+    workerJobs.delete(reply.id);
+    job.done(reply.lines);
+  });
+  // A module worker WebKit cannot load or parse reports only this event.
+  started.addEventListener("error", (event) => {
+    event.preventDefault();
+    abandonWorker(event.message || "worker failed to load");
+  });
+  started.addEventListener("messageerror", () => abandonWorker("worker reply could not be read"));
+  worker = started;
+  return started;
 }
 
-/** One plain (uncolored) token per line — the highlighter's fallback shape,
- * reused while a streaming code fence is still growing so we don't run shiki's
- * synchronous tokenizer on every keystroke. */
+function tokenizeInWorker(target: Worker, job: HighlightJob): void {
+  const id = nextJobId++;
+  workerJobs.set(id, job);
+  post(target, { type: "tokenize", id, code: job.code, lang: job.lang, theme: job.theme });
+  job.cancel = () => {
+    if (!workerJobs.delete(id)) return;
+    if (worker) post(worker, { type: "cancel", id });
+  };
+}
+
+// --- Requests -------------------------------------------------------------
+
+/** One plain (uncolored) token per line: what a block shows until its colors land. */
 export function plainCodeLines(code: string): HighlightToken[][] {
   return code.split("\n").map((line) => [{ content: line }]);
 }
 
-/** Highlighted fences, keyed by theme, language, and source. Shiki's
-    tokenizer is synchronous, and a chat reopened after a switch tokenized
-    every code block in its history again. Bounded by source characters. */
+/** Highlighted fences, keyed by theme, language, and source, so a chat
+    reopened after a switch paints its code colored at once. Bounded by
+    source characters. */
 const highlighted = new Map<string, HighlightToken[][]>();
 let highlightedChars = 0;
 const HIGHLIGHTED_CHAR_LIMIT = 2_000_000;
@@ -185,72 +249,9 @@ function highlightedKey(code: string, lang: string, appearance?: HighlightAppear
   return `${activeThemeName(appearance)}\u0000${lang}\u0000${code}`;
 }
 
-/** The colors already computed for this fence, without computing them. */
-export function peekHighlightedCode(
-  code: string,
-  lang: string | null,
-  appearance?: HighlightAppearance,
-): HighlightToken[][] | null {
-  if (!lang || !highlighter) return null;
-  return highlighted.get(highlightedKey(code, lang, appearance)) ?? null;
-}
-
-/**
- * Highlighting jobs run a few milliseconds at a time between frames, in the
- * order they were queued. A chat opened with dozens of fences highlighted all
- * of them inside its first render — one 300 ms task — where queued, it paints
- * plain at once and colors each fence a slice later.
- */
-const highlightJobs = new Set<() => void>();
-let highlightTimer: ReturnType<typeof setTimeout> | null = null;
-const HIGHLIGHT_SLICE_MS = 6;
-
-function runHighlightSlice(): void {
-  highlightTimer = null;
-  const deadline = performance.now() + HIGHLIGHT_SLICE_MS;
-  for (const job of highlightJobs) {
-    highlightJobs.delete(job);
-    job();
-    if (performance.now() >= deadline) break;
-  }
-  if (highlightJobs.size > 0) highlightTimer = setTimeout(runHighlightSlice, 0);
-}
-
-export function queueHighlight(job: () => void): () => void {
-  highlightJobs.add(job);
-  highlightTimer ??= setTimeout(runHighlightSlice, 0);
-  return () => {
-    highlightJobs.delete(job);
-  };
-}
-
-export function highlightCode(
-  code: string,
-  lang: string | null,
-  appearance?: HighlightAppearance,
-  /** False for a fence still being written: its prefixes are never asked for again. */
-  keep = true,
-): HighlightToken[][] {
-  if (!lang) return plainCodeLines(code);
-  const instance = ensureHighlighter();
-  if (!instance) return plainCodeLines(code);
-  const key = highlightedKey(code, lang, appearance);
-  const cached = highlighted.get(key);
-  if (cached) {
-    highlighted.delete(key);
-    highlighted.set(key, cached);
-    return cached;
-  }
-  let lines: HighlightToken[][];
-  try {
-    const result = instance.codeToTokens(code, { theme: activeThemeName(appearance), lang });
-    lines = result.tokens.map((line) =>
-      line.map((token) => ({ content: token.content, color: token.color })),
-    );
-  } catch {
-    return plainCodeLines(code);
-  }
-  if (!keep) return lines;
+function remember(key: string, lines: HighlightToken[][]): void {
+  // Two fences with the same code can both miss and both land a reply; count the key once.
+  if (highlighted.delete(key)) highlightedChars -= key.length;
   highlighted.set(key, lines);
   highlightedChars += key.length;
   for (const [oldest] of highlighted) {
@@ -258,7 +259,56 @@ export function highlightCode(
     highlighted.delete(oldest);
     highlightedChars -= oldest.length;
   }
-  return lines;
+}
+
+/** The colors already computed for this fence, without computing them. */
+export function peekHighlightedCode(
+  code: string,
+  lang: string | null,
+  appearance?: HighlightAppearance,
+): HighlightToken[][] | null {
+  if (!lang) return null;
+  const key = highlightedKey(code, lang, appearance);
+  const cached = highlighted.get(key);
+  if (!cached) return null;
+  highlighted.delete(key);
+  highlighted.set(key, cached);
+  return cached;
+}
+
+/**
+ * Asks for `code`'s tokens and calls `done` once, with one token array per
+ * line, or null when the language cannot be tokenized. Returns a cancel; after
+ * it `done` is never called. `keep: false` is for text whose exact contents are
+ * never asked for again, such as a fence still being written or a diff side.
+ */
+export function requestHighlight(
+  code: string,
+  lang: string,
+  appearance: HighlightAppearance,
+  done: (lines: HighlightToken[][] | null) => void,
+  { keep = true }: { keep?: boolean } = {},
+): () => void {
+  const key = highlightedKey(code, lang, appearance);
+  let cancelled = false;
+  const job: HighlightJob = {
+    code,
+    lang,
+    theme: activeThemeName(appearance),
+    done: (lines) => {
+      if (cancelled) return;
+      if (lines && keep) remember(key, lines);
+      done(lines);
+    },
+    cancel: () => {},
+  };
+  const target = highlightWorker();
+  if (target) tokenizeInWorker(target, job);
+  else tokenizeOnMainThread(job);
+  return () => {
+    cancelled = true;
+    job.cancel();
+  };
 }
 
 // Fence tags from markdown (```ts, ```bash, etc.) map to shiki language ids.

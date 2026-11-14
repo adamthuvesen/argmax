@@ -41,6 +41,8 @@ After you fix a violation, tighten the record:
 node scripts/check-rust-boundaries.mjs --update
 ```
 
+The latency bench keeps a record of the last accepted p50 per metric in `scripts/bench-latency/record.json`. It needs the native app, so it is not in CI. Run `npm run bench:latency -- --check` after a change that can affect latency, and `--update-record` after a win. See [performance.md](performance.md#latency-bench).
+
 The `argmax` oxlint rules in `scripts/oxlint-plugin.mjs` have no record. Any hit fails `npm run lint`.
 
 Do not add a new suppression. Use the fix that the error message names.

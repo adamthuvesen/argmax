@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
@@ -251,12 +251,28 @@ describe("WorkspaceCard", () => {
     expect(failed).toHaveAttribute("title", "Could not load the changed files");
   });
 
-  it("refreshes PR state from GitHub on mount for a git workspace", () => {
-    const refresh = vi.fn().mockResolvedValue([]);
-    (window as { argmax?: unknown }).argmax = { prs: { refresh } };
+  it("refreshes PR state from GitHub once the chat stays open, and not again on a quick reopen", async () => {
+    vi.useFakeTimers();
+    try {
+      const refresh = vi.fn().mockResolvedValue([]);
+      (window as { argmax?: unknown }).argmax = { prs: { refresh } };
 
-    renderCard();
-    expect(refresh).toHaveBeenCalledWith({ sessionId: "session-a" });
+      const first = renderCard();
+      expect(refresh).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+      expect(refresh).toHaveBeenCalledWith({ sessionId: "session-a" });
+      first.unmount();
+
+      renderCard();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+      expect(refresh).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("opens an existing pull request by its stored URL without resolving by checkout", () => {

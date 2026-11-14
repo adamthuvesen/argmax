@@ -1058,7 +1058,8 @@ done
             .map(|line| serde_json::from_str::<Value>(line).unwrap())
             .collect::<Vec<_>>();
         assert_eq!(requests.len(), 10);
-        for (pair, (model, _, expected_mode)) in requests.chunks_exact(2).zip(selections) {
+        for (pair, (model, _, expected_mode)) in requests.as_chunks::<2>().0.iter().zip(selections)
+        {
             assert_eq!(pair[0]["method"], "session/set_model");
             assert_eq!(pair[0]["params"]["sessionId"], "native-conversation");
             assert_eq!(pair[0]["params"]["modelId"], model);

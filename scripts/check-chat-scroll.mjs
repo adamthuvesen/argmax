@@ -112,7 +112,7 @@ function FixtureFab({ follow, onClick }) {
   return detached ? h("button", { className: "scroll-to-bottom-fab", onClick }, "Scroll to latest") : null;
 }
 
-function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, initialAboveHeight = 300, initialViewportHeight = 480 }) {
+function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, initialAboveHeight = 300, initialViewportHeight = 480, showEarlierControl = false }) {
   const [liveHeight, setLiveHeight] = useState(initialLiveHeight ?? (surface === "main" ? 260 : 380));
   const [insertedHeight, setInsertedHeight] = useState(0);
   const [itemVersion, setItemVersion] = useState(0);
@@ -366,6 +366,7 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
   });
 
   const ordinaryContent = [
+    showEarlierControl ? block("show-earlier", 80, { "data-scroll-anchor-skip": "", key: "show-earlier" }) : null,
     insertedHeight > 0 ? block("inserted", insertedHeight) : null,
     block("history-a", 360),
     block("history-b", 300),
@@ -509,6 +510,28 @@ async function runChecks() {
     await active.nestedScrollThenGrow(80, 140);
     const nestedAfter = active.measureAnchor(nestedBefore.anchorId);
     results.push({ name: surface + ": nested scrolling does not move the outer reader", surface, before: nestedBefore, after: nestedAfter, movement: movement(nestedBefore, nestedAfter), tolerance: 2 });
+
+    // The fill mounts rows between Show earlier and the reader. The control
+    // stays put, so it must not be the anchor.
+    await mount(surface, { showEarlierControl: true });
+    await active.scrollUp(5000);
+    const controlBefore = active.measureAnchor("history-a");
+    await active.insertAbove(240);
+    const controlAfter = active.measureAnchor("history-a");
+    results.push({ name: surface + ": insertion below Show earlier preserves the reader at the top", surface, before: controlBefore, after: controlAfter, movement: movement(controlBefore, controlAfter), tolerance: 2 });
+
+    // An opened chat mounts its tail first and fills the window above it.
+    await mount(surface);
+    await active.insertAbove(240);
+    const followingInsert = active.measure();
+    results.push({
+      name: surface + ": earlier insertion keeps a following reader at the bottom",
+      surface,
+      before: null,
+      after: followingInsert,
+      movement: Math.round(followingInsert.distanceFromBottom * 100) / 100,
+      tolerance: 1
+    });
 
     await mount(surface);
     await active.resizeViewport(-120);

@@ -21,7 +21,12 @@ export function ShowEarlier({
   onClick: () => void;
 }) {
   return (
-    <button type="button" className="conversation-show-earlier" onClick={onClick}>
+    <button
+      type="button"
+      className="conversation-show-earlier"
+      data-scroll-anchor-skip=""
+      onClick={onClick}
+    >
       <span className="activity-icon-slot" aria-hidden="true">
         <ChevronUp />
       </span>

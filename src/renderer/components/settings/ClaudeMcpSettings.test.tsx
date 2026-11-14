@@ -117,9 +117,7 @@ describe("ClaudeMcpSettings", () => {
     stubSettings({ claudeMcpProbe: vi.fn().mockResolvedValue(null) });
     render(<ClaudeMcpSettings />);
 
-    await waitFor(() =>
-      expect(presetRadio("Everything")).toHaveAccessibleName(/Count unknown/),
-    );
+    await waitFor(() => expect(presetRadio("Everything")).toHaveAccessibleName(/Count unknown/));
     expect(presetRadio("Your servers only")).toHaveAccessibleName(/3 servers/);
   });
 });

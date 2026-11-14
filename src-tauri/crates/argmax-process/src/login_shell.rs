@@ -73,6 +73,8 @@ pub fn path() -> String {
 /// command otherwise blocks a runtime worker on someone else's `.zshrc`.
 pub fn warm() {
     let _ = path();
+    // Resolving git reads PATH, then may ask xcrun once; do it here too.
+    let _ = crate::git_exec::git_program();
 }
 
 #[cfg(unix)]

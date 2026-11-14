@@ -1,6 +1,6 @@
 # Argmax
 
-![License](https://img.shields.io/github/license/adamthuvesen/argmax) ![Rust](https://img.shields.io/badge/rust-1.95%2B-orange)
+![License](https://img.shields.io/github/license/adamthuvesen/argmax) ![Rust](https://img.shields.io/badge/rust-1.100%2B-orange)
 
 <p align="center">
   <picture>
@@ -55,7 +55,7 @@ npm run verify -- launcher
 
 The launcher drive uses demo data without a provider. Set `CHROME_PATH` if it cannot find your browser.
 
-To run the native dev app, install Rust 1.95+, the Xcode Command Line Tools, and a supported provider CLI.
+To run the native dev app, install Rust 1.100+, the Xcode Command Line Tools, and a supported provider CLI.
 Run `npm run tauri:dev:isolated` to start it with a separate profile.
 
 `npm run tauri:build` produces a DMG for your own architecture; `npm run tauri:build:universal` produces the Intel + Apple silicon bundle a release ships. See [release](docs/release.md) for signing and the tag-driven release flow.

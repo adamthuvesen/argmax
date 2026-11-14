@@ -126,10 +126,7 @@ import { openChat, useChatDirectory } from "../state/chatDirectory.js";
 // the right-side review pane is open. Lazy-mounted (ralph B4) so the
 // launcher's first paint doesn't ship the highlighter.
 const ReviewPanel = lazy(() =>
-  importChunk(
-    async () => ({ default: (await import("./ReviewPanel.js")).ReviewPanel }),
-    "review",
-  ),
+  importChunk(async () => ({ default: (await import("./ReviewPanel.js")).ReviewPanel }), "review"),
 );
 import { FilePopover } from "./FilePopover.js";
 import { ImageLightbox } from "./ImageLightbox.js";
@@ -140,10 +137,7 @@ import { useInteractionShown, useOpenInteraction } from "../lib/interactionTimin
 // (ralph B2) so its provider-discovery code path doesn't ship in the main
 // launcher bundle for the common case.
 const WelcomePane = lazy(() =>
-  importChunk(
-    async () => ({ default: (await import("./WelcomePane.js")).WelcomePane }),
-    "welcome",
-  ),
+  importChunk(async () => ({ default: (await import("./WelcomePane.js")).WelcomePane }), "welcome"),
 );
 
 // The fox dozes off after a long untouched stretch and wakes on the first

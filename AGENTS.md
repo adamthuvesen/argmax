@@ -24,6 +24,7 @@ npm run check:changed       # the agent hooks' loop: type, lint, related tests, 
 npm run push-gate         # the pre-push gate: every CI lane, scoped to the branch
 npm test                    # Vitest, perf, Cargo
 npm run slow                # perf budgets and Cargo tests only
+npm run bench:latency       # latency in the real app: --compare A/B, --check against the record
 npm run verify -- all       # renderer drives; `verify:native` adds the native app
 npm run test:ios            # XCTest on a simulator
 npm run install:ios         # install the phone app on the iPhone
@@ -57,7 +58,7 @@ Domain terms are in `GLOSSARY.md` and decisions in `docs/adr/`. A change that ad
 
 Before you edit a subsystem, read its doc. Start at [architecture.md](docs/architecture.md).
 
-- Runtime and IPC: [runtime](docs/runtime.md), [ipc](docs/ipc.md), [data](docs/data.md), [debugging](docs/debugging.md), [performance](docs/performance.md)
+- Runtime and IPC: [runtime](docs/runtime.md), [ipc](docs/ipc.md), [data](docs/data.md), [debugging](docs/debugging.md), [performance and the latency bench](docs/performance.md)
 - Providers and routing: [providers](docs/providers.md), [routing](docs/routing.md), [approvals-checks](docs/approvals-checks.md), [session-sync](docs/session-sync.md), [usage](docs/usage.md)
 - Agent features: [agent-tools](docs/agent-tools.md), [multitask](docs/multitask.md), [arcs](docs/arcs.md), [goals](docs/goals.md), [scheduled-tasks](docs/scheduled-tasks.md), [memory](docs/memory.md), [skills](docs/skills.md)
 - Workspace and panels: [workspaces](docs/workspaces.md), [gh](docs/gh.md), [terminal](docs/terminal.md), [browser](docs/browser.md), [window-snapshot](docs/window-snapshot.md), [activity](docs/activity.md)

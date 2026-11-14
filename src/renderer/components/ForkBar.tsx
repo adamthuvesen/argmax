@@ -22,21 +22,21 @@ export function ForkBar({
   sessionId: string;
   onOpenSession?: (sessionId: string) => void;
 }): JSX.Element | null {
-  const [lineage, setLineage] = useState<ForkLineage | null>(null);
   const [merging, setMerging] = useState(false);
   const visible = useForkBarVisible();
 
-  useBridgeQuery({
+  const { data: lineage, setData: setLineage } = useBridgeQuery<ForkLineage | null>({
     key: ["session.forkLineage", sessionId],
     enabled: visible,
     // Optional all the way down: a host (or a test stub) that predates the fork
     // channels simply has no lineage to show. A chat that cannot report its
     // lineage is just an ordinary chat, so a failed read shows nothing.
     read: (api) => api.session?.forkLineage?.({ sessionId }),
-    onData: setLineage,
+    // The source label is the source workspace's title, and a rename reaches
+    // the renderer as a dashboard change.
+    retain: (delta) => delta.dashboardChanged === true,
   });
   useEffect(() => {
-    setLineage(null);
     setMerging(false);
   }, [sessionId, visible]);
 
@@ -53,7 +53,7 @@ export function ForkBar({
           : current,
       );
     });
-  }, [sourceWorkspaceId]);
+  }, [sourceWorkspaceId, setLineage]);
 
   if (!visible || !lineage) return null;
   const sourceSessionId = lineage.sourceSessionId;

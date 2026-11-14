@@ -76,10 +76,7 @@ import { DebugPanel } from "./debug/DebugPanel.js";
 // the peek warms them on idle — a lazy chunk fetched on the tap paints an
 // empty sheet for as long as it takes to arrive.
 const ReviewPanel = lazy(() =>
-  importChunk(
-    async () => ({ default: (await import("./ReviewPanel.js")).ReviewPanel }),
-    "review",
-  ),
+  importChunk(async () => ({ default: (await import("./ReviewPanel.js")).ReviewPanel }), "review"),
 );
 import { SessionConversation } from "./SessionConversation.js";
 // TerminalTabsPanel pulls in @xterm/xterm + addons + xterm CSS — heavy and

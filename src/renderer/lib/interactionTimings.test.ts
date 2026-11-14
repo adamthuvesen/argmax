@@ -33,7 +33,10 @@ describe("interaction timings", () => {
     let resolveCall: () => void = () => undefined;
     const handle = beginInteraction("chat.test");
     handle.shown();
-    void timeIpcCall("review:list-changed-files", () => new Promise<void>((resolve) => (resolveCall = resolve)));
+    void timeIpcCall(
+      "review:list-changed-files",
+      () => new Promise<void>((resolve) => (resolveCall = resolve)),
+    );
     await vi.advanceTimersByTimeAsync(1000);
     expect(interactions()).toHaveLength(0);
 

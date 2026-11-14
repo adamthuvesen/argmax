@@ -205,6 +205,15 @@ Plugin servers and claude.ai connectors are not in those files, so the strict pr
 
 The resolved preset stays on the launch config (`ClaudeMcpLaunch::preset`), so a per-turn latency measurement can say which preset a turn ran with.
 
+### Claude: the turn environment
+
+Both Claude launches, stream-json and PTY, set `adapters::CLAUDE_TURN_ENV` in the process environment:
+
+- `CLAUDE_CODE_CLASSIFIER_SUMMARY=0` stops print mode from holding the `result` event until a "post turn summary" model call returns. Argmax marks a turn complete only on `result`, so that call added 2–25 s at the end of every turn, and nothing reads the summary.
+- `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` stops print mode from killing a background agent after ten minutes while it still makes progress.
+
+Both must be real environment variables. Claude reads them before it applies `--settings` env, so the settings JSON has no effect. Neither is documented; they were verified against Claude Code 2.1.310 and 2.1.323. After a Claude Code upgrade, check the end of a turn: the gap from the last text to `result` stays under 0.1 s when the summary call is off.
+
 ## Session Lifecycle and Follow-ups
 
 An idle follow-up persists the user message and returns, then spawns the provider in the background. The PTY/CLI spawn does not block the send IPC.
@@ -231,6 +240,16 @@ The gate keeps the old outcomes:
 - A definite resume rejection that arrives before the gate opens waits for it. A stopped or uncapturable turn records no rejection and starts no fresh retry.
 - Until the gate opens, every provider event is held. An open gate replays them in order; a refused gate drops them, so an aborted launch shows nothing in the chat.
 - A launch that fails for its own reason waits for the capture before the failure is recorded, so no capture is still writing refs after the turn settles.
+
+The capture reads the checkout with as few git processes as it can ([capture.rs](../src-tauri/src/checkpoints/capture.rs)):
+
+- One `git status --porcelain=v2 --branch --no-renames --untracked-files=all` gives HEAD, the branch, unmerged entries, the untracked files, and the paths whose worktree side differs from the index. The index tree is written beside it.
+- Only those paths are staged into a copy of the checkout's index (`add --all --pathspec-from-file`). Every other path is clean, so the copy already holds it. With nothing to stage, the worktree tree is the index tree. If the narrowed `add` fails, the capture stages the whole worktree instead. This happens when a named file was deleted after status ran, or a tracked directory is now behind a symlink.
+- The force-staged-ignored rule reads ignore rules only when the index has entries `HEAD` lacks (`A` in status). Only those entries can be dropped.
+- Both refs land in one `update-ref --stdin` transaction.
+- **Reuse.** When status and the stat of every path it names match the last capture of the same checkout, that capture's trees are reused. Only the new refs and row are written. A capture whose paths were written less than a second before their stat is never reused. Neither is a capture whose status reported an untracked directory (`? nested/`, an embedded repository): a commit inside it moves neither the record nor the directory's stat. When the index file's stat is unchanged, the index tree and the submodule check are reused too. The records live in memory for one app run, keyed by checkout path, and the 64 most recently used are kept.
+
+The workspace watcher does not decide reuse. Its events arrive asynchronously, and nothing proves that a write made just before the capture was delivered.
 
 The capture still holds the checkout write lock, so a rewind, review write, or `session_move` cannot interleave with it. Provider startup is not the agent: a Claude `SessionStart` hook or an MCP server that writes into the worktree at boot can now race the capture.
 

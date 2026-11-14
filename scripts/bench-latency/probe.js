@@ -30,7 +30,12 @@ for (const [area, api] of Object.entries(window.argmax ?? {})) {
 new MutationObserver((records) => {
   P.muts += records.length;
   P.lastMut = performance.now();
-}).observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+}).observe(document.documentElement, {
+  subtree: true,
+  childList: true,
+  attributes: true,
+  characterData: true,
+});
 
 // WKWebView emits no longtask entries, so stalls come from rAF frame gaps.
 const loop = (time) => {
@@ -50,7 +55,9 @@ P.byLabel = (label, root = document) =>
 P.key = (key, init = {}) => {
   const target = document.activeElement || document.body;
   for (const type of ["keydown", "keyup"]) {
-    target.dispatchEvent(new KeyboardEvent(type, { key, bubbles: true, cancelable: true, ...init }));
+    target.dispatchEvent(
+      new KeyboardEvent(type, { key, bubbles: true, cancelable: true, ...init }),
+    );
   }
 };
 
@@ -87,7 +94,8 @@ P.measure = async (name, action, predicate, { timeout = 15000, quiet = 150 } = {
   for (const call of calls) channels[call.ch] = (channels[call.ch] ?? 0) + 1;
   const frames = P.frames.filter((time) => time >= t0);
   let maxFrameGap = 0;
-  for (let i = 1; i < frames.length; i += 1) maxFrameGap = Math.max(maxFrameGap, frames[i] - frames[i - 1]);
+  for (let i = 1; i < frames.length; i += 1)
+    maxFrameGap = Math.max(maxFrameGap, frames[i] - frames[i - 1]);
   const round = (value) => (value == null ? null : Math.round(value));
   return {
     name,

@@ -302,7 +302,13 @@ if (scope.js) {
 }
 
 if (scope.rust) {
-  step("cargo test", "cargo", ["test", "--manifest-path", CARGO_MANIFEST, "--workspace"]);
+  step("cargo test", "cargo", [
+    "test",
+    "--manifest-path",
+    CARGO_MANIFEST,
+    "--workspace",
+    "--no-fail-fast",
+  ]);
   step("cargo clippy", "cargo", [
     "clippy",
     "--manifest-path",

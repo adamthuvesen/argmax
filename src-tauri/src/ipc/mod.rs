@@ -78,14 +78,31 @@ pub(crate) fn publish_pr_workspaces_for_session(
     state: &AppState,
     session_id: &str,
 ) -> ArgmaxResult<()> {
+    publish_changed_pr_workspaces_for_session(state, session_id, None)
+}
+
+/// Publishes the workspaces a PR change for `session_id` reaches. With
+/// `before`, a workspace equal to its row in `before` is left out, and nothing
+/// is published when none moved.
+pub(crate) fn publish_changed_pr_workspaces_for_session(
+    state: &AppState,
+    session_id: &str,
+    before: Option<&[argmax_store::workspaces::WorkspaceSummary]>,
+) -> ArgmaxResult<()> {
     let Some(workspaces) = state.workspaces.get().cloned() else {
         return Ok(());
     };
-    let affected = {
+    let mut affected = {
         let database = live_database(state)?;
         let conn = database.connection();
         argmax_store::workspaces::workspaces_for_pr_refresh(&conn, session_id)?
     };
+    if let Some(before) = before {
+        affected.retain(|workspace| !before.contains(workspace));
+        if affected.is_empty() {
+            return Ok(());
+        }
+    }
     workspaces.publish_workspaces(affected);
     Ok(())
 }

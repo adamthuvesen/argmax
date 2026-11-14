@@ -71,14 +71,17 @@ describe("GoalStatus", () => {
     // of times a turn.
     render(<GoalStatus session={session} />);
     await waitFor(() => expect(goals.get).toHaveBeenCalledTimes(1));
-    const notify = onDelta.mock.calls[0]?.[0];
-    expect(notify).toBeDefined();
+    expect(onDelta).toHaveBeenCalled();
+    // Every subscriber hears a delta, the kept-reply store included.
+    const notify = (delta: { changedSessionIds?: string[]; goalChangedIds?: string[] }): void => {
+      for (const [listener] of onDelta.mock.calls) listener(delta);
+    };
 
-    notify?.({ changedSessionIds: [session.id] });
-    notify?.({ changedSessionIds: [session.id] });
+    notify({ changedSessionIds: [session.id] });
+    notify({ changedSessionIds: [session.id] });
     expect(goals.get).toHaveBeenCalledTimes(1);
 
-    notify?.({ goalChangedIds: ["goal-1"] });
+    notify({ goalChangedIds: ["goal-1"] });
     await waitFor(() => expect(goals.get).toHaveBeenCalledTimes(2));
   });
 

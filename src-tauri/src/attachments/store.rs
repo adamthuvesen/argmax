@@ -163,7 +163,7 @@ fn decode_base64(value: &str) -> Result<Vec<u8>, AttachmentStoreError> {
     }
 
     let mut decoded = Vec::with_capacity(cleaned.len() / 4 * 3);
-    for (index, chunk) in cleaned.chunks_exact(4).enumerate() {
+    for (index, chunk) in cleaned.as_chunks::<4>().0.iter().enumerate() {
         let is_last = index == cleaned.len() / 4 - 1;
         let padding = chunk.iter().rev().take_while(|byte| **byte == b'=').count();
         if padding > 2 || (!is_last && padding > 0) || chunk[0] == b'=' || chunk[1] == b'=' {

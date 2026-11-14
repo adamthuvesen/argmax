@@ -1,4 +1,5 @@
 import type { GhPrRecord, SessionPrSummary, WorkspaceSummary } from "../../shared/types.js";
+import { SETTLE_MS } from "./chatOpenSettle.js";
 
 /**
  * Renderer view of the session association carried on `WorkspaceSummary`.
@@ -96,4 +97,33 @@ export function refreshSessionPrs(sessionId: string): Promise<GhPrRecord[]> | nu
   });
   pending.set(sessionId, refresh);
   return refresh;
+}
+
+/**
+ * docs/gh.md: the poller re-reads running and recent sessions on a 60 s tick.
+ * Reopening a chat sooner than that after its own refresh learns nothing new.
+ */
+const REOPEN_REFRESH_INTERVAL_MS = 60_000;
+/** When the open-time refresh last finished, by session and branch. */
+const refreshedOnOpenAt = new Map<string, number>();
+
+/**
+ * The refresh a chat asks for when it opens. It waits until the chat has
+ * stayed open for `SETTLE_MS`, because each refresh spawns `gh` and someone
+ * paging through the sidebar passes through most chats. It is skipped when the
+ * same session and branch refreshed less than a poller tick ago. Returns the
+ * cancel for the wait.
+ */
+export function refreshSessionPrsOnOpen(sessionId: string, branch: string): () => void {
+  const key = `${sessionId}\u0000${branch}`;
+  const last = refreshedOnOpenAt.get(key);
+  if (last !== undefined && Date.now() - last < REOPEN_REFRESH_INTERVAL_MS) return () => {};
+  const timer = setTimeout(() => {
+    void refreshSessionPrs(sessionId)
+      ?.then(() => {
+        refreshedOnOpenAt.set(key, Date.now());
+      })
+      .catch(() => undefined);
+  }, SETTLE_MS);
+  return () => clearTimeout(timer);
 }

@@ -6,6 +6,7 @@ import { showErrorToast } from "../state/toast.js";
 import { GitBranch, MessageSquarePlus, MessagesSquare, X } from "lucide-react";
 import {
   lazy,
+  startTransition,
   Suspense,
   useCallback,
   useEffect,
@@ -129,6 +130,16 @@ import {
 const CONVERSATION_WINDOW = 120;
 /// Items revealed per "Show earlier" click.
 const CONVERSATION_WINDOW_STEP = 240;
+/// Items an opened chat mounts in its first frame. Following places the latest
+/// prompt at the top of the viewport, so the last few turns are all the first
+/// paint can show. Mounting the whole window of the longest real chat made
+/// ~8,500 nodes and one frame of about 250 ms.
+const FIRST_PAINT_ITEMS = 8;
+/// Items each later frame adds above them until the window is full. Steps of
+/// 12 made 25–40 ms frames in WKWebView; 8 keep the fill under a 50 ms frame.
+const MOUNT_GROWTH_STEP = 8;
+/// How long the fill waits after the reader's last wheel, key, or touch input.
+const SCROLL_INPUT_QUIET_MS = 150;
 
 /// The pre-answer floor. A provider that says its first word inside this
 /// window has announced itself better than the cue could, and a line that
@@ -640,6 +651,7 @@ export function SessionConversation({
   const { checkpointIds, refresh: refreshCheckpoints } = useTurnCheckpoints(
     revertEnabled ? workspace?.id : undefined,
     session?.state,
+    workspace?.lastActivityAt,
   );
   // A turn whose before-turn checkpoint failed carries the reason on its own
   // user message, keyed the same way `checkpointIds` is. Without this the
@@ -709,9 +721,28 @@ export function SessionConversation({
     return -1;
   }, [latestConversationIndex, transcriptRenderItems]);
   const [visibleCount, setVisibleCount] = useState(CONVERSATION_WINDOW);
-  // A different session starts from the bottom again.
-  useEffect(() => setVisibleCount(CONVERSATION_WINDOW), [sessionId]);
-  const windowStart = Math.max(0, transcriptRenderItems.length - visibleCount);
+  // How many items are mounted while the window fills after the first paint;
+  // null once it is full. Rows grow above the reader, and the scroll
+  // controller keeps the bottom pinned or the reading anchor in place.
+  const [mountLimit, setMountLimit] = useState<number | null>(FIRST_PAINT_ITEMS);
+  // A different session starts from the bottom again. Reset during render: a
+  // pane that changes session in place must not mount the full window first.
+  const [windowSessionId, setWindowSessionId] = useState(sessionId);
+  if (windowSessionId !== sessionId) {
+    setWindowSessionId(sessionId);
+    setVisibleCount(CONVERSATION_WINDOW);
+    setMountLimit(FIRST_PAINT_ITEMS);
+  }
+  const windowTarget = Math.min(visibleCount, transcriptRenderItems.length);
+  const windowFilling = mountLimit !== null && mountLimit < windowTarget;
+  // A failed backfill loads nothing more, so it ends the fill too.
+  const historySettled = eventsBackfilled || historyLoadFailed;
+  // What Show earlier offers: items outside the full window, not the ones the
+  // fill has yet to mount.
+  const fullWindowStart = Math.max(0, transcriptRenderItems.length - visibleCount);
+  const windowStart = windowFilling
+    ? Math.max(0, transcriptRenderItems.length - mountLimit)
+    : fullWindowStart;
   const windowedItems = useMemo(
     () => transcriptRenderItems.slice(windowStart),
     [transcriptRenderItems, windowStart],
@@ -1390,16 +1421,52 @@ export function SessionConversation({
   }, [cueReason, isThinkingVisible, isTurnStarting, session?.provider, sessionId, sessionRunning]);
 
   // Restored turns must not replay their entrance animation on every reopen.
-  const restoringTranscript = useRestoreWithoutMotion(eventsBackfilled);
+  // Rows that mount while the window fills are restored too.
+  const restoringTranscript = useRestoreWithoutMotion(eventsBackfilled && !windowFilling);
   useTurnPaintReport(sessionId, events);
   const {
     scrollRef: conversationListRef,
     contentRef: conversationContentRef,
     follow: conversationFollow,
     scrollToBottom: scrollConversationToBottom,
+    msSinceScrollInput: msSinceConversationScrollInput,
   } = useConversationScroll({ sessionId, items: conversationItems, resetKey: lastTurnPromptId });
+  useEffect(() => {
+    if (mountLimit === null) return;
+    if (!windowFilling) {
+      // A cold open backfills in pages, so a short window can still grow.
+      if (historySettled) setMountLimit(null);
+      return;
+    }
+    // A timeout queued from a frame callback runs after that frame paints.
+    // Growth waits out the reader's scroll input: the anchor correction it
+    // causes is a scrollTop write, which stops a WebKit momentum scroll.
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const grow = (): void => {
+      const quietFor = msSinceConversationScrollInput();
+      if (quietFor < SCROLL_INPUT_QUIET_MS) {
+        timeout = setTimeout(grow, SCROLL_INPUT_QUIET_MS - quietFor);
+        return;
+      }
+      startTransition(() =>
+        setMountLimit((limit) => (limit === null ? null : limit + MOUNT_GROWTH_STEP)),
+      );
+    };
+    const frame = requestAnimationFrame(() => {
+      timeout = setTimeout(grow);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timeout);
+    };
+  }, [historySettled, mountLimit, msSinceConversationScrollInput, windowFilling]);
   // The scroll controller preserves the reading anchor across this prepend.
+  // During the fill the control finishes the window it already offers.
   const showEarlierItems = (): void => {
+    if (windowFilling) {
+      setMountLimit(null);
+      return;
+    }
     setVisibleCount((current) => current + CONVERSATION_WINDOW_STEP);
   };
   const floatingHeading =
@@ -1672,8 +1739,8 @@ export function SessionConversation({
               tabIndex={0}
             >
               <div className="conversation-content" ref={conversationContentRef}>
-                {windowStart > 0 ? (
-                  <ShowEarlier noun="messages" count={windowStart} onClick={showEarlierItems} />
+                {fullWindowStart > 0 ? (
+                  <ShowEarlier noun="messages" count={fullWindowStart} onClick={showEarlierItems} />
                 ) : null}
                 {transcriptRenderItems.length > 0 ? (
                   windowedItems.map((item, windowIndex) => {

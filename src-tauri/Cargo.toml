@@ -4,7 +4,7 @@ members = ["crates/argmax-contracts", "crates/argmax-process", "crates/argmax-st
 [workspace.package]
 version = "0.6.0"
 edition = "2021"
-rust-version = "1.95"
+rust-version = "1.100"
 
 # Versions the app and the lower crates must agree on.
 [workspace.dependencies]
@@ -313,6 +313,7 @@ objc2-core-graphics = { version = "0.3", default-features = false, features = [
 block2 = "0.6"
 
 [dev-dependencies]
+argmax-process = { path = "crates/argmax-process", features = ["test-support"] }
 argmax-store = { path = "crates/argmax-store", features = ["test-support"] }
 tauri = { version = "2.11", features = ["test"] }
 

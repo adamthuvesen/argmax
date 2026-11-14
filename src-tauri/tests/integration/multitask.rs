@@ -239,11 +239,10 @@ fn fixture() -> Fixture {
     let launcher = Arc::new(ScriptedLauncher::default());
     let deltas = Arc::new(Mutex::new(Vec::new()));
     let published = Arc::clone(&deltas);
-    let providers = ProviderSessionService::with_launcher(
-        Arc::clone(&database),
-        launcher.clone(),
-        move |delta| published.lock().expect("deltas poisoned").push(delta),
-    );
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .publish_delta(move |delta| published.lock().expect("deltas poisoned").push(delta))
+        .build();
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     Fixture {
         database,
@@ -622,11 +621,9 @@ async fn queued_multitask_uses_the_claimed_prompt_and_deletes_its_queue_row() {
         )
         .expect("persist queue");
     }
-    let providers = ProviderSessionService::with_launcher(
-        Arc::clone(&fixture.database),
-        fixture.launcher.clone(),
-        |_| {},
-    );
+    let providers = ProviderSessionService::builder(Arc::clone(&fixture.database))
+        .launcher(fixture.launcher.clone())
+        .build();
 
     let launched = dispatch_queued(
         MultitaskRequest {
@@ -729,11 +726,9 @@ async fn launch_queued_row(
         )
         .expect("persist queue");
     }
-    let providers = ProviderSessionService::with_launcher(
-        Arc::clone(&fixture.database),
-        fixture.launcher.clone(),
-        |_| {},
-    );
+    let providers = ProviderSessionService::builder(Arc::clone(&fixture.database))
+        .launcher(fixture.launcher.clone())
+        .build();
     let launched = dispatch_queued(
         MultitaskRequest {
             parent_session_id: "session-parent".to_string(),
@@ -953,11 +948,9 @@ async fn queued_multitask_restores_its_claim_when_dispatch_is_refused() {
             )
             .expect("archive workspace");
     }
-    let providers = ProviderSessionService::with_launcher(
-        Arc::clone(&fixture.database),
-        fixture.launcher.clone(),
-        |_| {},
-    );
+    let providers = ProviderSessionService::builder(Arc::clone(&fixture.database))
+        .launcher(fixture.launcher.clone())
+        .build();
 
     let error = dispatch_queued(
         MultitaskRequest {

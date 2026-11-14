@@ -619,11 +619,9 @@ async fn launch_persists_session_and_seeds_timeline() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(FakeLauncher::new(handle.clone())),
-        |_| {},
-    );
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeLauncher::new(handle.clone())))
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -659,7 +657,9 @@ async fn launch_attaches_goal_before_sending_the_single_opening_turn() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(ManualExitLauncher::default());
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher.clone())
+        .build();
     let goals = GoalService::new(database.clone(), Arc::clone(&service)).expect("goal service");
     let session = service
         .launch(ProvidersLaunchInput {
@@ -706,11 +706,9 @@ async fn goal_set_during_a_turn_queues_no_opening_prompt() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(false);
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(FakeLauncher::new(handle.clone())),
-        |_| {},
-    );
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeLauncher::new(handle.clone())))
+        .build();
     let goals = GoalService::new(database.clone(), Arc::clone(&service)).expect("goal service");
 
     let session = service
@@ -768,10 +766,13 @@ async fn fake_cli_streams_normalized_events_to_db_and_dashboard_delta() {
     let _workspace = seed_project_and_workspace(&database);
     let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
     let launcher = Arc::new(FakeCliLauncher::default());
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), {
-        let deltas = Arc::clone(&deltas);
-        move |delta| deltas.lock().expect("deltas poisoned").push(delta)
-    });
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher.clone())
+        .publish_delta({
+            let deltas = Arc::clone(&deltas);
+            move |delta| deltas.lock().expect("deltas poisoned").push(delta)
+        })
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -853,7 +854,9 @@ async fn cursor_follow_up_infers_missing_resume_id_from_raw_output() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(FakeCliLauncher::default());
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher.clone())
+        .build();
 
     let session = {
         let connection = database.connection();
@@ -926,7 +929,9 @@ async fn cursor_follow_up_after_clear_does_not_resume_pre_clear_id() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(FakeCliLauncher::default());
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher.clone())
+        .build();
 
     let session = {
         let connection = database.connection();
@@ -999,7 +1004,9 @@ async fn provider_switch_relaunches_new_provider_fresh() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(FakeCliLauncher::default());
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher.clone())
+        .build();
 
     let session = {
         let connection = database.connection();
@@ -1101,7 +1108,9 @@ async fn completed_session_follow_up_launch_without_native_resume_includes_visib
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(FakeCliLauncher::default());
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher.clone())
+        .build();
 
     let session = {
         let connection = database.connection();
@@ -1196,7 +1205,9 @@ async fn completed_session_follow_up_launch_with_native_resume_sends_message_alo
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(FakeCliLauncher::default());
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher.clone())
+        .build();
 
     let session = {
         let connection = database.connection();
@@ -1278,11 +1289,9 @@ async fn send_input_routes_to_handle_when_accepting() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(FakeLauncher::new(handle.clone())),
-        |_| {},
-    );
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeLauncher::new(handle.clone())))
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -1320,11 +1329,9 @@ async fn send_input_queues_when_handle_rejecting() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(false);
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(FakeLauncher::new(handle.clone())),
-        |_| {},
-    );
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeLauncher::new(handle.clone())))
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -1365,11 +1372,9 @@ async fn scheduled_wake_is_refused_instead_of_joining_the_follow_up_queue() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(false);
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(FakeLauncher::new(handle.clone())),
-        |_| {},
-    );
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeLauncher::new(handle.clone())))
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -1424,11 +1429,9 @@ async fn goal_turn_is_refused_instead_of_joining_the_follow_up_queue() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(false);
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(FakeLauncher::new(handle.clone())),
-        |_| {},
-    );
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeLauncher::new(handle.clone())))
+        .build();
     let goals = GoalService::new(database.clone(), Arc::clone(&service)).expect("goal service");
 
     let session = service
@@ -1490,14 +1493,13 @@ async fn send_queued_message_now_interrupts_without_dropping_the_rest_of_the_que
     let _workspace = seed_project_and_workspace(&database);
     let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
     let handle = FakeHandle::new(false);
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(FakeLauncher::new(handle.clone())),
-        {
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeLauncher::new(handle.clone())))
+        .publish_delta({
             let deltas = Arc::clone(&deltas);
             move |delta| deltas.lock().expect("deltas poisoned").push(delta)
-        },
-    );
+        })
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -1581,14 +1583,13 @@ async fn send_queued_message_now_keeps_the_origin_of_an_agents_message() {
     let _workspace = seed_project_and_workspace(&database);
     let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
     let handle = FakeHandle::new(false);
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(FakeLauncher::new(handle.clone())),
-        {
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeLauncher::new(handle.clone())))
+        .publish_delta({
             let deltas = Arc::clone(&deltas);
             move |delta| deltas.lock().expect("deltas poisoned").push(delta)
-        },
-    );
+        })
+        .build();
     let session = service
         .launch(build_launch_input())
         .await
@@ -1684,11 +1685,9 @@ async fn a_persons_opening_prompt_grants_a_referenced_chat_and_an_unattested_lau
     for (person, expected) in [(true, true), (false, false)] {
         let database = Arc::new(Database::open_in_memory().expect("open db"));
         let _workspace = seed_project_and_workspace(&database);
-        let service = ProviderSessionService::with_launcher(
-            database.clone(),
-            Arc::new(FakeLauncher::new(FakeHandle::new(false))),
-            |_| {},
-        );
+        let service = ProviderSessionService::builder(database.clone())
+            .launcher(Arc::new(FakeLauncher::new(FakeHandle::new(false))))
+            .build();
         let mut input = build_launch_input();
         input.prompt = Prompt::try_from(chip("elsewhere")).expect("prompt valid");
 
@@ -1717,14 +1716,13 @@ async fn a_queued_row_keeps_its_author_when_send_now_promotes_it() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(FakeLauncher::new(FakeHandle::new(false))),
-        {
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeLauncher::new(FakeHandle::new(false))))
+        .publish_delta({
             let deltas = Arc::clone(&deltas);
             move |delta| deltas.lock().expect("deltas poisoned").push(delta)
-        },
-    );
+        })
+        .build();
     let session = service
         .launch(build_launch_input())
         .await
@@ -1799,7 +1797,9 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(ManualExitLauncher::default());
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher.clone())
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -1890,7 +1890,9 @@ async fn a_queued_message_is_marked_delivered_once_the_drain_sends_it() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(ManualExitLauncher::default());
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher.clone())
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -1973,10 +1975,13 @@ async fn a_failed_turn_pauses_the_queue_and_preserves_the_inbox() {
     let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(ManualExitLauncher::default());
     let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), {
-        let deltas = Arc::clone(&deltas);
-        move |delta| deltas.lock().expect("deltas poisoned").push(delta)
-    });
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher.clone())
+        .publish_delta({
+            let deltas = Arc::clone(&deltas);
+            move |delta| deltas.lock().expect("deltas poisoned").push(delta)
+        })
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -2062,7 +2067,9 @@ async fn queued_cross_provider_switch_runs_under_the_chosen_provider_when_it_dra
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(ManualExitLauncher::default());
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher.clone())
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -2122,11 +2129,9 @@ async fn terminate_disposes_handle_and_cancels_session() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(FakeLauncher::new(handle.clone())),
-        |_| {},
-    );
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeLauncher::new(handle.clone())))
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -2161,11 +2166,9 @@ async fn terminate_disposes_handle_and_cancels_session() {
 async fn clear_idle_session_drops_resume_id_and_writes_watermark() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(FakeLauncher::new(FakeHandle::new(true))),
-        |_| {},
-    );
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeLauncher::new(FakeHandle::new(true))))
+        .build();
 
     let session = {
         let connection = database.connection();
@@ -2228,11 +2231,9 @@ async fn clear_running_session_stops_provider() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(FakeLauncher::new(handle.clone())),
-        |_| {},
-    );
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeLauncher::new(handle.clone())))
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -2264,15 +2265,13 @@ async fn terminate_workspace_cancels_a_blocked_live_provider() {
     let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
     let release = Arc::new(tokio::sync::Notify::new());
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(GatedLauncher {
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(GatedLauncher {
             handle: handle.clone(),
             release: release.clone(),
             started: None,
-        }),
-        |_| {},
-    );
+        }))
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -2312,15 +2311,13 @@ async fn send_input_during_spawn_queues_instead_of_relaunching() {
     let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
     let release = Arc::new(tokio::sync::Notify::new());
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(GatedLauncher {
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(GatedLauncher {
             handle: handle.clone(),
             release: release.clone(),
             started: None,
-        }),
-        |_| {},
-    );
+        }))
+        .build();
 
     // launch() returns immediately; the spawn is parked on `release`, so the
     // handle stays Pending.
@@ -2368,7 +2365,9 @@ async fn send_input_during_exit_teardown_queues_instead_of_relaunching() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(ManualExitLauncher::default());
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher.clone())
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -2429,15 +2428,13 @@ async fn terminate_during_spawn_disposes_handle_on_resolve() {
     let handle = FakeHandle::new(true);
     let release = Arc::new(tokio::sync::Notify::new());
     let started = Arc::new(tokio::sync::Notify::new());
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(GatedLauncher {
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(GatedLauncher {
             handle: handle.clone(),
             release: release.clone(),
             started: Some(Arc::clone(&started)),
-        }),
-        |_| {},
-    );
+        }))
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -2479,15 +2476,13 @@ async fn terminate_during_follow_up_spawn_disposes_handle_on_resolve() {
     let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
     let release = Arc::new(tokio::sync::Notify::new());
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(GatedLauncher {
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(GatedLauncher {
             handle: handle.clone(),
             release: release.clone(),
             started: None,
-        }),
-        |_| {},
-    );
+        }))
+        .build();
 
     let session = {
         let connection = database.connection();
@@ -2586,17 +2581,15 @@ async fn follow_up_send_input_returns_before_provider_spawn() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let handle = FakeHandle::new(true);
-    let service = ProviderSessionService::with_launcher(
-        database.clone(),
-        Arc::new(GatedLauncher {
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(GatedLauncher {
             handle: handle.clone(),
             // Never released: a regression that awaits spawn fails the
             // timeout below instead of hanging the suite.
             release: Arc::new(tokio::sync::Notify::new()),
             started: None,
-        }),
-        |_| {},
-    );
+        }))
+        .build();
 
     let session = {
         let connection = database.connection();
@@ -2691,13 +2684,11 @@ fn recover_orphaned_sessions_marks_running_rows_failed() {
     drop(connection);
     assert_eq!(orphan.state, SessionState::Running);
 
-    let service = ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
-        database.clone(),
-        Arc::new(FakeCliLauncher::default()),
-        |_| {},
-        WorkspaceLifecycle::new(),
-        Some(ApprovalService::new(database.clone())),
-    );
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeCliLauncher::default()))
+        .lifecycle(WorkspaceLifecycle::new())
+        .approvals(ApprovalService::new(database.clone()))
+        .build();
     let recovered = service
         .recover_orphaned_sessions()
         .expect("recovery sweeps");
@@ -2755,13 +2746,11 @@ fn recover_orphaned_sessions_tells_the_chat_that_dispatched_a_multitask() {
     .expect("record multitask lineage");
     drop(connection);
 
-    let service = ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
-        database.clone(),
-        Arc::new(FakeCliLauncher::default()),
-        |_| {},
-        WorkspaceLifecycle::new(),
-        Some(ApprovalService::new(database.clone())),
-    );
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeCliLauncher::default()))
+        .lifecycle(WorkspaceLifecycle::new())
+        .approvals(ApprovalService::new(database.clone()))
+        .build();
     service
         .recover_orphaned_sessions()
         .expect("recovery sweeps");
@@ -2829,13 +2818,11 @@ fn recover_orphaned_sessions_marks_waiting_and_blocked_rows_failed() {
     }
     drop(connection);
 
-    let service = ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
-        database.clone(),
-        Arc::new(FakeCliLauncher::default()),
-        |_| {},
-        WorkspaceLifecycle::new(),
-        Some(ApprovalService::new(database.clone())),
-    );
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(FakeCliLauncher::default()))
+        .lifecycle(WorkspaceLifecycle::new())
+        .approvals(ApprovalService::new(database.clone()))
+        .build();
     assert_eq!(service.recover_orphaned_sessions().expect("recover"), 3);
 
     let connection = database.connection();
@@ -2897,13 +2884,15 @@ async fn idle_flush_publishes_buffered_line_before_terminate() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
-    let service =
-        ProviderSessionService::with_launcher(database.clone(), Arc::new(StallLineLauncher), {
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(Arc::new(StallLineLauncher))
+        .publish_delta({
             let deltas = Arc::clone(&deltas);
             move |delta| {
                 deltas.lock().expect("deltas poisoned").push(delta);
             }
-        });
+        })
+        .build();
 
     let session = service
         .launch(build_launch_input())
@@ -2989,7 +2978,9 @@ async fn panic_inside_locked_section_does_not_cascade_to_other_sessions() {
             healthy_handle.clone() as Arc<dyn ProviderRuntimeHandle>,
         ]),
     });
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher, |_| {});
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher)
+        .build();
 
     let session_a = service
         .launch(build_launch_input())
@@ -3070,7 +3061,9 @@ async fn a_codex_file_change_gets_the_diff_argmax_measured_from_git() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     seed_project_and_workspace_at(&database, &repo_path.to_string_lossy());
     let launcher = Arc::new(ManualExitLauncher::default());
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher.clone())
+        .build();
 
     let session = service
         .launch(ProvidersLaunchInput {
@@ -3149,7 +3142,9 @@ async fn prompts_written_on_an_agents_behalf_carry_a_starter_the_persons_do_not(
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(FakeCliLauncher::default());
-    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+    let service = ProviderSessionService::builder(database.clone())
+        .launcher(launcher.clone())
+        .build();
     let seed = |id: &str| {
         let connection = database.connection();
         persist_session(

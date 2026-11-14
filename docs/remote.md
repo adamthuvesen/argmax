@@ -149,7 +149,7 @@ Unlike the desktop toast, phone push is not gated on the window being unfocused 
 ### ntfy
 
 Configured via the ntfy topic field in Settings → Remote access.
-[ntfy.rs](../src-tauri/src/remote/ntfy.rs) POSTs each signal to the topic URL with the title, body, priority, and tags as HTTP headers, plus a `Click` header deep-linking `<mobile page>?session=<id>`. Header values must be ASCII — `ureq` rejects anything else, which is why the titles carry no em dashes. A bare topic name expands to `ntfy.sh`, so pick something unguessable: an ntfy topic is public to anyone who knows its name.
+[ntfy.rs](../src-tauri/src/remote/ntfy.rs) POSTs each signal to the topic URL with the title, body, priority, and tags as HTTP headers, plus a `Click` header deep-linking `<mobile page>?session=<id>`. Header values must be ASCII — `reqwest` rejects anything else, which is why the titles carry no em dashes. A bare topic name expands to `ntfy.sh`, so pick something unguessable: an ntfy topic is public to anyone who knows its name.
 
 ### Push notifications (APNs)
 
@@ -170,7 +170,7 @@ One trap on the phone side: `PushDelegate` is `@MainActor` as a whole. UIKit bri
 
 The wire details, for anyone touching this: token-based auth with an ES256 JWT (`{"alg":"ES256","kid":<key id>}` / `{"iss":<team id>,"iat":<now>}`) signed by the `.p8`, cached and re-signed every 50 minutes — Apple rejects a token over an hour old and also rejects re-signing more often than every 20. `POST https://api.push.apple.com/3/device/<token>` (`api.development.push.apple.com` in sandbox) over HTTP/2, `apns-topic: com.argmax.remote`, `apns-push-type: alert`, `apns-priority: 10` or `5`. The payload is `{"aps":{"alert":{"title","body"},"sound":"default","thread-id":<session id>,"interruption-level":…},"sessionId":<session id>}`; `thread-id` stacks a chat's pushes together on the lock screen and `sessionId` is what the app reads to deep-link the tap. A 410 (`Unregistered`) or 400 `BadDeviceToken` is permanent, so that device is dropped from `remote.json` and logged at info rather than retried.
 
-Apple requires HTTP/2, which `ureq` (the ntfy client) does not speak, so this path uses the `reqwest` client already in the tree via `tauri-plugin-updater`.
+Apple requires HTTP/2, which the `reqwest` client provides through its `http2` feature. The ntfy sink uses the same crate.
 
 ### `remote.json`
 

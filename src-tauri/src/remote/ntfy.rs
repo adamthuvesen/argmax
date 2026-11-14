@@ -6,6 +6,7 @@
 
 use crate::remote::signal::{signal_for, PushSignal, SignalDedupe};
 use argmax_store::sessions::SessionSummary;
+use reqwest::blocking::Client;
 
 const REQUEST_TIMEOUT_SECS: u64 = 5;
 
@@ -44,20 +45,21 @@ impl NtfyPublisher {
             Box::new(move |message: NtfyMessage| {
                 let topic_url = topic_url.clone();
                 std::thread::spawn(move || {
-                    let agent = ureq::AgentBuilder::new()
-                        .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
-                        .build();
-                    let mut request = agent
-                        .post(&topic_url)
-                        .set("Title", &message.title)
-                        .set("Priority", message.priority);
-                    if !message.tags.is_empty() {
-                        request = request.set("Tags", message.tags);
-                    }
-                    if let Some(click) = message.click.as_deref() {
-                        request = request.set("Click", click);
-                    }
-                    let result = request.send_string(&message.body);
+                    let result = ntfy_client()
+                        .and_then(|client| {
+                            let mut request = client
+                                .post(&topic_url)
+                                .header("Title", &message.title)
+                                .header("Priority", message.priority);
+                            if !message.tags.is_empty() {
+                                request = request.header("Tags", message.tags);
+                            }
+                            if let Some(click) = message.click.as_deref() {
+                                request = request.header("Click", click);
+                            }
+                            request.body(message.body).send()
+                        })
+                        .and_then(|response| response.error_for_status());
                     if let Err(error) = result {
                         tracing::warn!(%error, "ntfy publish failed");
                     }
@@ -107,23 +109,34 @@ impl NtfyPublisher {
 /// button. Unlike the fire-and-forget publisher sink, the caller gets the
 /// failure so a wrong topic URL is visible immediately.
 pub fn post_test(topic_url: &str) -> Result<(), String> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
-        .build();
-    agent
-        .post(topic_url)
-        .set("Title", "Argmax: Test notification")
-        .set("Priority", "default")
-        .set("Tags", "bell")
-        .send_string("Push notifications are working.")
+    ntfy_client()
+        .and_then(|client| {
+            client
+                .post(topic_url)
+                .header("Title", "Argmax: Test notification")
+                .header("Priority", "default")
+                .header("Tags", "bell")
+                .body("Push notifications are working.")
+                .send()
+        })
+        .and_then(|response| response.error_for_status())
         .map(|_| ())
         .map_err(|error| error.to_string())
+}
+
+/// Built on the calling thread, which is never an async worker: the publisher
+/// posts from a throwaway thread and the Settings test from `spawn_blocking`.
+fn ntfy_client() -> reqwest::Result<Client> {
+    crate::util::tls::install_crypto_provider();
+    Client::builder()
+        .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
+        .build()
 }
 
 /// `<mobile page>?session=<id>`, read once by the phone on load
 /// (`src/renderer/mobile/deepLink.ts`). Session ids are hex/dash ids from
 /// SQLite, so they need no escaping; anything else is dropped rather than
-/// half-escaped into a header ureq would reject.
+/// half-escaped into a header the HTTP client would reject.
 fn deep_link(mobile_url: &str, session_id: &str) -> String {
     if !session_id
         .chars()

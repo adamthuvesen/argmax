@@ -67,11 +67,8 @@ pub fn run() {
     text_substitutions::disable();
 
     // rustls 0.23 needs a crypto provider picked explicitly once ring and
-    // aws-lc-rs are both reachable in the dependency tree; reqwest's client
-    // builder panics instead of erroring when none is installed yet. Nothing
-    // else in the tree installs one, so the first `reqwest::Client` built at
-    // runtime (APNs, today) is where that panic actually surfaced.
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    // aws-lc-rs are both reachable in the dependency tree.
+    util::tls::install_crypto_provider();
 
     if let Err(error) = providers::verification::validate_configuration() {
         eprintln!("argmax: verification configuration invalid: {error}");
@@ -521,21 +518,21 @@ fn start_services(
         .with_questions(Arc::clone(&questions))
         .with_grok_acp(Arc::clone(&grok_acp)),
     );
-    let providers = providers::session_service::ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
-        Arc::clone(&database),
-        provider_launcher,
-        publish_delta,
-        Arc::clone(&lifecycle),
-        Some(Arc::clone(&approvals)),
-    );
-    providers.set_question_service(Arc::clone(&questions));
-    providers.set_provider_discovery(Arc::clone(&state.provider_discovery));
     // Kept for the boot-recovery pass below, which needs
     // the same registry the socket hands out.
     let after_turn_registry = session_launch_registry.clone();
-    if let Some(registry) = session_launch_registry {
-        providers.set_session_control(registry);
-    }
+    let providers = providers::session_service::ProviderSessionService::new(
+        providers::session_service::ProviderSessionDeps {
+            database: Arc::clone(&database),
+            launcher: provider_launcher,
+            publish_delta: Arc::new(publish_delta),
+            lifecycle: Arc::clone(&lifecycle),
+            approvals: Some(Arc::clone(&approvals)),
+            questions: Some(Arc::clone(&questions)),
+            provider_discovery: Some(Arc::clone(&state.provider_discovery)),
+            session_control: session_launch_registry,
+        },
+    );
     if let Err(error) = providers.recover_orphaned_sessions() {
         tracing::warn!(?error, "failed to recover orphaned sessions");
     }

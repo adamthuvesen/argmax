@@ -6,11 +6,10 @@
 // path between this machine and Apple. Both sinks read the same trigger table
 // in `signal.rs`, so a chat that buzzes one buzzes the other.
 //
-// Apple requires HTTP/2 here; `ureq` (the ntfy sink's client) speaks 1.1 only,
-// so this rides the `reqwest` client already in the tree. Sends happen on the
-// Tokio runtime rather than the caller's thread, the same way the ntfy sink
-// fires its POST off a throwaway thread — the dashboard-delta path must never
-// wait on Apple.
+// Apple requires HTTP/2 here, which reqwest's `http2` feature provides. Sends
+// happen on the Tokio runtime rather than the caller's thread, the same way
+// the ntfy sink fires its POST off a throwaway thread — the dashboard-delta
+// path must never wait on Apple.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -85,6 +84,7 @@ impl ApnsClient {
 
     pub fn from_pem(pem: &str, key_id: &str, team_id: &str, sandbox: bool) -> Result<Self, String> {
         let token = ProviderToken::new(pem, key_id, team_id)?;
+        crate::util::tls::install_crypto_provider();
         let http = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
             .build()

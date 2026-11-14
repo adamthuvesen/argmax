@@ -129,24 +129,32 @@ pub fn check_key(gateway: OpencodeGateway, api_key: &str) -> ArgmaxResult<()> {
     if argmax_process::environment::verification_requested() {
         return Ok(());
     }
-    let agent = ureq::AgentBuilder::new()
+    // Runs on a blocking thread (`read_off_main`), where a blocking client may
+    // be built and dropped.
+    let unverified = |error: reqwest::Error| {
+        ArgmaxError::service(
+            "OPENCODE_GATEWAY_KEY_UNVERIFIED",
+            format!("Could not check the key with {name}, so it was not saved: {error}"),
+        )
+    };
+    crate::util::tls::install_crypto_provider();
+    let response = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
-        .build();
-    match agent
-        .get(url)
-        .set("Authorization", &format!("Bearer {api_key}"))
-        .set("Accept", "application/json")
-        .call()
-    {
-        Ok(_) => Ok(()),
-        Err(ureq::Error::Status(401 | 403, _)) => Err(ArgmaxError::service(
+        .build()
+        .and_then(|client| {
+            client
+                .get(url)
+                .header("Authorization", format!("Bearer {api_key}"))
+                .header("Accept", "application/json")
+                .send()
+        })
+        .map_err(unverified)?;
+    match response.status().as_u16() {
+        401 | 403 => Err(ArgmaxError::service(
             "OPENCODE_GATEWAY_KEY_REJECTED",
             format!("{name} rejected that key, so it was not saved."),
         )),
-        Err(error) => Err(ArgmaxError::service(
-            "OPENCODE_GATEWAY_KEY_UNVERIFIED",
-            format!("Could not check the key with {name}, so it was not saved: {error}"),
-        )),
+        _ => response.error_for_status().map(|_| ()).map_err(unverified),
     }
 }
 

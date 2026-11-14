@@ -229,7 +229,7 @@ pub async fn classify_choice(
 }
 
 async fn post(body: &Value, api_key: &str, timeout: Duration) -> ArgmaxResult<Value> {
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    crate::util::tls::install_crypto_provider();
     let client = reqwest::Client::builder()
         .connect_timeout(timeout)
         .timeout(timeout)

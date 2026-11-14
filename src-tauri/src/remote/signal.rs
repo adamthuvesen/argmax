@@ -61,7 +61,7 @@ impl SignalPriority {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PushSignal {
-    /// ASCII only: ntfy carries this as an HTTP header and ureq rejects
+    /// ASCII only: ntfy carries this as an HTTP header and reqwest rejects
     /// non-ASCII header values (an em dash here broke every live push).
     pub title: String,
     pub body: String,

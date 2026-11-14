@@ -163,13 +163,12 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
     let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
     let provider_deltas = Arc::clone(&deltas);
     let launcher = Arc::new(RecordingLauncher::default());
-    let providers = ProviderSessionService::with_launcher(
-        Arc::clone(&database),
-        launcher.clone(),
-        move |delta| {
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .publish_delta(move |delta| {
             provider_deltas.lock().expect("deltas poisoned").push(delta);
-        },
-    );
+        })
+        .build();
     let workspace_deltas = Arc::clone(&deltas);
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), move |delta| {
         workspace_deltas
@@ -475,8 +474,9 @@ async fn launch_caps_and_self_messaging_are_refused_with_a_readable_error() {
     }
 
     let launcher = Arc::new(RecordingLauncher::default());
-    let providers =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .build();
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (server, registry) =
         SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
@@ -704,12 +704,13 @@ async fn observing_stopping_and_waiting_on_a_launched_session() {
     }
 
     let launcher = Arc::new(RecordingLauncher::default());
-    let providers =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
-    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (server, registry) =
         SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
-    providers.set_session_control(Arc::clone(&registry));
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .session_control(Arc::clone(&registry))
+        .build();
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (socket, parent_token) = credential(&registry, repo.path(), "session-parent");
     let (_, child_token) = credential(&registry, repo.path(), "session-child");
     let _server = server
@@ -1057,11 +1058,9 @@ async fn session_rename_updates_the_callers_sidebar_label() {
         )],
     );
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
-    let providers = ProviderSessionService::with_launcher(
-        Arc::clone(&database),
-        Arc::new(RecordingLauncher::default()),
-        |_| {},
-    );
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(Arc::new(RecordingLauncher::default()))
+        .build();
     let (server, registry) =
         SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
     let (socket, token) = credential(&registry, repo.path(), "session-agent");
@@ -1145,12 +1144,13 @@ async fn a_large_inbox_drains_across_reads_within_the_reply_ceiling() {
     }
 
     let launcher = Arc::new(RecordingLauncher::default());
-    let providers =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
-    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (server, registry) =
         SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
-    providers.set_session_control(Arc::clone(&registry));
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .session_control(Arc::clone(&registry))
+        .build();
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (socket, child_token) = credential(&registry, repo.path(), "session-child");
     let _server = server
         .start(
@@ -1236,12 +1236,13 @@ async fn an_inbox_reply_carries_a_full_width_body_whole() {
     }
 
     let launcher = Arc::new(RecordingLauncher::default());
-    let providers =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
-    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (server, registry) =
         SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
-    providers.set_session_control(Arc::clone(&registry));
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .session_control(Arc::clone(&registry))
+        .build();
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (socket, child_token) = credential(&registry, repo.path(), "session-child");
     let _server = server
         .start(
@@ -1313,12 +1314,13 @@ async fn a_cursorless_read_starts_at_the_beginning_and_reports_more_to_come() {
     }
 
     let launcher = Arc::new(RecordingLauncher::default());
-    let providers =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
-    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (server, registry) =
         SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
-    providers.set_session_control(Arc::clone(&registry));
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .session_control(Arc::clone(&registry))
+        .build();
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (socket, parent_token) = credential(&registry, repo.path(), "session-parent");
     let _server = server
         .start(
@@ -1411,17 +1413,16 @@ async fn a_completion_notice_queued_behind_a_running_turn_stays_collectable() {
     let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
     let provider_deltas = Arc::clone(&deltas);
     let launcher = Arc::new(RecordingLauncher::default());
-    let providers = ProviderSessionService::with_launcher(
-        Arc::clone(&database),
-        launcher.clone(),
-        move |delta| {
-            provider_deltas.lock().expect("deltas poisoned").push(delta);
-        },
-    );
-    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (server, registry) =
         SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
-    providers.set_session_control(Arc::clone(&registry));
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .publish_delta(move |delta| {
+            provider_deltas.lock().expect("deltas poisoned").push(delta);
+        })
+        .session_control(Arc::clone(&registry))
+        .build();
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (socket, parent_token) = credential(&registry, repo.path(), "session-parent");
     let (_, child_token) = credential(&registry, repo.path(), "session-child");
     let _server = server
@@ -1581,12 +1582,13 @@ async fn the_default_wait_hands_over_each_finished_session_once() {
     };
 
     let launcher = Arc::new(RecordingLauncher::default());
-    let providers =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
-    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (server, registry) =
         SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
-    providers.set_session_control(Arc::clone(&registry));
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .session_control(Arc::clone(&registry))
+        .build();
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (socket, token) = credential(&registry, repo.path(), "session-parent");
     let _server = server
         .start(
@@ -1655,12 +1657,13 @@ async fn archiving_a_workspace_is_scheduled_rather_than_immediate() {
     );
 
     let launcher = Arc::new(RecordingLauncher::default());
-    let providers =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
-    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (server, registry) =
         SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
-    providers.set_session_control(Arc::clone(&registry));
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .session_control(Arc::clone(&registry))
+        .build();
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (socket, token) = credential(&registry, repo.path(), "session-agent");
     let _server = server
         .start(
@@ -1741,9 +1744,10 @@ fn relaunch(
     let (server, registry) =
         SessionLaunchServer::bind(Arc::clone(database)).expect("rebind control socket");
     let launcher = Arc::new(RecordingLauncher::default());
-    let providers =
-        ProviderSessionService::with_launcher(Arc::clone(database), launcher.clone(), |_| {});
-    providers.set_session_control(Arc::clone(&registry));
+    let providers = ProviderSessionService::builder(Arc::clone(database))
+        .launcher(launcher.clone())
+        .session_control(Arc::clone(&registry))
+        .build();
     providers
         .recover_orphaned_sessions()
         .expect("recover orphaned sessions");
@@ -1766,12 +1770,13 @@ async fn a_scheduled_archive_outlives_the_run_that_promised_it() {
     );
 
     let launcher = Arc::new(RecordingLauncher::default());
-    let providers =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
-    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (server, registry) =
         SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
-    providers.set_session_control(Arc::clone(&registry));
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .session_control(Arc::clone(&registry))
+        .build();
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (socket, token) = credential(&registry, repo.path(), "session-agent");
     let server = server
         .start(
@@ -1870,12 +1875,13 @@ async fn a_scheduled_move_outlives_the_run_and_still_starts_the_destination() {
     }
 
     let launcher = Arc::new(RecordingLauncher::default());
-    let providers =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
-    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (server, registry) =
         SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
-    providers.set_session_control(Arc::clone(&registry));
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .session_control(Arc::clone(&registry))
+        .build();
+    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     let (socket, token) = credential(&registry, repo.path(), "session-agent");
     let server = server
         .start(
@@ -2013,8 +2019,9 @@ impl ToolHarness {
     fn open(database: Arc<Database>, repo: &std::path::Path, session_id: &str) -> Self {
         let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
         let launcher = Arc::new(RecordingLauncher::default());
-        let providers =
-            ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+        let providers = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(launcher.clone())
+            .build();
         let (server, registry) =
             SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
         let (socket, token) = credential(&registry, repo, session_id);

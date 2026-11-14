@@ -172,8 +172,9 @@ fn fixture() -> Fixture {
     )
     .expect("project");
     let launcher = Arc::new(ScriptedLauncher::default());
-    let providers =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .build();
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     Fixture {
         database,

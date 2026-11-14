@@ -2,25 +2,24 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+/// Runs on a blocking thread: `read_off_main` calls the remaining-usage fetch.
 pub fn get_json(
     url: &str,
     headers: &[(&str, &str)],
     timeout: Duration,
 ) -> Result<(u16, Value), String> {
-    let agent = ureq::AgentBuilder::new().timeout(timeout).build();
-    let mut request = agent.get(url);
+    crate::util::tls::install_crypto_provider();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(timeout)
+        .build()
+        .map_err(|error| error.to_string())?;
+    let mut request = client.get(url);
     for (name, value) in headers {
-        request = request.set(name, value);
+        request = request.header(*name, *value);
     }
-    match request.call() {
-        Ok(response) => read_response(response.status(), response),
-        Err(ureq::Error::Status(code, response)) => read_response(code, response),
-        Err(error) => Err(error.to_string()),
-    }
-}
-
-fn read_response(status: u16, response: ureq::Response) -> Result<(u16, Value), String> {
-    let body = response.into_string().unwrap_or_default();
+    let response = request.send().map_err(|error| error.to_string())?;
+    let status = response.status().as_u16();
+    let body = response.text().unwrap_or_default();
     if body.trim().is_empty() {
         return Ok((status, Value::Null));
     }

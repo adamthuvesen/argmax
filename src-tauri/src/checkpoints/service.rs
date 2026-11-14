@@ -796,11 +796,11 @@ mod tests {
             database: Arc::clone(&checkpoints.database),
             observed: tokio::sync::Notify::new(),
         });
-        let providers = crate::providers::session_service::ProviderSessionService::with_launcher(
+        let providers = crate::providers::session_service::ProviderSessionService::builder(
             Arc::clone(&checkpoints.database),
-            launcher.clone(),
-            |_| {},
-        );
+        )
+        .launcher(launcher.clone())
+        .build();
         providers.set_checkpoint_service(checkpoints);
         providers
             .launch(

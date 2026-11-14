@@ -85,7 +85,7 @@ fn steer_service(
     let database = database_with_running_session();
     let launcher = Arc::new(CountingFailureLauncher::default());
     let service =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+        ProviderSessionService::builder(Arc::clone(&database)).launcher(launcher.clone()).build();
     let handle = Arc::new(SteerRecordingHandle {
         supports_steering,
         steer_error,

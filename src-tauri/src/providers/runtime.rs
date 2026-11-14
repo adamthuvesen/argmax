@@ -974,6 +974,7 @@ mod process_tests {
 #[cfg(all(test, feature = "verification", unix))]
 mod verification_tests {
     use super::*;
+    use crate::providers::model_catalogue::ModelId;
     use std::{path::PathBuf, process::Command as ProcessCommand, time::Instant};
 
     const CHILD_ENV: &str = "ARGMAX_VERIFICATION_RUNTIME_TEST_CHILD";

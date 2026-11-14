@@ -279,7 +279,7 @@ fn cursor_api_key_from_cache(home: &Path) -> Result<String, ()> {
 }
 
 fn http_client(timeout: Duration) -> ArgmaxResult<reqwest::Client> {
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    crate::util::tls::install_crypto_provider();
     reqwest::Client::builder()
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(timeout)

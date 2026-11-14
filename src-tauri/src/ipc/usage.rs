@@ -73,7 +73,7 @@ pub async fn usage_remaining_impl() -> ArgmaxResult<UsageRemaining> {
 /// accounts (the live source fences itself in verification mode).
 fn remaining_source() -> Arc<dyn RemainingSource> {
     #[cfg(feature = "verification")]
-    if crate::providers::verification::requested() {
+    if argmax_process::environment::verification_requested() {
         return Arc::new(crate::usage::remaining::verification::VerificationRemainingSource::new());
     }
     Arc::new(LiveRemainingSource::new())

@@ -740,7 +740,7 @@ mod tests {
         let dependencies = SchedulerDependencies {
             database: Arc::clone(&database),
             workspaces: WorkspaceService::new(Arc::clone(&database)),
-            providers: ProviderSessionService::new(Arc::clone(&database)),
+            providers: ProviderSessionService::builder(Arc::clone(&database)).build(),
             runs: Arc::new(RoutineRuns::default()),
             app_data_dir: data_dir.path().to_path_buf(),
         };
@@ -1054,7 +1054,7 @@ mod tests {
         arc_coordinator_routine(&database, "r1", "arc-1");
         let fields = arc_coordinator_fields(&database, "r1");
 
-        let providers = ProviderSessionService::new(Arc::clone(&database));
+        let providers = ProviderSessionService::builder(Arc::clone(&database)).build();
         let workspaces = Arc::new(WorkspaceService::new(Arc::clone(&database)));
         let outcome = fire_routine(
             &database,
@@ -1090,7 +1090,7 @@ mod tests {
         arc_coordinator_routine(&database, "r1", "arc-1");
         let fields = arc_coordinator_fields(&database, "r1");
 
-        let providers = ProviderSessionService::new(Arc::clone(&database));
+        let providers = ProviderSessionService::builder(Arc::clone(&database)).build();
         let workspaces = Arc::new(WorkspaceService::new(Arc::clone(&database)));
         let outcome = fire_routine(
             &database,
@@ -1123,8 +1123,9 @@ mod tests {
         arc_coordinator_routine(&database, "r1", "arc-1");
 
         let launcher = Arc::new(RecordingLauncher::default());
-        let providers =
-            ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+        let providers = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(launcher.clone())
+            .build();
         let workspaces = Arc::new(WorkspaceService::new(Arc::clone(&database)));
         let default_agent = test_default_agent();
 
@@ -1186,8 +1187,9 @@ mod tests {
         );
 
         let launcher = Arc::new(RecordingLauncher::default());
-        let providers =
-            ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+        let providers = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(launcher.clone())
+            .build();
         let workspaces = Arc::new(WorkspaceService::new(Arc::clone(&database)));
         let default_agent = test_default_agent();
 

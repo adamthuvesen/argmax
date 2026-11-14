@@ -2494,12 +2494,10 @@ async fn archive_keeps_the_worktree_when_provider_teardown_fails() {
     );
 
     let lifecycle = Arc::new(WorkspaceLifecycle::new());
-    let providers = ProviderSessionService::with_launcher_and_lifecycle(
-        Arc::clone(&database),
-        Arc::new(RefusingLauncher),
-        |_delta| {},
-        Arc::clone(&lifecycle),
-    );
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(Arc::new(RefusingLauncher))
+        .lifecycle(Arc::clone(&lifecycle))
+        .build();
     let recovery = tempfile::tempdir().expect("archive recovery root");
     let service = WorkspaceService::with_services(
         Arc::clone(&database),

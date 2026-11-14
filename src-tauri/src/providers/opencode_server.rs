@@ -32,7 +32,6 @@ use argmax_store::time::now_iso;
 use serde_json::{json, Map, Value};
 use std::{
     collections::HashSet,
-    io::{BufRead, BufReader, ErrorKind, Read},
     net::TcpListener,
     process::Stdio,
     sync::{
@@ -151,11 +150,16 @@ pub async fn launch_turn(
     };
     let kill_on_app_exit = crate::util::process_control::KillOnAppExit::register(child.id());
 
-    let http = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_millis(250))
-        .timeout_read(HTTP_TIMEOUT)
-        .timeout_write(HTTP_TIMEOUT)
-        .build();
+    let http = match opencode_client(HTTP_TIMEOUT) {
+        Ok(http) => http,
+        Err(error) => {
+            let _ =
+                crate::util::process_control::terminate_process_group_with_escalation(&mut child)
+                    .await;
+            launch_scratch.restore();
+            return Err(error);
+        }
+    };
     let setup = prepare_turn(&http, &endpoint, input, gateway).await;
     let (native_session_id, event_rx, sse_cancel, sse_task) = match setup {
         Ok(setup) => setup,
@@ -228,7 +232,7 @@ type PreparedTurn = (
 );
 
 async fn prepare_turn(
-    http: &ureq::Agent,
+    http: &reqwest::Client,
     endpoint: &str,
     input: &ProviderLaunchInput,
     gateway: OpencodeGateway,
@@ -264,14 +268,14 @@ async fn prepare_turn(
     Ok((native_session_id, event_rx, sse_cancel, sse_task))
 }
 
-async fn wait_until_ready(http: &ureq::Agent, endpoint: &str) -> ArgmaxResult<()> {
+async fn wait_until_ready(http: &reqwest::Client, endpoint: &str) -> ArgmaxResult<()> {
     let deadline = tokio::time::Instant::now() + SERVER_START_TIMEOUT;
+    let url = format!("{endpoint}/global/health");
     loop {
-        let http = http.clone();
-        let url = format!("{endpoint}/global/health");
-        let ready = tokio::task::spawn_blocking(move || http.get(&url).call().is_ok())
-            .await
-            .unwrap_or(false);
+        let ready = matches!(
+            http.get(&url).send().await,
+            Ok(response) if !is_error_status(&response)
+        );
         if ready {
             return Ok(());
         }
@@ -286,54 +290,49 @@ async fn wait_until_ready(http: &ureq::Agent, endpoint: &str) -> ArgmaxResult<()
 }
 
 async fn native_session(
-    http: &ureq::Agent,
+    http: &reqwest::Client,
     endpoint: &str,
     input: &ProviderLaunchInput,
 ) -> ArgmaxResult<String> {
-    let http = http.clone();
-    let endpoint = endpoint.to_string();
     let directory = input.workspace_path.to_string_lossy().into_owned();
-    let resume_id = input.resume_conversation_id.clone();
-    let fork = input.resume_fork;
-    tokio::task::spawn_blocking(move || {
-        let response = match resume_id {
-            Some(id) if fork => {
-                validate_provider_id(&id, "session")?;
-                let response = http
-                    .post(&format!("{endpoint}/session/{id}/fork"))
-                    .query("directory", &directory)
-                    .set("Content-Type", "application/json")
-                    .send_string("{}")
-                    .map_err(|error| request_error("fork the OpenCode session", &error))?;
-                response_json(response, "fork session")?
-            }
-            Some(id) => {
-                validate_provider_id(&id, "session")?;
-                return Ok(id);
-            }
-            None => {
-                let response = http
-                    .post(&format!("{endpoint}/session"))
-                    .query("directory", &directory)
-                    .set("Content-Type", "application/json")
-                    .send_string("{}")
-                    .map_err(|error| request_error("create an OpenCode session", &error))?;
-                response_json(response, "create session")?
-            }
-        };
-        let id = response
-            .get("id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| invalid_response("read the session id"))?;
-        validate_provider_id(id, "session")?;
-        Ok(id.to_string())
-    })
-    .await
-    .map_err(|_| server_error("OPENCODE_SERVER_TASK", "OpenCode session setup stopped"))?
+    let response = match input.resume_conversation_id.as_deref() {
+        Some(id) if input.resume_fork => {
+            validate_provider_id(id, "session")?;
+            let response = send(
+                post_json(
+                    http,
+                    &format!("{endpoint}/session/{id}/fork"),
+                    &directory,
+                    "{}",
+                ),
+                "fork the OpenCode session",
+            )
+            .await?;
+            response_json(response, "fork session").await?
+        }
+        Some(id) => {
+            validate_provider_id(id, "session")?;
+            return Ok(id.to_string());
+        }
+        None => {
+            let response = send(
+                post_json(http, &format!("{endpoint}/session"), &directory, "{}"),
+                "create an OpenCode session",
+            )
+            .await?;
+            response_json(response, "create session").await?
+        }
+    };
+    let id = response
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid_response("read the session id"))?;
+    validate_provider_id(id, "session")?;
+    Ok(id.to_string())
 }
 
 async fn prompt(
-    http: &ureq::Agent,
+    http: &reqwest::Client,
     endpoint: &str,
     input: &ProviderLaunchInput,
     native_session_id: &str,
@@ -343,27 +342,23 @@ async fn prompt(
         return compact(endpoint, input, native_session_id, gateway).await;
     }
     let body = prompt_body(input, gateway)?;
-    let http = http.clone();
-    let endpoint = endpoint.to_string();
     let directory = input.workspace_path.to_string_lossy().into_owned();
-    let native_session_id = native_session_id.to_string();
-    tokio::task::spawn_blocking(move || {
-        http.post(&format!(
-            "{endpoint}/session/{native_session_id}/prompt_async"
-        ))
-        .query("directory", &directory)
-        .set("Content-Type", "application/json")
-        .send_string(&body.to_string())
-        .map_err(|error| request_error("send the OpenCode prompt", &error))?;
-        Ok(())
-    })
-    .await
-    .map_err(|_| server_error("OPENCODE_SERVER_TASK", "OpenCode prompt setup stopped"))?
+    send(
+        post_json(
+            http,
+            &format!("{endpoint}/session/{native_session_id}/prompt_async"),
+            &directory,
+            body.to_string(),
+        ),
+        "send the OpenCode prompt",
+    )
+    .await?;
+    Ok(())
 }
 
 /// OpenCode has no compact slash command over the server API, so `/compact`
 /// calls `session/{id}/summarize`. That route holds the request open until the
-/// summary is written, which outlasts `HTTP_TIMEOUT`, so it gets its own agent.
+/// summary is written, which outlasts `HTTP_TIMEOUT`, so it gets its own client.
 /// The event stream then reports `session.compacted` and `idle`, which end the
 /// turn the same way a prompt does.
 async fn compact(
@@ -375,24 +370,19 @@ async fn compact(
     let (provider_id, model_id) = split_model_id(&input.model_id)?;
     let (provider_id, model_id) = gateway.route(&provider_id, &model_id);
     let body = json!({ "providerID": provider_id, "modelID": model_id });
-    let http = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_millis(250))
-        .timeout_read(COMPACT_TIMEOUT)
-        .timeout_write(HTTP_TIMEOUT)
-        .build();
-    let endpoint = endpoint.to_string();
+    let http = opencode_client(COMPACT_TIMEOUT)?;
     let directory = input.workspace_path.to_string_lossy().into_owned();
-    let native_session_id = native_session_id.to_string();
-    tokio::task::spawn_blocking(move || {
-        http.post(&format!("{endpoint}/session/{native_session_id}/summarize"))
-            .query("directory", &directory)
-            .set("Content-Type", "application/json")
-            .send_string(&body.to_string())
-            .map_err(|error| request_error("compact the OpenCode session", &error))?;
-        Ok(())
-    })
-    .await
-    .map_err(|_| server_error("OPENCODE_SERVER_TASK", "OpenCode compaction stopped"))?
+    send(
+        post_json(
+            &http,
+            &format!("{endpoint}/session/{native_session_id}/summarize"),
+            &directory,
+            body.to_string(),
+        ),
+        "compact the OpenCode session",
+    )
+    .await?;
+    Ok(())
 }
 
 fn prompt_body(input: &ProviderLaunchInput, gateway: OpencodeGateway) -> ArgmaxResult<Value> {
@@ -410,7 +400,7 @@ fn prompt_body(input: &ProviderLaunchInput, gateway: OpencodeGateway) -> ArgmaxR
 
 #[allow(clippy::too_many_arguments)]
 async fn run_turn(
-    http: &ureq::Agent,
+    http: &reqwest::Client,
     endpoint: &str,
     input: ProviderLaunchInput,
     native_session_id: String,
@@ -647,7 +637,7 @@ async fn run_turn(
 }
 
 async fn answer_permission(
-    http: &ureq::Agent,
+    http: &reqwest::Client,
     endpoint: &str,
     directory: &str,
     approvals: &ApprovalService,
@@ -681,36 +671,28 @@ async fn answer_permission(
 }
 
 async fn reply_permission(
-    http: &ureq::Agent,
+    http: &reqwest::Client,
     endpoint: &str,
     directory: &str,
     request_id: &str,
     reply: &'static str,
 ) -> ArgmaxResult<()> {
     validate_provider_id(request_id, "permission")?;
-    let http = http.clone();
-    let endpoint = endpoint.to_string();
-    let directory = directory.to_string();
-    let request_id = request_id.to_string();
-    tokio::task::spawn_blocking(move || {
-        http.post(&format!("{endpoint}/permission/{request_id}/reply"))
-            .query("directory", &directory)
-            .set("Content-Type", "application/json")
-            .send_string(&json!({ "reply": reply }).to_string())
-            .map_err(|error| request_error("answer the OpenCode permission", &error))?;
-        Ok(())
-    })
-    .await
-    .map_err(|_| {
-        server_error(
-            "OPENCODE_SERVER_TASK",
-            "OpenCode permission response stopped",
-        )
-    })?
+    send(
+        post_json(
+            http,
+            &format!("{endpoint}/permission/{request_id}/reply"),
+            directory,
+            json!({ "reply": reply }).to_string(),
+        ),
+        "answer the OpenCode permission",
+    )
+    .await?;
+    Ok(())
 }
 
 async fn answer_question(
-    http: &ureq::Agent,
+    http: &reqwest::Client,
     endpoint: &str,
     directory: &str,
     questions: &QuestionService,
@@ -784,32 +766,28 @@ fn question_answers(params: &Value, response: &Value) -> Option<Vec<Vec<String>>
 }
 
 async fn reply_question(
-    http: &ureq::Agent,
+    http: &reqwest::Client,
     endpoint: &str,
     directory: &str,
     request_id: &str,
     answers: Option<Vec<Vec<String>>>,
 ) -> ArgmaxResult<()> {
-    let http = http.clone();
-    let url = match answers {
-        Some(_) => format!("{endpoint}/question/{request_id}/reply"),
-        None => format!("{endpoint}/question/{request_id}/reject"),
+    let (url, body) = match answers {
+        Some(answers) => (
+            format!("{endpoint}/question/{request_id}/reply"),
+            json!({ "answers": answers }).to_string(),
+        ),
+        None => (
+            format!("{endpoint}/question/{request_id}/reject"),
+            "{}".to_string(),
+        ),
     };
-    let directory = directory.to_string();
-    tokio::task::spawn_blocking(move || {
-        let request = http
-            .post(&url)
-            .query("directory", &directory)
-            .set("Content-Type", "application/json");
-        match answers {
-            Some(answers) => request.send_string(&json!({ "answers": answers }).to_string()),
-            None => request.send_string("{}"),
-        }
-        .map_err(|error| request_error("answer the OpenCode question", &error))?;
-        Ok(())
-    })
-    .await
-    .map_err(|_| server_error("OPENCODE_SERVER_TASK", "OpenCode question response stopped"))?
+    send(
+        post_json(http, &url, directory, body),
+        "answer the OpenCode question",
+    )
+    .await?;
+    Ok(())
 }
 
 /// A permission or question from a session this turn does not track yet, such
@@ -830,82 +808,67 @@ fn untracked_request_session(event: &Value, tracked_sessions: &HashSet<String>) 
 }
 
 async fn session_lineage(
-    http: &ureq::Agent,
+    http: &reqwest::Client,
     endpoint: &str,
     directory: &str,
     session_id: &str,
     tracked_sessions: &HashSet<String>,
 ) -> ArgmaxResult<Option<Vec<String>>> {
     validate_provider_id(session_id, "session")?;
-    let http = http.clone();
-    let endpoint = endpoint.to_string();
-    let directory = directory.to_string();
-    let session_id = session_id.to_string();
-    let tracked_sessions = tracked_sessions.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut lineage = Vec::new();
-        let mut visited = HashSet::new();
-        let mut current_id = session_id;
-        for _ in 0..MAX_SESSION_LINEAGE_DEPTH {
-            if tracked_sessions.contains(&current_id) {
-                return Ok(Some(lineage));
-            }
-            if !visited.insert(current_id.clone()) {
-                return Err(invalid_response("verify the OpenCode session lineage"));
-            }
-
-            let response = http
-                .get(&format!("{endpoint}/session/{current_id}"))
-                .query("directory", &directory)
-                .call()
-                .map_err(|error| request_error("verify the OpenCode session lineage", &error))?;
-            let session = response_json(response, "verify the OpenCode session lineage")?;
-            let returned_id = session
-                .get("id")
-                .and_then(Value::as_str)
-                .ok_or_else(|| invalid_response("verify the OpenCode session lineage"))?;
-            validate_provider_id(returned_id, "session")?;
-            if returned_id != current_id {
-                return Err(invalid_response("verify the OpenCode session lineage"));
-            }
-            lineage.push(current_id);
-
-            match session.get("parentID") {
-                Some(Value::String(parent_id)) => {
-                    validate_provider_id(parent_id, "session")?;
-                    current_id = parent_id.clone();
-                }
-                None | Some(Value::Null) => return Ok(None),
-                Some(_) => {
-                    return Err(invalid_response("verify the OpenCode session lineage"));
-                }
-            }
-        }
+    let mut lineage = Vec::new();
+    let mut visited = HashSet::new();
+    let mut current_id = session_id.to_string();
+    for _ in 0..MAX_SESSION_LINEAGE_DEPTH {
         if tracked_sessions.contains(&current_id) {
             return Ok(Some(lineage));
         }
-        Err(server_error(
-            "OPENCODE_SERVER_RESPONSE",
-            "Could not verify the OpenCode session lineage: the lineage was too deep",
-        ))
-    })
-    .await
-    .map_err(|_| {
-        server_error(
-            "OPENCODE_SERVER_TASK",
-            "OpenCode session lineage verification stopped",
+        if !visited.insert(current_id.clone()) {
+            return Err(invalid_response("verify the OpenCode session lineage"));
+        }
+
+        let response = send(
+            http.get(format!("{endpoint}/session/{current_id}"))
+                .query(&[("directory", directory)]),
+            "verify the OpenCode session lineage",
         )
-    })?
+        .await?;
+        let session = response_json(response, "verify the OpenCode session lineage").await?;
+        let returned_id = session
+            .get("id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| invalid_response("verify the OpenCode session lineage"))?;
+        validate_provider_id(returned_id, "session")?;
+        if returned_id != current_id {
+            return Err(invalid_response("verify the OpenCode session lineage"));
+        }
+        lineage.push(current_id);
+
+        match session.get("parentID") {
+            Some(Value::String(parent_id)) => {
+                validate_provider_id(parent_id, "session")?;
+                current_id = parent_id.clone();
+            }
+            None | Some(Value::Null) => return Ok(None),
+            Some(_) => {
+                return Err(invalid_response("verify the OpenCode session lineage"));
+            }
+        }
+    }
+    if tracked_sessions.contains(&current_id) {
+        return Ok(Some(lineage));
+    }
+    Err(server_error(
+        "OPENCODE_SERVER_RESPONSE",
+        "Could not verify the OpenCode session lineage: the lineage was too deep",
+    ))
 }
 
-async fn abort_session(http: &ureq::Agent, endpoint: &str, directory: &str, session_id: &str) {
-    let http = http.clone();
-    let url = format!("{endpoint}/session/{session_id}/abort");
-    let directory = directory.to_string();
-    let _ = tokio::task::spawn_blocking(move || {
-        let _ = http.post(&url).query("directory", &directory).call();
-    })
-    .await;
+async fn abort_session(http: &reqwest::Client, endpoint: &str, directory: &str, session_id: &str) {
+    let _ = http
+        .post(format!("{endpoint}/session/{session_id}/abort"))
+        .query(&[("directory", directory)])
+        .send()
+        .await;
 }
 
 fn subscribe(
@@ -914,112 +877,143 @@ fn subscribe(
     cancel: Arc<AtomicBool>,
     sender: mpsc::UnboundedSender<SseMessage>,
 ) -> JoinHandle<()> {
-    tokio::task::spawn_blocking(move || {
-        let stream_http = ureq::AgentBuilder::new()
-            .timeout_connect(Duration::from_secs(5))
-            .timeout_read(SSE_READ_TIMEOUT)
-            .timeout_write(HTTP_TIMEOUT)
-            .build();
+    tokio::spawn(async move {
+        crate::util::tls::install_crypto_provider();
+        let stream_http = match reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .build()
+        {
+            Ok(client) => client,
+            Err(_) => {
+                let _ = sender.send(SseMessage::Failed(unavailable(
+                    "subscribe to OpenCode events",
+                )));
+                return;
+            }
+        };
         // The authenticated URL's userinfo becomes a Basic authorization
         // header. Errors are sanitized before leaving this module.
         // The health check can pass just before the listener drops a first
         // connection, so a transport failure gets a few quick retries. The
         // caller waits 5s for `Connected`, so stay inside that.
         let mut attempts_left = SSE_CONNECT_RETRIES;
-        let response = loop {
+        let mut response = loop {
             match stream_http
-                .get(&format!("{endpoint}/event"))
-                .query("directory", &directory)
-                .set("Accept", "text/event-stream")
-                .call()
+                .get(format!("{endpoint}/event"))
+                .query(&[("directory", &directory)])
+                .header("Accept", "text/event-stream")
+                .send()
+                .await
             {
-                Ok(response) => break response,
-                Err(ureq::Error::Transport(_))
-                    if attempts_left > 0 && !cancel.load(Ordering::SeqCst) =>
-                {
-                    attempts_left -= 1;
-                    std::thread::sleep(Duration::from_millis(200));
-                }
-                Err(error) => {
-                    let _ = sender.send(SseMessage::Failed(request_error(
+                Ok(response) if is_error_status(&response) => {
+                    let _ = sender.send(SseMessage::Failed(status_error(
                         "subscribe to OpenCode events",
-                        &error,
+                        response.status().as_u16(),
+                    )));
+                    return;
+                }
+                Ok(response) => break response,
+                Err(_) if attempts_left > 0 && !cancel.load(Ordering::SeqCst) => {
+                    attempts_left -= 1;
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                }
+                Err(_) => {
+                    let _ = sender.send(SseMessage::Failed(unavailable(
+                        "subscribe to OpenCode events",
                     )));
                     return;
                 }
             }
         };
         let _ = sender.send(SseMessage::Connected);
-        let mut reader = BufReader::new(response.into_reader());
+        let mut buffer = Vec::new();
         let mut data = Vec::new();
-        let mut line = Vec::new();
         loop {
             if cancel.load(Ordering::SeqCst) {
                 return;
             }
-            match reader.read_until(b'\n', &mut line) {
-                Ok(0) => {
-                    let _ = sender.send(SseMessage::Closed);
-                    return;
-                }
-                Ok(_) => {
-                    if line.len() > SSE_LINE_LIMIT {
-                        let _ = sender.send(SseMessage::Failed(server_error(
-                            "OPENCODE_SSE_PARSE",
-                            "OpenCode sent an event that exceeded the size limit",
-                        )));
-                        return;
-                    }
-                    let Ok(text) = std::str::from_utf8(&line) else {
-                        let _ = sender.send(SseMessage::Failed(server_error(
-                            "OPENCODE_SSE_PARSE",
-                            "OpenCode sent non-UTF-8 event data",
-                        )));
-                        return;
-                    };
-                    let text = text.trim_end_matches(['\r', '\n']);
-                    if text.is_empty() {
-                        if !data.is_empty() {
-                            let payload = data.join("\n");
-                            data.clear();
-                            let event = match serde_json::from_str(&payload) {
-                                Ok(event) => event,
-                                Err(_) => {
-                                    let _ = sender.send(SseMessage::Failed(server_error(
-                                        "OPENCODE_SSE_PARSE",
-                                        "OpenCode sent an invalid JSON event",
-                                    )));
-                                    return;
-                                }
-                            };
-                            let _ = sender.send(SseMessage::Event(event));
-                        }
-                    } else if let Some(value) = text.strip_prefix("data:") {
-                        data.push(value.strip_prefix(' ').unwrap_or(value).to_string());
-                    }
-                    line.clear();
-                }
-                Err(error)
-                    if matches!(error.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) =>
-                {
-                    if line.len() > SSE_LINE_LIMIT {
-                        let _ = sender.send(SseMessage::Failed(server_error(
-                            "OPENCODE_SSE_PARSE",
-                            "OpenCode sent an event that exceeded the size limit",
-                        )));
-                        return;
-                    }
-                }
+            // The timeout only wakes the loop to look at `cancel`; a chunk that
+            // was not ready yet is read on the next pass.
+            let chunk = match tokio::time::timeout(SSE_READ_TIMEOUT, response.chunk()).await {
                 Err(_) => {
+                    if buffer.len() > SSE_LINE_LIMIT {
+                        let _ = sender.send(SseMessage::Failed(sse_too_large()));
+                        return;
+                    }
+                    continue;
+                }
+                Ok(Err(_)) => {
                     let _ = sender.send(SseMessage::Failed(server_error(
                         "OPENCODE_SSE_READ",
                         "Could not read OpenCode's event stream",
                     )));
                     return;
                 }
+                Ok(Ok(chunk)) => chunk,
+            };
+            let at_end = chunk.is_none();
+            if let Some(chunk) = chunk {
+                buffer.extend_from_slice(&chunk);
+            }
+            while let Some(newline) = buffer.iter().position(|&byte| byte == b'\n') {
+                let line: Vec<u8> = buffer.drain(..=newline).collect();
+                if let Err(error) = read_sse_line(&line, &mut data, &sender) {
+                    let _ = sender.send(SseMessage::Failed(error));
+                    return;
+                }
+            }
+            if buffer.len() > SSE_LINE_LIMIT {
+                let _ = sender.send(SseMessage::Failed(sse_too_large()));
+                return;
+            }
+            if at_end {
+                if !buffer.is_empty() {
+                    let line = std::mem::take(&mut buffer);
+                    if let Err(error) = read_sse_line(&line, &mut data, &sender) {
+                        let _ = sender.send(SseMessage::Failed(error));
+                        return;
+                    }
+                }
+                let _ = sender.send(SseMessage::Closed);
+                return;
             }
         }
     })
+}
+
+/// One line of the event stream: a `data:` field adds to the pending event,
+/// and a blank line sends it.
+fn read_sse_line(
+    line: &[u8],
+    data: &mut Vec<String>,
+    sender: &mpsc::UnboundedSender<SseMessage>,
+) -> ArgmaxResult<()> {
+    if line.len() > SSE_LINE_LIMIT {
+        return Err(sse_too_large());
+    }
+    let text = std::str::from_utf8(line)
+        .map_err(|_| server_error("OPENCODE_SSE_PARSE", "OpenCode sent non-UTF-8 event data"))?;
+    let text = text.trim_end_matches(['\r', '\n']);
+    if text.is_empty() {
+        if !data.is_empty() {
+            let payload = data.join("\n");
+            data.clear();
+            let event = serde_json::from_str(&payload).map_err(|_| {
+                server_error("OPENCODE_SSE_PARSE", "OpenCode sent an invalid JSON event")
+            })?;
+            let _ = sender.send(SseMessage::Event(event));
+        }
+    } else if let Some(value) = text.strip_prefix("data:") {
+        data.push(value.strip_prefix(' ').unwrap_or(value).to_string());
+    }
+    Ok(())
+}
+
+fn sse_too_large() -> ArgmaxError {
+    server_error(
+        "OPENCODE_SSE_PARSE",
+        "OpenCode sent an event that exceeded the size limit",
+    )
 }
 
 enum SseMessage {
@@ -1414,14 +1408,55 @@ fn validate_provider_id(id: &str, kind: &str) -> ArgmaxResult<()> {
     }
 }
 
-fn request_error(action: &str, error: &ureq::Error) -> ArgmaxError {
-    let message = match error {
-        ureq::Error::Status(status, _) => {
-            format!("Could not {action}: OpenCode returned HTTP {status}")
-        }
-        ureq::Error::Transport(_) => format!("Could not {action}: OpenCode was unavailable"),
-    };
-    server_error("OPENCODE_SERVER_HTTP", message)
+/// Loopback client for the OpenCode server. `read_timeout` bounds each read,
+/// not the whole request, so a long reply that keeps sending still lands.
+fn opencode_client(read_timeout: Duration) -> ArgmaxResult<reqwest::Client> {
+    crate::util::tls::install_crypto_provider();
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_millis(250))
+        .read_timeout(read_timeout)
+        .build()
+        .map_err(|_| unavailable("start the OpenCode client"))
+}
+
+fn post_json(
+    http: &reqwest::Client,
+    url: &str,
+    directory: &str,
+    body: impl Into<reqwest::Body>,
+) -> reqwest::RequestBuilder {
+    http.post(url)
+        .query(&[("directory", directory)])
+        .header("Content-Type", "application/json")
+        .body(body)
+}
+
+/// Sends the request and turns a transport failure or an HTTP error status
+/// into the sanitized error this module reports.
+async fn send(request: reqwest::RequestBuilder, action: &str) -> ArgmaxResult<reqwest::Response> {
+    let response = request.send().await.map_err(|_| unavailable(action))?;
+    if is_error_status(&response) {
+        return Err(status_error(action, response.status().as_u16()));
+    }
+    Ok(response)
+}
+
+fn is_error_status(response: &reqwest::Response) -> bool {
+    response.status().is_client_error() || response.status().is_server_error()
+}
+
+fn status_error(action: &str, status: u16) -> ArgmaxError {
+    server_error(
+        "OPENCODE_SERVER_HTTP",
+        format!("Could not {action}: OpenCode returned HTTP {status}"),
+    )
+}
+
+fn unavailable(action: &str) -> ArgmaxError {
+    server_error(
+        "OPENCODE_SERVER_HTTP",
+        format!("Could not {action}: OpenCode was unavailable"),
+    )
 }
 
 fn invalid_response(action: &str) -> ArgmaxError {
@@ -1431,11 +1466,10 @@ fn invalid_response(action: &str) -> ArgmaxError {
     )
 }
 
-fn response_json(response: ureq::Response, action: &str) -> ArgmaxResult<Value> {
-    let mut body = String::new();
-    response
-        .into_reader()
-        .read_to_string(&mut body)
+async fn response_json(response: reqwest::Response, action: &str) -> ArgmaxResult<Value> {
+    let body = response
+        .text()
+        .await
         .map_err(|_| invalid_response(action))?;
     serde_json::from_str(&body).map_err(|_| invalid_response(action))
 }
@@ -1632,7 +1666,7 @@ struct OpencodeServerHandle {
     done: watch::Receiver<bool>,
     disposed: Arc<AtomicBool>,
     steering: Arc<Steering>,
-    http: ureq::Agent,
+    http: reqwest::Client,
     endpoint: String,
     directory: String,
     native_session_id: String,
@@ -1658,39 +1692,30 @@ impl ProviderRuntimeHandle for OpencodeServerHandle {
             self.steering.begin_steer()?;
             let mut body = self.steer_body.clone();
             body["parts"] = json!([{ "type": "text", "text": prompt }]);
-            let http = self.http.clone();
             let url = format!(
                 "{}/session/{}/prompt_async",
                 self.endpoint, self.native_session_id
             );
-            let directory = self.directory.clone();
-            let result = tokio::task::spawn_blocking(move || {
-                match http
-                    .post(&url)
-                    .query("directory", &directory)
-                    .set("Content-Type", "application/json")
-                    .send_string(&body.to_string())
-                {
-                    Ok(_) => Ok(()),
-                    Err(ureq::Error::Status(status, _)) => Err(ArgmaxError::service(
-                        "STEER_REJECTED",
-                        format!("OpenCode refused the guidance with HTTP {status}."),
-                    )),
-                    Err(ureq::Error::Transport(transport))
-                        if transport.kind() == ureq::ErrorKind::ConnectionFailed =>
-                    {
-                        Err(ArgmaxError::service(
-                            "STEER_NOT_RUNNING",
-                            "The OpenCode turn has finished. This follow-up is still queued.",
-                        ))
-                    }
-                    // A timeout may have reached the server; resending could
-                    // deliver the same guidance twice.
-                    Err(ureq::Error::Transport(_)) => Err(steer_unconfirmed()),
-                }
-            })
-            .await
-            .unwrap_or_else(|_| Err(steer_unconfirmed()));
+            let result = match post_json(&self.http, &url, &self.directory, body.to_string())
+                .send()
+                .await
+            {
+                Ok(response) if is_error_status(&response) => Err(ArgmaxError::service(
+                    "STEER_REJECTED",
+                    format!(
+                        "OpenCode refused the guidance with HTTP {}.",
+                        response.status().as_u16()
+                    ),
+                )),
+                Ok(_) => Ok(()),
+                Err(error) if error.is_connect() => Err(ArgmaxError::service(
+                    "STEER_NOT_RUNNING",
+                    "The OpenCode turn has finished. This follow-up is still queued.",
+                )),
+                // A timeout may have reached the server; resending could
+                // deliver the same guidance twice.
+                Err(_) => Err(steer_unconfirmed()),
+            };
             self.steering.finish_steer(result.is_ok());
             result
         })
@@ -2303,7 +2328,7 @@ mod tests {
             done,
             disposed: Arc::new(AtomicBool::new(false)),
             steering: Arc::new(Steering::default()),
-            http: ureq::AgentBuilder::new().build(),
+            http: opencode_client(HTTP_TIMEOUT).unwrap(),
             endpoint,
             directory: "/tmp/project".to_string(),
             native_session_id: "ses_root".to_string(),
@@ -2374,9 +2399,7 @@ mod tests {
                 json!({ "id": "ses_cycle_b", "parentID": "ses_cycle_a" }),
             ),
         ]);
-        let http = ureq::AgentBuilder::new()
-            .timeout_read(Duration::from_secs(1))
-            .build();
+        let http = opencode_client(Duration::from_secs(1)).unwrap();
         let mut sessions = HashSet::from(["ses_root".to_string()]);
         let resumed_permission = json!({
             "type": "permission.asked",
@@ -2431,9 +2454,7 @@ mod tests {
     #[tokio::test]
     async fn authenticated_http_and_sse_use_the_current_permission_endpoint() {
         let (endpoint, state) = fake_server().await;
-        let http = ureq::AgentBuilder::new()
-            .timeout_read(Duration::from_secs(1))
-            .build();
+        let http = opencode_client(Duration::from_secs(1)).unwrap();
         let (sender, mut receiver) = mpsc::unbounded_channel();
         let cancel = Arc::new(AtomicBool::new(false));
         let task = subscribe(

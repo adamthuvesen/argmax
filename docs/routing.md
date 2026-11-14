@@ -15,7 +15,7 @@ The measurements behind the grid are in [plan/auto-model-routing.md](plan/auto-m
 | Key storage | [routing/api_key.rs](../src-tauri/src/routing/api_key.rs) |
 | Router cost | [routing/cost.rs](../src-tauri/src/routing/cost.rs), [usage.md](usage.md#router-cost) |
 | Decision log | [turn_routes.rs](../src-tauri/crates/argmax-store/src/turn_routes.rs) |
-| Follow-up wiring | `route_follow_up` and `apply_auto_follow_up` in [session_service.rs](../src-tauri/src/providers/session_service.rs) |
+| Follow-up wiring | `route_follow_up` in [session_service/input.rs](../src-tauri/src/providers/session_service/input.rs) and `apply_auto_follow_up` in [session_service.rs](../src-tauri/src/providers/session_service.rs) |
 
 When a grid cell changes, update the tier blurbs in `AUTO_TIER_DESCRIPTIONS` ([models.ts](../src/renderer/lib/models.ts)). Nothing checks them against the grid.
 

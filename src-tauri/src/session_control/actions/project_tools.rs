@@ -134,7 +134,7 @@ pub(super) fn list_projects_action(
     let projects = list_projects(&connection).map_err(argmax_protocol_error)?;
     let entries = projects
         .into_iter()
-        .filter(|project| project.id != crate::workspaces::SCRATCH_PROJECT_ID)
+        .filter(|project| project.id != crate::workspaces::orchestration::SCRATCH_PROJECT_ID)
         .map(|project| ProjectEntry {
             project_id: project.id,
             name: project.name,
@@ -164,7 +164,7 @@ pub(super) fn schedule_followup(
     }
     let run_at = followup_time(&action, Utc::now())?;
     let target = resolve_session_workspace(&database, &parent.session_id, None)?;
-    if target.project.id == crate::workspaces::SCRATCH_PROJECT_ID {
+    if target.project.id == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
         return Err(protocol_error(
             "PROJECT_NOT_ALLOWED",
             "A side chat has no repository to wake up in.",

@@ -33,7 +33,7 @@ use specta::Type;
 use uuid::Uuid;
 
 use crate::application::session_launch::{task_label, AlongsideCheckout, LaunchSpec};
-use crate::arcs::member_preamble;
+use crate::arcs::preamble::member_preamble;
 use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::session_service::ProviderSessionService;
 use crate::session_control::launch_with_spec;

@@ -16,7 +16,7 @@ use super::{claude, DiscoveredSession, SyncConfig};
 use crate::providers::normalizer::{
     normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent, ProviderOutputStream,
 };
-use crate::workspaces::WorkspaceService;
+use crate::workspaces::orchestration::WorkspaceService;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::validation::ProviderId;
 use argmax_store::events::{

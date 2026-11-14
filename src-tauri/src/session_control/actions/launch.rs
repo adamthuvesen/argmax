@@ -21,11 +21,12 @@ use super::{
     resolve_or_register_project,
 };
 use crate::application::session_launch::{task_label, LaunchSpec};
+use crate::arcs::preamble::member_preamble;
+use crate::workspaces::orchestration::WorkspaceService;
 use crate::{
     application::session_launch::{child_permission_mode, LaunchOutcome, LaunchReceiptTicket},
-    arcs::member_preamble,
     providers::session_service::ProviderSessionService,
-    workspaces::{orchestration::resolve_registered_checkout, WorkspaceService},
+    workspaces::orchestration::resolve_registered_checkout,
 };
 use argmax_store::sync::LockOrRecover;
 use argmax_store::{
@@ -824,7 +825,7 @@ fn schedule_check_in(
     label: &str,
     minutes: u32,
 ) -> Result<(), SessionControlError> {
-    if parent_project_id == crate::workspaces::SCRATCH_PROJECT_ID {
+    if parent_project_id == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
         tracing::info!(
             session_id = launched_session_id,
             "a side chat has no repository to hold a check-in; skipping the wake"

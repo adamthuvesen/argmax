@@ -10,7 +10,8 @@ use super::super::{
     registry::ParentLaunchSettings,
 };
 use crate::application::session_launch::task_label;
-use crate::{workspaces::inputs::WorkspacesSetLabelInput, workspaces::WorkspaceService};
+use crate::workspaces::inputs::WorkspacesSetLabelInput;
+use crate::workspaces::orchestration::WorkspaceService;
 use argmax_contracts::validation::{TaskLabel, WorkspaceId};
 use argmax_store::{
     database::Database, sessions::find_session_by_id, workspaces::find_workspace_by_id,

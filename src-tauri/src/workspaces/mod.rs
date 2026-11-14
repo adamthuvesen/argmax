@@ -14,11 +14,6 @@ pub mod lifecycle;
 pub mod orchestration;
 pub mod watcher;
 
-pub use orchestration::{
-    ProjectCheckout, WorkspaceArchiveResult, WorkspaceService, WorkspaceServiceError,
-    SCRATCH_PROJECT_ID,
-};
-
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum WorkspaceTargetKind {

@@ -377,7 +377,7 @@ pub fn run() {
     let timer = Arc::new(StartupTimer::new());
     timer.mark("boot");
 
-    let specta_builder = ipc::specta_builder();
+    let specta_builder = ipc::catalogue::specta_builder();
     timer.mark("specta.builder");
 
     // Codegen: emit `src/shared/bindings.d.ts` on every debug startup so
@@ -1123,7 +1123,7 @@ pub fn run() {
                             let publish_delta = move |delta| {
                                 workspace_delta_tx.send(delta);
                             };
-                            let workspaces = workspaces::WorkspaceService::with_services(
+                            let workspaces = workspaces::orchestration::WorkspaceService::with_services(
                                 Arc::clone(&database),
                                 publish_delta,
                                 lifecycle,
@@ -1554,7 +1554,7 @@ async fn handle_gh_arc_event(
 /// deleted, and uncommitted work outliving a merged PR is exactly the case
 /// worth keeping.
 async fn archive_merged_workspace(
-    workspaces: Arc<workspaces::WorkspaceService>,
+    workspaces: Arc<workspaces::orchestration::WorkspaceService>,
     database: Arc<argmax_store::database::Database>,
     context: gh::poller::MergedPrContext,
 ) {
@@ -1719,14 +1719,14 @@ impl Default for BindingsExportTargets {
 }
 
 pub fn render_bindings() -> Result<String, String> {
-    let generated = ipc::specta_builder()
+    let generated = ipc::catalogue::specta_builder()
         .export_str(specta_typescript())
         .map_err(|error| error.to_string())?;
     Ok(normalize_generated_bindings(&generated))
 }
 
 pub fn render_ipc_channels() -> String {
-    ipc::REGISTERED_CHANNELS.join("\n") + "\n"
+    ipc::catalogue::REGISTERED_CHANNELS.join("\n") + "\n"
 }
 
 pub fn render_ipc_schemas() -> String {
@@ -1736,7 +1736,7 @@ pub fn render_ipc_schemas() -> String {
          import type { commands } from './bindings.js';\n\n\
          export const IPC_CHANNELS = [\n",
     );
-    for channel in ipc::REGISTERED_CHANNELS {
+    for channel in ipc::catalogue::REGISTERED_CHANNELS {
         schemas.push_str("  \"");
         schemas.push_str(channel);
         schemas.push_str("\",\n");

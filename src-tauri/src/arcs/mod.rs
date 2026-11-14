@@ -13,7 +13,7 @@
 
 pub mod preamble;
 
-pub use preamble::{coordinator_preamble, member_preamble, promoted_coordinator_preamble};
+use preamble::{coordinator_preamble, promoted_coordinator_preamble};
 
 use std::sync::Arc as StdArc;
 

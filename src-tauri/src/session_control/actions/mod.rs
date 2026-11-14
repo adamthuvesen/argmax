@@ -50,7 +50,8 @@ use super::{
     registry::{ParentLaunchSettings, SessionLaunchRegistry},
     PROTOCOL_VERSION,
 };
-use crate::{providers::session_service::ProviderSessionService, workspaces::WorkspaceService};
+use crate::providers::session_service::ProviderSessionService;
+use crate::workspaces::orchestration::WorkspaceService;
 use argmax_contracts::validation::{TerminalCols, TerminalRows};
 use argmax_process::git_exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
 use argmax_store::{
@@ -237,7 +238,7 @@ pub(super) fn resolve_project(
     // would run `create_current` against the app-owned side-chats root.
     let projects: Vec<ProjectSummary> = projects
         .iter()
-        .filter(|project| project.id != crate::workspaces::SCRATCH_PROJECT_ID)
+        .filter(|project| project.id != crate::workspaces::orchestration::SCRATCH_PROJECT_ID)
         .cloned()
         .collect();
     let Some(selector) = selector else {

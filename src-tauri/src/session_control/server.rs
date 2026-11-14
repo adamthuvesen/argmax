@@ -19,7 +19,8 @@ use super::{
     ACCEPT_POLL_INTERVAL, ACCEPT_RETRY_INTERVAL, INBOX_BROADCAST_CAPACITY, MAX_REQUEST_BYTES,
     SERVER_IO_TIMEOUT,
 };
-use crate::{providers::session_service::ProviderSessionService, workspaces::WorkspaceService};
+use crate::providers::session_service::ProviderSessionService;
+use crate::workspaces::orchestration::WorkspaceService;
 use argmax_store::database::Database;
 
 #[derive(Debug, thiserror::Error)]

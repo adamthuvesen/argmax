@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use crate::workspaces::orchestration::WorkspaceService;
 use crate::{
     providers::{inputs::ProvidersLaunchInput, session_service::ProviderSessionService},
     workspaces::{
@@ -10,7 +11,6 @@ use crate::{
             WorkspacesArchiveInput, WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput,
         },
         orchestration::WorkspacesCreateAlongsideInput,
-        WorkspaceService,
     },
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};

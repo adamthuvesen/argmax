@@ -323,7 +323,7 @@ pub(crate) async fn arc_draft_from_session_impl(
     }
     let draft = crate::providers::one_shot::draft_arc(
         provider,
-        crate::providers::one_shot::helper_model(provider),
+        crate::providers::model_catalogue::helper_model(provider),
         &transcript,
     )
     .await;

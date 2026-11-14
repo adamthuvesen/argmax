@@ -11,6 +11,7 @@ use crate::support::git_repo::seed_git_repo;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::state::SessionState;
 use argmax_contracts::validation::{ProviderId, ReasoningEffort};
+use argmax_lib::workspaces::orchestration::WorkspaceService;
 use argmax_lib::{
     multitask::{
         dispatch, dispatch_queued, MultitaskRequest, FINISHED_EVENT, LAUNCHED_EVENT, MULTITASK_KIND,
@@ -25,7 +26,6 @@ use argmax_lib::{
         session_service::ProviderSessionService,
         ProviderLaunchInput,
     },
-    workspaces::WorkspaceService,
 };
 use argmax_store::pending_messages::PendingMessage;
 use argmax_store::{

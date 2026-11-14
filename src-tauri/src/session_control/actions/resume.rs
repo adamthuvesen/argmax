@@ -4,7 +4,8 @@ use tokio::sync::oneshot;
 
 use super::super::registry::{AfterTurn, SessionLaunchRegistry};
 use super::move_archive::{record_after_turn_note, run_after_turn};
-use crate::{providers::session_service::ProviderSessionService, workspaces::WorkspaceService};
+use crate::providers::session_service::ProviderSessionService;
+use crate::workspaces::orchestration::WorkspaceService;
 use argmax_contracts::error::ArgmaxResult;
 use argmax_store::{
     after_turn::{

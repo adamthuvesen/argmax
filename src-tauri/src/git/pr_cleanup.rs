@@ -83,7 +83,7 @@ pub async fn cleanup_merged_pr(
         let connection = database.read_connection();
         let session = find_session_by_id(&connection, session_id)?;
         let workspace = find_workspace_by_id(&connection, &session.workspace_id)?;
-        if workspace.project_id == crate::workspaces::SCRATCH_PROJECT_ID {
+        if workspace.project_id == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
             return Err(ArgmaxError::service(
                 "PROJECT_NOT_ALLOWED",
                 "A side chat has no repository, so it has no pull request to clean up.",

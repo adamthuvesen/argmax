@@ -25,7 +25,7 @@ use crate::session_control::SessionLaunchServer;
 use crate::skills::registry::SkillRegistry;
 use crate::terminal::service::TerminalService;
 use crate::util::startup_timer::StartupTimer;
-use crate::workspaces::WorkspaceService;
+use crate::workspaces::orchestration::WorkspaceService;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::validation::ThemeMode;
 use argmax_store::Database;

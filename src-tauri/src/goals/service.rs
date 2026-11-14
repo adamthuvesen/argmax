@@ -20,6 +20,7 @@ use uuid::Uuid;
 use crate::{
     providers::inputs::ProvidersSendInput,
     providers::{
+        model_catalogue::helper_model,
         one_shot,
         session_service::{self, GoalTurnIdentity, ProviderSessionService, SessionStateChange},
     },
@@ -494,9 +495,12 @@ impl GoalService {
         let session =
             find_session_by_id(&self.database.read_connection(), &goal.session_id).ok()?;
         let provider = parse_provider(&session.provider).ok()?;
+        // `PROVIDER_TITLE_MODEL` in `src/shared/providerModels.ts` picks the
+        // helper model. The renderer passes it in for its own helper calls;
+        // the evaluator has no renderer in the loop, so it reads the generated copy.
         one_shot::evaluate_goal(
             provider,
-            one_shot::helper_model(provider),
+            helper_model(provider),
             &goal.condition,
             transcript_tail,
         )

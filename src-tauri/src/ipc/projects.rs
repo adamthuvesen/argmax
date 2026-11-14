@@ -380,7 +380,7 @@ pub(crate) async fn projects_remove_impl(
 ) -> ArgmaxResult<()> {
     // `workspaces.project_id` cascades on project delete: removing the hidden
     // scratch project would silently take every side chat with it.
-    if input.project_id.as_str() == crate::workspaces::SCRATCH_PROJECT_ID {
+    if input.project_id.as_str() == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
         return Err(ArgmaxError::service(
             "PROJECT_NOT_REMOVABLE",
             "The side-chats project is app-managed and cannot be removed.",
@@ -610,14 +610,14 @@ pub(crate) async fn projects_refresh_branch_impl(
 pub async fn projects_list_checkouts(
     state: State<'_, AppState>,
     input: ProjectsListCheckoutsInput,
-) -> ArgmaxResult<Vec<crate::workspaces::ProjectCheckout>> {
+) -> ArgmaxResult<Vec<crate::workspaces::orchestration::ProjectCheckout>> {
     projects_list_checkouts_impl(&state, input).await
 }
 
 pub(crate) async fn projects_list_checkouts_impl(
     state: &AppState,
     input: ProjectsListCheckoutsInput,
-) -> ArgmaxResult<Vec<crate::workspaces::ProjectCheckout>> {
+) -> ArgmaxResult<Vec<crate::workspaces::orchestration::ProjectCheckout>> {
     super::workspaces::live_workspaces(state)?
         .list_checkouts_in_folder(
             input.project_id.as_str(),

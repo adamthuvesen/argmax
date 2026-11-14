@@ -724,7 +724,7 @@ mod tests {
     use crate::providers::continuity_tests::{event, seed_session};
     use crate::providers::session_service::SendInputResult;
     use crate::workspaces::orchestration::fork::ForkRequest;
-    use crate::workspaces::WorkspaceService;
+    use crate::workspaces::orchestration::WorkspaceService;
     use argmax_store::{
         continuity::{latest_merge, MergeOutcome},
         sessions::update_session_provider_conversation_id,

@@ -17,13 +17,14 @@ use super::super::{
     SOURCE_READ_DEFAULT_CHARS, SOURCE_READ_MAX_CHARS,
 };
 use super::workspace_tools::resolve_session_workspace;
+use crate::workspaces::orchestration::WorkspaceService;
 use crate::{
     files::{
         linked_roots,
         workspace_files::{SkippedReason, WorkspaceFilePreview, WorkspaceFilesService},
     },
     mcp::browser_bridge::{self, BrowserRequest},
-    workspaces::{WorkspaceService, WorkspaceTargetKind},
+    workspaces::WorkspaceTargetKind,
 };
 use argmax_store::{
     database::Database,

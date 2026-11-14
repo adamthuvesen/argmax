@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use argmax_lib::providers::flush_queue::DashboardDelta;
 use argmax_lib::sync::{run_sync, SyncConfig, WINDOW_24H, WINDOW_7D};
-use argmax_lib::workspaces::WorkspaceService;
+use argmax_lib::workspaces::orchestration::WorkspaceService;
 use argmax_store::{
     database::Database,
     events::list_session_events_since,

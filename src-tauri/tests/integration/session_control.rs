@@ -11,6 +11,7 @@ use crate::support::git_repo::{run_git, seed_git_repo};
 use argmax_contracts::error::ArgmaxResult;
 use argmax_contracts::sessions::state::SessionState;
 use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
+use argmax_lib::workspaces::orchestration::WorkspaceService;
 use argmax_lib::{
     providers::{
         flush_queue::DashboardDelta,
@@ -22,7 +23,6 @@ use argmax_lib::{
         SessionLaunchRegistry, SessionLaunchServer, SESSION_LAUNCH_SOCKET_ENV,
         SESSION_LAUNCH_TOKEN_ENV,
     },
-    workspaces::WorkspaceService,
 };
 use argmax_store::{
     after_turn::{insert_after_turn, list_after_turn, AfterTurnAction, ArchiveRequest},

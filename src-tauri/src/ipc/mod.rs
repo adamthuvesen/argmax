@@ -58,7 +58,6 @@ pub fn attest_person_for_tests() -> PersonAttestation {
 }
 
 pub mod catalogue;
-pub use catalogue::{specta_builder, REGISTERED_CHANNELS};
 
 use crate::state::{live_database, read_off_main};
 

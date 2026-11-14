@@ -8,7 +8,7 @@ use crate::providers::session_service::ProviderSessionService;
 use crate::routines::{schedule, scheduler};
 use crate::state::live_database;
 use crate::state::AppState;
-use crate::workspaces::{WorkspaceService, SCRATCH_PROJECT_ID};
+use crate::workspaces::orchestration::{WorkspaceService, SCRATCH_PROJECT_ID};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use argmax_store::routines::{
     self, find_routine_by_id, list_routines, set_routine_enabled, upsert_routine, Routine,

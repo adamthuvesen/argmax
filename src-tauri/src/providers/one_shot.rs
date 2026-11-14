@@ -136,14 +136,6 @@ pub async fn suggest_follow_up(
     sanitize_suggestion(&answer)
 }
 
-/// The cheap, fast model each provider's helper calls ride.
-///
-/// `PROVIDER_TITLE_MODEL` in `src/shared/providerModels.ts` is the source of
-/// truth: the renderer reads it and passes the id into `workspaces:autotitle`
-/// and `session:suggest-follow-up`. The Goal evaluator runs entirely in Rust
-/// with no renderer in the loop, so it reads the generated copy.
-pub use super::model_catalogue::helper_model;
-
 /// Summarizes only the supplied repository sample. The helper has no file or shell tools.
 pub async fn summarize_repository(
     provider: ProviderId,

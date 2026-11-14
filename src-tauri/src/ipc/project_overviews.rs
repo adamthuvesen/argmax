@@ -247,7 +247,7 @@ async fn generate(
         let provider = provider.id();
         match crate::providers::one_shot::generate_project_overview(
             provider,
-            crate::providers::one_shot::helper_model(provider),
+            crate::providers::model_catalogue::helper_model(provider),
             &context,
             &sources,
         )

@@ -23,8 +23,8 @@ use argmax_lib::providers::runtime::{
 use argmax_lib::providers::session_service::ProviderSessionService;
 use argmax_lib::providers::ProviderLaunchInput;
 use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
+use argmax_lib::workspaces::orchestration::WorkspaceService;
 use argmax_lib::workspaces::orchestration::{MoveDestination, WorkspacesCreateAlongsideInput};
-use argmax_lib::workspaces::WorkspaceService;
 use argmax_store::workspaces::WorkspaceSummary;
 use argmax_store::{
     checks::list_checks,
@@ -699,7 +699,7 @@ async fn create_scratch_initializes_repoless_workspace() {
     assert_eq!(summary.base_ref, "main");
     assert_eq!(
         summary.project_id,
-        argmax_lib::workspaces::SCRATCH_PROJECT_ID
+        argmax_lib::workspaces::orchestration::SCRATCH_PROJECT_ID
     );
     let path = std::path::PathBuf::from(&summary.path);
     assert!(path.starts_with(scratch_root.path()));

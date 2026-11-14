@@ -14,11 +14,10 @@ use super::super::{
     MAX_CONTINUED_MOVES,
 };
 use super::resolve_or_register_project;
+use crate::workspaces::orchestration::WorkspaceService;
 use crate::{
-    providers::inputs::ProvidersSendInput,
-    providers::session_service::ProviderSessionService,
-    workspaces::inputs::WorkspacesArchiveInput,
-    workspaces::{orchestration::MoveDestination, WorkspaceService},
+    providers::inputs::ProvidersSendInput, providers::session_service::ProviderSessionService,
+    workspaces::inputs::WorkspacesArchiveInput, workspaces::orchestration::MoveDestination,
 };
 use argmax_contracts::error::ArgmaxError;
 use argmax_contracts::validation::{Prompt, SessionId, WorkspaceId};

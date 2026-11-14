@@ -52,7 +52,7 @@ pub(crate) fn encode<T: Serialize>(value: T) -> ArgmaxResult<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ipc::REGISTERED_CHANNELS;
+    use crate::ipc::catalogue::REGISTERED_CHANNELS;
     use argmax_store::Database;
     use std::sync::Arc;
 

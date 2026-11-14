@@ -170,9 +170,12 @@ pub async fn linked_repos_summarize(
     // Retry repeat the same broken provider while another could answer.
     let mut summary = None;
     for provider in providers.into_iter().map(|provider| provider.id()) {
-        summary =
-            one_shot::summarize_repository(provider, one_shot::helper_model(provider), &context)
-                .await;
+        summary = one_shot::summarize_repository(
+            provider,
+            crate::providers::model_catalogue::helper_model(provider),
+            &context,
+        )
+        .await;
         if summary.is_some() {
             break;
         }

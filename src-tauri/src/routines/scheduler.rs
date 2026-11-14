@@ -18,7 +18,7 @@ use std::time::Duration;
 use crate::application::session_launch::{self, LaunchSpec};
 use crate::providers::inputs::ProvidersSendInput;
 use crate::providers::session_service::{self, ProviderSessionService};
-use crate::workspaces::WorkspaceService;
+use crate::workspaces::orchestration::WorkspaceService;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::validation::{AgentMode, ProviderId, ReasoningEffort};
 use argmax_contracts::validation::{NonEmptyString, Prompt, SessionId};

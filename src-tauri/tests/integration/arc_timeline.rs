@@ -12,6 +12,7 @@ use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::state::SessionState;
 use argmax_contracts::validation::{NonEmptyString, Prompt, WorkspaceId};
 use argmax_contracts::validation::{PermissionMode, ProviderId};
+use argmax_lib::workspaces::orchestration::WorkspaceService;
 use argmax_lib::{
     arcs::{launch_coordinator, promote_session, LaunchCoordinatorRequest, PromoteSessionRequest},
     ipc::inputs::{ProvidersLaunchInput, TerminalCols, TerminalRows},
@@ -24,7 +25,6 @@ use argmax_lib::{
         session_service::ProviderSessionService,
         ProviderLaunchInput,
     },
-    workspaces::WorkspaceService,
 };
 use argmax_store::{
     arc_events::{list_arc_timeline, ArcEventKind, ArcTimelineEvent},

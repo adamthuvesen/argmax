@@ -64,7 +64,7 @@ pub(super) async fn list_sessions_action(
     let scoped_projects = if action.all {
         all_projects
             .into_iter()
-            .filter(|project| project.id != crate::workspaces::SCRATCH_PROJECT_ID)
+            .filter(|project| project.id != crate::workspaces::orchestration::SCRATCH_PROJECT_ID)
             .collect::<Vec<_>>()
     } else {
         vec![resolve_project(
@@ -368,7 +368,7 @@ impl ReadCaller {
             return true;
         }
         if self.project_id == target_project_id
-            && self.project_id != crate::workspaces::SCRATCH_PROJECT_ID
+            && self.project_id != crate::workspaces::orchestration::SCRATCH_PROJECT_ID
         {
             return true;
         }

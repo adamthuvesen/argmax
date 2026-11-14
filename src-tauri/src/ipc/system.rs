@@ -37,16 +37,6 @@ pub struct StartupPhaseRecord {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
-pub struct IpcChannelStats {
-    pub channel: String,
-    pub count: usize,
-    pub total_recorded: usize,
-    pub p50: f64,
-    pub p99: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Type)]
-#[serde(rename_all = "camelCase")]
 pub struct RowCounts {
     pub projects: i64,
     pub workspaces: i64,
@@ -112,7 +102,6 @@ pub struct DiagnosticsReport {
     pub generated_at: String,
     pub startup_phases: Vec<StartupPhaseRecord>,
     pub database_stats: DatabaseStats,
-    pub ipc_stats: Vec<IpcChannelStats>,
     pub recent_logs: Vec<LogEntry>,
     pub sqlite_pragmas: SqlitePragmas,
     pub runtime: RuntimeDiagnostics,
@@ -209,7 +198,6 @@ pub async fn system_diagnostics(
             generated_at: Utc::now().to_rfc3339(),
             startup_phases,
             database_stats,
-            ipc_stats: ipc_stats(),
             recent_logs: crate::util::tracing_init::recent_logs(),
             sqlite_pragmas,
             runtime: RuntimeDiagnostics {
@@ -229,7 +217,6 @@ pub async fn system_diagnostics(
 #[serde(rename_all = "camelCase")]
 pub struct DebugSnapshot {
     pub generated_at: String,
-    pub ipc_stats: Vec<IpcChannelStats>,
     pub logs: Vec<LogEntry>,
 }
 
@@ -238,7 +225,6 @@ pub struct DebugSnapshot {
 pub fn system_debug_snapshot(input: SystemDebugSnapshotInput) -> DebugSnapshot {
     DebugSnapshot {
         generated_at: Utc::now().to_rfc3339(),
-        ipc_stats: ipc_stats(),
         logs: crate::util::tracing_init::recent_logs_since(input.after_log_seq),
     }
 }
@@ -620,31 +606,6 @@ fn startup_phases(state: &State<'_, AppState>) -> Vec<StartupPhaseRecord> {
                 elapsed_ms,
                 delta_ms,
             }
-        })
-        .collect()
-}
-
-fn ipc_stats() -> Vec<IpcChannelStats> {
-    let registry = match std::panic::catch_unwind(crate::util::tracing_init::ipc_latency) {
-        Ok(registry) => registry,
-        Err(_) => return Vec::new(),
-    };
-    let mut channels = registry.known_channels();
-    channels.sort();
-    channels
-        .into_iter()
-        .map(|channel| IpcChannelStats {
-            p50: registry
-                .p50(&channel)
-                .map(|duration| duration.as_secs_f64() * 1000.0)
-                .unwrap_or(0.0),
-            p99: registry
-                .p99(&channel)
-                .map(|duration| duration.as_secs_f64() * 1000.0)
-                .unwrap_or(0.0),
-            count: registry.count(&channel),
-            total_recorded: registry.total_recorded(&channel),
-            channel,
         })
         .collect()
 }

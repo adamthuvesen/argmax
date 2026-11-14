@@ -747,6 +747,7 @@ fn race_workspace(fixture: &Fixture, id: &str, checkout: &std::path::Path) {
 
 fn race_launch_input(workspace_id: &str, arc_id: &str) -> ProvidersLaunchInput {
     ProvidersLaunchInput {
+        submitted_at_ms: None,
         workspace_id: WorkspaceId::try_from(workspace_id.to_string()).expect("workspace id valid"),
         provider: ProviderId::Codex,
         prompt: Prompt::try_from("Race the cap".to_string()).expect("prompt valid"),

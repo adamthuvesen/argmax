@@ -29,7 +29,7 @@ use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-use super::{mcp_injection, ProviderLaunchInput};
+use super::{mcp_injection, prompt_gate::PromptGate, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
 use crate::questions::service::QuestionService;
 use crate::session_control::{
@@ -63,6 +63,7 @@ pub async fn launch_turn(
     approvals: Arc<ApprovalService>,
     questions: Arc<QuestionService>,
     on_event: EventCallback,
+    prompt_gate: &PromptGate,
 ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
     let mut environment_overrides = vec![("NO_COLOR".to_string(), "1".to_string())];
     if let Some(config) = session_launch {
@@ -178,6 +179,9 @@ pub async fn launch_turn(
             verify_fork_end(&rpc, &thread_id, requested).await?;
         }
 
+        // The app-server and thread are up while the checkpoint finishes;
+        // the turn itself waits for it.
+        prompt_gate.wait_before_prompt(&input.session_id).await?;
         let turn_id = if crate::providers::inputs::is_compact_command(&input.prompt) {
             // Compaction runs as its own turn, but `thread/compact/start`
             // answers `{}`: the turn id only arrives in `turn/started`.
@@ -2020,6 +2024,7 @@ done
                 Arc::clone(&approvals),
                 Arc::clone(&questions),
                 callback,
+                &PromptGate::open(),
             )
             .await
             .unwrap();
@@ -2134,6 +2139,7 @@ done
             approvals,
             questions,
             callback,
+            &PromptGate::open(),
         )
         .await;
         // The handle owns the process: keep it until the turn has ended.
@@ -2942,6 +2948,7 @@ done
             approvals,
             questions,
             callback,
+            &PromptGate::open(),
         )
         .await
         .unwrap();
@@ -3067,6 +3074,7 @@ done
             approvals,
             questions,
             callback,
+            &PromptGate::open(),
         )
         .await
         .unwrap();
@@ -3142,9 +3150,17 @@ done
         launch_input.prompt = format!(
             "Use the shell to run sleep 5, then finish the original task by including this exact token in your final response: {original_token}"
         );
-        let handle = launch_turn(&binary, &launch_input, None, approvals, questions, callback)
-            .await
-            .unwrap();
+        let handle = launch_turn(
+            &binary,
+            &launch_input,
+            None,
+            approvals,
+            questions,
+            callback,
+            &PromptGate::open(),
+        )
+        .await
+        .unwrap();
         handle
             .steer(&format!(
                 "Also include this exact token in the same final response: {steer_token}"

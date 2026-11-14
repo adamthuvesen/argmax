@@ -29,6 +29,9 @@ const PROJECT_CHECK_KEY: &str = "launch.project_check.mode";
 /// template overrides it. Read on every launch path, so it lives here.
 const BRANCH_TEMPLATE_KEY: &str = "workspace.branch_template";
 
+/// Which MCP servers a Claude turn starts. Read on every Claude launch path.
+const CLAUDE_MCP_KEY: &str = "launch.claude_mcp";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectCheckMode {
@@ -37,6 +40,47 @@ pub enum ProjectCheckMode {
     Suggest,
     /// Ask, and start there without asking when the evidence is overwhelming.
     Switch,
+}
+
+/// Which MCP servers a Claude turn starts with. Every server Claude starts adds
+/// to the time before the turn can begin, so the presets trade tools for speed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClaudeMcpPreset {
+    /// Claude's own choice: no flags, every configured server.
+    #[default]
+    Everything,
+    /// Everything except the claude.ai connectors.
+    WithoutConnectors,
+    /// Argmax plus the servers in the user's own config files.
+    YourServers,
+    /// Argmax alone.
+    ArgmaxOnly,
+    /// Argmax plus the named subset of the user's own servers.
+    Custom,
+}
+
+/// The saved preset and the Custom subset. The subset is kept while another
+/// preset is chosen, so switching back to Custom restores it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeMcpChoice {
+    pub preset: ClaudeMcpPreset,
+    #[serde(default)]
+    pub custom_servers: Vec<String>,
+}
+
+/// Everything (Claude's own behavior) until the user picks a preset. An
+/// unreadable row reads as unset: a launch is not worth failing over it.
+pub fn claude_mcp_choice(connection: &Connection) -> ClaudeMcpChoice {
+    read_ui_value(connection, CLAUDE_MCP_KEY).unwrap_or_default()
+}
+
+pub fn set_claude_mcp_choice(
+    connection: &Connection,
+    choice: &ClaudeMcpChoice,
+) -> ArgmaxResult<()> {
+    write_ui_value(connection, CLAUDE_MCP_KEY, choice)
 }
 
 /// Reads a boolean setting, treating anything unset or unreadable as `default`.
@@ -222,6 +266,28 @@ mod tests {
         assert_eq!(project_check_mode(&connection), ProjectCheckMode::Off);
         set_project_check_mode(&connection, ProjectCheckMode::Suggest).expect("write");
         assert_eq!(project_check_mode(&connection), ProjectCheckMode::Suggest);
+    }
+
+    #[test]
+    fn claude_mcp_is_everything_until_the_user_picks_a_preset() {
+        let database = Database::open_in_memory().expect("database");
+        let connection = database.connection();
+
+        assert_eq!(claude_mcp_choice(&connection), ClaudeMcpChoice::default());
+        let custom = ClaudeMcpChoice {
+            preset: ClaudeMcpPreset::Custom,
+            custom_servers: vec!["trace".to_owned()],
+        };
+        set_claude_mcp_choice(&connection, &custom).expect("write");
+        assert_eq!(claude_mcp_choice(&connection), custom);
+
+        connection
+            .execute(
+                "UPDATE ui_state SET value_json = ? WHERE key = ?",
+                params![r#"{"preset":"retired-preset"}"#, CLAUDE_MCP_KEY],
+            )
+            .expect("corrupt");
+        assert_eq!(claude_mcp_choice(&connection), ClaudeMcpChoice::default());
     }
 
     #[test]

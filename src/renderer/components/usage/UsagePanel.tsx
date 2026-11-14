@@ -37,6 +37,7 @@ import {
   USAGE_PROVIDER_ORDER,
   type UsageMetric,
 } from "./usagePresentation.js";
+import { useInteractionShown } from "../../lib/interactionTimings.js";
 
 /** Warm refresh while the page is open. */
 const REFRESH_MS = 60_000;
@@ -217,6 +218,8 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
   // remaining card, which does not follow the window, keeps its numbers up.
   const remainingSettled = remaining !== null || remainingError !== null || remainingHoldOver;
   const canPaint = openedFromCache.current || remainingSettled;
+
+  useInteractionShown("page.usage", visible && canPaint && summary !== null);
 
   const scanning = summary?.scan.phase === "scanning";
   useEffect(() => {

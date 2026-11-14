@@ -1,7 +1,7 @@
 import { ChevronRight, ClipboardCopy, ExternalLink, FolderOpen } from "lucide-react";
 import { systemActions } from "../../data/bridgeActions.js";
 import { useBridgeQuery } from "../../data/useBridgeQuery.js";
-import { useEffect, useState, type JSX } from "react";
+import { useEffect, useMemo, useState, type JSX } from "react";
 import type {
   DiagnosticsReport,
   PerformanceStatus,
@@ -10,6 +10,7 @@ import type {
 import { APP_VERSION_LABEL } from "../../../shared/appVersion.js";
 import { ISSUES_URL, REPO_URL } from "../../../shared/appLinks.js";
 import { formatBytes } from "../../lib/formatBytes.js";
+import { ipcLatencySnapshot, RING_CAPACITY } from "../../lib/ipcLatency.js";
 import { saveLogsFile } from "../../lib/logDownload.js";
 import { savePerformanceCapture } from "../../lib/performanceDownload.js";
 import { showErrorToast } from "../../state/toast.js";
@@ -17,6 +18,7 @@ import { LoadingLine } from "../LoadingLine.js";
 import { ProjectKnowledgePanel } from "../ProjectKnowledgePanel.js";
 import { WebLink } from "../WebLink.js";
 import { ChatHistorySettings } from "./ChatHistorySettings.js";
+import { TurnWaterfallsCard } from "./TurnWaterfallsCard.js";
 import {
   COLD_START_BUDGET_MS,
   ColdStartSummary,
@@ -54,6 +56,10 @@ export function AdvancedSettings({
   const [performanceOpen, setPerformanceOpen] = useState(false);
   const [performanceStatus, setPerformanceStatus] = useState<PerformanceStatus | null>(null);
   const stats = diagnostics?.databaseStats;
+  // The registry is not reactive: reading again when the report or the
+  // details panel changes is what "refreshes when this page re-opens" means.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const ipcStats = useMemo(() => ipcLatencySnapshot(), [diagnostics, performanceOpen]);
   const readyPhase = diagnostics?.startupPhases.find(
     (phase) => phase.phase === "window.ready-to-show",
   );
@@ -407,6 +413,8 @@ export function AdvancedSettings({
             </>
           ) : null}
 
+          <TurnWaterfallsCard />
+
           {diagnostics?.startupPhases.length ? (
             <div className="settings-card">
               <h4 className="settings-card-title">Startup phases</h4>
@@ -445,12 +453,12 @@ export function AdvancedSettings({
             </div>
           ) : null}
 
-          {diagnostics?.ipcStats.length ? (
+          {ipcStats.length ? (
             <div className="settings-card">
               <h4 className="settings-card-title">IPC latency</h4>
               <p className="settings-note">
-                Per-channel p50 / p99 across the last 100 invocations. Refreshes when this page
-                re-opens.
+                Round trip from this window (invoke to result), per channel, over the last{" "}
+                {RING_CAPACITY} calls. Refreshes when this page re-opens.
               </p>
               <table className="settings-startup-table" aria-label="IPC channel latency">
                 <thead>
@@ -458,18 +466,22 @@ export function AdvancedSettings({
                     <th scope="col">Channel</th>
                     <th scope="col">Count</th>
                     <th scope="col">p50</th>
+                    <th scope="col">p95</th>
                     <th scope="col">p99</th>
+                    <th scope="col">Max</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {diagnostics.ipcStats.map((stat) => (
+                  {ipcStats.map((stat) => (
                     <tr key={stat.channel}>
                       <td>
                         <code>{stat.channel}</code>
                       </td>
-                      <td>{stat.count.toLocaleString()}</td>
+                      <td>{stat.totalRecorded.toLocaleString()}</td>
                       <td>{stat.p50.toFixed(2)} ms</td>
+                      <td>{stat.p95.toFixed(2)} ms</td>
                       <td>{stat.p99.toFixed(2)} ms</td>
+                      <td>{stat.max.toFixed(2)} ms</td>
                     </tr>
                   ))}
                 </tbody>

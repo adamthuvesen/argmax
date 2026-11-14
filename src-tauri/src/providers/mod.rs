@@ -28,9 +28,11 @@ mod opencode_isolation;
 pub mod opencode_server;
 mod orphan_cleanup;
 pub mod pricing;
+pub mod prompt_gate;
 pub mod runtime;
 pub mod session_service;
 pub mod subagent_trace;
+pub(crate) mod turn_waterfall;
 pub mod unified_diff;
 pub mod verification;
 

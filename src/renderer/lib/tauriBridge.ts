@@ -52,6 +52,7 @@ import type {
   WorkspaceTarget,
   WorkspacesMarkViewedInput,
 } from "../../shared/types.js";
+import { timeIpcCall } from "./ipcLatency.js";
 import { isSecondaryWindow, windowLabelFromRuntime } from "./windowRole.js";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
@@ -208,7 +209,8 @@ function trackDeltaArrival(): void {
 }
 
 function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
-  const invokeCommand = transport.invoke.bind(transport);
+  const invokeCommand: BridgeTransport["invoke"] = (channel, ...args) =>
+    timeIpcCall(channel, () => transport.invoke(channel, ...args));
   const subscribe = transport.subscribe.bind(transport);
 
   // One transport subscription fans out to every consumer, so the burst
@@ -389,6 +391,8 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         invokeCommand("session:clear", input).then(decode.session),
       suggestFollowUp: (input) => invokeCommand("session:suggest-follow-up", input),
       costSummary: (input: SessionCostSummaryInput) => invokeCommand("session:cost-summary", input),
+      turnPainted: (input) => invokeCommand("session:turn-painted", input).then(() => undefined),
+      turnWaterfalls: (input) => invokeCommand("session:turn-waterfalls", input),
       search: (input) => invokeCommand("session:search", input),
     },
     goals: {
@@ -484,6 +488,9 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       branchTemplate: () => invokeCommand("settings:branch-template"),
       setBranchTemplate: (input) => invokeCommand("settings:set-branch-template", input),
       setBrowserTools: (input) => invokeCommand("settings:set-browser-tools", input),
+      claudeMcp: () => invokeCommand("settings:claude-mcp"),
+      setClaudeMcp: (input) => invokeCommand("settings:set-claude-mcp", input),
+      claudeMcpProbe: () => invokeCommand("settings:claude-mcp-probe"),
       previewChatCleanup: () => invokeCommand("settings:preview-chat-cleanup"),
       deleteOldChats: (input) => invokeCommand("settings:delete-old-chats", input),
     },

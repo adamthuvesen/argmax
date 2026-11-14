@@ -177,7 +177,14 @@ impl ProviderSessionService {
                     first_error.get_or_insert(error);
                 }
             }
-            Some(HandleEntry::Pending(_)) | None => {}
+            // The launch may be spawning its CLI beside a capture that waits
+            // for the checkout lock. Refusing the gate kills that CLI now.
+            Some(HandleEntry::Pending(launch)) => {
+                if let Some(stop) = launch.stop {
+                    stop.refuse(super::launch::launch_cancelled());
+                }
+            }
+            None => {}
         }
 
         // Persist cancellation even when provider disposal reports an error.

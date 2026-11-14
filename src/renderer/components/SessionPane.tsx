@@ -19,6 +19,7 @@ import {
   workspaceActions,
 } from "../data/bridgeActions.js";
 import type { ReviewSideChatContext } from "./ReviewSideChat.js";
+import { useInteractionShown } from "../lib/interactionTimings.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
 import type { SendInputResult } from "../../shared/bindings.js";
@@ -75,9 +76,10 @@ import { DebugPanel } from "./debug/DebugPanel.js";
 // the peek warms them on idle — a lazy chunk fetched on the tap paints an
 // empty sheet for as long as it takes to arrive.
 const ReviewPanel = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./ReviewPanel.js")).ReviewPanel,
-  })),
+  importChunk(
+    async () => ({ default: (await import("./ReviewPanel.js")).ReviewPanel }),
+    "review",
+  ),
 );
 import { SessionConversation } from "./SessionConversation.js";
 // TerminalTabsPanel pulls in @xterm/xterm + addons + xterm CSS — heavy and
@@ -686,6 +688,14 @@ export function SessionPane({
   // restore window (entrance motion, typed reveal) from this rather than from
   // mount, so a slow backfill can't arrive looking like new activity.
   const [eventsBackfilled, setEventsBackfilled] = useState(false);
+  // Which session `eventsBackfilled` describes: after a session change the flag
+  // is still true for one render, and the chat-switch timing must not read it.
+  const backfilledSessionRef = useRef<string | null>(null);
+  useInteractionShown(
+    "chat.switch",
+    eventsBackfilled && backfilledSessionRef.current === sessionId,
+    sessionId ?? undefined,
+  );
   const [historyLoadFailed, setHistoryLoadFailed] = useState(false);
   const [historyRetryKey, setHistoryRetryKey] = useState(0);
   const retryHistoryLoad = useCallback(() => {
@@ -711,7 +721,9 @@ export function SessionPane({
         .then(() => onLoadSessionEvents(sessionId))
         .then(
           () => {
-            if (!cancelled) setEventsBackfilled(true);
+            if (cancelled) return;
+            backfilledSessionRef.current = sessionId;
+            setEventsBackfilled(true);
           },
           () => {
             if (cancelled) return;

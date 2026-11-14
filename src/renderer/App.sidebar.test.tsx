@@ -36,7 +36,7 @@ import {
   sessionRow,
 } from "../test/appTestHarness.js";
 import { SIDEBAR_ARCHIVED_KEY } from "./lib/uiPreferences.js";
-import { FIXED_NOW_ISO, freezeClock, isoAgo } from "../test/fixedClock.js";
+import { FIXED_NOW_ISO, FIXED_NOW_MS, freezeClock, isoAgo } from "../test/fixedClock.js";
 
 freezeClock();
 
@@ -565,6 +565,7 @@ describe("App sidebar", () => {
 
     await waitFor(() =>
       expect(sendProviderInput).toHaveBeenCalledWith({
+        submittedAtMs: FIXED_NOW_MS,
         sessionId: "session-1",
         input: "continue with tests",
         provider: "codex",
@@ -672,6 +673,7 @@ describe("App sidebar", () => {
 
     await waitFor(() =>
       expect(sendProviderInput).toHaveBeenCalledWith({
+        submittedAtMs: FIXED_NOW_MS,
         sessionId: "session-1",
         input: "use the stronger model",
         provider: "codex",

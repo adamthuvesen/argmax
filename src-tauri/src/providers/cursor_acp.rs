@@ -48,7 +48,7 @@ use super::runtime::{
 };
 use super::subagent_trace::cursor_project_slug;
 use super::unified_diff::{unified_diff, DEFAULT_CONTEXT};
-use super::{mcp_injection, ProviderLaunchInput};
+use super::{mcp_injection, prompt_gate::PromptGate, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
 use crate::questions::service::{typed_answer_text, QuestionService};
 use crate::session_control::SessionLaunchProcessConfig;
@@ -348,6 +348,7 @@ impl CursorAcpSessions {
     /// ACP process, spawning and initializing it first if needed. Any error
     /// here leaves the pool consistent and the caller falls back to the
     /// one-shot path.
+    #[allow(clippy::too_many_arguments)]
     pub async fn launch_turn_with_approvals(
         &self,
         binary_path: &str,
@@ -356,6 +357,7 @@ impl CursorAcpSessions {
         approvals: Option<Arc<ApprovalService>>,
         questions: Option<Arc<QuestionService>>,
         on_event: EventCallback,
+        prompt_gate: &PromptGate,
     ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
         let provider_environment =
             build_provider_environment([("NO_COLOR".to_string(), "1".to_string())]);
@@ -470,7 +472,9 @@ impl CursorAcpSessions {
         // session keeps whatever mode the previous turn left it in, so setting
         // it only at session/new made Plan a one-way door and left a resumed
         // session ignoring the toggle entirely.
-        if let Err(error) = client
+        // The session is ready while the checkpoint finishes; the prompt
+        // that `spawn_turn` sends waits for it.
+        let ready = client
             .request(
                 "session/set_mode",
                 json!({
@@ -479,7 +483,12 @@ impl CursorAcpSessions {
                 }),
             )
             .await
-        {
+            .map(|_| ());
+        let ready = match ready {
+            Ok(()) => prompt_gate.wait_before_prompt(&input.session_id).await,
+            Err(error) => Err(error),
+        };
+        if let Err(error) = ready {
             // No turn task will run to clear the context this invocation just
             // installed, so drop it here unless a newer turn already replaced it.
             let mut contexts = workspace

@@ -476,6 +476,7 @@ async fn send_routine_follow_up(
     };
     let result = providers
         .send_scheduled_input(ProvidersSendInput {
+            submitted_at_ms: None,
             session_id,
             input,
             provider,

@@ -636,7 +636,14 @@ async fn grok_rejects_a_resume_it_cannot_list_before_sending_anything() {
     let sessions = super::grok_acp::GrokAcpSessions::new();
     let callback: super::runtime::EventCallback = std::sync::Arc::new(|_| {});
     let error = sessions
-        .launch_turn(server.to_str().unwrap(), &input, None, None, callback)
+        .launch_turn(
+            server.to_str().unwrap(),
+            &input,
+            None,
+            None,
+            callback,
+            &super::prompt_gate::PromptGate::open(),
+        )
         .await
         .err()
         .expect("the resume is refused");

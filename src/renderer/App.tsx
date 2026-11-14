@@ -1441,6 +1441,8 @@ export function App(): JSX.Element {
         /** Start the chat without moving the user: the new chat takes its
          *  sidebar row and nothing else, and the launcher stays on screen. */
         background?: boolean | undefined;
+        /** When the person pressed send, for the turn waterfall. */
+        submittedAtMs: number;
       },
     ): Promise<LaunchedChat> => {
       const api = window.argmax;
@@ -1470,6 +1472,7 @@ export function App(): JSX.Element {
           rows: 32,
           attachments: options.attachments?.length ? options.attachments : null,
           autoTier: model.autoTier ?? null,
+          submittedAtMs: options.submittedAtMs,
           ...(options.goalCondition ? { goalCondition: options.goalCondition, goalMaxTurns } : {}),
         });
       } catch (error) {
@@ -1557,6 +1560,7 @@ export function App(): JSX.Element {
       pickedCheckout: LaunchCheckout | undefined,
       projectFolderId: string | undefined,
     ): Promise<LaunchedChat> => {
+      const submittedAtMs = Date.now();
       if (!window.argmax) {
         throw new Error("Open Argmax on your Mac to launch local agents.");
       }
@@ -1630,6 +1634,7 @@ export function App(): JSX.Element {
         attachments,
         goalCondition,
         background,
+        submittedAtMs,
       });
     },
     [handleProjectUpdated, selectedProject, snapshot.projects, startSessionInWorkspace],
@@ -1650,6 +1655,7 @@ export function App(): JSX.Element {
         background?: boolean;
       },
     ): Promise<LaunchedChat> => {
+      const submittedAtMs = Date.now();
       if (!window.argmax) {
         throw new Error("Open Argmax on your Mac to launch local agents.");
       }
@@ -1666,6 +1672,7 @@ export function App(): JSX.Element {
           attachments: options?.attachments,
           goalCondition: options?.goalCondition,
           background: options?.background,
+          submittedAtMs,
         },
       );
       // The armed chat mode has served its purpose; the next plain new-session

@@ -381,8 +381,12 @@ pub(crate) fn spawn_dashboard_delivery(
                         "dashboard:delta emit sat scheduled on the main thread; event-loop wake lagged"
                     );
                 }
+                let hinted_sessions = providers::turn_waterfall::awaits_hint()
+                    .then(|| delta.changed_session_ids.clone());
                 if let Err(error) = handle.emit("dashboard:delta", delta) {
                     tracing::warn!(?error, "failed to emit dashboard delta");
+                } else if let Some(hinted_sessions) = hinted_sessions {
+                    providers::turn_waterfall::note_hints_emitted(&hinted_sessions);
                 }
                 let _ = emitted_tx.send(());
             }) {

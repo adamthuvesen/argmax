@@ -414,6 +414,48 @@ async function collectUntilText(bridge, sessionId, expected, timeoutMs) {
   throw new Error(`session ${sessionId} did not emit ${expected} within ${timeoutMs}ms`);
 }
 
+// Steps every scripted Claude turn passes. A turn started from the native
+// composer also carries the renderer's `submit`; `first_painted` needs the
+// chat on screen when its answer lands. See docs/performance.md#turn-waterfall.
+const CLAUDE_TURN_STEPS = [
+  "ipc_received",
+  "admitted",
+  "checkpoint_start",
+  "checkpoint_end",
+  "env_ready",
+  "spawn",
+  "initialize_sent",
+  "initialize_ack",
+  "prompt_written",
+  "first_stdout",
+  "cli_init",
+  "first_content",
+  "first_persisted",
+  "first_hint_emitted",
+];
+
+async function waitForTurnWaterfalls(bridge, sessionId, timeoutMs) {
+  const startedAt = Date.now();
+  for (;;) {
+    const turns = (await bridge.call("session:turn-waterfalls", { limit: 20 })).filter(
+      (turn) => turn.sessionId === sessionId,
+    );
+    const complete = turns.filter((turn) => {
+      const names = new Set(turn.stamps.map((stamp) => stamp.name));
+      return CLAUDE_TURN_STEPS.every((name) => names.has(name));
+    });
+    // The follow-up came from the native composer with the chat on screen.
+    const fromComposer = complete.some((turn) =>
+      ["submit", "first_painted"].every((name) => turn.stamps.some((stamp) => stamp.name === name)),
+    );
+    if (complete.length >= 2 && fromComposer) return turns;
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error(`turn waterfalls incomplete: ${JSON.stringify(turns)}`);
+    }
+    await delay(250);
+  }
+}
+
 function assertIncludes(records, expected, label) {
   if (
     !records.some((record) => String(record.message ?? record.content ?? "").includes(expected))
@@ -630,6 +672,11 @@ async function runScenario({
         VERIFICATION_SCENARIOS.chatResumeSecond.visibleText,
       ],
       expectIdle: true,
+    });
+    timeline.push({
+      at: new Date().toISOString(),
+      type: "turn-waterfalls",
+      waterfalls: await waitForTurnWaterfalls(bridge, launched.id, timeoutMs),
     });
     return {
       session: second.session,

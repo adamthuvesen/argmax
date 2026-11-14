@@ -34,6 +34,7 @@ import type {
 } from "../../shared/types.js";
 import type { SendInputResult } from "../../shared/bindings.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
+import { useTurnPaintReport } from "../hooks/useTurnPaintReport.js";
 import { useConversationScroll } from "../hooks/useConversationScroll.js";
 import { useSessionComposerState } from "../hooks/useSessionComposerState.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
@@ -92,7 +93,10 @@ import type { QuestionAnswers } from "../lib/questions.js";
 import { SessionComposer, type NewSessionSeed } from "./SessionComposer.js";
 import { importChunk } from "../lib/importChunk.js";
 const GoalStatus = lazy(() =>
-  importChunk(async () => ({ default: (await import("./GoalStatus.js")).GoalStatus })),
+  importChunk(
+    async () => ({ default: (await import("./GoalStatus.js")).GoalStatus }),
+    "goal-status",
+  ),
 );
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
 import { WorkingNest } from "./WorkingNest.js";
@@ -1387,6 +1391,7 @@ export function SessionConversation({
 
   // Restored turns must not replay their entrance animation on every reopen.
   const restoringTranscript = useRestoreWithoutMotion(eventsBackfilled);
+  useTurnPaintReport(sessionId, events);
   const {
     scrollRef: conversationListRef,
     contentRef: conversationContentRef,

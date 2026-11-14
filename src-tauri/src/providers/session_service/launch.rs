@@ -1,6 +1,8 @@
 //! Starting a provider turn: the launch paths and the background spawn.
 
 use super::*;
+use crate::providers::prompt_gate::PromptGate;
+use crate::providers::turn_waterfall::{self, Stamp};
 
 impl ProviderSessionService {
     /// A launch whose prompt no person typed (check-failure follow-ups, tests).
@@ -9,18 +11,26 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersLaunchInput,
     ) -> ArgmaxResult<SessionSummary> {
-        self.launch_with_session_id(input, None, PromptAuthor::unattested())
+        self.launch_with_session_id(input, None, PromptAuthor::unattested(), None)
             .await
     }
 
     /// The composer's launch: the opening prompt is the person's own.
+    /// `session_id` is for a caller that names the session before it exists.
     pub async fn launch_as_person(
         self: &Arc<Self>,
         input: ProvidersLaunchInput,
+        session_id: Option<String>,
         attestation: PersonAttestation,
+        waterfall_origin: Option<turn_waterfall::OriginToken>,
     ) -> ArgmaxResult<SessionSummary> {
-        self.launch_with_session_id(input, None, PromptAuthor::person(attestation))
-            .await
+        self.launch_with_session_id(
+            input,
+            session_id,
+            PromptAuthor::person(attestation),
+            waterfall_origin,
+        )
+        .await
     }
 
     /// `session_id` is for a caller that recorded the id before launching (a
@@ -30,6 +40,7 @@ impl ProviderSessionService {
         input: ProvidersLaunchInput,
         session_id: Option<String>,
         author: PromptAuthor,
+        waterfall_origin: Option<turn_waterfall::OriginToken>,
     ) -> ArgmaxResult<SessionSummary> {
         let initial_goal = match input.goal_condition.as_deref() {
             Some(condition) => {
@@ -64,6 +75,7 @@ impl ProviderSessionService {
         };
         let checkout_lock = checkout_write_lock(std::path::Path::new(&checkout_path)).await?;
         let checkout_guard = checkout_lock.lock().await;
+        let admitted_at = std::time::Instant::now();
 
         let (session, workspace_path, goal, delta) = {
             let mut connection = self.database.connection();
@@ -188,6 +200,10 @@ impl ProviderSessionService {
             transaction.commit().map_err(sqlite_error)?;
             (session, PathBuf::from(workspace.path), goal, delta)
         };
+        turn_waterfall::admit(&self.database, &session_id, admitted_at, waterfall_origin);
+        if let Some(user_message) = delta.events.first() {
+            turn_waterfall::set_turn_key(&session_id, &user_message.id);
+        }
         self.publish(delta);
 
         if let (Some((goals, _)), Some(goal)) = (initial_goal.as_ref(), goal.as_ref()) {
@@ -208,9 +224,10 @@ impl ProviderSessionService {
                 ),
             );
         self.mark_turn_start(&session_id, workspace_path.clone());
-        self.handles
-            .lock_or_recover("handles")
-            .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
+        self.handles.lock_or_recover("handles").insert(
+            session_id.clone(),
+            HandleEntry::Pending(PendingLaunch::default()),
+        );
         drop(checkout_guard);
 
         let launch_input = ProviderLaunchInput {
@@ -277,24 +294,70 @@ impl ProviderSessionService {
             // provider definitely refused before it admitted the turn.
             let fresh_retry = continuity::fresh_retry_input(&launch_input);
             let rejected_conversation = launch_input.resume_conversation_id.clone();
-            let launch_result = async {
-                service.capture_before_provider_turn(&session_id).await?;
-                if !matches!(
-                    service.handles.lock_or_recover("handles").get(&session_id),
-                    Some(HandleEntry::Pending(_))
-                ) {
-                    return Err(ArgmaxError::service(
-                        "PROVIDER_LAUNCH_CANCELLED",
-                        "The turn was cancelled before launch.",
-                    ));
+            turn_waterfall::set_provider(&session_id, provider);
+            let on_event: crate::providers::runtime::EventCallback = Arc::new(move |event| {
+                let event_service = Arc::clone(&event_service);
+                event_service.handle_provider_event(event, callback_invocation_id.clone());
+            });
+            // The checkpoint runs beside the provider's startup. The gate keeps
+            // the prompt, and every event of the launch, back until it ends.
+            let (gate_opener, prompt_gate, on_event) = PromptGate::shut(on_event);
+            let still_pending = match service
+                .handles
+                .lock_or_recover("handles")
+                .get_mut(&session_id)
+            {
+                Some(HandleEntry::Pending(launch)) => {
+                    launch.stop = Some(gate_opener.stopper());
+                    true
                 }
-                let on_event: crate::providers::runtime::EventCallback = Arc::new(move |event| {
-                    let event_service = Arc::clone(&event_service);
-                    event_service.handle_provider_event(event, callback_invocation_id.clone());
-                });
+                _ => false,
+            };
+            let capture = tokio::spawn({
+                let service = Arc::clone(&service);
+                let session_id = session_id.clone();
+                let abandon = prompt_gate.clone();
+                async move {
+                    if !still_pending {
+                        let cancelled = Err(launch_cancelled());
+                        gate_opener.resolve(cancelled.clone());
+                        return cancelled;
+                    }
+                    #[cfg(test)]
+                    let test_gate = service
+                        .capture_test_gate
+                        .lock_or_recover("capture test gate")
+                        .clone();
+                    #[cfg(test)]
+                    if let Some(gate) = test_gate {
+                        gate.reached.notify_one();
+                        gate.release.notified().await;
+                    }
+                    turn_waterfall::stamp(&session_id, Stamp::CheckpointStart);
+                    let captured = service
+                        .capture_before_provider_turn(&session_id, async move {
+                            let _ = abandon.wait().await;
+                        })
+                        .await;
+                    turn_waterfall::stamp(&session_id, Stamp::CheckpointEnd);
+                    let outcome = captured.and_then(|()| {
+                        if matches!(
+                            service.handles.lock_or_recover("handles").get(&session_id),
+                            Some(HandleEntry::Pending(_))
+                        ) {
+                            Ok(())
+                        } else {
+                            Err(launch_cancelled())
+                        }
+                    });
+                    gate_opener.resolve(outcome.clone());
+                    outcome
+                }
+            });
+            let launch_result = async {
                 match service
                     .launcher
-                    .launch(launch_input, Arc::clone(&on_event))
+                    .launch_gated(launch_input, Arc::clone(&on_event), prompt_gate.clone())
                     .await
                 {
                     Err(error) if continuity::is_definite_rejection(&error) => {
@@ -302,6 +365,10 @@ impl ProviderSessionService {
                         else {
                             return Err(error);
                         };
+                        // The refusal can arrive before the capture ends. A
+                        // stopped or uncapturable turn records nothing and
+                        // starts no fresh retry, as when the capture ran first.
+                        prompt_gate.wait().await?;
                         tracing::warn!(
                             session_id = %session_id,
                             "provider rejected the native resume; retrying once fresh"
@@ -311,14 +378,37 @@ impl ProviderSessionService {
                             &retry,
                             &rejected,
                         )?;
-                        service.launcher.launch(retry, on_event).await
+                        service
+                            .launcher
+                            .launch_gated(retry, on_event, prompt_gate)
+                            .await
                     }
                     other => other,
                 }
             }
             .await;
+            // A launch that fails while the capture still runs waits for it,
+            // so the turn never settles with a capture still writing refs, and
+            // a capture error outranks the launcher's as it did when the
+            // capture ran first.
+            let captured = capture.await.unwrap_or_else(|error| {
+                Err(ArgmaxError::service(
+                    "CHECKPOINT_CAPTURE_PANICKED",
+                    error.to_string(),
+                ))
+            });
+            let launch_result = match (launch_result, captured) {
+                (Err(_), Err(capture_error)) => Err(capture_error),
+                (launch_result, _) => launch_result,
+            };
             let handle = match launch_result {
-                Ok(handle) => handle,
+                Ok(handle) => {
+                    // Claude stamps its own spawn; for the other providers the
+                    // launcher returning (a spawned CLI or a prompt sent to a
+                    // warm process) is the closest shared step.
+                    turn_waterfall::stamp(&session_id, Stamp::Spawn);
+                    handle
+                }
                 Err(error) => {
                     let prior = service
                         .handles
@@ -349,7 +439,7 @@ impl ProviderSessionService {
                     session_id.clone(),
                     HandleEntry::Resolved(Arc::clone(&handle)),
                 ) {
-                    Some(HandleEntry::Pending(ops)) => Some(ops),
+                    Some(HandleEntry::Pending(launch)) => Some(launch.ops),
                     // The Pending entry is gone — terminate() removed it while
                     // the process was spawning. Drop our Resolved insertion so
                     // the handle can be disposed below (outside the lock).
@@ -406,4 +496,12 @@ impl ProviderSessionService {
             }
         });
     }
+}
+
+/// What a launch reports when its turn was stopped before the prompt.
+pub(super) fn launch_cancelled() -> ArgmaxError {
+    ArgmaxError::service(
+        "PROVIDER_LAUNCH_CANCELLED",
+        "The turn was cancelled before launch.",
+    )
 }

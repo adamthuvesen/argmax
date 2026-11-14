@@ -10,6 +10,7 @@ use super::normalizer::{
     NormalizedProviderResult, NormalizedUsage, NormalizerSessionContext, ProviderOutputEvent,
     ProviderOutputStream, JSON_PARSE_LINE_CAP,
 };
+use super::turn_waterfall::{self, Stamp, StampGate};
 use argmax_contracts::error::ArgmaxResult;
 use argmax_contracts::sessions::state::SessionState;
 use argmax_contracts::validation::ProviderId;
@@ -40,6 +41,7 @@ pub struct SessionFlushBuffer {
     pending_usages: Vec<NormalizedUsage>,
     pending_approvals: Vec<PersistApprovalInput>,
     permission_blocked: bool,
+    first_persisted: StampGate,
 }
 
 #[derive(Debug, Clone)]
@@ -105,6 +107,8 @@ struct ProviderFlushSession {
     normalizer_context: NormalizerSessionContext,
     stream_buffers: HashMap<ProviderOutputStream, String>,
     buffer: SessionFlushBuffer,
+    first_stdout: StampGate,
+    first_content: StampGate,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -149,6 +153,8 @@ impl ProviderEventFlushQueue {
                 normalizer_context,
                 stream_buffers: HashMap::new(),
                 buffer: SessionFlushBuffer::new(),
+                first_stdout: StampGate::default(),
+                first_content: StampGate::default(),
             },
         );
     }
@@ -202,6 +208,16 @@ impl ProviderEventFlushQueue {
             });
         };
 
+        if matches!(
+            event.stream,
+            ProviderOutputStream::Stdout | ProviderOutputStream::Pty
+        ) {
+            // Claude stamps its own first line; this covers the other providers.
+            session
+                .first_stdout
+                .stamp(&event.session_id, Stamp::FirstStdout);
+        }
+
         session.buffer.queue_raw_output(PersistRawOutputInput {
             id: Uuid::new_v4().to_string(),
             session_id: event.session_id.clone(),
@@ -236,6 +252,16 @@ impl ProviderEventFlushQueue {
             &normalized_event,
             &mut session.normalizer_context,
         );
+        if session.first_content.pending()
+            && normalized
+                .events
+                .iter()
+                .any(|event| turn_waterfall::is_turn_content(&event.r#type, &event.payload))
+        {
+            session
+                .first_content
+                .stamp(&normalized_event.session_id, Stamp::FirstContent);
+        }
         let flush_immediately = normalized_result_requires_immediate_flush(&normalized);
         let provider_conversation_id =
             ingest_normalized_result(&mut session.buffer, provider_invocation_id, normalized);
@@ -400,6 +426,7 @@ impl SessionFlushBuffer {
             pending_usages: Vec::new(),
             pending_approvals: Vec::new(),
             permission_blocked: false,
+            first_persisted: StampGate::default(),
         }
     }
 
@@ -673,6 +700,15 @@ pub fn flush_session_buffer(
         }
 
         transaction.commit().map_err(sqlite_error)?;
+        if buffer.first_persisted.pending()
+            && pending_events.iter().any(|pending| {
+                turn_waterfall::is_turn_content(&pending.event.r#type, &pending.event.payload)
+            })
+        {
+            buffer
+                .first_persisted
+                .stamp(session_id, Stamp::FirstPersisted);
+        }
         Ok(delta)
     })();
 

@@ -98,6 +98,24 @@ impl CheckpointService {
         self.capture_locked(input, &workspace_path).await
     }
 
+    /// [`Self::create_checkpoint`] that gives up while it waits for the
+    /// checkout lock, which a running check holds for its whole command.
+    /// `Ok(None)` when `abandon` finished first. Once the lock is held the
+    /// capture runs to the end, so no ref is left half written.
+    pub async fn create_checkpoint_unless(
+        &self,
+        input: CreateCheckpointInput,
+        abandon: impl std::future::Future<Output = ()>,
+    ) -> ArgmaxResult<Option<Checkpoint>> {
+        let workspace_path = self.workspace_path(&input.workspace_id)?;
+        let lock = checkout_write_lock(&workspace_path).await?;
+        let _guard = tokio::select! {
+            guard = lock.lock() => guard,
+            () = abandon => return Ok(None),
+        };
+        self.capture_locked(input, &workspace_path).await.map(Some)
+    }
+
     pub async fn create_recovery_checkpoint(
         &self,
         workspace_id: String,

@@ -117,6 +117,11 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
       },
       { id: "settings-auto-routing", label: "Model router", settings: ["Jev API key"] },
       {
+        id: "settings-claude",
+        label: "Claude",
+        settings: ["MCP at turn start", "Custom servers"],
+      },
+      {
         id: "settings-opencode-gateway",
         label: "OpenCode gateway",
         settings: ["Gateway", "OpenRouter API key", "Vercel AI Gateway API key"],

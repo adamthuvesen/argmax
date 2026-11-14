@@ -5,7 +5,7 @@
 //
 //   npm run bench:latency -- [--build] [--source <data-dir>] [--n 8]
 //        [--only boot,navigation,send] [--scenarios session.switch,palette]
-//        [--out <file.json>] [--keep]
+//        [--project <name>] [--out <file.json>] [--keep]
 //
 // --source defaults to the installed app's profile, read through `VACUUM INTO`
 // (read-only). Every stored repo, workspace and provider path in the copy is
@@ -41,7 +41,7 @@ const home = os.homedir();
 const realProfile = path.join(home, "Library", "Application Support", "com.argmax.rs");
 
 function parseArgs(argv) {
-  const options = { build: false, source: realProfile, n: 8, only: null, scenarios: null, out: null, keep: false };
+  const options = { build: false, source: realProfile, n: 8, only: null, scenarios: null, out: null, keep: false, project: null };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     const value = () => {
@@ -56,6 +56,7 @@ function parseArgs(argv) {
     else if (arg === "--only") options.only = value().split(",");
     else if (arg === "--scenarios") options.scenarios = value().split(",");
     else if (arg === "--out") options.out = path.resolve(value());
+    else if (arg === "--project") options.project = value();
     else fail(`unknown argument: ${arg}`);
   }
   if (!Number.isInteger(options.n) || options.n < 1) fail("--n must be a positive integer");
@@ -340,6 +341,12 @@ function printTable(result) {
     rows.push([`send.${kind}.ack`, runs.length, percentile(runs.map((r) => r.ack), 0.5), percentile(runs.map((r) => r.ack), 0.95)]);
     rows.push([`send.${kind}.first-text`, runs.length, percentile(runs.map((r) => r.firstText), 0.5), percentile(runs.map((r) => r.firstText), 0.95)]);
   }
+  const waterfalls = (result.appPerf?.turnWaterfalls ?? []).filter((row) => row.provider === "claude");
+  if (waterfalls.length) {
+    const steps = new Map();
+    for (const row of waterfalls) for (const stamp of row.stamps) (steps.get(stamp.name) ?? steps.set(stamp.name, []).get(stamp.name)).push(stamp.offsetMs);
+    for (const [name, offsets] of steps) rows.push([`turn.${name}`, offsets.length, Math.round(percentile(offsets, 0.5)), Math.round(percentile(offsets, 0.95))]);
+  }
   const header = ["metric", "n", "shown50", "shown95", "paint50", "paint95", "settl50", "settl95", "gap95", "ipc"];
   process.stdout.write(`${header.map((h, i) => (i ? h.padStart(8) : h.padEnd(40))).join("")}\n`);
   for (const row of rows) {
@@ -394,7 +401,7 @@ async function main() {
           "SELECT w.task_label FROM events e JOIN sessions s ON s.id = e.session_id JOIN workspaces w ON w.id = s.workspace_id WHERE w.state != 'archived' GROUP BY s.id ORDER BY count(*) DESC LIMIT 1")).trim();
         result.navigation = await app.page("navigation.js", { n: options.n, only: options.scenarios, longTitle: longest || null });
       }
-      if (want("send")) result.send = await app.page("send.js", { n: Math.min(options.n, 5) });
+      if (want("send")) result.send = await app.page("send.js", { n: Math.min(options.n, 5), project: options.project });
       result.appPerf = await app.page("app-perf.js").catch(() => null);
     } finally {
       await app.close();

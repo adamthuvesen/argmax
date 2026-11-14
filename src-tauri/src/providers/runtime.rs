@@ -34,7 +34,7 @@ use serde_json::json;
 
 use super::{
     adapters::get_provider_definition, discovery::ProviderDiscovery, flush_queue::DashboardDelta,
-    normalizer::ProviderOutputStream, ProviderLaunchInput,
+    normalizer::ProviderOutputStream, prompt_gate::PromptGate, ProviderLaunchInput,
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::messages::ComposerAttachmentInput;
@@ -104,6 +104,22 @@ pub trait ProviderProcessLauncher: Send + Sync {
         input: ProviderLaunchInput,
         on_event: EventCallback,
     ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>>;
+
+    /// Launch while the pre-turn checkpoint may still be running. The prompt
+    /// must not reach the provider before `gate` opens, and a refused gate
+    /// ends the launch with its error and nothing left running. A launcher
+    /// that cannot start early waits for the gate first.
+    fn launch_gated<'a>(
+        &'a self,
+        input: ProviderLaunchInput,
+        on_event: EventCallback,
+        gate: PromptGate,
+    ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+        Box::pin(async move {
+            gate.wait().await?;
+            self.launch(input, on_event).await
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -191,6 +207,15 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
         input: ProviderLaunchInput,
         on_event: EventCallback,
     ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+        self.launch_gated(input, on_event, PromptGate::open())
+    }
+
+    fn launch_gated<'a>(
+        &'a self,
+        input: ProviderLaunchInput,
+        on_event: EventCallback,
+        gate: PromptGate,
+    ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
         Box::pin(async move {
             let definition = get_provider_definition(input.provider);
             let capability = self.discovery.discover(input.provider).await;
@@ -227,6 +252,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                         self.approvals.clone(),
                         self.questions.clone(),
                         Arc::clone(&on_event),
+                        &gate,
                     )
                     .await;
             }
@@ -243,6 +269,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                         session_launch.as_ref(),
                         self.approvals.clone(),
                         on_event,
+                        &gate,
                     )
                     .await;
             }
@@ -261,6 +288,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                     self.required_approvals()?,
                     questions,
                     on_event,
+                    &gate,
                 )
                 .await;
             }
@@ -280,6 +308,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                     approvals,
                     questions,
                     on_event,
+                    &gate,
                 )
                 .await;
             }
@@ -291,10 +320,15 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                     session_launch.as_ref(),
                     self.required_approvals()?,
                     on_event,
+                    &gate,
                 )
                 .await;
             }
 
+            // The PTY path puts the prompt in argv, so the CLI acts as soon as
+            // it spawns, and Cursor and Grok write their MCP config into the
+            // worktree first. Nothing here may run before the capture ends.
+            gate.wait().await?;
             let args = match input.resume_conversation_id.as_deref() {
                 Some(resume_id) => {
                     (definition.structured_resume_args)(&input, resume_id, session_launch.as_ref())
@@ -479,13 +513,12 @@ fn launch_structured_via_pty(
         ("TERM".to_string(), "xterm-256color".to_string()),
     ];
     if input.provider == ProviderId::Claude {
-        environment_overrides.extend(super::mcp_injection::claude_linked_root_env(session_launch));
-        // Print mode otherwise kills active background agents after ten minutes,
-        // even while they are making progress. The user can still stop the turn.
-        environment_overrides.push((
-            "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS".to_string(),
-            "0".to_string(),
-        ));
+        environment_overrides.extend(super::mcp_injection::claude_launch_env(session_launch));
+        environment_overrides.extend(
+            super::adapters::CLAUDE_TURN_ENV
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string())),
+        );
     }
     if let Some(config) = session_launch {
         environment_overrides.extend(config.env_pairs());

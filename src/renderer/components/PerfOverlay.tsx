@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type JSX } from "react";
 import { systemActions } from "../data/bridgeActions.js";
-import type { IpcChannelStats, PerformanceStatus } from "../../shared/types.js";
+import type { PerformanceStatus } from "../../shared/types.js";
+import { ipcLatencySnapshot } from "../lib/ipcLatency.js";
+import type { IpcChannelStats } from "../lib/perfRegistry.js";
 import { formatBytes } from "../lib/formatBytes.js";
+import { recentInteractions, type InteractionRecord } from "../lib/interactionTimings.js";
 
 export const PERF_OVERLAY_KEY = "argmax.perfOverlay";
 
 const POLL_INTERVAL_MS = 1000;
+const RECENT_INTERACTIONS = 5;
 
 // Canonical channels surfaced in the dev HUD. Order matters — top to bottom
 // in the rendered overlay. Names are the real registered IPC channels; the
@@ -51,9 +55,9 @@ function fmt(ms: number): string {
 export function PerfOverlay(): JSX.Element | null {
   const enabled = useSyncExternalStore(subscribeEnabled, readEnabled, () => false);
   const [stats, setStats] = useState<IpcChannelStats[]>([]);
+  const [interactions, setInteractions] = useState<InteractionRecord[]>([]);
   const [performance, setPerformance] = useState<PerformanceStatus | null>(null);
   const aliveRef = useRef<boolean>(true);
-  const logCursor = useRef<number | undefined>(undefined);
   const ownedRecording = useRef<string | null>(null);
 
   useEffect(() => {
@@ -72,20 +76,13 @@ export function PerfOverlay(): JSX.Element | null {
       }
     };
     const tick = async (): Promise<void> => {
+      setStats(ipcLatencySnapshot());
+      setInteractions(recentInteractions(RECENT_INTERACTIONS));
       const system = systemActions();
-      if (!system?.debugSnapshot) return;
+      if (typeof system?.performanceStatus !== "function") return;
       try {
-        // Not `system:diagnostics`: at 1 Hz its nine `COUNT(*)` scans and `ps`
-        // shellout cost far more than the five numbers drawn here. The log
-        // cursor is advanced and the lines dropped — the HUD only wants stats,
-        // and carrying the cursor keeps each tick from re-sending the ring.
-        const snapshot = await system.debugSnapshot({ afterLogSeq: logCursor.current });
-        if (!aliveRef.current) return;
-        logCursor.current = snapshot.logs.at(-1)?.seq ?? logCursor.current;
-        setStats(snapshot.ipcStats);
-        if (typeof system.performanceStatus === "function") {
-          setPerformance(await system.performanceStatus());
-        }
+        const status = await system.performanceStatus();
+        if (aliveRef.current) setPerformance(status);
       } catch {
         // Diagnostics IPC is non-essential for the HUD; swallow polling errors.
       }
@@ -219,6 +216,38 @@ export function PerfOverlay(): JSX.Element | null {
           })}
         </tbody>
       </table>
+      {interactions.length > 0 ? (
+        <>
+          <div
+            style={{
+              opacity: 0.7,
+              margin: "6px 0 4px",
+              fontSize: "var(--text-2xs)",
+              letterSpacing: 0.4,
+              textTransform: "uppercase",
+            }}
+          >
+            Interactions shown / painted / settled
+          </div>
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <tbody>
+              {interactions.map((record, index) => (
+                <tr key={`${record.start}-${index}`} data-interaction={record.name}>
+                  <td style={{ paddingRight: 8 }}>
+                    {record.name}
+                    {record.detail?.visit ? ` (${record.detail.visit})` : ""}
+                  </td>
+                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {[record.shownMs, record.paintedMs, record.settledMs]
+                      .map((ms) => (ms === undefined ? "—" : fmt(ms)))
+                      .join(" / ")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : null}
     </div>
   );
 }

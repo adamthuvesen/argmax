@@ -29,6 +29,7 @@
   "session:fork-lineage",
   "session:fork-merge-preview",
   "session:search",
+  "session:turn-waterfalls",
   "settings:routing",
   "skills:list",
   "sources:list",

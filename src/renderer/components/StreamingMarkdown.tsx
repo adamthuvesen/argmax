@@ -54,15 +54,17 @@ import { showToast } from "../state/toast.js";
 // renderer rebuilds: the hashed chunk it asks for is gone, and a rejected
 // lazy load inside the transcript takes the whole app to the error boundary.
 const MermaidDiagram = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./MermaidDiagram.js")).MermaidDiagram,
-  })),
+  importChunk(
+    async () => ({ default: (await import("./MermaidDiagram.js")).MermaidDiagram }),
+    "mermaid",
+  ),
 );
 
 const HtmlVisualization = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./HtmlVisualization.js")).HtmlVisualization,
-  })),
+  importChunk(
+    async () => ({ default: (await import("./HtmlVisualization.js")).HtmlVisualization }),
+    "html-visualization",
+  ),
 );
 
 function VisualizationBlock({ properties }: { properties: Record<string, unknown> }): JSX.Element {
@@ -97,9 +99,10 @@ function VisualizationBlock({ properties }: { properties: Record<string, unknown
 }
 
 const ChatMathMarkdown = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./MathMarkdown.js")).ChatMathMarkdown,
-  })),
+  importChunk(
+    async () => ({ default: (await import("./MathMarkdown.js")).ChatMathMarkdown }),
+    "math",
+  ),
 );
 
 /** Seconds of arrived text the reveal keeps in hand. Enough to ride out the

@@ -254,6 +254,21 @@ fn cursor_structured_args(
 // it. The guard also protects resumed sessions carrying a stale fast setting.
 const CURSOR_ALWAYS_FAST_MODEL: &str = "composer-2.5";
 
+/// Process environment for every Claude turn, both the stream-json and the PTY
+/// launch. These must be real environment variables: Claude reads them before
+/// it applies `--settings` env, so the settings JSON would not take effect.
+///
+/// - Print mode otherwise kills active background agents after ten minutes,
+///   even while they are making progress. The user can still stop the turn.
+/// - Print mode otherwise holds the `result` event until an extra
+///   "post turn summary" model call returns (up to 60 s; measured 2-25 s),
+///   and Argmax marks a turn complete only on `result`. Nothing reads that
+///   summary. Undocumented; verified against 2.1.310 and 2.1.323.
+pub(crate) const CLAUDE_TURN_ENV: &[(&str, &str)] = &[
+    ("CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS", "0"),
+    ("CLAUDE_CODE_CLASSIFIER_SUMMARY", "0"),
+];
+
 /// Whether a Cursor chat runs Fast. Composer 2.5 always does, whatever the
 /// chat or the router asked for: on a 12-file turn it finished in 39.5 s
 /// against 62 s standard (2026-10-02), and the picker shows it no toggle.

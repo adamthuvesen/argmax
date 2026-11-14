@@ -67,9 +67,10 @@ import { TurnChangesCard } from "./TurnChangesCard.js";
 import { TurnBlock } from "./TurnBlock.js";
 
 const HtmlVisualization = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./HtmlVisualization.js")).HtmlVisualization,
-  })),
+  importChunk(
+    async () => ({ default: (await import("./HtmlVisualization.js")).HtmlVisualization }),
+    "html-visualization",
+  ),
 );
 
 /**

@@ -23,7 +23,7 @@ use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-use super::{mcp_injection, ProviderLaunchInput};
+use super::{mcp_injection, prompt_gate::PromptGate, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
 use crate::session_control::SessionLaunchProcessConfig;
 use crate::usage::grok::billed_models;
@@ -110,6 +110,7 @@ impl GrokAcpSessions {
         session_launch: Option<&SessionLaunchProcessConfig>,
         approvals: Option<Arc<ApprovalService>>,
         on_event: EventCallback,
+        prompt_gate: &PromptGate,
     ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
         let workspace = self.workspace_client(binary_path, input).await?;
         let _boot = workspace.boot.lock().await;
@@ -202,6 +203,9 @@ impl GrokAcpSessions {
             .insert(acp_session_id.clone());
 
         select_grok_model(&workspace.client, &acp_session_id, input, &response).await?;
+        // The session is ready while the checkpoint finishes; the prompt
+        // that `spawn_turn` sends waits for it.
+        prompt_gate.wait_before_prompt(&input.session_id).await?;
         let invocation_id = Uuid::new_v4().to_string();
         workspace
             .permission_contexts

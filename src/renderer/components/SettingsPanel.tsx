@@ -36,6 +36,7 @@ import { GeneralSettings } from "./settings/GeneralSettings.js";
 import { IntegrationsSettings } from "./settings/IntegrationsSettings.js";
 import { type SettingsGroupId, settingsGroupById } from "./settings/settingsMeta.js";
 import { ProjectsSettings } from "./settings/ProjectsSettings.js";
+import { useInteractionShown } from "../lib/interactionTimings.js";
 
 export type SettingsNavigationTarget = {
   group: SettingsGroupId;
@@ -355,6 +356,9 @@ export function SettingsPanel({
     handledNavigationRequestRef.current = navigationTarget.requestId;
     scrollSettings(navigationTarget.sectionId);
   }, [activeGroup, navigationTarget, scrollSettings]);
+
+  useInteractionShown("settings.open", true, activeGroup);
+  useInteractionShown("settings.section", true, activeGroup);
 
   return (
     <div className="settings-page" ref={surfaceRef}>

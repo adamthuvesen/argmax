@@ -36,6 +36,7 @@ pub mod sources;
 pub mod sync;
 pub mod system;
 pub mod terminal;
+pub mod turn_waterfalls;
 pub mod usage;
 pub mod visualizations;
 pub mod window_snapshot;

@@ -411,10 +411,6 @@ export function setupAppTestMocks(): void {
       openFileDescriptors: 0,
       tokioTrackedTasks: 0,
     },
-    ipcStats: [
-      { channel: "dashboard:list", count: 12, totalRecorded: 12, p50: 1.2, p99: 4.8 },
-      { channel: "providers:launch", count: 3, totalRecorded: 3, p50: 18.5, p99: 32.1 },
-    ],
     recentLogs: [
       {
         seq: 1,
@@ -691,6 +687,8 @@ export function setupAppTestMocks(): void {
       clear: () => Promise.reject(new Error("session clear not stubbed")),
       suggestFollowUp: () => Promise.resolve({ suggestion: null }),
       costSummary: sessionCostSummary,
+      turnPainted: () => Promise.resolve(),
+      turnWaterfalls: () => Promise.resolve([]),
       search: () => Promise.resolve([]),
     },
     visualization: {
@@ -778,6 +776,11 @@ export function setupAppTestMocks(): void {
       setBranchTemplate: ({ template }) =>
         Promise.resolve({ template, defaultTemplate: "argmax/{word}-{id}" }),
       setBrowserTools: setBrowserToolsStub,
+      claudeMcp: () =>
+        Promise.resolve({ preset: "everything", customServers: [], ownServers: [] }),
+      setClaudeMcp: ({ preset, customServers }) =>
+        Promise.resolve({ preset, customServers, ownServers: [] }),
+      claudeMcpProbe: () => Promise.resolve(null),
       previewChatCleanup: () => Promise.reject(new Error("Chat cleanup not stubbed")),
       deleteOldChats: () => Promise.reject(new Error("Chat cleanup not stubbed")),
     },
@@ -789,7 +792,7 @@ export function setupAppTestMocks(): void {
       listDetectedIdes: listDetectedIdes,
       diagnostics: diagnosticsStub,
       debugSnapshot: () =>
-        Promise.resolve({ generatedAt: "2026-05-14T11:00:05.000Z", ipcStats: [], logs: [] }),
+        Promise.resolve({ generatedAt: "2026-05-14T11:00:05.000Z", logs: [] }),
       performanceStart: () =>
         Promise.resolve({
           recording: true,

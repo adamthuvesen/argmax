@@ -54,6 +54,11 @@ pub struct ProvidersLaunchInput {
     /// router overwrites. See docs/routing.md.
     #[serde(default)]
     pub auto_tier: Option<argmax_contracts::routing::AutoTier>,
+    /// When the person clicked send, as `Date.now()` epoch milliseconds. Only
+    /// the turn waterfall reads it, and only from the desktop window; see
+    /// `providers::turn_waterfall`. Older clients omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submitted_at_ms: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -80,6 +85,11 @@ pub struct ProvidersSendInput {
     pub attachments: Option<Vec<ComposerAttachmentInput>>,
     #[serde(default)]
     pub agent_references: Option<Vec<AgentReference>>,
+    /// When the person clicked send, as `Date.now()` epoch milliseconds. Only
+    /// the turn waterfall reads it, and only from the desktop window; see
+    /// `providers::turn_waterfall`. Older clients omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submitted_at_ms: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

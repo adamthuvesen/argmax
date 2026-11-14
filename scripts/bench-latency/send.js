@@ -10,6 +10,15 @@ for (let i = 0; i < N; i++) {
   lab("New chat").click();
   for (let k = 0; k < 60 && !vis(P.byLabel("Task prompt")); k++) await P.sleep(50);
   await P.sleep(400);
+  if (arg?.project) {
+    // Pick the project by name so the checkpoint runs on a known repo size.
+    lab("Switch project").click();
+    await P.sleep(300);
+    const option = [...document.querySelectorAll("[role=option],[role=menuitem],[role=menuitemradio]")].find((el) => vis(el) && el.textContent.trim().startsWith(arg.project));
+    if (!option) throw new Error(`no project option ${arg.project}`);
+    option.click();
+    await P.sleep(400);
+  }
   const prompt = `[argmax-verification:chat-resume:first] perf run ${Date.now()}`;
   const ed = editorIn(document.querySelector(".launcher-surface") || document);
   type(ed, prompt);

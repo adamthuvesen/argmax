@@ -66,12 +66,16 @@ impl ProviderSessionService {
             .as_ref()
             .is_some_and(|sessions| sessions.contains(end.session_id))
         {
+            crate::providers::turn_waterfall::turn_ended(&self.database, end.session_id);
             return Ok(None);
         }
         let connection = self.database.connection();
         let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
         let current = argmax_store::sessions::find_session_by_id(&transaction, end.session_id)?;
         if !(end.may_end)(current.state) {
+            drop(transaction);
+            drop(connection);
+            crate::providers::turn_waterfall::turn_ended(&self.database, end.session_id);
             return Ok(None);
         }
         let session = update_session_state(
@@ -119,6 +123,7 @@ impl ProviderSessionService {
             self.append_reconciled_subagent_events(end.session_id, &mut delta);
         }
         self.publish(delta);
+        crate::providers::turn_waterfall::turn_ended(&self.database, end.session_id);
         Ok(Some(EndedTurn {
             handle,
             queue_paused,

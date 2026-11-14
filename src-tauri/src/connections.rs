@@ -106,20 +106,22 @@ fn scan_filesystem(
 
     match provider {
         ProviderId::Claude => {
-            read_json_mcp(
-                &home.join(".claude.json"),
-                "mcpServers",
-                ConnectionScope::User,
-                provider,
-                &mut rows,
-            );
-            if let Some(workspace) = workspace {
-                read_json_mcp(
-                    &workspace.join(".mcp.json"),
-                    "mcpServers",
-                    ConnectionScope::Project,
-                    provider,
+            for server in claude_own_servers(&home, workspace) {
+                let scope = match server.scope {
+                    ClaudeServerScope::User => ConnectionScope::User,
+                    ClaudeServerScope::Local | ClaudeServerScope::Project => {
+                        ConnectionScope::Project
+                    }
+                };
+                insert(
                     &mut rows,
+                    configured_server(
+                        &server.name,
+                        scope,
+                        provider,
+                        is_remote_definition(&server.definition),
+                        !server.enabled,
+                    ),
                 );
             }
             read_plugin_manifest(
@@ -210,15 +212,8 @@ fn read_json_mcp(
         return;
     };
     for (name, config) in servers {
-        let is_remote = config
-            .get("url")
-            .or_else(|| config.get("serverUrl"))
-            .and_then(Value::as_str)
-            .is_some();
-        let disabled = config
-            .get("enabled")
-            .and_then(Value::as_bool)
-            .is_some_and(|enabled| !enabled);
+        let is_remote = is_remote_definition(config);
+        let disabled = is_disabled_definition(config);
         let mut server = configured_server(name, scope, provider, is_remote, disabled);
         if provider == ProviderId::Cursor && scope == ConnectionScope::Project && is_remote {
             server.authentication_command = path
@@ -228,6 +223,139 @@ fn read_json_mcp(
         }
         insert(rows, server);
     }
+}
+
+fn is_remote_definition(config: &Value) -> bool {
+    config
+        .get("url")
+        .or_else(|| config.get("serverUrl"))
+        .and_then(Value::as_str)
+        .is_some()
+}
+
+fn is_disabled_definition(config: &Value) -> bool {
+    config
+        .get("enabled")
+        .and_then(Value::as_bool)
+        .is_some_and(|enabled| !enabled)
+}
+
+/// Where a Claude Code MCP server is configured, in Claude's own terms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClaudeServerScope {
+    /// `mcpServers` at the top of `~/.claude.json`.
+    User,
+    /// `projects.<checkout>.mcpServers` in `~/.claude.json`.
+    Local,
+    /// The checkout's `.mcp.json`.
+    Project,
+}
+
+/// One MCP server from the user's own Claude Code config files, with the
+/// definition exactly as written there. Plugin servers and claude.ai
+/// connectors are not in these files, so they are never here.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClaudeOwnServer {
+    pub name: String,
+    pub scope: ClaudeServerScope,
+    /// False when the definition says `"enabled": false`, or a project server
+    /// the checkout's approval lists leave out.
+    pub enabled: bool,
+    pub definition: Value,
+}
+
+/// The user's own Claude Code servers for `workspace`, one per name, sorted by
+/// name. When a name is configured in more than one scope, local wins over
+/// project and project over user, as in Claude Code. A disabled entry never
+/// hides an enabled one. Read-only: nothing here writes a provider file.
+pub fn claude_own_servers(home: &Path, workspace: Option<&Path>) -> Vec<ClaudeOwnServer> {
+    let user_config = fs::read_to_string(home.join(".claude.json"))
+        .ok()
+        .and_then(|content| serde_json::from_str::<Value>(&content).ok())
+        .unwrap_or(Value::Null);
+    let project_entry = workspace
+        .and_then(|workspace| {
+            user_config
+                .get("projects")
+                .and_then(|projects| projects.get(workspace.to_string_lossy().as_ref()))
+        })
+        .unwrap_or(&Value::Null);
+
+    let mut servers = BTreeMap::new();
+    let mut add = |name: &str, scope, enabled, definition: &Value| {
+        let replaces = servers
+            .get(name)
+            .is_none_or(|existing: &ClaudeOwnServer| enabled || !existing.enabled);
+        if replaces {
+            servers.insert(
+                name.to_owned(),
+                ClaudeOwnServer {
+                    name: name.to_owned(),
+                    scope,
+                    enabled,
+                    definition: definition.clone(),
+                },
+            );
+        }
+    };
+
+    for (name, definition) in server_section(&user_config) {
+        add(
+            name,
+            ClaudeServerScope::User,
+            !is_disabled_definition(definition),
+            definition,
+        );
+    }
+    if let Some(workspace) = workspace {
+        let project_config = fs::read_to_string(workspace.join(".mcp.json"))
+            .ok()
+            .and_then(|content| serde_json::from_str::<Value>(&content).ok())
+            .unwrap_or(Value::Null);
+        for (name, definition) in server_section(&project_config) {
+            let enabled =
+                !is_disabled_definition(definition) && project_server_approved(project_entry, name);
+            add(name, ClaudeServerScope::Project, enabled, definition);
+        }
+    }
+    for (name, definition) in server_section(project_entry) {
+        add(
+            name,
+            ClaudeServerScope::Local,
+            !is_disabled_definition(definition),
+            definition,
+        );
+    }
+    servers.into_values().collect()
+}
+
+/// [`claude_own_servers`] for the signed-in user's home directory.
+pub fn claude_own_servers_for_user(workspace: Option<&Path>) -> Vec<ClaudeOwnServer> {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    claude_own_servers(&home, workspace)
+}
+
+fn server_section(document: &Value) -> impl Iterator<Item = (&str, &Value)> {
+    document
+        .get("mcpServers")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+        .map(|(name, definition)| (name.as_str(), definition))
+}
+
+/// Claude Code keeps a checkout's `.mcp.json` approvals in that checkout's
+/// `~/.claude.json` entry. Only the deny list matters to Argmax's launches:
+/// `claude -p` also starts a server that is not yet approved (verified on
+/// 2.1.310 with no allow list), so `enabledMcpjsonServers` never removes one.
+fn project_server_approved(project_entry: &Value, name: &str) -> bool {
+    !project_entry
+        .get("disabledMcpjsonServers")
+        .and_then(Value::as_array)
+        .is_some_and(|names| names.iter().any(|entry| entry.as_str() == Some(name)))
 }
 
 fn configured_server(
@@ -438,32 +566,47 @@ fn merge_probe(provider: ProviderId, output: &str, rows: &mut BTreeMap<String, C
     }
 }
 
-fn merge_claude_probe(output: &str, rows: &mut BTreeMap<String, ConnectionSummary>) {
-    for line in output.lines().map(str::trim) {
-        let authentication = if line.contains("Connected") {
+/// One server line of `claude mcp list`: `<name>: <command or url> - <status>`.
+/// Names can hold `:` (`plugin:design:slack`) but never `": "`.
+struct ClaudeProbeLine<'a> {
+    name: &'a str,
+    target: &'a str,
+    authentication: Option<ConnectionAuthentication>,
+}
+
+fn claude_probe_lines(output: &str) -> impl Iterator<Item = ClaudeProbeLine<'_>> {
+    output.lines().map(str::trim).filter_map(|line| {
+        let (name, rest) = line.split_once(": ")?;
+        let authentication = if rest.contains("Connected") {
             Some(ConnectionAuthentication::Authenticated)
-        } else if line.contains("Needs authentication") {
+        } else if rest.contains("Needs authentication") {
             Some(ConnectionAuthentication::Required)
         } else {
             None
         };
-        let Some(authentication) = authentication else {
+        let target = rest.split_whitespace().next().unwrap_or("");
+        Some(ClaudeProbeLine {
+            name,
+            target,
+            authentication,
+        })
+    })
+}
+
+fn merge_claude_probe(output: &str, rows: &mut BTreeMap<String, ConnectionSummary>) {
+    for line in claude_probe_lines(output) {
+        let Some(authentication) = line.authentication else {
             continue;
         };
-        let (kind, name) = if let Some(plugin) = line.strip_prefix("plugin:") {
+        let (kind, name) = if let Some(plugin) = line.name.strip_prefix("plugin:") {
             let Some(name) = plugin.split(':').next() else {
                 continue;
             };
             (ConnectionKind::Plugin, name)
+        } else if let Some(name) = line.name.strip_prefix("claude.ai ") {
+            (ConnectionKind::Connector, name)
         } else {
-            let Some((raw_name, _)) = line.split_once(':') else {
-                continue;
-            };
-            if let Some(name) = raw_name.strip_prefix("claude.ai ") {
-                (ConnectionKind::Connector, name)
-            } else {
-                (ConnectionKind::McpServer, raw_name)
-            }
+            (ConnectionKind::McpServer, line.name)
         };
         insert(
             rows,
@@ -479,6 +622,51 @@ fn merge_claude_probe(output: &str, rows: &mut BTreeMap<String, ConnectionSummar
             },
         );
     }
+}
+
+/// The servers Claude adds from outside the user's config files, counted from
+/// `claude mcp list`. Neither kind can be passed through `--mcp-config`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeProbeCounts {
+    /// claude.ai connectors (`claude.ai <name>` lines).
+    pub connectors: u32,
+    /// Servers that installed plugins bring (`plugin:<plugin>:<server>` lines).
+    pub plugin_servers: u32,
+    /// Plugin servers at a URL a connector already serves. Claude starts only
+    /// the connector while connectors load (2.1.310: 24 plugin servers listed,
+    /// 4 at connector URLs, 20 in the init event).
+    pub plugin_servers_at_connector_urls: u32,
+}
+
+fn count_claude_probe(output: &str) -> ClaudeProbeCounts {
+    let lines = claude_probe_lines(output).collect::<Vec<_>>();
+    let connector_targets = lines
+        .iter()
+        .filter(|line| line.name.starts_with("claude.ai "))
+        .map(|line| line.target.trim_end_matches('/'))
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut counts = ClaudeProbeCounts {
+        connectors: lines
+            .iter()
+            .filter(|line| line.name.starts_with("claude.ai "))
+            .count() as u32,
+        ..ClaudeProbeCounts::default()
+    };
+    for line in lines.iter().filter(|line| line.name.starts_with("plugin:")) {
+        counts.plugin_servers += 1;
+        if connector_targets.contains(line.target.trim_end_matches('/')) {
+            counts.plugin_servers_at_connector_urls += 1;
+        }
+    }
+    counts
+}
+
+/// Runs `claude mcp list` and counts what it reports. `None` when the probe
+/// fails or times out. The probe starts every server, so it takes seconds.
+pub async fn claude_probe_counts(binary: &str) -> Option<ClaudeProbeCounts> {
+    let output = probe(ProviderId::Claude, binary, None).await?;
+    Some(count_claude_probe(&output))
 }
 
 fn merge_json_probe(
@@ -685,6 +873,122 @@ mod tests {
                 && row.kind == ConnectionKind::McpServer
                 && row.authentication == ConnectionAuthentication::Authenticated
         }));
+    }
+
+    #[test]
+    fn claude_probe_counts_connectors_and_plugin_servers_claude_would_start() {
+        let counts = count_claude_probe(
+            "Checking MCP server health…\n\n\
+             claude.ai Slack: https://mcp.slack.com/mcp - ✔ Connected\n\
+             claude.ai Miro: https://mcp.miro.com/ - ! Needs authentication\n\
+             plugin:design:slack: https://mcp.slack.com/mcp (HTTP) - ! Needs authentication\n\
+             plugin:design:gmail:  (HTTP) - - Not configured\n\
+             plugin:browser-use:browser-use: uvx browser-use --cli-mcp - ✔ Connected\n\
+             trace: https://trace.example/mcp (HTTP) - ✔ Connected",
+        );
+
+        assert_eq!(
+            counts,
+            ClaudeProbeCounts {
+                connectors: 2,
+                plugin_servers: 3,
+                plugin_servers_at_connector_urls: 1,
+            }
+        );
+    }
+
+    fn write(path: &Path, body: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, body).unwrap();
+    }
+
+    #[test]
+    fn claude_own_servers_merge_scopes_like_claude_and_honour_the_deny_list() {
+        let home = tempdir().unwrap();
+        let workspace = tempdir().unwrap();
+        let checkout = workspace.path().to_string_lossy().into_owned();
+        write(
+            &home.path().join(".claude.json"),
+            &serde_json::json!({
+                "mcpServers": {
+                    "shared": { "command": "user-shared" },
+                    "user-only": { "type": "http", "url": "https://user.example/mcp" },
+                    "off": { "command": "off", "enabled": false },
+                },
+                "projects": {
+                    checkout.clone(): {
+                        "mcpServers": { "shared": { "command": "local-shared" } },
+                        "enabledMcpjsonServers": [],
+                        "disabledMcpjsonServers": ["denied"],
+                    },
+                    "/some/other/checkout": {
+                        "mcpServers": { "elsewhere": { "command": "x" } },
+                    },
+                },
+            })
+            .to_string(),
+        );
+        write(
+            &workspace.path().join(".mcp.json"),
+            r#"{"mcpServers":{"pending":{"command":"p"},"denied":{"command":"d"},"shared":{"command":"project-shared"}}}"#,
+        );
+
+        let servers = claude_own_servers(home.path(), Some(workspace.path()));
+        let summary = servers
+            .iter()
+            .map(|server| {
+                (
+                    server.name.as_str(),
+                    server.scope,
+                    server.enabled,
+                    server.definition["command"].as_str().unwrap_or("-"),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            summary,
+            vec![
+                ("denied", ClaudeServerScope::Project, false, "d"),
+                ("off", ClaudeServerScope::User, false, "off"),
+                // Not yet approved still starts under `claude -p`.
+                ("pending", ClaudeServerScope::Project, true, "p"),
+                ("shared", ClaudeServerScope::Local, true, "local-shared"),
+                ("user-only", ClaudeServerScope::User, true, "-"),
+            ]
+        );
+
+        let user_only = claude_own_servers(home.path(), None);
+        assert_eq!(
+            user_only
+                .iter()
+                .map(|server| server.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["off", "shared", "user-only"]
+        );
+    }
+
+    #[test]
+    fn a_disabled_project_server_does_not_hide_the_users_enabled_one() {
+        let home = tempdir().unwrap();
+        let workspace = tempdir().unwrap();
+        let checkout = workspace.path().to_string_lossy().into_owned();
+        write(
+            &home.path().join(".claude.json"),
+            &serde_json::json!({
+                "mcpServers": { "trace": { "command": "user-trace" } },
+                "projects": { checkout: { "disabledMcpjsonServers": ["trace"] } },
+            })
+            .to_string(),
+        );
+        write(
+            &workspace.path().join(".mcp.json"),
+            r#"{"mcpServers":{"trace":{"command":"project-trace"}}}"#,
+        );
+
+        let servers = claude_own_servers(home.path(), Some(workspace.path()));
+        assert_eq!(servers.len(), 1);
+        assert!(servers[0].enabled);
+        assert_eq!(servers[0].definition["command"], "user-trace");
     }
 
     #[test]

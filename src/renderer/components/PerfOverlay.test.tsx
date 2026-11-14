@@ -1,21 +1,18 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  ArgmaxApi,
-  DebugSnapshot,
-  IpcChannelStats,
-  PerformanceStatus,
-} from "../../shared/types.js";
+import type { ArgmaxApi, PerformanceStatus } from "../../shared/types.js";
+import { recordIpcLatency, resetIpcLatency } from "../lib/ipcLatency.js";
 import { PERF_OVERLAY_KEY, PerfOverlay } from "./PerfOverlay.js";
 
-function snapshotWith(stats: IpcChannelStats[]): DebugSnapshot {
-  return { generatedAt: "2026-05-14T11:00:00.000Z", ipcStats: stats, logs: [] };
+function recordSamples(channel: string, ms: number, times: number): void {
+  for (let index = 0; index < times; index += 1) recordIpcLatency(channel, ms);
 }
 
 const previousArgmax = (window as unknown as { argmax?: ArgmaxApi }).argmax;
 
 afterEach(() => {
   window.localStorage.removeItem(PERF_OVERLAY_KEY);
+  resetIpcLatency();
   (window as unknown as { argmax?: ArgmaxApi }).argmax = previousArgmax;
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -23,36 +20,22 @@ afterEach(() => {
 
 describe("PerfOverlay", () => {
   it("does not mount when the localStorage flag is absent", () => {
-    const debugSnapshot = vi.fn().mockResolvedValue(snapshotWith([]));
-    (window as unknown as { argmax: Partial<ArgmaxApi> }).argmax = {
-      system: { debugSnapshot } as unknown as ArgmaxApi["system"],
-    };
-
     render(<PerfOverlay />);
 
     expect(screen.queryByRole("status", { name: /IPC perf overlay/i })).toBeNull();
-    expect(debugSnapshot).not.toHaveBeenCalled();
   });
 
   it("renders the tracked channels with p50 / p99 when the flag is set", async () => {
     window.localStorage.setItem(PERF_OVERLAY_KEY, "1");
-    const debugSnapshot = vi.fn().mockResolvedValue(
-      snapshotWith([
-        { channel: "dashboard:list", count: 12, totalRecorded: 12, p50: 1.2, p99: 4.8 },
-        { channel: "session:events-since", count: 30, totalRecorded: 30, p50: 0.8, p99: 3.4 },
-        { channel: "providers:launch", count: 1, totalRecorded: 1, p50: 18.5, p99: 32.1 },
-      ]),
-    );
-    (window as unknown as { argmax: Partial<ArgmaxApi> }).argmax = {
-      system: { debugSnapshot } as unknown as ArgmaxApi["system"],
-    };
+    recordSamples("dashboard:list", 1.2, 98);
+    recordSamples("dashboard:list", 4.8, 2);
+    recordSamples("session:events-since", 0.8, 30);
+    recordSamples("providers:launch", 18.5, 1);
 
     render(<PerfOverlay />);
 
     const hud = await screen.findByRole("status", { name: /IPC perf overlay/i });
     expect(hud).toBeInTheDocument();
-
-    await waitFor(() => expect(debugSnapshot).toHaveBeenCalled());
 
     // Tracked channels render in the SPEC's canonical order.
     const rows = within(hud).getAllByRole("row");
@@ -102,20 +85,16 @@ describe("PerfOverlay", () => {
         runningChatsByProvider: { codex: 2 },
         providerEvents: 4,
         providerEventsPerSecond: 4,
-        ipcCalls: 2,
-        ipcCallsPerSecond: 2,
         pendingProviderItems: 0,
         sqlite: { activeReaders: 0, waitingReads: 0, waitMs: 0 },
         rendererStalls: { count: 1, totalMs: 75, longestMs: 75 },
       },
     };
-    const debugSnapshot = vi.fn().mockResolvedValue(snapshotWith([]));
     const performanceStatus = vi.fn().mockResolvedValueOnce(inactive).mockResolvedValue(active);
     const performanceStart = vi.fn().mockResolvedValue(active);
     const performanceStop = vi.fn().mockResolvedValue({});
     (window as unknown as { argmax: Partial<ArgmaxApi> }).argmax = {
       system: {
-        debugSnapshot,
         performanceStatus,
         performanceStart,
         performanceStop,

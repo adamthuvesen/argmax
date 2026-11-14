@@ -11,10 +11,12 @@ use super::{
     argmax_protocol_error, protocol::SessionControlError, protocol_error, ARGMAX_BIN_ENV,
     SESSION_LAUNCH_SOCKET_ENV, SESSION_LAUNCH_TOKEN_ENV,
 };
+use crate::providers::mcp_injection::ClaudeMcpLaunch;
 use crate::providers::ProviderLaunchInput;
+use argmax_contracts::validation::ProviderId;
 use argmax_store::{
     after_turn::{delete_after_turn, find_after_turn, insert_after_turn, AfterTurnAction},
-    app_settings::browser_tools_enabled,
+    app_settings::{browser_tools_enabled, claude_mcp_choice},
     database::Database,
 };
 
@@ -148,6 +150,9 @@ pub struct SessionLaunchProcessConfig {
     /// first turn saw.
     linked_roots: Vec<LinkedRoot>,
     project_overview: Option<String>,
+    /// The user's "MCP at turn start" preset, resolved for this launch. Only
+    /// a Claude launch reads it; every other provider gets the default.
+    claude_mcp: ClaudeMcpLaunch,
 }
 
 impl std::fmt::Debug for SessionLaunchProcessConfig {
@@ -157,6 +162,7 @@ impl std::fmt::Debug for SessionLaunchProcessConfig {
             .field("socket_path", &self.socket_path)
             .field("token", &"[redacted]")
             .field("argmax_bin", &self.argmax_bin)
+            .field("claude_mcp", &self.claude_mcp)
             .finish()
     }
 }
@@ -184,6 +190,7 @@ impl SessionLaunchProcessConfig {
             browser_tools: true,
             linked_roots: Vec::new(),
             project_overview: None,
+            claude_mcp: ClaudeMcpLaunch::default(),
             socket_path: PathBuf::from(socket_path),
             token: token.to_string(),
             argmax_bin: PathBuf::from(argmax_bin),
@@ -199,6 +206,12 @@ impl SessionLaunchProcessConfig {
     #[cfg(test)]
     pub fn with_project_overview(mut self, overview: &str) -> Self {
         self.project_overview = Some(overview.to_string());
+        self
+    }
+
+    #[cfg(test)]
+    pub fn with_claude_mcp(mut self, claude_mcp: ClaudeMcpLaunch) -> Self {
+        self.claude_mcp = claude_mcp;
         self
     }
 
@@ -231,6 +244,10 @@ impl SessionLaunchProcessConfig {
 
     pub fn project_overview(&self) -> Option<&str> {
         self.project_overview.as_deref()
+    }
+
+    pub fn claude_mcp(&self) -> &ClaudeMcpLaunch {
+        &self.claude_mcp
     }
 }
 
@@ -329,6 +346,16 @@ impl SessionLaunchRegistry {
         // same answer: a chat the user started, and a chat one of their agents
         // started, carry the same tool surface.
         let browser_tools = browser_tools_enabled(&self.inner.database.read_connection());
+        // Resolved per launch, so a preset change or an edited config file
+        // reaches the next turn without a restart.
+        let claude_mcp = if input.provider == ProviderId::Claude {
+            let choice = claude_mcp_choice(&self.inner.database.read_connection());
+            ClaudeMcpLaunch::resolve(&choice, || {
+                crate::connections::claude_own_servers_for_user(Some(&input.workspace_path))
+            })
+        } else {
+            ClaudeMcpLaunch::default()
+        };
         let linked_roots = linked_roots_for_session(&self.inner.database, &input.session_id);
         let project_overview =
             project_overview_for_session(&self.inner.database, &input.session_id);
@@ -339,6 +366,7 @@ impl SessionLaunchRegistry {
             browser_tools,
             linked_roots,
             project_overview,
+            claude_mcp,
         }
     }
 

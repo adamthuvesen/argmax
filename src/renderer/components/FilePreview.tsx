@@ -57,9 +57,10 @@ import { WebLink } from "./WebLink.js";
 import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters.js";
 
 const MermaidDiagram = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./MermaidDiagram.js")).MermaidDiagram,
-  })),
+  importChunk(
+    async () => ({ default: (await import("./MermaidDiagram.js")).MermaidDiagram }),
+    "mermaid",
+  ),
 );
 
 function isMarkdownPath(path: string | null): boolean {

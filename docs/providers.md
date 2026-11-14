@@ -187,9 +187,52 @@ automatically inject memories into every chat. Use project-scoped recall and
 verify changeable claims against current code or sources. Argmax's built-in
 project learnings remain separate (see [memory.md](memory.md)).
 
+### Claude: MCP at turn start
+
+Every MCP server Claude starts adds to the wait before a turn begins. Settings → Agents → Claude → MCP at turn start chooses which servers a Claude turn starts. The choice is stored in `ui_state` (`launch.claude_mcp`) and resolved on every Claude launch in `SessionLaunchRegistry::issue`, so it also applies to chats an agent starts. A change applies from each chat's next turn.
+
+| Preset | What the launch adds | What starts |
+|---|---|---|
+| Everything (default) | nothing | Claude's own choice, plus `argmax` |
+| Without claude.ai connectors | `ENABLE_CLAUDEAI_MCP_SERVERS=false` in the process environment | your servers, plugin servers, `argmax` |
+| Your servers only | `--strict-mcp-config` | `argmax` and your own servers |
+| Argmax tools only | `--strict-mcp-config` | `argmax` |
+| Custom | `--strict-mcp-config` | `argmax` and the servers you pick |
+
+"Your own servers" are the definitions in the files Argmax can read: `mcpServers` in `~/.claude.json` (user scope), `projects.<checkout>.mcpServers` there (local scope), and the checkout's `.mcp.json` (project scope). `connections::claude_own_servers` reads them, and the Connections list uses the same reader. Local beats project, and project beats user, on a shared name. A project server on the checkout's `disabledMcpjsonServers` list is off. `claude -p` also starts a project server that is not approved yet, so `enabledMcpjsonServers` removes nothing. Argmax copies each definition into the inline `--mcp-config` unchanged and never writes a provider file.
+
+Plugin servers and claude.ai connectors are not in those files, so the strict presets leave them off. A Custom name the config no longer has is dropped at launch and flagged in Settings. The definitions can carry credentials in `env` or `headers`. They ride on argv, as the `argmax` token already does: argv is never logged, and the launch config's `Debug` output names the servers only. Settings counts the connectors and plugin servers with `claude mcp list` (`settings:claude-mcp-probe`). While connectors load, Claude skips a plugin server at a URL a connector already serves, so the Everything count subtracts those.
+
+The resolved preset stays on the launch config (`ClaudeMcpLaunch::preset`), so a per-turn latency measurement can say which preset a turn ran with.
+
 ## Session Lifecycle and Follow-ups
 
 An idle follow-up persists the user message and returns, then spawns the provider in the background. The PTY/CLI spawn does not block the send IPC.
+
+### The pre-turn checkpoint gate
+
+Every turn in a git workspace captures a "Before turn" checkpoint, so a revert can restore the worktree as it was before the agent touched it. The capture runs beside the provider's startup, not before it. `spawn_provider_in_background` starts the capture as a task and launches through `ProviderProcessLauncher::launch_gated` with a [`PromptGate`](../src-tauri/src/providers/prompt_gate.rs). The provider may spawn and finish its handshake while the gate is shut. The user's prompt, the first thing that lets the model act, waits for the gate.
+
+| Provider path | Runs while the capture runs | Waits for the gate |
+|---|---|---|
+| Claude stream-json | Spawn, `initialize`, its acknowledgement | The first user message |
+| Codex app-server | Spawn, `initialize`, `thread/start` / `resume` / `fork` | `turn/start` (or `thread/compact/start`) |
+| OpenCode serve | Server boot, health check, event stream, session create or fork | `prompt_async` |
+| Cursor and Grok ACP | Warm process, `session/new` / `load`, model and mode | `session/prompt` |
+| PTY (Cursor and Grok fallbacks) | Nothing | Everything: the prompt is in argv, and the MCP config is written into the worktree |
+
+A launcher without an override waits for the gate before it launches, which keeps test launchers sequential.
+
+The gate keeps the old outcomes:
+
+- A checkpoint that fails to capture still opens the gate. The turn runs and its `user.message` carries `checkpointUnavailable`, as before.
+- A capture that cannot run at all (the session or workspace row is unreadable) refuses the gate. The launch kills the process it started and returns the capture's error, and the turn fails as it did when the capture ran first. Cursor and Grok ACP are the exception: they keep their warm per-workspace process, and the `session/new` they created stays in it with no prompt.
+- A Stop before the gate opens refuses it at once with `PROVIDER_LAUNCH_CANCELLED`, through the stop handle the spawn task leaves on the Pending entry. A capture still waiting for the checkout lock (a running check holds it for its whole command) gives up and writes nothing. The CLI is killed before the launch returns, and the turn stays cancelled.
+- A definite resume rejection that arrives before the gate opens waits for it. A stopped or uncapturable turn records no rejection and starts no fresh retry.
+- Until the gate opens, every provider event is held. An open gate replays them in order; a refused gate drops them, so an aborted launch shows nothing in the chat.
+- A launch that fails for its own reason waits for the capture before the failure is recorded, so no capture is still writing refs after the turn settles.
+
+The capture still holds the checkout write lock, so a rewind, review write, or `session_move` cannot interleave with it. Provider startup is not the agent: a Claude `SessionStart` hook or an MCP server that writes into the worktree at boot can now race the capture.
 
 While a turn is running, ordinary input stays queued. A queued follow-up has
 **Steer** for Codex, Claude and OpenCode and **Stop and send** for explicit interruption.

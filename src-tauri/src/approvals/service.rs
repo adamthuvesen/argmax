@@ -514,6 +514,7 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"d
             None,
             svc.clone(),
             Arc::new(|_| {}),
+            &crate::providers::prompt_gate::PromptGate::open(),
         )
         .await
         .unwrap();

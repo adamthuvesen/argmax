@@ -42,6 +42,7 @@ pub mod time;
 pub mod timeline_semantics;
 pub mod tool_activity;
 pub mod turn_routes;
+pub mod turn_waterfalls;
 pub mod usage;
 pub mod usage_scan;
 pub mod workspaces;

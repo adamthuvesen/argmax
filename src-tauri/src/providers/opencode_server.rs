@@ -12,6 +12,7 @@ use super::{
     mcp_injection,
     normalizer::ProviderOutputStream,
     opencode_gateway::{self, OpencodeGateway},
+    prompt_gate::PromptGate,
     runtime::{
         BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType,
         ProviderRuntimeHandle,
@@ -70,6 +71,7 @@ pub async fn launch_turn(
     approvals: Arc<ApprovalService>,
     questions: Arc<QuestionService>,
     emit: EventCallback,
+    prompt_gate: &PromptGate,
 ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
     let port = available_loopback_port()?;
     let password = uuid::Uuid::new_v4().to_string();
@@ -160,7 +162,7 @@ pub async fn launch_turn(
             return Err(error);
         }
     };
-    let setup = prepare_turn(&http, &endpoint, input, gateway).await;
+    let setup = prepare_turn(&http, &endpoint, input, gateway, prompt_gate).await;
     let (native_session_id, event_rx, sse_cancel, sse_task) = match setup {
         Ok(setup) => setup,
         Err(error) => {
@@ -236,6 +238,7 @@ async fn prepare_turn(
     endpoint: &str,
     input: &ProviderLaunchInput,
     gateway: OpencodeGateway,
+    prompt_gate: &PromptGate,
 ) -> ArgmaxResult<PreparedTurn> {
     wait_until_ready(http, endpoint).await?;
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
@@ -264,6 +267,9 @@ async fn prepare_turn(
     }
 
     let native_session_id = native_session(http, endpoint, input).await?;
+    // The server boots and opens its session while the checkpoint finishes;
+    // the prompt waits for it.
+    prompt_gate.wait_before_prompt(&input.session_id).await?;
     prompt(http, endpoint, input, &native_session_id, gateway).await?;
     Ok((native_session_id, event_rx, sse_cancel, sse_task))
 }

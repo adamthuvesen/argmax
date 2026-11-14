@@ -233,6 +233,7 @@ pub(super) async fn message_session(
     let result = providers
         .send_agent_message(
             ProvidersSendInput {
+                submitted_at_ms: None,
                 agent_references: None,
                 session_id: target,
                 input: message,

@@ -229,14 +229,14 @@ The server is `argmax mcp`, the same binary as the app, forwarding each call ove
 
 | Provider | Mechanism | Leaves a file? |
 |---|---|---|
-| Claude | `--mcp-config '<inline json>'` | no |
+| Claude | `--mcp-config '<inline json>'`, plus `--strict-mcp-config` for some presets | no |
 | Codex | `-c mcp_servers.argmax.*` | no |
 | Cursor (ACP) | `session/new` and `session/load` | no |
 | OpenCode | `OPENCODE_CONFIG_CONTENT`, merged over the user's config | no |
 | Cursor (fork fallback, PTY) | `<workspace>/.cursor/mcp.json`, merged | yes, restored at exit |
 | Grok Build | `<workspace>/.grok/config.toml` and a folder-trust grant | yes, removed at exit |
 
-[mcp_injection.rs](../src-tauri/src/providers/mcp_injection.rs) is the one place that knows which is which. None of them displaces the user's own servers, so `--strict-mcp-config` is deliberately not passed. A file Argmax cannot parse is left alone and the tools stay off for that launch, which beats destroying a working config.
+[mcp_injection.rs](../src-tauri/src/providers/mcp_injection.rs) is the one place that knows which is which. None of them displaces the user's own servers by default. The one exception is a Claude preset the user picks in Settings → Agents → Claude → MCP at turn start ([providers.md](providers.md#claude-mcp-at-turn-start)): three of the presets pass `--strict-mcp-config`. A file Argmax cannot parse is left alone and the tools stay off for that launch, which beats destroying a working config.
 
 Host policy lives on the server's `instructions` field. Provider-facing prompts also carry a short Argmax routing instruction. Argmax retains the original user text and strips the instruction from imported transcripts.
 

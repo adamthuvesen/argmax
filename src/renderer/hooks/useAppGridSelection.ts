@@ -14,6 +14,7 @@ import {
   type GridState,
   type SplitPosition,
 } from "../lib/gridState.js";
+import { beginInteraction, firstVisit } from "../lib/interactionTimings.js";
 import { launchProjectIdFrom } from "../lib/launchProjectPreference.js";
 import { chatSessionFor } from "../lib/workspaceChat.js";
 import {
@@ -154,6 +155,12 @@ export function useAppGridSelection({
         return;
       }
       setSelectedProjectId(workspace.projectId);
+      const focused = focusedCell(paneGridSnapshot());
+      if (!(focused && isSessionCell(focused) && focused.sessionId === sessionForWorkspace.id)) {
+        const target = sessionForWorkspace.id;
+        const visit = firstVisit(target) ? "first" : "revisit";
+        beginInteraction("chat.switch", { target, visit });
+      }
       openWorkspacePane({ sessionId: sessionForWorkspace.id, workspaceId }, modifiers, {
         maxColumns: maxColumnsPerRow,
       });
@@ -206,6 +213,7 @@ export function useAppGridSelection({
         projectId = focused.projectId;
       }
       if (!projectId) return;
+      beginInteraction("launcher.open", { mode: "grid" });
       if (
         openLauncherPane({ kind: "launcher", projectId }, { maxColumns: maxColumnsPerRow }) ===
         "grid-full"

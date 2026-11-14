@@ -44,6 +44,7 @@ import { SettingsListPicker } from "../settings/settingsPrimitives.js";
 import { RunAtPicker } from "./RunAtPicker.js";
 import { uuidV4 } from "../../lib/uuid.js";
 import { showErrorToast } from "../../state/toast.js";
+import { useInteractionShown } from "../../lib/interactionTimings.js";
 
 /** Matches `SCHEDULER_TICK` in routines/scheduler.rs. The panel waits out one
  *  full tick past a due time before re-reading, so the refresh lands after the
@@ -158,6 +159,7 @@ export function ScheduledTasksPanel({
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  useInteractionShown("page.schedule", routines !== null);
 
   const explicitReload = useRef(false);
   const { refetch: refetchRoutines } = useBridgeQuery({

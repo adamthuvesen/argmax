@@ -302,6 +302,7 @@ impl ProviderSessionService {
             Prompt::try_from(notice.body),
         ) {
             (Ok(session_id), Ok(input)) => ProvidersSendInput {
+                submitted_at_ms: None,
                 agent_references: None,
                 session_id,
                 input,
@@ -385,6 +386,7 @@ impl ProviderSessionService {
             return Ok(true);
         };
         let send_input = ProvidersSendInput {
+            submitted_at_ms: None,
             agent_references: None,
             session_id,
             input,

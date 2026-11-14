@@ -1443,7 +1443,19 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &FOLDER_WORKSPACE_COLUMNS,
         requires_foreign_keys_off: true,
     },
+    Migration {
+        version: 76,
+        name: "turn_waterfalls",
+        up: crate::turn_waterfalls::MIGRATION_SQL,
+        affected_tables: &["turn_waterfalls"],
+        expected_columns: &TURN_WATERFALL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+static TURN_WATERFALL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "turn_waterfalls" => &["id", "session_id", "turn_key", "provider", "stamps_json", "created_at"] as &'static [&'static str],
+};
 
 static FOLDER_WORKSPACE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "workspaces" => &["project_folder_id", "base_ref", "branch", "changed_files", "checkout_removed_at", "created_at", "created_branch", "created_branch_oid", "dirty", "icon", "icon_color", "id", "kind", "last_activity_at", "last_viewed_at", "path", "pinned", "priority_added_at", "priority_dismissed_at", "project_id", "shared_workspace", "snoozed_until", "state", "task_label", "task_label_auto", "updated_at"] as &'static [&'static str],
@@ -3752,6 +3764,10 @@ mod tests {
                 (73, compute_migration_checksum(PROJECT_FOLDERS)),
                 (74, compute_migration_checksum(PROJECT_OVERVIEWS)),
                 (75, compute_migration_checksum(FOLDER_WORKSPACES)),
+                (
+                    76,
+                    compute_migration_checksum(crate::turn_waterfalls::MIGRATION_SQL)
+                ),
             ]
         );
 

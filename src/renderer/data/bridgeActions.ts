@@ -127,6 +127,7 @@ export function settingsActions():
       | "setOpencodeGatewayKey"
       | "clearOpencodeGatewayKey"
       | "setBranchTemplate"
+      | "setClaudeMcp"
       | "previewChatCleanup"
       | "deleteOldChats"
     >

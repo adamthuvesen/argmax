@@ -48,6 +48,7 @@ import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import { WorkingNest } from "./WorkingNest.js";
 import { SlidingTabIndicator } from "./SlidingTabIndicator.js";
 import type { MotionPresenceState } from "../hooks/useMotionPresence.js";
+import { useInteractionShown } from "../lib/interactionTimings.js";
 
 export type PaletteCommand = PaletteItem;
 
@@ -307,6 +308,7 @@ export function CommandPalette({
   // Document-level Esc + outside-click via the shared hook means Esc works even
   // if focus drifts to a result row (e.g. via screen-reader navigation).
   useDismissOnOutsideOrEscape(paletteRef, open, onClose, undefined, { trapFocus: true });
+  useInteractionShown("palette.open", open);
   // Cache the loaded path list across keystrokes within a single palette
   // session. Keyed by `${kind}:${id}` so switching workspace/project between
   // opens invalidates correctly.

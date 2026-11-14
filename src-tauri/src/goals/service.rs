@@ -535,6 +535,7 @@ impl GoalService {
         self.providers
             .send_goal_input(
                 ProvidersSendInput {
+                    submitted_at_ms: None,
                     session_id: SessionId::try_from(goal.session_id.clone())
                         .map_err(ArgmaxError::invalid)?,
                     input: Prompt::try_from(prompt).map_err(ArgmaxError::invalid)?,

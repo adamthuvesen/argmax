@@ -617,6 +617,7 @@ pub async fn confirm(
         });
     };
     let input = ProvidersSendInput {
+        submitted_at_ms: None,
         session_id: SessionId::try_from(source_session_id)
             .map_err(|_| ArgmaxError::service("FORK_MERGE_SOURCE", "Invalid source id."))?,
         input: Prompt::try_from(text)

@@ -7,18 +7,21 @@ use tauri::State;
 use uuid::Uuid;
 
 use super::inputs::{
-    ClearOpencodeGatewayKeyInput, DeleteOldChatsInput, SetBrowserToolsInput,
+    ClearOpencodeGatewayKeyInput, DeleteOldChatsInput, SetBrowserToolsInput, SetClaudeMcpInput,
     SetOpencodeGatewayInput, SetOpencodeGatewayKeyInput, SetProjectCheckInput, SetRoutingKeyInput,
     SettingsRoutingInput,
 };
+use crate::connections::{claude_own_servers_for_user, claude_probe_counts, ClaudeProbeCounts};
 use crate::providers::opencode_gateway::{self, OpencodeGateway};
 use crate::state::AppState;
 use crate::state::{live_database, read_off_main};
 use crate::workspaces::lifecycle::ArchiveOutcome;
-use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
+use argmax_contracts::validation::ProviderId;
 use argmax_contracts::validation::SessionId;
 use argmax_store::app_settings::{
-    browser_tools_enabled, project_check_mode, set_browser_tools_enabled, set_project_check_mode,
+    browser_tools_enabled, claude_mcp_choice, project_check_mode, set_browser_tools_enabled,
+    set_claude_mcp_choice, set_project_check_mode, ClaudeMcpChoice, ClaudeMcpPreset,
     ProjectCheckMode,
 };
 use argmax_store::chat_cleanup::{
@@ -252,6 +255,109 @@ pub(crate) async fn settings_set_browser_tools_impl(
     Ok(AgentToolsSettings {
         browser_tools: input.enabled,
     })
+}
+
+/// A server in the user's own Claude config (`~/.claude.json` user scope).
+/// Project and local servers depend on the checkout, so Settings lists only
+/// these; a launch also adds the checkout's own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeOwnServerSummary {
+    pub name: String,
+    /// False when the definition says `"enabled": false`; a launch skips it.
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeMcpSettings {
+    pub preset: ClaudeMcpPreset,
+    pub custom_servers: Vec<String>,
+    pub own_servers: Vec<ClaudeOwnServerSummary>,
+}
+
+async fn claude_mcp_settings(state: &AppState) -> ArgmaxResult<ClaudeMcpSettings> {
+    let database = live_database(state)?;
+    read_off_main(move || {
+        let choice = claude_mcp_choice(&database.read_connection());
+        let own_servers = claude_own_servers_for_user(None)
+            .into_iter()
+            .map(|server| ClaudeOwnServerSummary {
+                name: server.name,
+                enabled: server.enabled,
+            })
+            .collect();
+        Ok(ClaudeMcpSettings {
+            preset: choice.preset,
+            custom_servers: choice.custom_servers,
+            own_servers,
+        })
+    })
+    .await
+}
+
+/// Which MCP servers a Claude turn starts, and the user's own servers to
+/// choose from. Reads files only, so it answers at once; the counts that need
+/// `claude mcp list` come from `settings:claude-mcp-probe`.
+#[tauri::command(rename = "settings:claude-mcp")]
+#[specta::specta]
+pub async fn settings_claude_mcp(state: State<'_, AppState>) -> ArgmaxResult<ClaudeMcpSettings> {
+    claude_mcp_settings(&state).await
+}
+
+/// Takes effect on each Claude chat's next turn.
+#[tauri::command(rename = "settings:set-claude-mcp")]
+#[specta::specta]
+pub async fn settings_set_claude_mcp(
+    state: State<'_, AppState>,
+    input: SetClaudeMcpInput,
+) -> ArgmaxResult<ClaudeMcpSettings> {
+    let choice = validated_claude_mcp_choice(input)?;
+    let database = live_database(&state)?;
+    read_off_main(move || set_claude_mcp_choice(&database.connection(), &choice)).await?;
+    claude_mcp_settings(&state).await
+}
+
+fn validated_claude_mcp_choice(input: SetClaudeMcpInput) -> ArgmaxResult<ClaudeMcpChoice> {
+    let invalid = |message: String| {
+        ArgmaxError::invalid(InvalidInputIssue::at(
+            vec!["customServers".into()],
+            "INVALID_SERVER_NAME",
+            message,
+        ))
+    };
+    let mut seen = HashSet::new();
+    for name in &input.custom_servers {
+        if name.trim().is_empty() || name.trim() != name {
+            return Err(invalid(format!(
+                "Custom MCP server name {name:?} is empty or has surrounding spaces."
+            )));
+        }
+        if !seen.insert(name.as_str()) {
+            return Err(invalid(format!(
+                "Custom MCP server {name:?} is listed twice."
+            )));
+        }
+    }
+    Ok(ClaudeMcpChoice {
+        preset: input.preset,
+        custom_servers: input.custom_servers,
+    })
+}
+
+/// How many claude.ai connectors and plugin servers Claude starts beside the
+/// user's own servers. Runs `claude mcp list`, which starts every server, so
+/// it takes seconds. `None` when Claude is not installed or the probe fails.
+#[tauri::command(rename = "settings:claude-mcp-probe")]
+#[specta::specta]
+pub async fn settings_claude_mcp_probe(
+    state: State<'_, AppState>,
+) -> ArgmaxResult<Option<ClaudeProbeCounts>> {
+    let provider = state.provider_discovery.discover(ProviderId::Claude).await;
+    let Some(binary) = provider.binary_path else {
+        return Ok(None);
+    };
+    Ok(claude_probe_counts(&binary).await)
 }
 
 #[tauri::command(rename = "settings:preview-chat-cleanup")]

@@ -270,6 +270,7 @@ async fn an_arc_records_its_story_newest_first_and_pages_without_overlap() {
     let member = fixture
         .providers
         .launch(ProvidersLaunchInput {
+            submitted_at_ms: None,
             workspace_id: WorkspaceId::try_from("workspace-member-host".to_string()).unwrap(),
             provider: ProviderId::Claude,
             prompt: Prompt::try_from("Build the pricing page".to_string()).unwrap(),

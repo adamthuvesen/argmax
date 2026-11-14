@@ -566,3 +566,59 @@
   align-items: center;
   gap: var(--space-2);
 }
+
+/* ---- Single-choice list: one settings row per option ----
+   The radiogroup is one card child, so its rows paint their own dividers,
+   like the provider list. */
+.settings-card > .settings-choice-list,
+.settings-card > .settings-choice-servers {
+  padding: 0;
+}
+
+.settings-choice {
+  padding: 10px 14px;
+  border-top: 0.5px solid var(--line-soft);
+  cursor: pointer;
+  flex-wrap: nowrap;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.settings-choice-list > .settings-choice:first-child {
+  border-top: 0;
+}
+
+.settings-choice:hover {
+  background: var(--row-hover);
+}
+
+.settings-choice:focus-within {
+  box-shadow: inset var(--ring);
+}
+
+.settings-choice input[type="radio"] {
+  flex: none;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.settings-choice-meta {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--muted-strong);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.settings-choice-heading {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+.settings-choice-servers > * {
+  padding: 8px 14px 8px 40px;
+  border-top: 0.5px solid var(--line-soft);
+}
+
+.settings-choice-missing {
+  color: var(--amber);
+}

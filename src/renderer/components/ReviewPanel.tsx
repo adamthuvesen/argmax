@@ -99,14 +99,16 @@ import {
 } from "../lib/terminalTabs.js";
 import { ProjectFolderChangesDiff, ProjectFolderChangesList } from "./ProjectFolderChanges.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
+import { useOpenInteraction } from "../lib/interactionTimings.js";
 
 // The Terminal view pulls in @xterm/xterm + addons + xterm CSS — heavy, and
 // only needed once the reader actually asks for a shell. SessionPane warms
 // the same chunk on idle, so the first ⌘J paints immediately.
 const TerminalTabsPanel = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./TerminalTabsPanel.js")).TerminalTabsPanel,
-  })),
+  importChunk(
+    async () => ({ default: (await import("./TerminalTabsPanel.js")).TerminalTabsPanel }),
+    "terminal",
+  ),
 );
 
 /** What the Agents view needs from the pane that owns the panel. */
@@ -530,6 +532,7 @@ function ReviewPanelPane({
     (review.mode === "browser" && !hasBrowser) ||
     (review.mode === "terminal" && !terminalWorkspaceId);
   const mode: ReviewPanelMode = unavailable ? "changes" : review.mode;
+  useOpenInteraction(`tab.${mode}`, true, mode !== "changes" || review.filesState === "ready");
   const isChanges = mode === "changes";
   const isAgents = mode === "agents";
   const isBrowser = mode === "browser";

@@ -20,7 +20,7 @@ node scripts/bridge.mjs perf --seconds 300 --output ./argmax-performance.json
 | Eager bundle size | `npm run check:bundle` ([check-bundle.mjs](../scripts/check-bundle.mjs)) |
 | Renderer transforms | `npm run test:perf` ([perf.test.ts](../src/test/perf.test.ts)) |
 | Synchronous IPC handlers | `npm run check:main-thread` ([check-main-thread-handlers.mjs](../scripts/check-main-thread-handlers.mjs)) |
-| IPC p99 < 100 ms | [ipc_latency.rs](../src-tauri/src/util/ipc_latency.rs), Settings → Diagnostics |
+| IPC p99 < 100 ms, per channel | [ipcLatency.ts](../src/renderer/lib/ipcLatency.ts), Settings → Diagnostics, `window.__argmaxPerf.ipc()` |
 
 `sessions.recover` uses a partial index, so startup orphan detection stays O(sessions). Process orphan scans run in background tasks, so they do not block the setup hook.
 
@@ -106,7 +106,32 @@ The focused desktop pane warms its file list and first diff. Closed background p
 
 Timeline push hints trigger `session:events-since`, and no dashboard-wide poll exists ([runtime.md](runtime.md)). `session:agent-events` runs only while a subagent tab is open.
 
+The budget measures what the user waits for: the renderer round trip from `invoke` to result, including serialization and async handler time. [tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) times every request/response call at one point and keeps the last 100 durations per channel ([ipcLatency.ts](../src/renderer/lib/ipcLatency.ts)). A rejected call counts. Read the numbers in Settings → Advanced → Performance (p50, p95, p99, max), in the debug panel IPC tab, or in automation with `window.__argmaxPerf?.ipc()`, which returns one row per channel, slowest p99 first. The Rust side keeps no latency registry. Handler time alone hides the cost of a large result.
+
 Browser bounds share one measurement per animation frame, and unchanged bounds skip the native call. Tab persistence runs after the interaction and excludes loading-only updates.
+
+## Turn waterfall
+
+Every turn a person starts records where its time goes between the send and the first painted answer, in the installed app too ([turn_waterfall.rs](../src-tauri/src/providers/turn_waterfall.rs)). A turn starts timing when `providers:launch` or `providers:send-input` reaches its handler (`ipc_received`, offset 0). The handler gets an origin token, and only the admit that carries that token opens the turn. A queued follow-up leaves no row, and queue drains, agent messages, and schedules carry no token, so they open none and cannot take a person's origin. The turn is keyed by session id and the `user.message` event id it answers.
+
+| Step | Taken at |
+|---|---|
+| `submit` | The composer's click, `Date.now()`, sent as `submittedAtMs`. Desktop window only; the remote bridge drops it. Negative. |
+| `ipc_received` | The IPC handler, before routing. |
+| `admitted` | Workspace admission and the checkout lock held (`launch.rs`, `input.rs`). |
+| `checkpoint_start`, `checkpoint_end` | Around `capture_before_provider_turn`. The capture runs beside the provider's startup, so these overlap `spawn` and `initialize_*` ([the gate](providers.md#the-pre-turn-checkpoint-gate)). |
+| `env_ready`, `spawn` | Claude: around `command.spawn()` in `claude_control.rs`. Other providers: `spawn` is the launcher returning a handle, which is after the prompt was sent. |
+| `initialize_sent`, `initialize_ack` | Claude's `initialize` control request flushed to stdin, and its `control_response`. |
+| `prompt_gate_waited` | The launch was ready for the prompt before the checkpoint ended; stamped when the checkpoint ended. Absent when the checkpoint finished first. Claude, Codex, OpenCode, and the ACP paths. |
+| `prompt_written` | Claude's first user message flushed to stdin: about `max(checkpoint_end, initialize_ack)`. |
+| `first_stdout` | Claude's first stdout line; for the other providers, the first stdout line the flush queue takes. Not stamped for typed PTY input, whose first output is the echo. |
+| `cli_init` | Claude's `system`/`init` message. |
+| `first_content` | The first assistant text or tool start parsed (`flush_queue.rs`). |
+| `first_persisted` | The writer transaction that holds it committed. |
+| `first_hint_emitted` | The first `dashboard:delta` for the session after that commit reached the webviews. |
+| `first_painted` | Two animation frames after the chat rendered the turn's first content (`useTurnPaintReport`), reported once through `session:turn-painted`. |
+
+Backend stamps are `Instant`s, in milliseconds from `ipc_received`. The two renderer stamps are epoch milliseconds, converted with the wall clock read at `ipc_received`. Only the first stamp of each step counts, and an ended turn takes no more. The streaming path stays lock-free: atomic counts of open turns gate every stamp, and a per-run gate skips a step once it is stamped, so a token with no open turn locks and allocates nothing. The turn closes on the paint report, on the next admitted send, or 5 s after any turn end, a stopped turn included. Typed PTY input closes at once, with no answer stamps. Closing logs one `turn waterfall` line with every offset and writes one `turn_waterfalls` row off the streaming path ([data.md](data.md#turn-waterfalls)). `session:turn-waterfalls` reads the newest rows, and Settings → Advanced → Performance shows the last 20.
 
 ## Native iOS
 

@@ -55,9 +55,10 @@ import type { FileChipOpenOptions } from "./FileChip.js";
 import { ALWAYS_FOLLOWING, type TranscriptFollow } from "../hooks/useConversationScroll.js";
 
 const HtmlVisualization = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./HtmlVisualization.js")).HtmlVisualization,
-  })),
+  importChunk(
+    async () => ({ default: (await import("./HtmlVisualization.js")).HtmlVisualization }),
+    "html-visualization",
+  ),
 );
 
 type TurnRenderItem = Extract<RenderItem, { kind: "turn" }>;

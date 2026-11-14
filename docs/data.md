@@ -150,6 +150,10 @@ Migration v49 adds `gh_pull_requests` for canonical GitHub state and
 preserved and legacy associations begin unverified. See [gh.md](gh.md) for
 selection, repair, and automation rules.
 
+## Turn waterfalls
+
+Migration v76 adds `turn_waterfalls`: one row per timed turn, with `session_id` (`ON DELETE CASCADE`), `turn_key` (the `user.message` event id), `provider`, `stamps_json` (an ordered array of `{name, offsetMs}`), and `created_at`. A turn writes its row once, when it closes, and the same transaction deletes every row older than the newest 500. See [performance.md](performance.md#turn-waterfall).
+
 ## Auto routing
 
 Migration v56 adds `sessions.auto_tier` (`cost` / `balanced` /

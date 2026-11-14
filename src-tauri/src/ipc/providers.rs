@@ -1,5 +1,6 @@
 use super::inputs::*;
 use crate::providers::discovery::ProviderCapabilityReport;
+use crate::providers::turn_waterfall;
 use crate::{
     ipc::system::SystemOk,
     providers::session_service::{ProviderSessionService, SendInputResult},
@@ -34,18 +35,37 @@ pub(crate) async fn providers_discover_impl(
 pub async fn providers_launch(
     app: AppHandle,
     state: State<'_, AppState>,
-    input: ProvidersLaunchInput,
+    mut input: ProvidersLaunchInput,
 ) -> ArgmaxResult<SessionSummary> {
+    let submitted_at_ms = input.submitted_at_ms.take();
     let app_data = crate::util::data_dir::app_data_dir(&app)
         .map_err(|error| ArgmaxError::service("APP_DATA_DIR", error.to_string()))?;
     let default_agent = crate::default_agent::read_default_agent(&app_data);
-    providers_launch_impl(&state, input, &default_agent).await
+    providers_launch_impl(&state, input, &default_agent, submitted_at_ms).await
 }
 
+/// `submitted_at_ms` is the desktop window's click time. A remote client's
+/// clock is another machine's, so the remote bridge passes `None`.
 pub(crate) async fn providers_launch_impl(
     state: &AppState,
     mut input: ProvidersLaunchInput,
     default_agent: &crate::default_agent::DefaultAgent,
+    submitted_at_ms: Option<f64>,
+) -> ArgmaxResult<SessionSummary> {
+    input.submitted_at_ms = None;
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let origin = turn_waterfall::begin(submitted_at_ms);
+    let launched = launch_routed(state, input, default_agent, session_id.clone(), origin).await;
+    turn_waterfall::discard_unadmitted(origin);
+    launched
+}
+
+async fn launch_routed(
+    state: &AppState,
+    mut input: ProvidersLaunchInput,
+    default_agent: &crate::default_agent::DefaultAgent,
+    session_id: String,
+    origin: turn_waterfall::OriginToken,
 ) -> ArgmaxResult<SessionSummary> {
     // Route before the permission default: that default is per provider.
     // Discovery is cached from boot, so this does not re-probe every CLI.
@@ -53,7 +73,12 @@ pub(crate) async fn providers_launch_impl(
     let route = crate::routing::route_launch(&mut input, &available).await?;
     apply_launch_permission_default(&mut input, default_agent);
     let session = live_providers(state)?
-        .launch_as_person(input, super::attest_person())
+        .launch_as_person(
+            input,
+            Some(session_id),
+            super::attest_person(),
+            Some(origin),
+        )
         .await?;
     match route {
         Some(route) => {
@@ -83,18 +108,25 @@ fn apply_launch_permission_default(
 #[specta::specta]
 pub async fn providers_send_input(
     state: State<'_, AppState>,
-    input: ProvidersSendInput,
+    mut input: ProvidersSendInput,
 ) -> ArgmaxResult<SendInputResult> {
-    providers_send_input_impl(&state, input).await
+    let submitted_at_ms = input.submitted_at_ms.take();
+    providers_send_input_impl(&state, input, submitted_at_ms).await
 }
 
+/// `submitted_at_ms` as for `providers_launch_impl`.
 pub(crate) async fn providers_send_input_impl(
     state: &AppState,
-    input: ProvidersSendInput,
+    mut input: ProvidersSendInput,
+    submitted_at_ms: Option<f64>,
 ) -> ArgmaxResult<SendInputResult> {
-    live_providers(state)?
-        .send_input_as_person(input, super::attest_person())
-        .await
+    input.submitted_at_ms = None;
+    let origin = turn_waterfall::begin(submitted_at_ms);
+    let sent = live_providers(state)?
+        .send_input_as_person(input, super::attest_person(), Some(origin))
+        .await;
+    turn_waterfall::discard_unadmitted(origin);
+    sent
 }
 
 #[tauri::command(rename = "providers:steer-input")]

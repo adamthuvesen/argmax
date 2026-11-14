@@ -72,6 +72,7 @@ export function useSessionCommands({
       agentReferences?: AgentReference[],
       delivery: FollowUpDelivery = "queue",
     ): Promise<SendInputResult> => {
+      const submittedAtMs = Date.now();
       if (!window.argmax) {
         throw new Error("Open Argmax on your Mac to send input to a live chat.");
       }
@@ -97,6 +98,7 @@ export function useSessionCommands({
         agentMode,
         attachments: attachments?.length ? attachments : null,
         ...(agentReferences?.length ? { agentReferences } : {}),
+        submittedAtMs,
       });
       // The send already succeeded. Dashboard catch-up is best-effort and can
       // take a 100 ms metadata coalesce plus a transcript pull; awaiting it

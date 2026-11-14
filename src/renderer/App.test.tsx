@@ -32,7 +32,7 @@ import {
   workspaceRow,
   sessionRow,
 } from "../test/appTestHarness.js";
-import { freezeClock, isoAgo } from "../test/fixedClock.js";
+import { FIXED_NOW_MS, freezeClock, isoAgo } from "../test/fixedClock.js";
 
 freezeClock();
 
@@ -783,6 +783,7 @@ describe("App", () => {
       rows: 32,
       attachments: null,
       autoTier: null,
+      submittedAtMs: FIXED_NOW_MS,
     });
     await waitFor(() =>
       expect(autotitleWorkspace).toHaveBeenCalledWith({
@@ -1232,6 +1233,7 @@ describe("App", () => {
         rows: 32,
         attachments: null,
         autoTier: null,
+        submittedAtMs: FIXED_NOW_MS,
       }),
     );
   });

@@ -26,6 +26,7 @@ import { ActivityPullRequests } from "./ActivityPullRequests.js";
 import { ActivityRepositories } from "./ActivityRepositories.js";
 import { ActivityReviews } from "./ActivityReviews.js";
 import { ActivitySkeleton } from "./ActivitySkeleton.js";
+import { useInteractionShown } from "../../lib/interactionTimings.js";
 
 /**
  * Activity — the Usage page's sibling under the same rail. Usage answers what
@@ -119,6 +120,8 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
     if (!visible) return;
     void load(activityWindow, projectId);
   }, [activityWindow, load, projectId, visible]);
+
+  useInteractionShown("page.activity", visible && summary !== null);
 
   const scanning = summary?.scan.phase === "scanning";
   useEffect(() => {

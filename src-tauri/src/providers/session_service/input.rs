@@ -1,6 +1,7 @@
 //! Sending to a running chat: follow-ups, steering, routed sends, and resize.
 
 use super::*;
+use crate::providers::turn_waterfall;
 
 impl ProviderSessionService {
     /// A follow-up no person typed into the composer (internal callers, tests).
@@ -18,9 +19,19 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
         attestation: PersonAttestation,
+        waterfall_origin: Option<turn_waterfall::OriginToken>,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_authored(input, None, PromptAuthor::person(attestation))
-            .await
+        self.send_input_scoped(
+            input,
+            None,
+            None,
+            TurnStarter::Person,
+            Queueing::Allowed,
+            MidTurnDelivery::Queue,
+            PromptAuthor::person(attestation),
+            waterfall_origin,
+        )
+        .await
     }
 
     /// Deliver a composer follow-up as guidance inside an active turn. This
@@ -57,6 +68,7 @@ impl ProviderSessionService {
             Queueing::Allowed,
             MidTurnDelivery::Steer,
             author,
+            None,
         )
         .await
     }
@@ -92,6 +104,7 @@ impl ProviderSessionService {
             Queueing::Allowed,
             MidTurnDelivery::Queue,
             author,
+            None,
         )
         .await
     }
@@ -114,6 +127,7 @@ impl ProviderSessionService {
             Queueing::Allowed,
             MidTurnDelivery::SteerOrQueue,
             PromptAuthor::unattested(),
+            None,
         )
         .await
     }
@@ -131,6 +145,7 @@ impl ProviderSessionService {
             Queueing::Refused,
             MidTurnDelivery::Queue,
             PromptAuthor::unattested(),
+            None,
         )
         .await
     }
@@ -150,6 +165,7 @@ impl ProviderSessionService {
             Queueing::Allowed,
             MidTurnDelivery::Queue,
             PromptAuthor::unattested(),
+            None,
         )
         .await
     }
@@ -169,6 +185,7 @@ impl ProviderSessionService {
             Queueing::Refused,
             MidTurnDelivery::Queue,
             PromptAuthor::unattested(),
+            None,
         )
         .await
     }
@@ -367,6 +384,7 @@ impl ProviderSessionService {
         queueing: Queueing,
         mid_turn_delivery: MidTurnDelivery,
         author: PromptAuthor,
+        waterfall_origin: Option<turn_waterfall::OriginToken>,
     ) -> ArgmaxResult<SendInputResult> {
         // A message another session sent is never the person's own text, so a
         // send that claims both is a bug in the caller, not something to
@@ -511,6 +529,7 @@ impl ProviderSessionService {
         };
         let checkout_lock = checkout_write_lock(&workspace_path).await?;
         let checkout_guard = checkout_lock.lock().await;
+        let admitted_at = std::time::Instant::now();
         if let Some(goal_turn) = goal_turn.as_ref() {
             let connection = self.database.read_connection();
             ensure_goal_turn_admitted(&connection, &session_id, goal_turn)?;
@@ -570,16 +589,23 @@ impl ProviderSessionService {
                     input.agent_references.as_deref().unwrap_or_default(),
                 )?
             };
+            turn_waterfall::admit(&self.database, &session_id, admitted_at, waterfall_origin);
             self.mark_turn_start(&session_id, workspace_path);
+            turn_waterfall::mark_typed_input(&session_id);
             handle.send_input(&format!("{}\r", prompt));
-            self.persist_user_message(
+            turn_waterfall::stamp(&session_id, turn_waterfall::Stamp::PromptWritten);
+            let persisted = self.persist_user_message(
                 &session_id,
                 &message,
                 input.agent_mode.unwrap_or(AgentMode::Auto),
                 input.attachments.as_deref(),
                 origin.as_ref(),
                 author,
-            )?;
+            );
+            // Typing into a live terminal has no turn-end event to wait for,
+            // and the terminal's echo is not the provider answering.
+            turn_waterfall::turn_ended(&self.database, &session_id);
+            persisted?;
             drop(send_generation_guard);
             drop(admission);
             return Ok(SendInputResult {
@@ -792,6 +818,7 @@ impl ProviderSessionService {
                 None => (launch_prompt, fallback_prompt),
             };
             plan.continuity.fresh_fallback_prompt = fallback_prompt;
+            turn_waterfall::admit(&self.database, &session_id, admitted_at, waterfall_origin);
             let user_message = self.persist_user_message_locked(
                 &connection,
                 &session_id,
@@ -894,9 +921,10 @@ impl ProviderSessionService {
                     "Provider chat is being terminated; wait for cancellation to finish.",
                 ));
             }
-            self.handles
-                .lock_or_recover("handles")
-                .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
+            self.handles.lock_or_recover("handles").insert(
+                session_id.clone(),
+                HandleEntry::Pending(PendingLaunch::default()),
+            );
         }
         drop(checkout_guard);
         drop(send_generation_guard);
@@ -948,7 +976,8 @@ impl ProviderSessionService {
             }
             Some(HandleEntry::Pending(_)) => {
                 let mut handles = self.handles.lock_or_recover("handles");
-                if let Some(HandleEntry::Pending(ops)) = handles.get_mut(session_id) {
+                if let Some(HandleEntry::Pending(launch)) = handles.get_mut(session_id) {
+                    let ops = &mut launch.ops;
                     ops.retain(|op| !matches!(op, PendingOp::Resize { .. }));
                     ops.push(PendingOp::Resize {
                         cols: input.cols.get(),

@@ -7,4 +7,7 @@ return {
   interactions: typeof perf.interactions === "function" ? perf.interactions() : null,
   frames: typeof perf.frames === "function" ? perf.frames() : null,
   ipc: typeof perf.ipc === "function" ? perf.ipc() : null,
+  turnWaterfalls: typeof window.argmax?.session?.turnWaterfalls === "function"
+    ? await window.argmax.session.turnWaterfalls({ limit: 50 })
+    : null,
 };

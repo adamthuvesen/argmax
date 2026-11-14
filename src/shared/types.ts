@@ -27,7 +27,6 @@ export type DetectedIde = Bindings.DetectedIde;
 export type DiagnosticsReport = Bindings.DiagnosticsReport;
 export type IdeId = Bindings.IdeId;
 export type OpenFileApp = Bindings.OpenFileApp;
-export type IpcChannelStats = Bindings.IpcChannelStats;
 export type DebugSnapshot = Bindings.DebugSnapshot;
 export type PerformanceCapture = Bindings.PerformanceCapture;
 export type PerformanceSample = Bindings.PerformanceSample;
@@ -246,6 +245,7 @@ export type SessionForkResult = Retype<
 >;
 export type MultitaskLaunched = Bindings.MultitaskLaunched;
 export type SessionCostSummaryInput = Bindings.SessionCostSummaryInput;
+export type TurnWaterfall = Bindings.TurnWaterfall;
 export type WorkspaceStatusInput = OptionalNullable<Bindings.WorkspaceStatusInput, "workspaceIds">;
 export type TerminalSpawnInput = Bindings.TerminalSpawnInput;
 export type TerminalWriteInput = Bindings.TerminalWriteInput;
@@ -667,6 +667,11 @@ export interface ArgmaxApi {
      *  reply to yet or the helper call failed. */
     suggestFollowUp: (input: SessionSuggestFollowUpInput) => Promise<FollowUpSuggestion>;
     costSummary: (input: SessionCostSummaryInput) => Promise<SessionCostSummary>;
+    /** The first answer of the turn `turnKey` was painted. Fire-and-forget;
+     *  desktop only. See `providers::turn_waterfall`. */
+    turnPainted: (input: Bindings.SessionTurnPaintedInput) => Promise<void>;
+    /** The newest turn waterfalls, newest first. */
+    turnWaterfalls: (input: Bindings.SessionTurnWaterfallsInput) => Promise<TurnWaterfall[]>;
     search: (input: { query: string; limit?: number }) => Promise<
       Array<{
         sessionId: string;
@@ -773,6 +778,11 @@ export interface ArgmaxApi {
       input: Bindings.SetBranchTemplateInput,
     ) => Promise<Bindings.BranchTemplateSettings>;
     setBrowserTools: (input: { enabled: boolean }) => Promise<AgentToolsSettings>;
+    /** Which MCP servers a Claude turn starts ("MCP at turn start"). */
+    claudeMcp: () => Promise<Bindings.ClaudeMcpSettings>;
+    setClaudeMcp: (input: Bindings.SetClaudeMcpInput) => Promise<Bindings.ClaudeMcpSettings>;
+    /** Runs `claude mcp list` to count connectors and plugin servers; takes seconds. */
+    claudeMcpProbe: () => Promise<Bindings.ClaudeProbeCounts | null>;
     previewChatCleanup: () => Promise<ChatCleanupPreview>;
     deleteOldChats: (input: DeleteOldChatsInput) => Promise<DeleteOldChatsResult>;
   };

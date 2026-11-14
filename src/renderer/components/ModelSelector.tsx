@@ -40,6 +40,7 @@ import {
   modelKey,
   type ModelPickerSelection,
 } from "../lib/models.js";
+import { useOpenInteraction } from "../lib/interactionTimings.js";
 
 const PROVIDER_GROUP_LABEL: Record<ProviderId, string> = {
   claude: "Claude",
@@ -439,6 +440,7 @@ function EffortSlider({
 }): JSX.Element {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
+  useOpenInteraction("picker.effort", open);
   const setOpen = (next: boolean): void => {
     if (controlledOpen === undefined) setInternalOpen(next);
     onOpenChange?.(next);
@@ -765,6 +767,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
         }
       : null;
   const open = controlledOpen ?? internalOpen;
+  useOpenInteraction("picker.model", open);
   const setOpen = (next: boolean | ((open: boolean) => boolean)): void => {
     const nextValue = typeof next === "function" ? next(open) : next;
     if (controlledOpen === undefined) {

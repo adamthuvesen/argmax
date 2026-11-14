@@ -545,6 +545,7 @@ async fn continue_moved_session(
     let asked = prompt.as_str().to_string();
     if let Err(error) = providers
         .send_moved_input(ProvidersSendInput {
+            submitted_at_ms: None,
             agent_references: None,
             session_id,
             input: prompt,

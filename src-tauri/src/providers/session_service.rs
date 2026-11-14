@@ -357,6 +357,9 @@ pub struct ProviderSessionService {
     session_states: broadcast::Sender<SessionStateChange>,
     #[cfg(test)]
     send_input_test_gate: Arc<Mutex<Option<Arc<SendInputTestGate>>>>,
+    /// Holds the pre-turn checkpoint so a test can act inside the overlap.
+    #[cfg(test)]
+    capture_test_gate: Arc<Mutex<Option<Arc<SendInputTestGate>>>>,
     #[cfg(test)]
     after_lifecycle_marker_check: Arc<Mutex<Option<LifecycleMarkerHook>>>,
 }
@@ -388,8 +391,18 @@ use turn_end::{TurnEnd, TurnFollowUp, TurnRows};
 
 #[derive(Clone)]
 enum HandleEntry {
-    Pending(Vec<PendingOp>),
+    Pending(PendingLaunch),
     Resolved(Arc<dyn ProviderRuntimeHandle>),
+}
+
+/// A launch between admission and its resolved handle.
+#[derive(Clone, Default)]
+struct PendingLaunch {
+    /// Resize and similar input that arrived before the handle.
+    ops: Vec<PendingOp>,
+    /// Refuses the prompt gate, so a Stop ends the launch at once instead of
+    /// when the pre-turn checkpoint returns. Set by the spawn task.
+    stop: Option<crate::providers::prompt_gate::PromptGateStop>,
 }
 
 #[derive(Clone)]
@@ -561,6 +574,8 @@ impl ProviderSessionService {
                 #[cfg(test)]
                 send_input_test_gate: Arc::new(Mutex::new(None)),
                 #[cfg(test)]
+                capture_test_gate: Arc::new(Mutex::new(None)),
+                #[cfg(test)]
                 after_lifecycle_marker_check: Arc::new(Mutex::new(None)),
             }
         })
@@ -586,7 +601,13 @@ impl ProviderSessionService {
         }
     }
 
-    async fn capture_before_provider_turn(&self, session_id: &str) -> ArgmaxResult<()> {
+    /// `abandon` ends a capture still waiting for the checkout lock: the turn
+    /// was stopped, so there is nothing to protect.
+    async fn capture_before_provider_turn(
+        &self,
+        session_id: &str,
+        abandon: impl std::future::Future<Output = ()>,
+    ) -> ArgmaxResult<()> {
         let Some(checkpoints) = self.checkpoints.get() else {
             return Ok(());
         };
@@ -607,17 +628,20 @@ impl ProviderSessionService {
         // A checkpoint is a safety net, never a gate: a turn that cannot be
         // captured still runs, and says so on the turn instead of refusing it.
         if let Err(error) = checkpoints
-            .create_checkpoint(CreateCheckpointInput {
-                workspace_id,
-                session_id: Some(session_id.to_string()),
-                label: "Before turn".to_string(),
-                turn_boundary: turn_boundary.clone(),
-                // Argmax's invocation UUID is not a native conversation
-                // boundary, and no provider can resume from an earlier message
-                // anyway — a revert restores files, not the conversation.
-                provider_conversation_id: None,
-                recovery_of: None,
-            })
+            .create_checkpoint_unless(
+                CreateCheckpointInput {
+                    workspace_id,
+                    session_id: Some(session_id.to_string()),
+                    label: "Before turn".to_string(),
+                    turn_boundary: turn_boundary.clone(),
+                    // Argmax's invocation UUID is not a native conversation
+                    // boundary, and no provider can resume from an earlier message
+                    // anyway — a revert restores files, not the conversation.
+                    provider_conversation_id: None,
+                    recovery_of: None,
+                },
+                abandon,
+            )
             .await
         {
             if let Some(turn_boundary) = turn_boundary {
@@ -956,7 +980,7 @@ impl ProviderSessionService {
         if let Some(marker) = authorship.starter.payload_marker() {
             payload["starter"] = json!(marker);
         }
-        persist_user_prompt(
+        let event = persist_user_prompt(
             connection,
             &PersistTimelineEventInput {
                 id: Uuid::new_v4().to_string(),
@@ -967,7 +991,9 @@ impl ProviderSessionService {
                 created_at: None,
             },
             authorship.author,
-        )
+        )?;
+        super::turn_waterfall::set_turn_key(session_id, &event.id);
+        Ok(event)
     }
 
     fn cancel_pending_interactions(&self, session_id: &str) -> ArgmaxResult<()> {
@@ -1145,6 +1171,7 @@ fn pending_message_to_send_input(
     let session_id = SessionId::try_from(session_id).map_err(ArgmaxError::invalid)?;
     let input = Prompt::try_from(message.content).map_err(ArgmaxError::invalid)?;
     Ok(ProvidersSendInput {
+        submitted_at_ms: None,
         agent_references: (!message.agent_references.is_empty())
             .then_some(message.agent_references),
         session_id,
@@ -2693,6 +2720,7 @@ mod tests {
                 Queueing::Allowed,
                 MidTurnDelivery::Queue,
                 person,
+                None,
             )
             .await
             .unwrap_err();
@@ -2700,6 +2728,57 @@ mod tests {
             error,
             ArgmaxError::ServiceError { ref sub_code, .. } if sub_code == "PROMPT_AUTHOR_CONFLICT"
         ));
+    }
+
+    fn ending_turn(
+        session_id: &str,
+        yields_to_stop: bool,
+        may_end: fn(SessionState) -> bool,
+    ) -> TurnEnd<'_> {
+        TurnEnd {
+            session_id,
+            state: SessionState::Complete,
+            finished_at: "2026-01-01T00:00:00Z",
+            may_end,
+            yields_to_stop,
+            remove_handle: false,
+            pause_queue: false,
+            reconcile_subagents: false,
+        }
+    }
+
+    #[test]
+    fn a_turn_end_that_stop_owns_or_that_cannot_apply_still_closes_the_waterfall_turn() {
+        let service = ProviderSessionService::builder(database_with_running_session()).build();
+        let no_rows = |_: &rusqlite::Transaction<'_>| Ok(TurnRows::default());
+
+        crate::providers::turn_waterfall::open_for_test("session-1");
+        service
+            .terminating
+            .lock_or_recover("terminating")
+            .insert("session-1".to_string());
+        let ended = service
+            .commit_turn_end(ending_turn("session-1", true, |_| true), no_rows)
+            .expect("stop-owned end");
+        assert!(ended.is_none());
+        assert_eq!(
+            crate::providers::turn_waterfall::is_ended_for_test("session-1"),
+            Some(true)
+        );
+        service
+            .terminating
+            .lock_or_recover("terminating")
+            .remove("session-1");
+
+        crate::providers::turn_waterfall::open_for_test("session-1");
+        let ended = service
+            .commit_turn_end(ending_turn("session-1", false, |_| false), no_rows)
+            .expect("end that does not apply");
+        assert!(ended.is_none());
+        assert_eq!(
+            crate::providers::turn_waterfall::is_ended_for_test("session-1"),
+            Some(true)
+        );
     }
 
     #[test]
@@ -2769,6 +2848,7 @@ mod tests {
             tokio::spawn(async move {
                 service
                     .send_input(ProvidersSendInput {
+                        submitted_at_ms: None,
                         agent_references: None,
                         session_id: SessionId::try_from("session-1".to_string())
                             .expect("session id"),
@@ -2818,6 +2898,269 @@ mod tests {
         assert!(!events
             .iter()
             .any(|event| { event.r#type == "user.message" && event.message == "must not launch" }));
+    }
+
+    #[derive(Default)]
+    struct OverlapLauncher {
+        started: tokio::sync::Notify,
+        settled: tokio::sync::Notify,
+        gate_outcome: Mutex<Option<ArgmaxResult<()>>>,
+    }
+
+    impl ProviderProcessLauncher for OverlapLauncher {
+        fn launch<'a>(
+            &'a self,
+            _input: ProviderLaunchInput,
+            _on_event: EventCallback,
+        ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+            Box::pin(async {
+                Err(ArgmaxError::service(
+                    "UNEXPECTED_TEST_LAUNCH",
+                    "the session service launches through the gate",
+                ))
+            })
+        }
+
+        fn launch_gated<'a>(
+            &'a self,
+            _input: ProviderLaunchInput,
+            _on_event: EventCallback,
+            gate: crate::providers::prompt_gate::PromptGate,
+        ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+            Box::pin(async move {
+                self.started.notify_one();
+                let outcome = gate.wait().await;
+                *self.gate_outcome.lock().unwrap() = Some(outcome.clone());
+                self.settled.notify_one();
+                outcome?;
+                Err(ArgmaxError::service(
+                    "TEST_GATE_OPENED",
+                    "the gate opened for a stopped turn",
+                ))
+            })
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_stop_while_the_checkpoint_runs_beside_the_launch_refuses_the_prompt() {
+        let database = database_with_running_session();
+        let checkout = tempfile::tempdir().unwrap();
+        database
+            .connection()
+            .execute(
+                "UPDATE workspaces SET path = ? WHERE id = 'workspace-1'",
+                [checkout.path().display().to_string()],
+            )
+            .unwrap();
+        let launcher = Arc::new(OverlapLauncher::default());
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(launcher.clone())
+            .build();
+        let capture = Arc::new(SendInputTestGate::default());
+        *service
+            .capture_test_gate
+            .lock_or_recover("capture test gate") = Some(Arc::clone(&capture));
+
+        let session = service
+            .launch(
+                serde_json::from_value(serde_json::json!({
+                    "workspaceId": "workspace-1", "provider": "claude", "prompt": "overlap",
+                    "modelLabel": "Sonnet 5.5", "modelId": "claude-sonnet-5-5",
+                    "cols": 80, "rows": 24
+                }))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        let wait = std::time::Duration::from_secs(5);
+        // The launch is underway while the checkpoint has not finished.
+        tokio::time::timeout(wait, capture.reached.notified())
+            .await
+            .expect("capture started");
+        tokio::time::timeout(wait, launcher.started.notified())
+            .await
+            .expect("launch started during the capture");
+        assert!(launcher.gate_outcome.lock().unwrap().is_none());
+
+        service
+            .terminate(ProvidersTerminateInput {
+                session_id: SessionId::try_from(session.id.clone()).unwrap(),
+            })
+            .await
+            .expect("Stop completes");
+        capture.release.notify_one();
+        tokio::time::timeout(wait, launcher.settled.notified())
+            .await
+            .expect("gate settled");
+
+        let outcome = launcher.gate_outcome.lock().unwrap().clone().unwrap();
+        assert!(
+            matches!(
+                outcome,
+                Err(ArgmaxError::ServiceError { ref sub_code, .. })
+                    if sub_code == "PROVIDER_LAUNCH_CANCELLED"
+            ),
+            "{outcome:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(service.open_handle_count(), 0);
+        let stopped = find_session_by_id(&database.connection(), &session.id).unwrap();
+        assert_eq!(stopped.state, SessionState::Cancelled);
+    }
+
+    /// Spawns a real child, then holds it until the gate settles, the way a
+    /// provider launch does. A refused gate kills the child.
+    #[derive(Default)]
+    struct ChildHoldingLauncher {
+        pid: Mutex<Option<u32>>,
+        started: tokio::sync::Notify,
+    }
+
+    impl ProviderProcessLauncher for ChildHoldingLauncher {
+        fn launch<'a>(
+            &'a self,
+            _input: ProviderLaunchInput,
+            _on_event: EventCallback,
+        ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+            Box::pin(async {
+                Err(ArgmaxError::service(
+                    "UNEXPECTED_TEST_LAUNCH",
+                    "the session service launches through the gate",
+                ))
+            })
+        }
+
+        fn launch_gated<'a>(
+            &'a self,
+            _input: ProviderLaunchInput,
+            _on_event: EventCallback,
+            gate: crate::providers::prompt_gate::PromptGate,
+        ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+            Box::pin(async move {
+                let mut child = tokio::process::Command::new("sleep")
+                    .arg("30")
+                    .kill_on_drop(true)
+                    .spawn()
+                    .unwrap();
+                *self.pid.lock().unwrap() = child.id();
+                self.started.notify_one();
+                let outcome = gate.wait().await;
+                let _ = child.kill().await;
+                outcome?;
+                Err(ArgmaxError::service(
+                    "TEST_GATE_OPENED",
+                    "the gate opened for a stopped turn",
+                ))
+            })
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_stop_kills_the_cli_while_the_capture_waits_for_the_checkout_lock() {
+        let database = database_with_running_session();
+        let checkout = tempfile::tempdir().unwrap();
+        for args in [
+            &["init", "--initial-branch=main"][..],
+            &[
+                "-c",
+                "user.email=t@example.com",
+                "-c",
+                "user.name=T",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "base",
+            ],
+        ] {
+            let status = tokio::process::Command::new("git")
+                .args(args)
+                .current_dir(checkout.path())
+                .status()
+                .await
+                .unwrap();
+            assert!(status.success());
+        }
+        database
+            .connection()
+            .execute(
+                "UPDATE workspaces SET path = ? WHERE id = 'workspace-1'",
+                [checkout.path().display().to_string()],
+            )
+            .unwrap();
+        let launcher = Arc::new(ChildHoldingLauncher::default());
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(launcher.clone())
+            .build();
+        service.set_checkpoint_service(crate::checkpoints::service::CheckpointService::new(
+            Arc::clone(&database),
+        ));
+        let capture = Arc::new(SendInputTestGate::default());
+        *service
+            .capture_test_gate
+            .lock_or_recover("capture test gate") = Some(Arc::clone(&capture));
+
+        let session = service
+            .launch(
+                serde_json::from_value(serde_json::json!({
+                    "workspaceId": "workspace-1", "provider": "claude", "prompt": "overlap",
+                    "modelLabel": "Sonnet 5.5", "modelId": "claude-sonnet-5-5",
+                    "cols": 80, "rows": 24
+                }))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        let wait = std::time::Duration::from_secs(5);
+        tokio::time::timeout(wait, capture.reached.notified())
+            .await
+            .expect("capture started");
+        // A running check holds the checkout lock for its whole command.
+        let lock = crate::git::ops::checkout_write_lock(checkout.path())
+            .await
+            .unwrap();
+        let held = lock.lock().await;
+        capture.release.notify_one();
+        tokio::time::timeout(wait, launcher.started.notified())
+            .await
+            .expect("the CLI spawned");
+        let pid = launcher.pid.lock().unwrap().expect("pid");
+
+        service
+            .terminate(ProvidersTerminateInput {
+                session_id: SessionId::try_from(session.id.clone()).unwrap(),
+            })
+            .await
+            .expect("Stop completes");
+        let alive = || {
+            std::process::Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .status()
+                .unwrap()
+                .success()
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while alive() {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the CLI is gone while the checkout lock is still held");
+
+        drop(held);
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let checkpoints = argmax_store::checkpoints::list_checkpoints(
+            &database.read_connection(),
+            "workspace-1",
+            10,
+        )
+        .unwrap();
+        assert!(
+            checkpoints.is_empty(),
+            "the abandoned capture wrote {checkpoints:?}"
+        );
+        let stopped = find_session_by_id(&database.connection(), &session.id).unwrap();
+        assert_eq!(stopped.state, SessionState::Cancelled);
     }
 
     #[test]

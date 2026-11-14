@@ -231,6 +231,7 @@ pub(crate) async fn launch_with_receipt(
     let launch_result = providers
         .launch_with_session_id(
             ProvidersLaunchInput {
+                submitted_at_ms: None,
                 workspace_id,
                 provider: spec.provider,
                 prompt,
@@ -251,6 +252,7 @@ pub(crate) async fn launch_with_receipt(
             },
             receipt.map(|ticket| ticket.session_id),
             spec.author,
+            None,
         )
         .await;
     let session = match launch_result {

@@ -126,21 +126,24 @@ import { openChat, useChatDirectory } from "../state/chatDirectory.js";
 // the right-side review pane is open. Lazy-mounted (ralph B4) so the
 // launcher's first paint doesn't ship the highlighter.
 const ReviewPanel = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./ReviewPanel.js")).ReviewPanel,
-  })),
+  importChunk(
+    async () => ({ default: (await import("./ReviewPanel.js")).ReviewPanel }),
+    "review",
+  ),
 );
 import { FilePopover } from "./FilePopover.js";
 import { ImageLightbox } from "./ImageLightbox.js";
 import { SkeletonPane } from "./SkeletonPane.js";
 import { SlashCommandMenu } from "./SlashCommandMenu.js";
+import { useInteractionShown, useOpenInteraction } from "../lib/interactionTimings.js";
 // WelcomePane only renders on a fresh install (no projects) — lazy-mounted
 // (ralph B2) so its provider-discovery code path doesn't ship in the main
 // launcher bundle for the common case.
 const WelcomePane = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./WelcomePane.js")).WelcomePane,
-  })),
+  importChunk(
+    async () => ({ default: (await import("./WelcomePane.js")).WelcomePane }),
+    "welcome",
+  ),
 );
 
 // The fox dozes off after a long untouched stretch and wakes on the first
@@ -715,6 +718,8 @@ export function LaunchSurface({
     setProjectPickerOpen(false),
   );
   useDismissOnOutsideOrEscape(branchAnchorRef, branchPickerOpen, () => setBranchPickerOpen(false));
+  useOpenInteraction("picker.project", projectPickerOpen);
+  useOpenInteraction("picker.branch", branchPickerOpen);
   useDismissOnOutsideOrEscape(compactContextRef, compactContextOpen, () =>
     setCompactContextOpen(false),
   );
@@ -1451,6 +1456,8 @@ export function LaunchSurface({
       },
     });
   };
+
+  useInteractionShown("launcher.open", Boolean(project) || chatMode);
 
   if (!project && !chatMode) {
     // Fresh-install surface: setup checklist + provider discovery + the

@@ -60,6 +60,14 @@ pub struct SetBrowserToolsInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetClaudeMcpInput {
+    pub preset: argmax_store::app_settings::ClaudeMcpPreset,
+    /// Server names for the Custom preset, kept while another preset is chosen.
+    pub custom_servers: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SetRoutingKeyInput {
     pub api_key: String,
 }

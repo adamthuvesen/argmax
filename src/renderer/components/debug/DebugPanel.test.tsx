@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { recordIpcLatency, resetIpcLatency } from "../../lib/ipcLatency.js";
 import { DebugPanel } from "./DebugPanel.js";
 import type {
   ArgmaxApi,
@@ -13,6 +14,7 @@ import type {
 describe("DebugPanel", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    resetIpcLatency();
   });
 
   afterEach(() => {
@@ -59,12 +61,10 @@ describe("DebugPanel", () => {
       .fn()
       .mockResolvedValueOnce({
         generatedAt: "2026-09-01T10:00:00.000Z",
-        ipcStats: [],
         logs: [logEntry(1, "info", "providers.session", "session launched")],
       })
       .mockResolvedValue({
         generatedAt: "2026-09-01T10:00:01.000Z",
-        ipcStats: [],
         logs: [logEntry(2, "error", "gh.poller", "refresh failed")],
       });
     stubApi({ debugSnapshot });
@@ -92,7 +92,6 @@ describe("DebugPanel", () => {
     stubApi({
       debugSnapshot: vi.fn().mockResolvedValue({
         generatedAt: "2026-09-01T10:00:00.000Z",
-        ipcStats: [],
         logs: [logEntry(1, "debug", "db", "chatty"), logEntry(2, "error", "db", "broken")],
       }),
     });
@@ -108,13 +107,11 @@ describe("DebugPanel", () => {
   });
 
   it("sorts IPC channels by p99 and flags the slow ones", async () => {
+    for (let index = 0; index < 4; index += 1) recordIpcLatency("health:ping", 0.4);
+    for (let index = 0; index < 9; index += 1) recordIpcLatency("review:load-diff", 320);
     stubApi({
       debugSnapshot: vi.fn().mockResolvedValue({
         generatedAt: "2026-09-01T10:00:00.000Z",
-        ipcStats: [
-          { channel: "health:ping", count: 4, totalRecorded: 4, p50: 0.2, p99: 0.4 },
-          { channel: "review:load-diff", count: 9, totalRecorded: 9, p50: 40, p99: 320 },
-        ],
         logs: [],
       }),
     });

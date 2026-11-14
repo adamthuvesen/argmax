@@ -62,6 +62,9 @@ function referenceLoop(): number {
   return total;
 }
 
+// oxlint-disable-next-line argmax/no-real-time -- real clock: this file measures wall time against the budgets in docs/performance.md
+const wallClockMs = (): number => performance.now();
+
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.floor(sorted.length / 2)] ?? 0;
@@ -73,12 +76,12 @@ function medianMs(samples: number, run: (sample: number) => void): number {
   const runs: number[] = [];
   const references: number[] = [];
   for (let sample = 0; sample < samples; sample += 1) {
-    let start = performance.now();
+    let start = wallClockMs();
     referenceLoop();
-    references.push(performance.now() - start);
-    start = performance.now();
+    references.push(wallClockMs() - start);
+    start = wallClockMs();
     run(sample);
-    runs.push(performance.now() - start);
+    runs.push(wallClockMs() - start);
   }
   return median(runs) / Math.max(1, median(references) / REFERENCE_LOOP_MS);
 }

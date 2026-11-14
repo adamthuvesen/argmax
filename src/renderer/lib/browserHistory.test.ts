@@ -11,6 +11,9 @@ import {
   type BrowserHistoryEntry,
 } from "./browserHistory.js";
 import type { BrowserHistoryStorage } from "./browserHistoryStorage.js";
+import { FIXED_NOW_MS, freezeClock } from "../../test/fixedClock.js";
+
+freezeClock();
 
 let saved: BrowserHistoryEntry[] | undefined;
 let failLoad = false;
@@ -144,7 +147,7 @@ describe("browser history", () => {
   it("ranks address prefixes first, then rewards frequent and recent visits", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_700_000_000_000);
-    const visitedAt = Date.now();
+    const visitedAt = FIXED_NOW_MS;
     await mergeBrowserHistory([
       { url: "https://other.com", title: "GitHub", visitedAt, visitCount: 30 },
       { url: "https://github.com/once", title: "Once", visitedAt, visitCount: 1 },
@@ -194,7 +197,7 @@ describe("browser history", () => {
     failSave = true;
     await expect(
       mergeBrowserHistory([
-        { url: "https://new.com", title: null, visitedAt: Date.now(), visitCount: 1 },
+        { url: "https://new.com", title: null, visitedAt: FIXED_NOW_MS, visitCount: 1 },
       ]),
     ).rejects.toThrow("Could not save imported history");
     expect(suggestBrowserHistory("").map((entry) => entry.url)).toEqual(["https://kept.com"]);

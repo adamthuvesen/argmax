@@ -119,7 +119,7 @@ if (unlisted.length > 0) {
 if (stale.length > 0) {
   failed = true;
   console.error(
-    `\n${stale.length} MAIN_THREAD_ALLOWLIST entr(y/ies) no longer name a synchronous handler — remove them:\n`,
+    `\n${stale.length} MAIN_THREAD_ALLOWLIST entr(y/ies) no longer name a synchronous handler. Remove them from MAIN_THREAD_ALLOWLIST in scripts/check-main-thread-handlers.mjs:\n`,
   );
   for (const channel of stale) {
     console.error(`  ${channel}`);

@@ -1293,7 +1293,8 @@ describe("useReviewState — IPC fan-out resistance", () => {
       resolveFirst({ ok: "true", mtimeMs: 11, size: 6 });
       await Promise.resolve();
     });
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    // oxlint-disable-next-line no-restricted-globals -- macrotask flush, not a delay: drains every queued microtask so a second queued write would show
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
     expect(writeWorkspaceFile).toHaveBeenCalledTimes(1);
   });
 

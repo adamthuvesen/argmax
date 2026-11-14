@@ -32,6 +32,9 @@ import {
   workspaceRow,
   sessionRow,
 } from "../test/appTestHarness.js";
+import { freezeClock, isoAgo } from "../test/fixedClock.js";
+
+freezeClock();
 
 async function submitNewProject(name: string): Promise<void> {
   fireEvent.change(await screen.findByLabelText("Project name"), { target: { value: name } });
@@ -892,7 +895,7 @@ describe("App", () => {
         id: "session-new",
         workspaceId: "workspace-new",
         prompt: "Fix login auth bug in wrong repo",
-        startedAt: new Date(Date.now() - 2_000).toISOString(),
+        startedAt: isoAgo(2_000),
         state: "running" as const,
       };
       launchProvider.mockResolvedValue(freshSession);
@@ -933,7 +936,7 @@ describe("App", () => {
       id: "session-old",
       workspaceId: "workspace-1",
       prompt: "Build dashboard feature",
-      startedAt: new Date(Date.now() - 30_000).toISOString(),
+      startedAt: isoAgo(30_000),
       state: "running" as const,
     };
     launchProvider.mockResolvedValue(oldSession);

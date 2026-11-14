@@ -15,6 +15,9 @@ import {
   workspaceRow,
   sessionRow,
 } from "../test/appTestHarness.js";
+import { FIXED_NOW_ISO, freezeClock } from "../test/fixedClock.js";
+
+freezeClock();
 
 const childWorkspace = workspaceRow({
   id: "workspace-multitask",
@@ -200,7 +203,7 @@ describe("multitask in the chat that dispatched it", () => {
     mountWithMultitask({
       state: "running",
       completedAt: null,
-      startedAt: new Date().toISOString(),
+      startedAt: FIXED_NOW_ISO,
     });
     render(<App />);
 

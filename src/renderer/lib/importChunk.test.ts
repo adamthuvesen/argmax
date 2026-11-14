@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { importChunk } from "./importChunk.js";
 
 const reload = vi.fn();
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 beforeEach(() => {
+  vi.useFakeTimers();
   reload.mockClear();
   window.sessionStorage.clear();
   Object.defineProperty(window, "location", {
@@ -21,8 +26,8 @@ function missingChunk(): Promise<string> {
 }
 
 /** Let the rejected load and the recovery behind it run. */
-function flush(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+async function flush(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(0);
 }
 
 /**

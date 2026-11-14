@@ -13,6 +13,9 @@ import {
 } from "../lib/browserPanel.js";
 import { BrowserPanel } from "./BrowserPanel.js";
 import { useReviewState } from "../hooks/useReviewState.js";
+import { FIXED_NOW_MS, freezeClock } from "../../test/fixedClock.js";
+
+freezeClock();
 
 const newTabListeners = new Set<(event: { tabId: string; url: string }) => void>();
 const pageCommandListeners = new Set<(event: { tabId: string; command: string }) => void>();
@@ -437,7 +440,7 @@ describe("controlled browser pages", () => {
     async (entryPoint) => {
       const url = "https://claude.ai/artifacts";
       setBrowserHistoryStorageForTests({
-        load: () => Promise.resolve([{ url, title: "Claude", visitedAt: Date.now() }]),
+        load: () => Promise.resolve([{ url, title: "Claude", visitedAt: FIXED_NOW_MS }]),
         save: () => Promise.resolve(),
       });
       function Artifacts() {

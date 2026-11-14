@@ -11,6 +11,9 @@ import type {
 } from "../../../shared/types.js";
 import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
 import { ArcPage } from "./ArcPage.js";
+import { FIXED_NOW_ISO, freezeClock } from "../../../test/fixedClock.js";
+
+freezeClock();
 
 const PROJECT: ProjectSummary = {
   id: "project-1",
@@ -210,7 +213,7 @@ function timelineEvent(overrides: Partial<ArcTimelineEvent> = {}): ArcTimelineEv
     id: "event-1",
     seq: 1,
     kind: "member_finished",
-    occurredAt: new Date().toISOString(),
+    occurredAt: FIXED_NOW_ISO,
     sessionId: "session-member",
     sessionAvailable: true,
     projectId: "project-1",

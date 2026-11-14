@@ -77,7 +77,7 @@ describe("ledgerPrefetch", () => {
   it("prefetches remaining in parallel with summaries", async () => {
     let remainingStarted = false;
     usageSummary.mockImplementation(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      await Promise.resolve();
       return usageSummaryFixture();
     });
     usageRemaining.mockImplementation(() => {

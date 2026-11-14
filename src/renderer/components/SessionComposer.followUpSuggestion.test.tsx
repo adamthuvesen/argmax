@@ -45,6 +45,7 @@ function stubSuggestion(
 
 describe("SessionComposer follow-up suggestion", () => {
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
     delete window.argmax;
   });
@@ -130,10 +131,11 @@ describe("SessionComposer follow-up suggestion", () => {
     const suggestFollowUp = vi.fn(() => Promise.resolve({ suggestion: "never asked" }));
     stubSuggestion(suggestFollowUp);
 
+    vi.useFakeTimers();
     renderConversation(baseSession(finishedTurn()));
     cleanup();
 
-    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS + 100));
+    await vi.advanceTimersByTimeAsync(SETTLE_MS + 100);
     expect(suggestFollowUp).not.toHaveBeenCalled();
   });
 });

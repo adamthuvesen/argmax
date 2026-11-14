@@ -5,6 +5,9 @@ import {
   renderConversation,
   rerenderConversation,
 } from "../../test/sessionConversationTestHarness.js";
+import { FIXED_NOW_ISO, freezeClock } from "../../test/fixedClock.js";
+
+freezeClock();
 
 const routedSession = baseSession({
   provider: "claude",
@@ -117,7 +120,7 @@ describe("SessionComposer Auto chip", () => {
     const launched = baseSession({
       ...routedSession,
       id: "session-fresh",
-      startedAt: new Date().toISOString(),
+      startedAt: FIXED_NOW_ISO,
     });
     renderConversation(launched);
 

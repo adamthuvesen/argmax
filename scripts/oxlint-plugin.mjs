@@ -51,6 +51,7 @@ const SESSION_LIKE = new Set([
   "sourceSession",
 ]);
 const MODEL_RESOLVERS = new Set(["resolveModelId", "modelLabelFor", "contextWindowForModel"]);
+const GLOBAL_OBJECTS = new Set(["window", "globalThis", "global", "self", "view"]);
 const DOM_TRAVERSAL = new Set([
   "activeElement",
   "children",
@@ -115,7 +116,7 @@ export default {
             context.report({
               node,
               message:
-                "Route timeline semantics through decodeTimelineEvent(). Keep raw payload access for lossless debug bodies and large tool input or output only.",
+                "Read timeline fields through decodeTimelineEvent() from src/renderer/lib/canonicalTimeline.ts. Raw payload access is only for lossless debug bodies and large tool input or output.",
             });
           },
         };
@@ -136,6 +137,42 @@ export default {
         };
       },
     },
+    "no-real-time": {
+      create(context) {
+        const CLOCK_FIX =
+          "Use vi.useFakeTimers() with vi.setSystemTime(FIXED) or a literal date; a real clock read makes tests nondeterministic.";
+        const TIMER_FIX =
+          "Use vi.useFakeTimers() and vi.advanceTimersByTimeAsync; real timers make tests slow and flaky.";
+        return {
+          MemberExpression(node) {
+            const name = propertyName(node);
+            if (node.object.type !== "Identifier") return;
+            const object = node.object.name;
+            if (object === "Date" && name === "now") {
+              context.report({ node, message: `Date.now() reads the real clock. ${CLOCK_FIX}` });
+            } else if (object === "performance" && name === "now") {
+              context.report({
+                node,
+                message: `performance.now() reads the real clock. Assert behavior or counts, not elapsed time; or ${CLOCK_FIX}`,
+              });
+            } else if (
+              (name === "setTimeout" || name === "setInterval") &&
+              GLOBAL_OBJECTS.has(object)
+            ) {
+              context.report({
+                node,
+                message: `${object}.${name} waits on a real timer. ${TIMER_FIX}`,
+              });
+            }
+          },
+          NewExpression(node) {
+            if (node.callee.type !== "Identifier" || node.callee.name !== "Date") return;
+            if (node.arguments.length > 0) return;
+            context.report({ node, message: `new Date() reads the real clock. ${CLOCK_FIX}` });
+          },
+        };
+      },
+    },
     "no-container": {
       create(context) {
         return {
@@ -144,7 +181,7 @@ export default {
             context.report({
               node,
               message:
-                "Query by role, label, or title through screen instead of the render container.",
+                "Tests do not read the render container. Query by role, label, or title with screen from @testing-library/react.",
             });
           },
         };
@@ -158,7 +195,7 @@ export default {
             context.report({
               node,
               message:
-                "Query by role, label, or title through screen instead of walking DOM nodes.",
+                "Tests do not walk DOM nodes. Query by role, label, or title with screen from @testing-library/react.",
             });
           },
         };

@@ -4,6 +4,9 @@ import { IdentityPlans } from "./IdentityPlans.js";
 import { resetLedgerPageStateForTests, setCachedUsageRemaining } from "../lib/ledgerPageState.js";
 import type { ArgmaxApi, UsageRemaining } from "../../shared/types.js";
 import { usageRemainingFixture } from "../../test/fixtures/usageRemaining.js";
+import { FIXED_NOW_ISO, freezeClock, isoAgo } from "../../test/fixedClock.js";
+
+freezeClock();
 
 /** The menu is a `ul`; the block renders the `li`s that sit inside it. */
 function renderPlans(onOpenUsage = vi.fn()): void {
@@ -15,7 +18,7 @@ function renderPlans(onOpenUsage = vi.fn()): void {
 }
 
 function fresh(overrides: Partial<UsageRemaining> = {}): UsageRemaining {
-  return usageRemainingFixture({ fetchedAt: new Date().toISOString(), ...overrides });
+  return usageRemainingFixture({ fetchedAt: FIXED_NOW_ISO, ...overrides });
 }
 
 function stubRemaining(remaining: UsageRemaining): ReturnType<typeof vi.fn> {
@@ -78,10 +81,7 @@ describe("IdentityPlans", () => {
     expect(read).not.toHaveBeenCalled();
 
     cleanup();
-    setCachedUsageRemaining(
-      usageRemainingFixture({ fetchedAt: new Date(Date.now() - 6 * 60_000).toISOString() }),
-      null,
-    );
+    setCachedUsageRemaining(usageRemainingFixture({ fetchedAt: isoAgo(6 * 60_000) }), null);
     renderPlans();
 
     await waitFor(() => {

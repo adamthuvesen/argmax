@@ -68,6 +68,9 @@ const missingPushChannels = diff(expectedPushChannels, subscribedChannels);
 if (missingPushChannels.length) {
   console.error("error: Tauri bridge is missing push-event subscriptions");
   console.error(`missing push channels: ${missingPushChannels.join(", ")}`);
+  console.error(
+    'Fix: add a subscribe("<channel>", ...) call for each one in src/renderer/lib/tauriBridge.ts.',
+  );
   process.exit(1);
 }
 

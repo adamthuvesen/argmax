@@ -49,14 +49,11 @@ describe("App launch navigation", () => {
         const session = { ...snapshot.sessions[0], id: "session-new", workspaceId: workspace.id };
         createCurrentWorkspace.mockResolvedValue(workspace);
         createIsolatedWorkspace.mockResolvedValue(workspace);
-        launchProvider.mockImplementation(
-          () =>
-            new Promise((resolve) =>
-              setTimeout(() => {
-                if (pushDuringLaunch) dashboardDeltaListener?.({ sessions: [session] });
-                resolve(session);
-              }, 0),
-            ),
+        launchProvider.mockImplementation(() =>
+          Promise.resolve().then(() => {
+            if (pushDuringLaunch) dashboardDeltaListener?.({ sessions: [session] });
+            return session;
+          }),
         );
         render(<App />);
         await screen.findByLabelText("Task prompt");

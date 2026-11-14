@@ -4,6 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MultitaskNotice } from "../lib/multitask.js";
 import { multitaskDisplayStatus } from "../lib/multitask.js";
 import { MultitaskRow } from "./MultitaskRow.js";
+import { freezeClock, isoAgo } from "../../test/fixedClock.js";
+
+freezeClock();
 
 function notice(overrides: Partial<MultitaskNotice> = {}): MultitaskNotice {
   return {
@@ -38,7 +41,7 @@ describe("MultitaskRow", () => {
       <MultitaskRow
         notice={notice()}
         liveState="running"
-        liveStartedAt={new Date(Date.now() - 95_000).toISOString()}
+        liveStartedAt={isoAgo(95_000)}
         onOpen={vi.fn()}
       />,
     );

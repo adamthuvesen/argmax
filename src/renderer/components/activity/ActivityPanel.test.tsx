@@ -4,6 +4,9 @@ import { resetLedgerPageStateForTests } from "../../lib/ledgerPageState.js";
 import { ActivityPanel } from "./ActivityPanel.js";
 import type { ActivitySummary, ActivitySummaryInput } from "./activityContract.js";
 import { demoActivitySummary, type DemoActivityState } from "../../demoActivity.js";
+import { FIXED_NOW_MS, freezeClock } from "../../../test/fixedClock.js";
+
+freezeClock();
 
 /**
  * The page is exercised against its own fixture rather than against hand-built
@@ -92,7 +95,7 @@ describe("ActivityPanel", () => {
       "Last 7 days",
       "Last 30 days",
       "Last 12 months",
-      String(new Date().getFullYear()),
+      String(new Date(FIXED_NOW_MS).getFullYear()),
     ]);
 
     pickOption("Last 24 hours");

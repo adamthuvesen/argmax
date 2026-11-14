@@ -80,7 +80,10 @@ function run(source: string, config: Partial<VisualizationRuntimeConfig> = {}) {
     },
   });
   Object.defineProperty(view, "requestAnimationFrame", {
-    value: (callback: FrameRequestCallback) => view.setTimeout(() => callback(0), 0),
+    value: (callback: FrameRequestCallback) => {
+      void Promise.resolve().then(() => callback(0));
+      return 0;
+    },
   });
   const completeConfig: VisualizationRuntimeConfig = {
     instanceId: "test",

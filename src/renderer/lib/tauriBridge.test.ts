@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   listen: vi.fn(),
 }));
 
-function nextEventLoopTurn(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+async function nextEventLoopTurn(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(0);
 }
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -19,7 +19,12 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 describe("tauriBridge", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
+    vi.useFakeTimers();
     delete window.argmax;
     delete window.__TAURI_INTERNALS__;
     mocks.invoke.mockReset();

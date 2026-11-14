@@ -65,6 +65,7 @@ it("initializes the Claude fixture and reads its prompt without waiting for stdi
     child.once("close", resolve);
     child.once("error", reject);
   });
+  // oxlint-disable-next-line no-restricted-globals -- real timer: watchdog that kills a real child process
   const timeout = setTimeout(() => child.kill(), 2500);
   const lines = createInterface({ input: child.stdout });
   let stderr = "";
@@ -241,6 +242,7 @@ it.each(["persistent-codex-subagent:first", "codex-user-input"])(
       child.once("close", resolve);
       child.once("error", reject);
     });
+    // oxlint-disable-next-line no-restricted-globals -- real timer: watchdog that kills a real child process
     const timeout = setTimeout(() => child.kill(), 3000);
     const lines = createInterface({ input: child.stdout });
     const messages: Array<Record<string, unknown>> = [];
@@ -321,6 +323,7 @@ it("serves OpenCode task events over authenticated HTTP and SSE", async () => {
     child.once("close", resolve);
     child.once("error", reject);
   });
+  // oxlint-disable-next-line no-restricted-globals -- real timer: watchdog that kills a real child process
   const timeout = setTimeout(() => child.kill(), 4000);
   const headers = { Authorization: authorization, "Content-Type": "application/json" };
   try {
@@ -330,6 +333,7 @@ it("serves OpenCode task events over authenticated HTTP and SSE", async () => {
         health = await fetch(`http://127.0.0.1:${port}/global/health`, { headers });
         if (health.ok) break;
       } catch {
+        // oxlint-disable-next-line no-restricted-globals -- real timer: polls a real child process until it listens on its port
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
     }
@@ -387,6 +391,7 @@ it("serves Cursor task lifecycle events through ACP", async () => {
     child.once("close", resolve);
     child.once("error", reject);
   });
+  // oxlint-disable-next-line no-restricted-globals -- real timer: watchdog that kills a real child process
   const timeout = setTimeout(() => child.kill(), 3000);
   const lines = createInterface({ input: child.stdout });
   const messages: Array<Record<string, unknown>> = [];

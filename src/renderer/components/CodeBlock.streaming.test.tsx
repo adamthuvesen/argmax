@@ -24,6 +24,7 @@ vi.mock("../lib/highlighter.js", () => ({
   // Nothing is cached, and queued highlights run on the next timer tick.
   peekHighlightedCode: () => null,
   queueHighlight: (job: () => void) => {
+    // oxlint-disable-next-line no-restricted-globals -- fake timer: this file installs vi.useFakeTimers() and the tests drive it with advanceTimersByTime
     const timer = setTimeout(job, 0);
     return () => clearTimeout(timer);
   },

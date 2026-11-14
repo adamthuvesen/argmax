@@ -46,7 +46,7 @@ const RULES = [
     pattern:
       /\b(?:TcpStream|TcpListener|UdpSocket|UnixStream|UnixListener)\b|\breqwest::|\bhyper::|\bureq::|\btokio::net\b/g,
     allowed: (path) => path.startsWith("crates/argmax-process/"),
-    fix: "Open sockets and HTTP clients in an existing owner file on the baseline, not in a new module.",
+    fix: "Open sockets and HTTP clients in src-tauri/crates/argmax-process, or in an owner file already on scripts/rust-boundaries-baseline.json. Do not open them in a new module.",
   },
   {
     id: "turn-end-outside-owner",

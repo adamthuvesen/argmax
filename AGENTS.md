@@ -87,6 +87,7 @@ Before you edit a subsystem, read its doc. Start at [architecture.md](docs/archi
 | Model facts live in `src/shared/providerModels.ts`; Rust and the phone read generated copies | `check:provider-models`, list in `scripts/generated-files.json` |
 | Production code does not name a retired model id | `check:provider-models` |
 | Every catalogue model has a price and a routing answer | `cargo test catalogue` (`pricing.rs`, `routing/table.rs`) |
+| Tests never wait on a real timer or read the real clock | `.oxlintrc.json::no-restricted-globals` and `scripts/oxlint-plugin.mjs::no-real-time` in the test-file override |
 | A stored model id reaches a launch or a route only as a resolved id | `model_catalogue.rs::ModelId`, `providerModels.ts::ResolvedModelId`, `scripts/oxlint-plugin.mjs::no-raw-model-id` |
 | A dispatch on a provider names every provider | Exhaustive `ProviderId` match, parsed with `ProviderId::parse` |
 | Chat-detail levels, inline-math pairing, and the workspace's chat agree on desktop and phone | One table in `fixtures/parity/`, run by `parityTables.test.ts` and `ParityTableTests.swift` |

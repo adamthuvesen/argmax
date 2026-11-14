@@ -22,6 +22,9 @@ import { resetSessionUnreadForTests } from "../lib/sessionUnread.js";
 import { overlaysSnapshot, resetOverlaysForTests, showArcPage } from "../state/overlays.js";
 import { resetWorkspaceDragForTests } from "../state/workspaceDrag.js";
 import { Sidebar } from "./Sidebar.js";
+import { FIXED_NOW_ISO, freezeClock, isoAgo } from "../../test/fixedClock.js";
+
+freezeClock();
 
 beforeEach(resetSidebarChatNestingForTests);
 afterEach(resetSidebarChatNestingForTests);
@@ -632,7 +635,7 @@ describe("Sidebar — date (sessions) view mode", () => {
   });
 
   const TODAY = new Date(2026, 5, 5, 9, 0, 0).toISOString();
-  const RECENTLY = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const RECENTLY = isoAgo(5 * 60 * 1000);
   const APRIL = new Date(2026, 3, 2, 9, 0, 0).toISOString();
 
   const viewSnapshot: DashboardSnapshot = {
@@ -1124,10 +1127,10 @@ describe("Sidebar — date (sessions) view mode", () => {
 });
 
 describe("Sidebar — Priority section", () => {
-  const MINUTES_AGO_5 = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const MINUTES_AGO_10 = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-  const MINUTES_AGO_15 = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-  const MINUTES_AGO_45 = new Date(Date.now() - 45 * 60 * 1000).toISOString();
+  const MINUTES_AGO_5 = isoAgo(5 * 60 * 1000);
+  const MINUTES_AGO_10 = isoAgo(10 * 60 * 1000);
+  const MINUTES_AGO_15 = isoAgo(15 * 60 * 1000);
+  const MINUTES_AGO_45 = isoAgo(45 * 60 * 1000);
 
   const session = (
     workspaceId: string,
@@ -1632,7 +1635,7 @@ describe("Sidebar — Priority section", () => {
 });
 
 describe("Sidebar — working rows in Priority", () => {
-  const MINUTES_AGO_10 = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const MINUTES_AGO_10 = isoAgo(10 * 60 * 1000);
   const workingWorkspace = (
     id: string,
     taskLabel: string,
@@ -1791,10 +1794,10 @@ describe("Sidebar — working rows in Priority", () => {
   });
 
   it("sorts all working rows at top (newest first) followed by non-working rows (newest first)", () => {
-    const t1 = new Date(Date.now() - 1 * 60 * 1000).toISOString();
-    const t2 = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-    const t5 = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const t8 = new Date(Date.now() - 8 * 60 * 1000).toISOString();
+    const t1 = isoAgo(1 * 60 * 1000);
+    const t2 = isoAgo(2 * 60 * 1000);
+    const t5 = isoAgo(5 * 60 * 1000);
+    const t8 = isoAgo(8 * 60 * 1000);
 
     render(
       <Sidebar
@@ -1846,8 +1849,8 @@ describe("Sidebar — working rows in Priority", () => {
     // Recency only decides between rows with the same claim on the reader. An
     // approval parks the agent until someone answers it; a chat merely waiting
     // for input does not, however fresh it is.
-    const recent = new Date(Date.now() - 60 * 1000).toISOString();
-    const older = new Date(Date.now() - 9 * 60 * 1000).toISOString();
+    const recent = isoAgo(60 * 1000);
+    const older = isoAgo(9 * 60 * 1000);
 
     render(
       <Sidebar
@@ -1889,7 +1892,7 @@ describe("Sidebar — working rows in Priority", () => {
 });
 
 describe("Sidebar — boot collapse defaults", () => {
-  const MINUTES_AGO_10 = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const MINUTES_AGO_10 = isoAgo(10 * 60 * 1000);
   const LONG_AGO = new Date(2024, 0, 4, 9, 0, 0).toISOString();
 
   const bootWorkspace = (id: string, taskLabel: string, lastActivityAt: string) => ({
@@ -2163,7 +2166,7 @@ describe("Sidebar — repo-less chats", () => {
     ["sessions", "manual"],
   ] as const)("promotes a %s chat for %s and returns it when resolved", (viewMode, reason) => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify(viewMode));
-    const now = new Date().toISOString();
+    const now = FIXED_NOW_ISO;
     const activeSnapshot: DashboardSnapshot = {
       ...sideChatSnapshot,
       workspaces: sideChatSnapshot.workspaces.map((workspace) =>
@@ -3020,8 +3023,8 @@ describe("Sidebar — launched chat nesting", () => {
             ...row,
             state: "waiting",
             attention: "blocked",
-            attentionChangedAt: new Date().toISOString(),
-            lastActivityAt: new Date().toISOString(),
+            attentionChangedAt: FIXED_NOW_ISO,
+            lastActivityAt: FIXED_NOW_ISO,
           }
         : row,
     );
@@ -3050,7 +3053,7 @@ describe("Sidebar — launched chat nesting", () => {
 
   it("uses saved root order when children bring their parents into Priority", () => {
     const ordered = launchedSnapshot();
-    const now = new Date().toISOString();
+    const now = FIXED_NOW_ISO;
     ordered.workspaces.push(
       workspace("second-parent", "Second parent"),
       workspace("second-child", "Second child"),
@@ -3066,8 +3069,7 @@ describe("Sidebar — launched chat nesting", () => {
             state: "waiting",
             attention: "blocked",
             attentionChangedAt: now,
-            lastActivityAt:
-              row.workspaceId === "child" ? now : new Date(Date.now() - 60_000).toISOString(),
+            lastActivityAt: row.workspaceId === "child" ? now : isoAgo(60_000),
           }
         : row,
     );

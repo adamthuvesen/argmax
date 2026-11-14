@@ -14,7 +14,7 @@ module.exports = {
       name: "lib-imports-ui",
       severity: "error",
       comment:
-        "lib and state hold logic with no UI. Move the UI-dependent part into a hook, or pass a value in.",
+        "lib, state, and data hold logic with no UI. Move the UI-dependent part into a hook in src/renderer/hooks/, or pass the value in.",
       from: { path: "^src/renderer/(lib|state|data)/", pathNot: TEST },
       to: { path: "^src/renderer/(components|hooks|mobile)/|^src/renderer/App" },
     },
@@ -36,7 +36,8 @@ module.exports = {
     {
       name: "layout-imports-application-commands",
       severity: "error",
-      comment: "A layout component takes props. It does not call the bridge or read overlays.",
+      comment:
+        "A layout component takes props. It does not import tauriBridge, state/overlays, or snapshot. Read the data in the parent component and pass it in.",
       from: { path: "^src/renderer/components/SessionMultiGrid\\.tsx$" },
       to: { path: "tauriBridge|state/overlays|snapshot" },
     },

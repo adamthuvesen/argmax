@@ -123,7 +123,7 @@
           {
             "object": "crypto",
             "property": "randomUUID",
-            "message": "Use uuidV4() from lib/uuid.js. crypto.randomUUID is undefined on insecure origins."
+            "message": "Use uuidV4() from src/renderer/lib/uuid.ts. crypto.randomUUID is undefined on insecure origins."
           }
         ]
       }
@@ -147,7 +147,7 @@
           {
             "object": "crypto",
             "property": "randomUUID",
-            "message": "Use uuidV4() from lib/uuid.js. crypto.randomUUID is undefined on insecure origins."
+            "message": "Use uuidV4() from src/renderer/lib/uuid.ts. crypto.randomUUID is undefined on insecure origins."
           },
           {
             "object": "window",
@@ -168,7 +168,7 @@
           {
             "object": "crypto",
             "property": "randomUUID",
-            "message": "Use uuidV4() from lib/uuid.js. crypto.randomUUID is undefined on insecure origins."
+            "message": "Use uuidV4() from src/renderer/lib/uuid.ts. crypto.randomUUID is undefined on insecure origins."
           }
         ]
       }
@@ -193,6 +193,28 @@
       "rules": {
         "argmax/no-timeline-payload-access": "off",
         "argmax/no-raw-model-id": "off"
+      }
+    },
+    {
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx"
+      ],
+      "rules": {
+        "argmax/no-real-time": "error",
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "setTimeout",
+            "message": "Use vi.useFakeTimers() and vi.advanceTimersByTimeAsync; real timers make tests slow and flaky."
+          },
+          {
+            "name": "setInterval",
+            "message": "Use vi.useFakeTimers() and vi.advanceTimersByTimeAsync; real timers make tests slow and flaky."
+          }
+        ]
       }
     },
     {

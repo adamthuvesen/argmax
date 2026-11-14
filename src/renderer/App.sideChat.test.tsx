@@ -13,6 +13,9 @@ import {
   snapshot,
   terminateProvider,
 } from "../test/appTestHarness.js";
+import { FIXED_NOW_ISO, freezeClock } from "../test/fixedClock.js";
+
+freezeClock();
 
 describe("App side chat launcher", () => {
   beforeEach(() => {
@@ -68,7 +71,7 @@ describe("App side chat launcher", () => {
       workspaceId: scratch.id,
       prompt: "Explore this idea",
       state: "running",
-      startedAt: new Date().toISOString(),
+      startedAt: FIXED_NOW_ISO,
       completedAt: null,
       launchKind: "user",
     };

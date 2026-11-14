@@ -24,6 +24,9 @@ import {
   resetTerminalTabsForTests,
 } from "./lib/terminalTabs.js";
 import { CHAT_VERBOSITY_KEY } from "./lib/uiPreferences.js";
+import { FIXED_NOW_ISO, freezeClock } from "../test/fixedClock.js";
+
+freezeClock();
 
 function gridWorkspace(index: number, taskLabel: string): DashboardSnapshot["workspaces"][number] {
   const baseWorkspace = snapshot.workspaces[0];
@@ -435,7 +438,7 @@ describe("App grid", () => {
       id: "session-embedded-fresh",
       workspaceId: "workspace-2",
       prompt: "Implement embedded early stop feature",
-      startedAt: new Date().toISOString(),
+      startedAt: FIXED_NOW_ISO,
       state: "running" as const,
     };
     launchProvider.mockResolvedValue(freshSession);
@@ -483,7 +486,7 @@ describe("App grid", () => {
       provider: "grok" as const,
       modelId: "grok-4.7",
       autoTier: "balanced",
-      startedAt: new Date().toISOString(),
+      startedAt: FIXED_NOW_ISO,
       state: "running" as const,
     });
 

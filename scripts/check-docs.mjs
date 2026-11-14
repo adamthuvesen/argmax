@@ -44,12 +44,16 @@ for (const file of docs) {
     try {
       decoded = decodeURIComponent(target);
     } catch {
-      fail(`${file.slice(ROOT.length + 1)}: malformed link target ${target}`);
+      fail(
+        `${file.slice(ROOT.length + 1)}: malformed link target ${target}. Fix the percent-encoding in the link.`,
+      );
       continue;
     }
     const resolved = resolve(dirname(file), decoded);
     if (!existsSync(resolved)) {
-      fail(`${file.slice(ROOT.length + 1)}: broken link ${target}`);
+      fail(
+        `${file.slice(ROOT.length + 1)}: broken link ${target}. Point the link at a file that exists, or remove it.`,
+      );
     }
   }
 }
@@ -59,13 +63,15 @@ for (const file of docs) {
 const agents = readFileSync(join(ROOT, "AGENTS.md"), "utf8");
 for (const entry of readdirSync(join(ROOT, "docs"))) {
   if (entry.endsWith(".md") && !agents.includes(`docs/${entry}`)) {
-    fail(`docs/${entry} is not referenced from AGENTS.md`);
+    fail(`docs/${entry} is not referenced from AGENTS.md. Add a link to it in AGENTS.md.`);
   }
 }
 for (const group of ["plan", "design"]) {
   const indexPath = join(ROOT, "docs", group, "README.md");
   if (!existsSync(indexPath)) {
-    fail(`docs/${group}/README.md index is missing`);
+    fail(
+      `docs/${group}/README.md index is missing. Add it with one link per file in docs/${group}/.`,
+    );
     continue;
   }
   const index = readFileSync(indexPath, "utf8");
@@ -81,7 +87,9 @@ for (const group of ["plan", "design"]) {
       (entry.endsWith(".md") && entry !== "README.md") ||
       (isDirectory && existsSync(join(full, "index.html")));
     if (isEntry && !index.includes(entry.replace(/\.md$/, ""))) {
-      fail(`docs/${group}/${entry} is not listed in docs/${group}/README.md`);
+      fail(
+        `docs/${group}/${entry} is not listed in docs/${group}/README.md. Add a link to it there.`,
+      );
     }
   }
 }

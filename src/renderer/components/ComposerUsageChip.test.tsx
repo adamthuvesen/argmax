@@ -3,8 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, UsageRemaining } from "../../shared/types.js";
 import { resetLedgerPageStateForTests, setCachedUsageRemaining } from "../lib/ledgerPageState.js";
 import { ComposerUsageChip } from "./ComposerUsageChip.js";
+import { FIXED_NOW_ISO, freezeClock, isoAgo, isoFromNow } from "../../test/fixedClock.js";
 
-function plan(percent: number, fetchedAt = new Date().toISOString()): UsageRemaining {
+freezeClock();
+
+function plan(percent: number, fetchedAt = FIXED_NOW_ISO): UsageRemaining {
   return {
     fetchedAt,
     providers: [
@@ -19,7 +22,7 @@ function plan(percent: number, fetchedAt = new Date().toISOString()): UsageRemai
             id: "5h",
             label: "5-hour",
             remainingPercent: percent,
-            resetsAt: new Date(Date.now() + 2 * 3_600_000).toISOString(),
+            resetsAt: isoFromNow(2 * 3_600_000),
           },
           { id: "week", label: "Weekly", remainingPercent: 88, resetsAt: null },
         ],
@@ -96,12 +99,12 @@ describe("ComposerUsageChip", () => {
   });
 
   it("keeps an account's last figures when a later read reports that account as failed, and says as of when", async () => {
-    const old = new Date(Date.now() - 20 * 60_000).toISOString();
+    const old = isoAgo(20 * 60_000);
     setCachedUsageRemaining(plan(41, old), null);
     // The next read succeeds overall, but Claude's own account errors.
     setCachedUsageRemaining(
       {
-        fetchedAt: new Date().toISOString(),
+        fetchedAt: FIXED_NOW_ISO,
         providers: [
           {
             provider: "claude",
@@ -126,7 +129,7 @@ describe("ComposerUsageChip", () => {
   });
 
   it("does not claim a failed refresh just because the figures are old", async () => {
-    const old = new Date(Date.now() - 20 * 60_000).toISOString();
+    const old = isoAgo(20 * 60_000);
     setCachedUsageRemaining(plan(41, old), null);
     // The refresh works, and the account still reports figures stamped long ago.
     remaining.mockResolvedValue(plan(37, old));
@@ -148,7 +151,7 @@ describe("ComposerUsageChip", () => {
   });
 
   it("keeps the last figures when a refresh fails", async () => {
-    setCachedUsageRemaining(plan(41, new Date(Date.now() - 20 * 60_000).toISOString()), null);
+    setCachedUsageRemaining(plan(41, isoAgo(20 * 60_000)), null);
     remaining.mockRejectedValue(new Error("offline"));
     render(<ComposerUsageChip provider="claude" />);
 

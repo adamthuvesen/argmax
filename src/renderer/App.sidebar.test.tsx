@@ -36,6 +36,9 @@ import {
   sessionRow,
 } from "../test/appTestHarness.js";
 import { SIDEBAR_ARCHIVED_KEY } from "./lib/uiPreferences.js";
+import { FIXED_NOW_ISO, freezeClock, isoAgo } from "../test/fixedClock.js";
+
+freezeClock();
 
 describe("App sidebar", () => {
   const initialViewportWidth = window.innerWidth;
@@ -119,7 +122,7 @@ describe("App sidebar", () => {
       branch: "main",
       path: "/tmp/project-1",
       sharedWorkspace: true,
-      lastActivityAt: new Date().toISOString(),
+      lastActivityAt: FIXED_NOW_ISO,
     });
     const forkedSession = sessionRow({
       id: "session-forked",
@@ -127,9 +130,9 @@ describe("App sidebar", () => {
       providerConversationId: "session-1",
       prompt: "Morning status check",
       attention: "normal",
-      startedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-      lastActivityAt: new Date().toISOString(),
+      startedAt: FIXED_NOW_ISO,
+      completedAt: FIXED_NOW_ISO,
+      lastActivityAt: FIXED_NOW_ISO,
     });
     await act(async () => {
       dashboardDeltaListener?.({ workspaces: [forkedWorkspace], sessions: [forkedSession] });
@@ -492,7 +495,7 @@ describe("App sidebar", () => {
     fireEvent.click(screen.getByTitle("Send follow-up"));
     expect(await screen.findByLabelText("Thinking")).toBeInTheDocument();
 
-    const runningAt = new Date().toISOString();
+    const runningAt = FIXED_NOW_ISO;
     await act(async () => {
       dashboardDeltaListener?.({
         sessions: [{ ...cancelledSession, state: "running" as const, completedAt: null }],
@@ -515,8 +518,8 @@ describe("App sidebar", () => {
           {
             ...cancelledSession,
             state: "cancelled" as const,
-            completedAt: new Date().toISOString(),
-            lastActivityAt: new Date().toISOString(),
+            completedAt: FIXED_NOW_ISO,
+            lastActivityAt: FIXED_NOW_ISO,
           },
         ],
         events: [
@@ -526,7 +529,7 @@ describe("App sidebar", () => {
             type: "session.cancelled",
             message: "Provider chat cancelled.",
             payload: {},
-            createdAt: new Date().toISOString(),
+            createdAt: FIXED_NOW_ISO,
           },
         ],
       });
@@ -1388,7 +1391,7 @@ describe("App sidebar", () => {
   it("keeps a read session in priority and clears it on right-click → Done", async () => {
     window.localStorage.setItem("argmax.sidebar.priority.visible", "true");
     // Inside the 30-minute idle window, so the row is triage either way.
-    const attentionChangedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const attentionChangedAt = isoAgo(5 * 60 * 1000);
     const waitingWorkspace = workspaceRow({
       id: "workspace-wait",
       taskLabel: "Waiting chat",
@@ -1462,7 +1465,7 @@ describe("App sidebar", () => {
         demotionSnapshot.workspaces.find((item) => item.id === workspaceId) ?? waitingWorkspace;
       const updated = {
         ...current,
-        priorityDismissedAt: dismissed ? new Date().toISOString() : null,
+        priorityDismissedAt: dismissed ? FIXED_NOW_ISO : null,
         priorityAddedAt: null,
       };
       const next = {
@@ -1509,7 +1512,7 @@ describe("App sidebar", () => {
 
   it("keeps a working session in priority after the user opens it and leaves", async () => {
     window.localStorage.setItem("argmax.sidebar.priority.visible", "true");
-    const attentionChangedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const attentionChangedAt = isoAgo(5 * 60 * 1000);
     const workingWorkspace = workspaceRow({
       id: "workspace-working",
       taskLabel: "Working chat",

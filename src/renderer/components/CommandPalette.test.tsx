@@ -23,6 +23,7 @@ describe("CommandPalette", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
   });
 
@@ -460,6 +461,7 @@ describe("CommandPalette", () => {
     // Upstream `searchMessages` is rebuilt on every `dashboard:delta`, so while
     // an agent streams the prop churns faster than the 150ms debounce. The
     // effect must not restart its timer for that.
+    vi.useFakeTimers();
     const backend = vi
       .fn<(query: string, limit: number) => Promise<MessageHit[]>>()
       .mockResolvedValue([]);
@@ -474,12 +476,12 @@ describe("CommandPalette", () => {
     // 8 * 40ms of churn is well past the 150ms debounce, so the backend must
     // already have run by the time the churn stops — waiting for it to settle
     // first would hide the bug.
-    // Real waits, but inside `act`: the debounce fires mid-loop and the
+    // Fake time, but inside `act`: the debounce fires mid-loop and the
     // backend's resolution sets state, which React otherwise reports as an
     // update outside the test.
     for (let tick = 0; tick < 8; tick += 1) {
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 40));
+        await vi.advanceTimersByTimeAsync(40);
       });
       rerender(paletteWith((query, limit) => backend(query, limit)));
     }

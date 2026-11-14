@@ -54,7 +54,7 @@ pub async fn routines_upsert(
         return Err(ArgmaxError::invalid(InvalidInputIssue::at(
             vec!["projectId".into()],
             "PROJECT_NOT_ALLOWED",
-            "scheduled tasks must target a registered repository, not the side-chats project",
+            "scheduled tasks must target a registered repository, not the app-managed Chat project",
         )));
     }
     let now = Utc::now();

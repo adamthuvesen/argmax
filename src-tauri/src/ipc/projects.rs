@@ -383,7 +383,7 @@ pub(crate) async fn projects_remove_impl(
     if input.project_id.as_str() == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
         return Err(ArgmaxError::service(
             "PROJECT_NOT_REMOVABLE",
-            "The side-chats project is app-managed and cannot be removed.",
+            "The Chat project is app-managed and cannot be removed.",
         ));
     }
     // Resolve the database before tearing anything down: an unopened database

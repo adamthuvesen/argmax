@@ -828,7 +828,7 @@ fn schedule_check_in(
     if parent_project_id == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
         tracing::info!(
             session_id = launched_session_id,
-            "a side chat has no repository to hold a check-in; skipping the wake"
+            "a chat with no repository cannot hold a check-in; skipping the wake"
         );
         return Ok(());
     }

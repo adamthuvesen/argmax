@@ -122,7 +122,8 @@ for (const rel of ["docs/agent-tools.md", "docs/browser.md"]) {
 }
 
 // 4. Every row of the AGENTS.md "Enforced by" column cites something real. A
-//    path must be a tracked file, `path::name` must name a word in that file,
+//    path must be a tracked file, `path::name` must name a word in that file (the last
+//    segment of a dotted key such as `scripts.check:static`),
 //    and an npm script must be defined. Any other name must be a word in the
 //    files the row cites (paths, and the scripts its npm scripts run), or in
 //    code (not docs) when the row cites no file. A row that cites nothing fails.
@@ -186,7 +187,7 @@ for (const row of rows) {
           ? null
           : "is not a tracked file"
         : kind === "key"
-          ? filesFor(file).length && hasWord(key, filesFor(file))
+          ? filesFor(file).length && hasWord(key.split(".").at(-1), filesFor(file))
             ? null
             : `needs ${file} to be tracked and to define ${key}`
           : kind === "script"

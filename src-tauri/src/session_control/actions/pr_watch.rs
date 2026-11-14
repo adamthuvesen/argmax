@@ -44,7 +44,7 @@ pub(super) fn watch_pr(
     if target.project.id == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
         return Err(protocol_error(
             "PROJECT_NOT_ALLOWED",
-            "A side chat has no repository, so it has no pull request to watch.",
+            "This chat has no repository, so it has no pull request to watch.",
         ));
     }
     argmax_store::project_folders::assert_workspace_pr_repository(
@@ -126,7 +126,7 @@ pub(super) async fn cleanup_pr(
     if target.project.id == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
         return Err(protocol_error(
             "PROJECT_NOT_ALLOWED",
-            "A side chat has no repository, so it has no pull request to clean up.",
+            "This chat has no repository, so it has no pull request to clean up.",
         ));
     }
     argmax_store::project_folders::assert_workspace_pr_repository(

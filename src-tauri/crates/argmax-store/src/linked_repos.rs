@@ -1,7 +1,10 @@
-// Named linked repositories: other checkouts on this machine a project's
-// agents may read and edit (docs/memory.md#linked-repositories). They are not
-// project sources: a source is a project-relative file or URL, while a linked
-// repository is a canonical directory root with a name an agent can address.
+// Linked repositories: the compatibility API over the non-primary rows of
+// `project_folders` (GLOSSARY.md, "Linked repository"). The project folder is
+// the domain record; this module keeps the older `linked_repo` names and wire
+// shape for callers that still use them (docs/memory.md#linked-repositories).
+// They are not project sources: a source is a project-relative file or URL,
+// while a linked repository is a canonical directory root with a name an
+// agent can address.
 //
 // The stored `root_path` is canonical and is the allowlist. Nothing that holds
 // one may attach a filesystem watcher to it: Argmax reads these roots on

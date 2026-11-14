@@ -167,7 +167,7 @@ pub(super) fn schedule_followup(
     if target.project.id == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
         return Err(protocol_error(
             "PROJECT_NOT_ALLOWED",
-            "A side chat has no repository to wake up in.",
+            "This chat has no repository to wake up in.",
         ));
     }
     let name = action

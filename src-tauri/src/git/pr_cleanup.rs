@@ -86,7 +86,7 @@ pub async fn cleanup_merged_pr(
         if workspace.project_id == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
             return Err(ArgmaxError::service(
                 "PROJECT_NOT_ALLOWED",
-                "A side chat has no repository, so it has no pull request to clean up.",
+                "This chat has no repository, so it has no pull request to clean up.",
             ));
         }
         let cwd = gh_working_directory(&connection, &workspace)?;

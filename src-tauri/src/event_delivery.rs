@@ -727,4 +727,43 @@ mod tests {
             ]
         );
     }
+
+    #[tokio::test]
+    async fn a_burst_of_large_deltas_leaves_in_pushes_inside_the_conflation_cap() {
+        // The main thread parses each push as JavaScript source, so a push
+        // past the cap holds up the window. 60 deltas of 40 KB fill a queue
+        // that stays under the 4 MiB delivery bound.
+        let (delivery, mut receiver) = DashboardDelivery::new();
+        let sent = 60;
+        for index in 0..sent {
+            let mut moved = timeline_event(&format!("e{index}"), "s1", "session.moved");
+            moved.message = "m".repeat(40 * 1024);
+            delivery.send(providers::flush_queue::DashboardDelta {
+                events: vec![moved],
+                ..Default::default()
+            });
+        }
+        assert!(!delivery.resync_required.load(Ordering::Acquire));
+
+        let (mut pushes, mut rows) = (0, 0);
+        let mut deferred = None;
+        while let Some(first) = deferred.take().or_else(|| receiver.try_recv().ok()) {
+            let delta = prepare_dashboard_batch(
+                first,
+                &mut receiver,
+                &delivery.resync_required,
+                &delivery.generation,
+                &mut deferred,
+            )
+            .expect("batch");
+            let bytes = serde_json::to_vec(&delta).unwrap().len();
+            assert!(
+                bytes <= MAX_CONFLATED_DELTA_BYTES,
+                "push {pushes} weighs {bytes} bytes"
+            );
+            pushes += 1;
+            rows += delta.events.len();
+        }
+        assert_eq!(rows, sent, "every queued row leaves in some push");
+    }
 }

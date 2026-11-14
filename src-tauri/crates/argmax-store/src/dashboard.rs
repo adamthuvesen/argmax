@@ -668,4 +668,57 @@ mod tests {
             )
             .expect("insert raw output");
     }
+
+    /// What the dashboard snapshot may weigh with every row-limited list full
+    /// and a 2 KB prompt on each session, in bytes. The phone and the renderer
+    /// read the whole snapshot on every cold start and resync, so a new column
+    /// on a summary row costs every row, 200 times over.
+    const DASHBOARD_SNAPSHOT_BUDGET_BYTES: usize = 800_000;
+
+    #[test]
+    fn a_full_dashboard_snapshot_stays_inside_its_byte_and_row_budgets() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        for project in 0..20 {
+            connection
+                .execute(
+                    "INSERT INTO projects (id, name, repo_path, current_branch, worktree_location, created_at, updated_at) VALUES (?, ?, ?, 'main', '~/.argmax', '2026-05-24T09:00:00.000Z', '2026-05-24T09:00:00.000Z')",
+                    (format!("p{project}"), format!("project-{project}"), format!("/Users/someone/dev/project-{project}")),
+                )
+                .expect("insert project");
+        }
+        let prompt = "p".repeat(2_000);
+        for index in 0..DASHBOARD_ROW_LIMIT + 50 {
+            let ts = format!("2026-05-24T10:{:02}:{:02}.000Z", index / 60, index % 60);
+            connection
+                .execute(
+                    "INSERT INTO workspaces (id, project_id, task_label, branch, base_ref, path, state, last_activity_at, created_at, updated_at) VALUES (?, 'p0', 'Fix the flaky transcript scroll on resume', ?, 'main', ?, 'running', ?, ?, ?)",
+                    (format!("w{index}"), format!("argmax/branch-{index}"), format!("/Users/someone/.argmax/worktrees/w{index}"), &ts, &ts, &ts),
+                )
+                .expect("insert workspace");
+            connection
+                .execute(
+                    "INSERT INTO sessions (id, workspace_id, provider, model_label, model_id, prompt, state, attention, started_at, last_activity_at) VALUES (?, ?, 'claude', 'Sonnet', 'claude-sonnet', ?, 'running', 'normal', ?, ?)",
+                    (format!("s{index}"), format!("w{index}"), &prompt, &ts, &ts),
+                )
+                .expect("insert session");
+            connection
+                .execute(
+                    "INSERT INTO checks (id, workspace_id, command, status, exit_code, summary, started_at, completed_at) VALUES (?, ?, 'npm run check', 'failed', 1, ?, ?, ?)",
+                    (format!("c{index}"), format!("w{index}"), "c".repeat(500), &ts, &ts),
+                )
+                .expect("insert check");
+        }
+
+        let snapshot = list_dashboard(&connection).expect("dashboard");
+        let bytes = serde_json::to_vec(&snapshot).expect("encode").len();
+
+        assert!(snapshot.workspaces.len() <= DASHBOARD_ROW_LIMIT);
+        assert!(snapshot.sessions.len() <= DASHBOARD_ROW_LIMIT);
+        assert!(snapshot.checks.len() <= DASHBOARD_ROW_LIMIT);
+        assert!(
+            bytes <= DASHBOARD_SNAPSHOT_BUDGET_BYTES,
+            "the dashboard snapshot weighs {bytes} bytes"
+        );
+    }
 }

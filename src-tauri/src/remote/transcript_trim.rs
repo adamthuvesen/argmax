@@ -715,4 +715,64 @@ mod tests {
         trim_for_remote(&mut result);
         assert_eq!(ids(&result), vec!["event-3", "event-1"]);
     }
+
+    /// What one worst-case first page may weigh once trimmed, in bytes. A new
+    /// heavy field on a timeline event grows every page the phone reads, and no
+    /// timing test sees that.
+    const TRIMMED_HEAVY_PAGE_BUDGET_BYTES: usize = 1_900_000;
+
+    /// The phone's first backfill page: the most rows a page holds, each a
+    /// tool result with a raw provider copy, a duplicate output, and some with
+    /// an inline screenshot, plus a full page of raw output.
+    fn heavy_first_page() -> SessionEventsSinceResult {
+        use argmax_store::events::{SESSION_EVENT_PAGE_LIMIT, SESSION_RAW_OUTPUT_PAGE_LIMIT};
+        let events = (1..=SESSION_EVENT_PAGE_LIMIT as i64)
+            .map(|cursor| match cursor % 5 {
+                0 => event(cursor, "user.message", &"q".repeat(300), json!({})),
+                1 | 2 => event(cursor, "message.completed", &"a".repeat(3_000), json!({})),
+                _ => {
+                    let mut content = vec![json!({ "type": "text", "text": "t".repeat(4_000) })];
+                    if cursor % 10 == 3 {
+                        content.push(json!({ "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "i".repeat(200_000) } }));
+                    }
+                    event(
+                        cursor,
+                        "command.completed",
+                        "tool_result",
+                        json!({
+                            "name": "Read",
+                            "raw": { "item": { "text": "r".repeat(6_000) } },
+                            "aggregated_output": "o".repeat(10_000),
+                            "content": content,
+                        }),
+                    )
+                }
+            })
+            .collect();
+        let mut result = page(events);
+        result.raw_outputs = (1..=SESSION_RAW_OUTPUT_PAGE_LIMIT as i64)
+            .map(|cursor| raw_output(cursor, &"s".repeat(20_000)))
+            .collect();
+        result
+    }
+
+    #[test]
+    fn the_heaviest_first_page_stays_inside_the_trim_and_wire_budgets() {
+        let mut result = heavy_first_page();
+        trim_for_remote(&mut result);
+        let trimmed_bytes: usize = result.events.iter().map(json_len).sum();
+        assert!(
+            trimmed_bytes <= TRIMMED_HEAVY_PAGE_BUDGET_BYTES,
+            "trimmed events weigh {trimmed_bytes} bytes"
+        );
+
+        fit_to_budget(&mut result, REMOTE_PAGE_BUDGET_BYTES);
+        let frame = json!({ "type": "response", "id": 1, "ok": &result }).to_string();
+        assert!(
+            frame.len() <= REMOTE_PAGE_BUDGET_BYTES,
+            "the wire frame is {} bytes",
+            frame.len()
+        );
+        assert!(result.events.len() <= argmax_store::events::SESSION_EVENT_PAGE_LIMIT);
+    }
 }

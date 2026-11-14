@@ -99,3 +99,4 @@ Before you edit a subsystem, read its doc. Start at [architecture.md](docs/archi
 | A mascot expression changes only its face | Overlay files composed by `withExpression` in `Mascot.tsx` |
 | `npm run verify` passes only with a control that observes FAIL | `.agents/skills/verify-argmax/verify.mjs::CONTROL`, run by `npm run verify` in CI |
 | A new module cannot start a process or open a socket outside a named owner | `scripts/check-process-imports.mjs`, `scripts/check-rust-boundaries.mjs` |
+| A payload that crosses to the renderer or the phone stays inside a byte and row budget (sizes only, never timing) | Tests `the_heaviest_first_page_stays_inside_the_trim_and_wire_budgets` (`transcript_trim.rs`), `a_full_dashboard_snapshot_stays_inside_its_byte_and_row_budgets` (`dashboard.rs`), `a_burst_of_large_deltas_leaves_in_pushes_inside_the_conflation_cap` (`event_delivery.rs`) |

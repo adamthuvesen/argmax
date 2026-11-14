@@ -148,8 +148,26 @@ pub static CATALOGUE_MODELS: &[CatalogueModel] = &[
     },
     CatalogueModel {
         provider: ProviderId::Cursor,
-        model_id: "gemini-3.8-flash-medium",
-        label: Some("Gemini 3.8 Flash (Cursor)"),
+        model_id: "gemini-4-hydrogen-medium",
+        label: Some("Gemini 4 Hydrogen (Cursor)"),
+        efforts: &[ReasoningEffort::Low, ReasoningEffort::Medium, ReasoningEffort::High, ReasoningEffort::Xhigh],
+        supports_fast_mode: false,
+        fast_mode_model_id: None,
+        context_window: Some(1000000),
+    },
+    CatalogueModel {
+        provider: ProviderId::Cursor,
+        model_id: "gemini-4-carbon-medium",
+        label: Some("Gemini 4 Carbon (Cursor)"),
+        efforts: &[ReasoningEffort::Low, ReasoningEffort::Medium, ReasoningEffort::High],
+        supports_fast_mode: false,
+        fast_mode_model_id: None,
+        context_window: Some(1000000),
+    },
+    CatalogueModel {
+        provider: ProviderId::Cursor,
+        model_id: "gemini-4-argon-medium",
+        label: Some("Gemini 4 Argon (Cursor)"),
         efforts: &[ReasoningEffort::Low, ReasoningEffort::Medium, ReasoningEffort::High],
         supports_fast_mode: false,
         fast_mode_model_id: None,
@@ -342,6 +360,7 @@ pub static SUCCESSOR_MODEL_IDS: &[(ProviderId, &str, &str)] = &[
     (ProviderId::Claude, "claude-sonnet-5", "claude-sonnet-5-5"),
     (ProviderId::Claude, "claude-haiku-4-5", "claude-haiku-5-5"),
     (ProviderId::Codex, "gpt-6-sol", "gpt-6.1-sol"),
+    (ProviderId::Cursor, "gemini-3.8-flash-medium", "gemini-4-hydrogen-medium"),
     (ProviderId::Opencode, "openrouter/deepseek/deepseek-v4.1-flash", "openrouter/deepseek/deepseek-v4.1-flash-1017"),
 ];
 

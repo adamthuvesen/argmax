@@ -112,7 +112,7 @@ describe("reasoningEffortsForModel", () => {
     ]);
   });
 
-  it("caps Cursor Grok 4.6/4.5 and Gemini 3.8 at High", () => {
+  it("caps Cursor Grok 4.6/4.5 and Gemini 4 Carbon/Argon at High, Hydrogen at Extra High", () => {
     expect(reasoningEffortsForModel("cursor", "cursor-grok-4.6-medium")).toEqual([
       "low",
       "medium",
@@ -123,10 +123,21 @@ describe("reasoningEffortsForModel", () => {
       "medium",
       "high",
     ]);
-    expect(reasoningEffortsForModel("cursor", "gemini-3.8-flash-medium")).toEqual([
+    expect(reasoningEffortsForModel("cursor", "gemini-4-carbon-medium")).toEqual([
       "low",
       "medium",
       "high",
+    ]);
+    expect(reasoningEffortsForModel("cursor", "gemini-4-argon-medium")).toEqual([
+      "low",
+      "medium",
+      "high",
+    ]);
+    expect(reasoningEffortsForModel("cursor", "gemini-4-hydrogen-medium")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
     ]);
   });
 
@@ -382,7 +393,7 @@ describe("Grok Build pricing", () => {
     expect(fast("grok")).toEqual(["grok-4.7"]);
     // Turning Fast on for any other Claude model switches the chat to Opus.
     expect(fast("claude")).toEqual(["claude-opus-5-5"]);
-    // Cursor's ACP `fast` option: absent on Gemini 3.8 Flash, and Auto has none.
+    // Cursor's ACP `fast` option: absent on Gemini 4, and Auto has none.
     // Composer always runs Fast, so it has no toggle either.
     expect(fast("cursor")).toEqual([
       "grok-4.7-medium",
@@ -404,7 +415,7 @@ describe("effortForModel", () => {
     // Grok Build's CLI rejects anything above xhigh, and Cursor's Gemini
     // stops at high — both land on Medium rather than the nearest ceiling.
     expect(effortForModel("grok", "grok-4.6", "ultra")).toBe("medium");
-    expect(effortForModel("cursor", "gemini-3.8-flash-medium", "max")).toBe("medium");
+    expect(effortForModel("cursor", "gemini-4-carbon-medium", "max")).toBe("medium");
   });
 
   it("clamps onto discrete variant lists that have no Medium", () => {

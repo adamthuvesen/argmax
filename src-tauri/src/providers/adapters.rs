@@ -1295,19 +1295,29 @@ mod tests {
 
     #[test]
     fn cursor_gemini_has_no_fast_variant() {
-        // Gemini 3.8 Flash has no -fast model, so fast mode is a no-op for it.
-        let input = ProviderLaunchInput {
-            model_id: ModelId::resolve(ProviderId::Cursor, "gemini-3.8-flash-medium"),
-            reasoning_effort: Some(ReasoningEffort::High),
-            fast_mode: true,
-            ..launch_input(ProviderId::Cursor)
-        };
-        let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
-        let i = args
-            .iter()
-            .position(|a| a == "--model")
-            .expect("model flag");
-        assert_eq!(args[i + 1], "gemini-3.8-flash-high");
+        // Gemini 4 has no -fast model, so fast mode is a no-op for it. Hydrogen
+        // runs to Extra High; Carbon and Argon clamp to High. A stored Gemini
+        // 3.8 Flash chat runs on its successor, Hydrogen.
+        let cases = [
+            ("gemini-4-hydrogen-medium", "gemini-4-hydrogen-xhigh"),
+            ("gemini-4-carbon-medium", "gemini-4-carbon-high"),
+            ("gemini-4-argon-medium", "gemini-4-argon-high"),
+            ("gemini-3.8-flash-medium", "gemini-4-hydrogen-xhigh"),
+        ];
+        for (model_id, expected) in cases {
+            let input = ProviderLaunchInput {
+                model_id: ModelId::resolve(ProviderId::Cursor, model_id),
+                reasoning_effort: Some(ReasoningEffort::Xhigh),
+                fast_mode: true,
+                ..launch_input(ProviderId::Cursor)
+            };
+            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
+            let i = args
+                .iter()
+                .position(|a| a == "--model")
+                .expect("model flag");
+            assert_eq!(args[i + 1], expected, "{model_id}");
+        }
     }
 
     #[test]
@@ -1425,7 +1435,7 @@ mod tests {
 
     #[test]
     fn cursor_non_parameterized_models_ignore_effort() {
-        // Composer/Gemini have no effort variants, so effort leaves the id alone.
+        // Composer has no effort variant, so effort leaves the id alone.
         // Composer always runs Fast, which still appends its suffix.
         let input = ProviderLaunchInput {
             model_id: ModelId::resolve(ProviderId::Cursor, "composer-2.5"),

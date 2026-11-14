@@ -30,6 +30,7 @@
     "push-gate": "node scripts/precheck.mjs",
     "verify": "node .agents/skills/verify-argmax/verify",
     "verify:native": "node scripts/verify.mjs",
+    "bench:latency": "node scripts/bench-latency.mjs",
     "doctor": "node scripts/doctor.mjs",
     "prepare": "git config core.hooksPath .githooks",
     "coverage": "vitest run --coverage",

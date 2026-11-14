@@ -275,6 +275,10 @@ impl CursorRates {
 /// it ran standard, so history keeps the standard rate.
 const COMPOSER_ALWAYS_FAST_SINCE: &str = "2026-10-02T18:00:00.000Z";
 
+/// Gemini 4 Carbon's introductory rate ends on 2026-11-30
+/// (https://cursor.com/docs/models, fetched 2026-11-13).
+const GEMINI_4_CARBON_LIST_RATE_SINCE: &str = "2026-12-01T00:00:00.000Z";
+
 /// `None` for a model Cursor publishes no fixed rate for — Auto bills
 /// whichever model it routed each request to — or one this table predates.
 /// `created_at` is the call's RFC 3339 UTC time, which picks Composer's tier.
@@ -298,7 +302,12 @@ pub fn cursor_rates(model_id: &str, created_at: &str) -> Option<CursorRates> {
         "composer-2.5" => rates(0.50, 0.20, 2.50),
         "grok-4.7" | "grok-4.6" | "grok-4.5" => rates(2.0, 0.50, 6.0),
         "claude-opus-5-5" => rates(4.0, 0.20, 20.0),
-        "gemini-3.8-flash" => rates(0.75, 0.075, 3.50),
+        "gemini-4-hydrogen" => rates(1.50, 0.075, 7.50),
+        "gemini-4-carbon" if created_at >= GEMINI_4_CARBON_LIST_RATE_SINCE => {
+            rates(4.0, 0.20, 20.0)
+        }
+        "gemini-4-carbon" | "gemini-4-argon" => rates(2.0, 0.10, 10.0),
+        "gemini-3.8-flash" => rates(0.75, 0.075, 3.75),
         "gemini-2.5-flash" => rates(0.30, 0.03, 2.50),
         "gpt-5.4" => rates(2.50, 0.25, 15.0),
         "gpt-5.6-sol" => rates(4.0, 0.40, 20.0),
@@ -336,5 +345,12 @@ mod tests {
         let output = |at| cursor_rates("composer-2.5", at).map(|rate| rate.output);
         assert_eq!(output("2026-10-02T17:59:59.999Z"), Some(2.50));
         assert_eq!(output("2026-10-02T18:00:00.000Z"), Some(15.0));
+    }
+
+    #[test]
+    fn gemini_4_carbon_leaves_its_introductory_rate_in_december() {
+        let output = |at| cursor_rates("gemini-4-carbon-medium", at).map(|rate| rate.output);
+        assert_eq!(output("2026-11-30T23:59:59.999Z"), Some(10.0));
+        assert_eq!(output("2026-12-01T00:00:00.000Z"), Some(20.0));
     }
 }

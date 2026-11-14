@@ -27,7 +27,7 @@ const base: SessionSummary = {
 afterEach(cleanup);
 
 describe("ContextRing", () => {
-  it.each(["gemini-3.8-flash-medium", "composer-2.5", "gpt-6.1-sol"])(
+  it.each(["gemini-4-hydrogen-medium", "composer-2.5", "gpt-6.1-sol"])(
     "hides Cursor context usage for %s even with persisted token counts",
     (modelId) => {
       render(

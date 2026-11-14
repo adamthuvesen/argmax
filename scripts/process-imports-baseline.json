@@ -1,6 +1,7 @@
 [
   ".agents/skills/verify-argmax/verify.mjs",
   "scripts/app-screenshot.mjs",
+  "scripts/bench-latency.mjs",
   "scripts/build-icons.mjs",
   "scripts/check-changed.mjs",
   "scripts/check-chat-scroll.mjs",

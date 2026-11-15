@@ -223,8 +223,10 @@ jobs:
     name: verify renderer
     needs: [changes, js-static]
     if: ${{ !cancelled() && needs.changes.result == 'success' && needs.js-static.result != 'failure' && needs.changes.outputs.js == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 6
+    # macOS, where the app runs: the composer drives send IME and Option-key input the
+    # way macOS Chrome delivers it, and Linux Chrome handles both differently.
+    runs-on: macos-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
@@ -234,9 +236,6 @@ jobs:
           cache: npm
 
       - run: npm ci
-
-      # Ubuntu 24.04 blocks the unprivileged user namespaces Chrome's sandbox needs.
-      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - run: npm run verify -- all
 

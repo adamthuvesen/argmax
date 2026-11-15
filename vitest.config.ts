@@ -9,6 +9,9 @@ const shared = {
   // was measured too and rejected: the DOM project fails outright, and the
   // node project only gains a second.
   pool: "threads" as const,
+  // Shared CI runners run the heavier render tests 4-5x slower than a laptop, past the
+  // 5 s default; a real hang still fails.
+  testTimeout: process.env.CI ? 20_000 : 5_000,
 };
 
 export default defineConfig({

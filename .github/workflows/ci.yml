@@ -127,8 +127,11 @@ jobs:
 
       - name: Rust cache footprint
         run: |
-          du -sh src-tauri/target/debug/{deps,incremental,build} "$HOME/.cargo/registry"
-          du -sh src-tauri/target/debug/incremental/*
+          # Diagnostics only: a cold build may lack a directory, and that must not fail the job.
+          for dir in src-tauri/target/debug/{deps,incremental,build} "$HOME/.cargo/registry"; do
+            [ -e "$dir" ] && du -sh "$dir"
+          done
+          du -sh src-tauri/target/debug/incremental/* 2>/dev/null || true
 
       # Main refreshes the shared build. A cold PR can seed its own scoped
       # cache so verification does not require merging an unmeasured change.

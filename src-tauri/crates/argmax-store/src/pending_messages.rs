@@ -196,10 +196,14 @@ pub fn replace_session_queue(
             )
             .map_err(sqlite_error)?;
         let positions = statement
-            .query_map([session_id], |row| row.get::<_, usize>(0))
+            .query_map([session_id], |row| row.get::<_, i64>(0))
             .map_err(sqlite_error)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(sqlite_error)?;
+            .map_err(sqlite_error)?
+            .into_iter()
+            // Positions are written from a usize, so a stored one is never negative.
+            .map(|position| position.max(0) as usize)
+            .collect::<Vec<_>>();
         positions
     };
     transaction

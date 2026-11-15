@@ -13,7 +13,7 @@ phf = { version = "0.13", features = ["macros"] }
 regex = "1"
 # `bundled-full` ships SQLite (sqlite3.c vendored) with FTS5 enabled,
 # which we need for `events_fts` and `learnings_fts` sidecars.
-rusqlite = { version = "0.32", features = ["bundled-full"] }
+rusqlite = { version = "0.42", features = ["bundled-full"] }
 # rmcp 3 derives its tool schemas with schemars 1; the contract enums that MCP
 # tools carry derive the same major.
 schemars = "1"

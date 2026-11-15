@@ -20,7 +20,9 @@ function runHook(name: string, input: unknown) {
 
 afterAll(() => rmSync(tempRoot, { recursive: true, force: true }));
 
-describe("agent hooks", () => {
+// Each case spawns the real hook scripts, which run related checks; a cold CI runner
+// needs more than the 5 s default.
+describe("agent hooks", { timeout: 30_000 }, () => {
   it.each([
     [
       "Claude Code",

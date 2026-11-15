@@ -1646,7 +1646,7 @@ pub fn goal_transcript_tail(
         ))
         .map_err(sqlite_error)?;
     let mut rows = statement
-        .query(params![session_id, GOAL_TAIL_SCAN_LIMIT])
+        .query(params![session_id, GOAL_TAIL_SCAN_LIMIT as i64])
         .map_err(sqlite_error)?;
 
     let mut lines = Vec::new();

@@ -208,7 +208,7 @@ impl CheckpointService {
         }
         if checkpoint.head_sha.is_empty()
             || checkpoint.head_sha != current.head_sha
-            || !same_branch(&checkpoint.branch, &current.branch)
+            || !same_branch(&workspace_path, &checkpoint.branch, &current.branch).await?
         {
             return Err(ArgmaxError::service(
                 "CHECKPOINT_REWIND_REVISION_CHANGED",
@@ -693,10 +693,23 @@ async fn materialize_tree(
 
 /// Checkpoints stored before the status-based capture read the branch with
 /// `symbolic-ref --short`, which writes `heads/foo` when a tag `foo` also
-/// exists. Status always writes `foo`.
-fn same_branch(stored: &str, current: &str) -> bool {
-    let plain = |branch: &str| branch.strip_prefix("heads/").unwrap_or(branch).to_owned();
-    plain(stored) == plain(current)
+/// exists. Status always writes the full name, so a stored `heads/foo` names
+/// the current `foo` only while no branch is literally called `heads/foo`.
+async fn same_branch(workspace_path: &Path, stored: &str, current: &str) -> ArgmaxResult<bool> {
+    if stored == current {
+        return Ok(true);
+    }
+    if stored.strip_prefix("heads/") != Some(current) {
+        return Ok(false);
+    }
+    let literal = format!("refs/heads/{stored}");
+    let refs = run_git_text(
+        workspace_path,
+        ["for-each-ref", "--format=%(refname)", literal.as_str()],
+        GIT_TIMEOUT,
+    )
+    .await?;
+    Ok(!refs.lines().any(|name| name == literal))
 }
 
 fn validate_relative_paths(paths: &[String]) -> ArgmaxResult<()> {
@@ -1665,11 +1678,44 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_branch_stored_with_a_heads_prefix_is_the_same_branch() {
-        assert!(same_branch("heads/foo", "foo"));
-        assert!(same_branch("foo", "foo"));
-        assert!(!same_branch("heads/foo", "bar"));
+    #[tokio::test]
+    async fn a_branch_stored_with_a_heads_prefix_is_the_same_branch() {
+        let (repo, _service) = service_with_workspace().await;
+        let path = repo.path();
+        git(path, &["branch", "foo"]).await;
+        git(path, &["tag", "foo"]).await;
+        assert!(same_branch(path, "heads/foo", "foo").await.unwrap());
+        assert!(same_branch(path, "foo", "foo").await.unwrap());
+        assert!(!same_branch(path, "heads/foo", "bar").await.unwrap());
+        assert!(!same_branch(path, "foo", "heads/foo").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn rewind_rejects_a_checkpoint_from_a_branch_literally_prefixed_heads() {
+        let (repo, service) = service_with_workspace().await;
+        let path = repo.path();
+        git(path, &["branch", "foo"]).await;
+        git(path, &["checkout", "-b", "heads/foo"]).await;
+        fs::write(path.join("tracked.txt"), "on heads/foo\n").expect("edit");
+        let checkpoint = service
+            .create_recovery_checkpoint("workspace".into(), None, "before".into())
+            .await
+            .expect("checkpoint");
+        assert_eq!(checkpoint.branch, "heads/foo");
+        git(path, &["checkout", "-f", "foo"]).await;
+        let preview = service
+            .preview_rewind("workspace", &checkpoint.id)
+            .await
+            .expect("preview");
+        let error = service
+            .rewind_files(RewindFilesInput {
+                workspace_id: "workspace".into(),
+                checkpoint_id: checkpoint.id,
+                expected_fingerprint: preview.current_fingerprint,
+            })
+            .await
+            .expect_err("different branch");
+        assert!(error.to_string().contains("different HEAD or branch"));
     }
 
     #[test]

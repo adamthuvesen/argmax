@@ -5,13 +5,13 @@ const opus = (reasoningEffort: RoutedModel["reasoningEffort"]): RoutedModel => (
   provider: "claude",
   modelId: "claude-opus-5-5",
   modelLabel: "Opus 5.5",
-  reasoningEffort
+  reasoningEffort,
 });
 const fable = (reasoningEffort: RoutedModel["reasoningEffort"]): RoutedModel => ({
   provider: "claude",
   modelId: "claude-fable-5-1",
   modelLabel: "Fable 5.1",
-  reasoningEffort
+  reasoningEffort,
 });
 
 describe("routeSwitchDirection", () => {
@@ -26,15 +26,29 @@ describe("routeSwitchDirection", () => {
   });
 
   it("falls back to effort between Cursor's models, which bill at no per-token price", () => {
-    const composer: RoutedModel = { provider: "cursor", modelId: "composer-2.5", modelLabel: "Composer 2.5 (Cursor)", reasoningEffort: null };
-    const cursorOpus: RoutedModel = { provider: "cursor", modelId: "claude-opus-5-5-medium", modelLabel: "Claude Opus 5.5 (Cursor)", reasoningEffort: "medium" };
+    const composer: RoutedModel = {
+      provider: "cursor",
+      modelId: "composer-2.5",
+      modelLabel: "Composer 2.5 (Cursor)",
+      reasoningEffort: null,
+    };
+    const cursorOpus: RoutedModel = {
+      provider: "cursor",
+      modelId: "claude-opus-5-5-medium",
+      modelLabel: "Claude Opus 5.5 (Cursor)",
+      reasoningEffort: "medium",
+    };
     expect(routeSwitchDirection(composer, cursorOpus)).toBe("up");
   });
 });
 
 describe("splitAtChange", () => {
   it("rolls only the words that changed", () => {
-    expect(splitAtChange("Balance → Opus 5.5", "Balance → Fable 5.1")).toEqual(["Balance → ", "Opus 5.5", "Fable 5.1"]);
+    expect(splitAtChange("Balance → Opus 5.5", "Balance → Fable 5.1")).toEqual([
+      "Balance → ",
+      "Opus 5.5",
+      "Fable 5.1",
+    ]);
     expect(splitAtChange("Opus 5.5", "Opus 5.1")).toEqual(["Opus ", "5.5", "5.1"]);
     expect(splitAtChange("High", "Extra High")).toEqual(["", "High", "Extra High"]);
     expect(splitAtChange("Balance", "Balance → Opus 5.5")).toEqual(["Balance", "", " → Opus 5.5"]);

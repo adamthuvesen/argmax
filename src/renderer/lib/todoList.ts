@@ -37,7 +37,7 @@ const STATUSES: ReadonlySet<string> = new Set([
   "active",
   "done",
   "cancelled",
-  "removed"
+  "removed",
 ]);
 
 function readItem(raw: unknown): TodoItem | null {
@@ -47,7 +47,7 @@ function readItem(raw: unknown): TodoItem | null {
   return {
     id: typeof raw.id === "string" && raw.id !== "" ? raw.id : null,
     text: typeof raw.text === "string" && raw.text !== "" ? raw.text : null,
-    status: status as TodoStatus
+    status: status as TodoStatus,
   };
 }
 
@@ -98,6 +98,6 @@ export function foldTodoEvents(events: readonly TimelineEvent[]): TodoList | nul
     items,
     updatedAt,
     doneCount: items.filter((item) => item.status === "done").length,
-    active: items.find((item) => item.status === "active") ?? null
+    active: items.find((item) => item.status === "active") ?? null,
   };
 }

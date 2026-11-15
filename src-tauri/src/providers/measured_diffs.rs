@@ -26,11 +26,9 @@ use std::{
 use serde_json::Value;
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::{
-    git::tree_snapshot::{diff_path_between_trees, dirty_paths, snapshot_worktree},
-    persistence::events::TimelineEvent,
-    util::sync::LockOrRecover,
-};
+use crate::git::tree_snapshot::{diff_path_between_trees, dirty_paths, snapshot_worktree};
+use argmax_store::events::TimelineEvent;
+use argmax_store::sync::LockOrRecover;
 
 /// One path's diff ceiling. A diff this large is a file rewrite, where the
 /// stat stops being the thing a reader wants and the payload cost is real.
@@ -337,11 +335,8 @@ mod tests {
     use serde_json::json;
 
     fn completion(payload: Value) -> TimelineEvent {
-        let semantic = crate::persistence::timeline_semantics::derive(
-            "command.completed",
-            "event-1",
-            &payload,
-        );
+        let semantic =
+            argmax_store::timeline_semantics::derive("command.completed", "event-1", &payload);
         TimelineEvent {
             id: "event-1".to_string(),
             session_id: "session-1".to_string(),
@@ -467,15 +462,19 @@ mod tests {
             vec!["config", "user.email", "test@example.com"],
             vec!["config", "user.name", "Test"],
         ] {
-            crate::git::exec::run_git_text(root, args, std::time::Duration::from_secs(30))
+            argmax_process::git_exec::run_git_text(root, args, std::time::Duration::from_secs(30))
                 .await
                 .expect("git setup");
         }
         std::fs::write(root.join("model.sql"), "one\ntwo\n").expect("write");
-        crate::git::exec::run_git_text(root, ["add", "-A"], std::time::Duration::from_secs(30))
-            .await
-            .expect("git add");
-        crate::git::exec::run_git_text(
+        argmax_process::git_exec::run_git_text(
+            root,
+            ["add", "-A"],
+            std::time::Duration::from_secs(30),
+        )
+        .await
+        .expect("git add");
+        argmax_process::git_exec::run_git_text(
             root,
             ["commit", "-m", "init"],
             std::time::Duration::from_secs(30),

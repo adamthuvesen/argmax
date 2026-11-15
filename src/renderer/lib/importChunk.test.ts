@@ -1,28 +1,33 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { importChunk } from "./importChunk.js";
 
 const reload = vi.fn();
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 beforeEach(() => {
+  vi.useFakeTimers();
   reload.mockClear();
   window.sessionStorage.clear();
   Object.defineProperty(window, "location", {
     configurable: true,
-    value: { reload }
+    value: { reload },
   });
 });
 
 /** A chunk whose hash the running bundle no longer has. */
 function missingChunk(): Promise<string> {
   return Promise.reject(
-    new TypeError("Failed to load module script: expected JavaScript, got text/html")
+    new TypeError("Failed to load module script: expected JavaScript, got text/html"),
   );
 }
 
 /** Let the rejected load and the recovery behind it run. */
-function flush(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+async function flush(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(0);
 }
 
 /**
@@ -45,7 +50,7 @@ describe("importChunk", () => {
     // rendering against the bundle that just failed.
     const settled = await Promise.race([
       pending.then(() => "settled"),
-      flush().then(() => "pending")
+      flush().then(() => "pending"),
     ]);
     expect(settled).toBe("pending");
   });

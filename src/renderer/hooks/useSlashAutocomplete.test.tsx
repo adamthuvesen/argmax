@@ -11,7 +11,7 @@ function Harness({
   commands,
   initialInput = "",
   provider = "claude",
-  workspaceId = "workspace-1"
+  workspaceId = "workspace-1",
 }: {
   commands?: ComposerCommand[];
   initialInput?: string;
@@ -20,7 +20,14 @@ function Harness({
 }): JSX.Element {
   const [input, setInput] = useState(initialInput);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const state = useSlashAutocomplete({ commands, input, setInput, provider, workspaceId, inputRef });
+  const state = useSlashAutocomplete({
+    commands,
+    input,
+    setInput,
+    provider,
+    workspaceId,
+    inputRef,
+  });
   return (
     <div>
       <input
@@ -35,7 +42,11 @@ function Harness({
       <button type="button" onClick={state.dismiss}>
         dismiss
       </button>
-      <span data-testid="labels">{state.items.map((item) => (item.kind === "command" ? item.command.label : item.skill.name)).join(",")}</span>
+      <span data-testid="labels">
+        {state.items
+          .map((item) => (item.kind === "command" ? item.command.label : item.skill.name))
+          .join(",")}
+      </span>
       <span data-testid="filtered-count">{state.items.length}</span>
     </div>
   );
@@ -50,8 +61,8 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
       configurable: true,
       writable: true,
       value: {
-        skills: { list: skillsList }
-      } satisfies Partial<ArgmaxApi>
+        skills: { list: skillsList },
+      } satisfies Partial<ArgmaxApi>,
     });
   });
 
@@ -66,7 +77,7 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
     const skills: SkillSummary[] = [
       { name: "review", description: "review code", source: "user" },
       { name: "refactor", description: "refactor code", source: "user" },
-      { name: "research", description: "do research", source: "user" }
+      { name: "research", description: "do research", source: "user" },
     ];
     skillsList.mockResolvedValue(skills);
 
@@ -89,15 +100,15 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
       { name: "plan-review", description: "Review a plan", source: "user" },
       { name: "review-notes", description: "Review notes", source: "user" },
       { name: "review", description: "Review code", source: "user" },
-      { name: "code-review", description: "Review code", source: "user" }
+      { name: "code-review", description: "Review code", source: "user" },
     ]);
 
     render(<Harness initialInput="/review" />);
 
     await waitFor(() =>
       expect(screen.getByTestId("labels").textContent).toBe(
-        "review,review-notes,plan-review,code-review"
-      )
+        "review,review-notes,plan-review,code-review",
+      ),
     );
   });
 
@@ -109,7 +120,7 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
     skillsList.mockReturnValueOnce(
       new Promise<SkillSummary[]>((resolve) => {
         resolveFirst = resolve;
-      })
+      }),
     );
 
     render(<Harness initialInput="/r" />);
@@ -139,9 +150,11 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
     // keyed to the old provider must not be served while the new one loads.
     skillsList.mockResolvedValueOnce([
       { name: "review", description: "review code", source: "user" },
-      { name: "refactor", description: "refactor code", source: "user" }
+      { name: "refactor", description: "refactor code", source: "user" },
     ]);
-    skillsList.mockResolvedValueOnce([{ name: "rustdoc", description: "rust docs", source: "user" }]);
+    skillsList.mockResolvedValueOnce([
+      { name: "rustdoc", description: "rust docs", source: "user" },
+    ]);
 
     const { rerender } = render(<Harness initialInput="/r" />);
     await waitFor(() => expect(screen.getByTestId("filtered-count").textContent).toBe("2"));
@@ -159,7 +172,7 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
     skillsList.mockRejectedValueOnce(new Error("transient"));
     skillsList.mockResolvedValueOnce([
       { name: "review", description: "review code", source: "user" },
-      { name: "refactor", description: "refactor code", source: "user" }
+      { name: "refactor", description: "refactor code", source: "user" },
     ]);
 
     render(<Harness initialInput="/r" />);
@@ -183,18 +196,18 @@ describe("useSlashAutocomplete — composer commands", () => {
   let commands: ComposerCommand[];
 
   beforeEach(() => {
-    skillsList = vi.fn<ArgmaxApi["skills"]["list"]>().mockResolvedValue([
-      { name: "plan-review", description: "Review a plan", source: "user" }
-    ]);
+    skillsList = vi
+      .fn<ArgmaxApi["skills"]["list"]>()
+      .mockResolvedValue([{ name: "plan-review", description: "Review a plan", source: "user" }]);
     Object.defineProperty(window, "argmax", {
       configurable: true,
       writable: true,
-      value: { skills: { list: skillsList } } satisfies Partial<ArgmaxApi>
+      value: { skills: { list: skillsList } } satisfies Partial<ArgmaxApi>,
     });
     run = vi.fn<() => void>();
     commands = [
       { name: "plan", label: "Plan", hint: "Draft a plan", icon: ListChecks, run },
-      { name: "attach", label: "Attach file", hint: "Add a file", icon: ListChecks, run: vi.fn() }
+      { name: "attach", label: "Attach file", hint: "Add a file", icon: ListChecks, run: vi.fn() },
     ];
   });
 
@@ -206,9 +219,7 @@ describe("useSlashAutocomplete — composer commands", () => {
   it("lists commands above the skills and runs the picked one", async () => {
     render(<Harness commands={commands} initialInput="tidy this up /pl" />);
 
-    await waitFor(() =>
-      expect(screen.getByTestId("labels").textContent).toBe("Plan,plan-review")
-    );
+    await waitFor(() => expect(screen.getByTestId("labels").textContent).toBe("Plan,plan-review"));
 
     const probe = screen.getByLabelText<HTMLInputElement>("probe");
     fireEvent.keyDown(probe, { key: "Enter" });
@@ -229,7 +240,7 @@ describe("useSlashAutocomplete — composer commands", () => {
       hint: "Keep working until a condition holds",
       icon: ListChecks,
       writesDraft: true,
-      run
+      run,
     };
 
     const { unmount } = render(<Harness commands={[goal]} initialInput="check the data /go" />);
@@ -254,13 +265,13 @@ describe("useSlashAutocomplete — dismissal", () => {
   let skillsList: ReturnType<typeof vi.fn<ArgmaxApi["skills"]["list"]>>;
 
   beforeEach(() => {
-    skillsList = vi.fn<ArgmaxApi["skills"]["list"]>().mockResolvedValue([
-      { name: "review", description: "review code", source: "user" }
-    ]);
+    skillsList = vi
+      .fn<ArgmaxApi["skills"]["list"]>()
+      .mockResolvedValue([{ name: "review", description: "review code", source: "user" }]);
     Object.defineProperty(window, "argmax", {
       configurable: true,
       writable: true,
-      value: { skills: { list: skillsList } } satisfies Partial<ArgmaxApi>
+      value: { skills: { list: skillsList } } satisfies Partial<ArgmaxApi>,
     });
   });
 

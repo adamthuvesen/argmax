@@ -7,22 +7,25 @@ import {
   type Dispatch,
   type JSX,
   type ReactNode,
-  type SetStateAction
+  type SetStateAction,
 } from "react";
 import { Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { bridgeAvailable, routineActions, systemActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import {
   SCRATCH_PROJECT_ID,
   type ArcRecord,
   type ProjectSummary,
   type ProviderId,
-  type Routine
+  type Routine,
 } from "../../../shared/types.js";
 import {
   PROVIDER_DISPLAY_NAMES,
   PROVIDER_MODEL_DEFAULTS,
   PROVIDER_MODELS,
   modelLabelFor,
-  successorModelId
+  resolveModelId,
+  type ResolvedModelId,
 } from "../../../shared/providerModels.js";
 import {
   buildSchedule,
@@ -34,13 +37,14 @@ import {
   parseSchedule,
   WEEKDAY_PICKER_OPTIONS,
   type ScheduleControls,
-  type ScheduleKind
+  type ScheduleKind,
 } from "../../lib/schedule.js";
 import { LoadingLine } from "../LoadingLine.js";
 import { SettingsListPicker } from "../settings/settingsPrimitives.js";
 import { RunAtPicker } from "./RunAtPicker.js";
 import { uuidV4 } from "../../lib/uuid.js";
 import { showErrorToast } from "../../state/toast.js";
+import { useInteractionShown } from "../../lib/interactionTimings.js";
 
 /** Matches `SCHEDULER_TICK` in routines/scheduler.rs. The panel waits out one
  *  full tick past a due time before re-reading, so the refresh lands after the
@@ -58,7 +62,7 @@ interface DraftState {
   name: string;
   projectId: string;
   provider: ProviderId;
-  modelId: string;
+  modelId: ResolvedModelId;
   prompt: string;
   runTarget: RoutineRunTarget;
   /** The Arc an `arc_coordinator` target sends runs to. Unused otherwise. */
@@ -75,13 +79,13 @@ function newDraft(projectId: string): DraftState {
     name: "",
     projectId,
     provider,
-    modelId: PROVIDER_MODEL_DEFAULTS[provider].modelId,
+    modelId: resolveModelId(provider, PROVIDER_MODEL_DEFAULTS[provider].modelId),
     prompt: "",
     runTarget: "worktree",
     arcId: null,
     enabled: true,
     kind: "daily",
-    controls: { ...DEFAULT_SCHEDULE_CONTROLS }
+    controls: { ...DEFAULT_SCHEDULE_CONTROLS },
   };
 }
 
@@ -92,14 +96,13 @@ function draftFromRoutine(routine: Routine): DraftState {
     name: routine.name,
     projectId: routine.projectId,
     provider: routine.provider,
-    // A routine stored on a retired model edits and saves as its successor.
-    modelId: successorModelId(routine.provider, routine.modelId),
+    modelId: resolveModelId(routine.provider, routine.modelId),
     prompt: routine.prompt,
     runTarget: routine.runTarget,
     arcId: routine.arcId,
     enabled: routine.enabled,
     kind,
-    controls
+    controls,
   };
 }
 
@@ -108,7 +111,7 @@ const SCHEDULE_KIND_OPTIONS: ReadonlyArray<{ value: ScheduleKind; label: string 
   { value: "hourly", label: "Hourly" },
   { value: "daily", label: "Daily" },
   { value: "weekly", label: "Weekly" },
-  { value: "custom", label: "Custom" }
+  { value: "custom", label: "Custom" },
 ];
 
 /** Where each scheduled run lands. Named by outcome, not by the legacy boolean. */
@@ -116,7 +119,7 @@ const RUN_TARGET_OPTIONS: ReadonlyArray<{ value: RoutineRunTarget; label: string
   { value: "new_session", label: "New chat" },
   { value: "same_session", label: "Same chat" },
   { value: "worktree", label: "Isolated worktree" },
-  { value: "arc_coordinator", label: "Arc coordinator" }
+  { value: "arc_coordinator", label: "Arc coordinator" },
 ];
 
 function runTargetLabel(target: RoutineRunTarget): string {
@@ -143,7 +146,7 @@ function routineState(routine: Routine): "failed" | "paused" | "scheduled" {
 
 export function ScheduledTasksPanel({
   projects,
-  onOpenSession
+  onOpenSession,
 }: {
   projects: ProjectSummary[];
   onOpenSession?: (sessionId: string) => void;
@@ -156,49 +159,53 @@ export function ScheduledTasksPanel({
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  useInteractionShown("page.schedule", routines !== null);
 
-  // A timer reload and an action's reload can overlap; only the latest one
-  // may commit, or an older list lands over the fresher one.
-  const reloadSeq = useRef(0);
-  const reload = useCallback(async (explicit = false): Promise<void> => {
-    if (!window.argmax) {
-      setLoadError("Open Argmax on your Mac to manage scheduled tasks.");
-      return;
-    }
-    const seq = ++reloadSeq.current;
-    try {
-      const next = await window.argmax.routines.list();
-      if (seq !== reloadSeq.current) return;
+  const explicitReload = useRef(false);
+  const { refetch: refetchRoutines } = useBridgeQuery({
+    key: ["routines.list"],
+    read: (api) => api.routines.list(),
+    onData: (next) => {
       setRoutines(next);
       setLoadError(null);
-    } catch (error) {
-      if (seq !== reloadSeq.current) return;
+    },
+    onError: (error) => {
       const message = errorMessage(error, "Could not load scheduled tasks.");
-      if (explicit) showErrorToast(message);
+      if (explicitReload.current) showErrorToast(message);
       else setLoadError(message);
-    }
-  }, []);
+    },
+  });
+  const reload = useCallback(
+    async (explicit = false): Promise<void> => {
+      if (!bridgeAvailable()) {
+        setLoadError("Open Argmax on your Mac to manage scheduled tasks.");
+        return;
+      }
+      explicitReload.current = explicit;
+      await refetchRoutines();
+    },
+    [refetchRoutines],
+  );
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    if (!bridgeAvailable()) setLoadError("Open Argmax on your Mac to manage scheduled tasks.");
+  }, []);
 
   // Arcs only matter to the editor's "Arc coordinator" target, but the list
   // is small and shared across every project, so one load up front is
   // simpler than fetching on demand each time the editor opens.
-  useEffect(() => {
-    if (!window.argmax?.arcs) return;
-    window.argmax.arcs
-      .list({})
-      .then((loaded) => {
-        setArcs(loaded);
-        setArcsError(null);
-      })
-      .catch((error) => {
-        setArcs([]);
-        setArcsError(errorMessage(error, "Could not load Arcs."));
-      });
-  }, []);
+  useBridgeQuery({
+    key: ["arcs.list"],
+    read: (api) => api.arcs?.list({}),
+    onData: (loaded) => {
+      setArcs(loaded);
+      setArcsError(null);
+    },
+    onError: (error) => {
+      setArcs([]);
+      setArcsError(errorMessage(error, "Could not load Arcs."));
+    },
+  });
 
   // The scheduler fires in Rust, so "next run" goes stale on its own. Rather
   // than poll, re-read once the soonest due time has passed; every reload
@@ -211,7 +218,7 @@ export function ScheduledTasksPanel({
     if (dueTimes.length === 0) return;
     const delay = Math.min(
       MAX_REFRESH_DELAY_MS,
-      Math.max(SCHEDULER_TICK_MS, Math.min(...dueTimes) - Date.now() + SCHEDULER_TICK_MS)
+      Math.max(SCHEDULER_TICK_MS, Math.min(...dueTimes) - Date.now() + SCHEDULER_TICK_MS),
     );
     const timer = window.setTimeout(() => void reload(), delay);
     return () => window.clearTimeout(timer);
@@ -227,18 +234,22 @@ export function ScheduledTasksPanel({
   // the scratch side-chats project can never become a task's target.
   const repositories = useMemo(
     () => projects.filter((project) => project.id !== SCRATCH_PROJECT_ID),
-    [projects]
+    [projects],
   );
 
   const modelOptions = useMemo(
-    () => PROVIDER_MODELS[draft?.provider ?? "claude"].map((model) => ({ value: model.modelId, label: model.label })),
-    [draft?.provider]
+    () =>
+      PROVIDER_MODELS[draft?.provider ?? "claude"].map((model) => ({
+        value: model.modelId,
+        label: model.label,
+      })),
+    [draft?.provider],
   );
 
   const projectName = useCallback(
     (projectId: string): string =>
       repositories.find((project) => project.id === projectId)?.name ?? projectId,
-    [repositories]
+    [repositories],
   );
 
   /** Every action starts from a clean slate, so a stale success line never
@@ -260,7 +271,8 @@ export function ScheduledTasksPanel({
   const closeEditor = useCallback(() => setDraft(null), []);
 
   const saveDraft = useCallback(async () => {
-    if (!draft || !window.argmax) return;
+    const routines = routineActions();
+    if (!draft || !routines) return;
     if (!draft.name.trim()) {
       setSaveError("Give the task a name.");
       return;
@@ -285,7 +297,7 @@ export function ScheduledTasksPanel({
     setBusy(true);
     setSaveError(null);
     try {
-      await window.argmax.routines.upsert({
+      await routines.upsert({
         id: draft.routineId ?? uuidV4(),
         name: draft.name.trim(),
         projectId: draft.projectId,
@@ -300,7 +312,7 @@ export function ScheduledTasksPanel({
         arcId: draft.runTarget === "arc_coordinator" ? draft.arcId : null,
         cronExpr: schedule.cronExpr,
         runOnceAt: schedule.runOnceAt,
-        enabled: draft.enabled
+        enabled: draft.enabled,
       });
       setStatus(draft.routineId ? "Task updated." : "Task created.");
       setDraft(null);
@@ -314,25 +326,27 @@ export function ScheduledTasksPanel({
 
   const toggleEnabled = useCallback(
     async (routine: Routine) => {
-      if (!window.argmax) return;
+      const routines = routineActions();
+      if (!routines) return;
       beginAction();
       try {
-        await window.argmax.routines.setEnabled(routine.id, !routine.enabled);
+        await routines.setEnabled(routine.id, !routine.enabled);
         await reload(true);
       } catch (error) {
         showErrorToast(errorMessage(error, "Could not update the task."));
       }
     },
-    [beginAction, reload]
+    [beginAction, reload],
   );
 
   const runNow = useCallback(
     async (routine: Routine) => {
-      if (!window.argmax) return;
+      const routines = routineActions();
+      if (!routines) return;
       beginAction();
       setBusy(true);
       try {
-        await window.argmax.routines.runNow(routine.id);
+        await routines.runNow(routine.id);
         setStatus(`Started “${routine.name}”. The chat is in the sidebar.`);
         await reload(true);
       } catch (error) {
@@ -341,20 +355,23 @@ export function ScheduledTasksPanel({
         setBusy(false);
       }
     },
-    [beginAction, reload]
+    [beginAction, reload],
   );
 
   const removeRoutine = useCallback(
     async (routine: Routine) => {
-      if (!window.argmax) return;
+      const routines = routineActions();
+      const system = systemActions();
+      if (!routines || !system) return;
       const { id, name } = routine;
-      const api = window.argmax;
       beginAction();
       setBusy(true);
       try {
-        const confirmed = await api.system.confirm(`Delete “${name}”? Chats it already started stay in the sidebar.`);
+        const confirmed = await system.confirm(
+          `Delete “${name}”? Chats it already started stay in the sidebar.`,
+        );
         if (!confirmed) return;
-        await api.routines.delete(id);
+        await routines.delete(id);
         setStatus("Task deleted.");
         await reload(true);
       } catch (error) {
@@ -363,22 +380,23 @@ export function ScheduledTasksPanel({
         setBusy(false);
       }
     },
-    [beginAction, reload]
+    [beginAction, reload],
   );
 
   const resetSharedChat = useCallback(
     async (routine: Routine) => {
-      if (!window.argmax) return;
+      const routines = routineActions();
+      if (!routines) return;
       beginAction();
       try {
-        await window.argmax.routines.resetSession(routine.id);
+        await routines.resetSession(routine.id);
         setStatus(`“${routine.name}” will start a fresh chat on its next run.`);
         await reload(true);
       } catch (error) {
         showErrorToast(errorMessage(error, "Could not reset the shared chat."));
       }
     },
-    [beginAction, reload]
+    [beginAction, reload],
   );
 
   if (draft) {
@@ -409,7 +427,9 @@ export function ScheduledTasksPanel({
         routines !== null && total > 0 ? (
           <p className="sched-count">
             {total} {total === 1 ? "task" : "tasks"}
-            {pausedCount > 0 ? <span className="sched-count-sep">, {pausedCount} paused</span> : null}
+            {pausedCount > 0 ? (
+              <span className="sched-count-sep">, {pausedCount} paused</span>
+            ) : null}
           </p>
         ) : null
       }
@@ -423,140 +443,146 @@ export function ScheduledTasksPanel({
       }
     >
       <div className="sched-column">
-          {status ? (
-            <p className="sched-status" role="status">
-              {status}
-            </p>
-          ) : null}
-          {loadError ? (
-            <p className="sched-alert" role="alert">
-              {loadError}
-            </p>
-          ) : routines === null ? (
-            <LoadingLine className="sched-loading" label="Loading scheduled tasks…" />
-          ) : repositories.length === 0 ? (
-            <EmptyState
-              headline="No repositories yet"
-              body="Scheduled tasks run against a repository. Add one, then come back to put a prompt on a schedule."
-            />
-          ) : total === 0 ? (
-            <EmptyState
-              headline="Nothing scheduled"
-              body="Put a prompt on a clock and Argmax runs it as a normal agent chat — a morning triage, an hourly check, a one-off at a set time."
-              action={
-                <button type="button" className="sched-button sched-button-primary" onClick={startNew}>
-                  <Plus size={13} aria-hidden="true" />
-                  New task
-                </button>
-              }
-            />
-          ) : (
-            <ul className="sched-list" aria-label="Scheduled tasks">
-              {routines.map((routine) => {
-                const state = routineState(routine);
-                const sharedChatId =
-                  routine.runTarget === "same_session" ? routine.lastSessionId : null;
-                return (
-                  <li key={routine.id} className="sched-row" data-state={state}>
-                    <span className="sched-marker" aria-hidden="true" />
+        {status ? (
+          <p className="sched-status" role="status">
+            {status}
+          </p>
+        ) : null}
+        {loadError ? (
+          <p className="sched-alert" role="alert">
+            {loadError}
+          </p>
+        ) : routines === null ? (
+          <LoadingLine className="sched-loading" label="Loading scheduled tasks…" />
+        ) : repositories.length === 0 ? (
+          <EmptyState
+            headline="No repositories yet"
+            body="Scheduled tasks run against a repository. Add one, then come back to put a prompt on a schedule."
+          />
+        ) : total === 0 ? (
+          <EmptyState
+            headline="Nothing scheduled"
+            body="Put a prompt on a clock and Argmax runs it as a normal agent chat — a morning triage, an hourly check, a one-off at a set time."
+            action={
+              <button
+                type="button"
+                className="sched-button sched-button-primary"
+                onClick={startNew}
+              >
+                <Plus size={13} aria-hidden="true" />
+                New task
+              </button>
+            }
+          />
+        ) : (
+          <ul className="sched-list" aria-label="Scheduled tasks">
+            {routines.map((routine) => {
+              const state = routineState(routine);
+              const sharedChatId =
+                routine.runTarget === "same_session" ? routine.lastSessionId : null;
+              return (
+                <li key={routine.id} className="sched-row" data-state={state}>
+                  <span className="sched-marker" aria-hidden="true" />
 
-                    <div className="sched-row-body">
-                      <span className="sched-row-name">{routine.name}</span>
-                      <span className="sched-row-meta">
-                        {projectName(routine.projectId)}
-                        <span className="sched-dot" aria-hidden="true" />
-                        {runTargetLabel(routine.runTarget)}
-                        <span className="sched-dot" aria-hidden="true" />
-                        {PROVIDER_DISPLAY_NAMES[routine.provider]}{" "}
-                        {modelLabelFor(routine.provider, routine.modelId) ?? routine.modelLabel}
-                      </span>
-                    </div>
+                  <div className="sched-row-body">
+                    <span className="sched-row-name">{routine.name}</span>
+                    <span className="sched-row-meta">
+                      {projectName(routine.projectId)}
+                      <span className="sched-dot" aria-hidden="true" />
+                      {runTargetLabel(routine.runTarget)}
+                      <span className="sched-dot" aria-hidden="true" />
+                      {PROVIDER_DISPLAY_NAMES[routine.provider]}{" "}
+                      {modelLabelFor(routine.provider, routine.modelId) ?? routine.modelLabel}
+                    </span>
+                  </div>
 
-                    <div className="sched-row-when">
-                      <span className="sched-row-cadence">{describeSchedule(routine)}</span>
-                      <span className="sched-row-next">
-                        {state === "failed" ? (
-                          <span className="sched-row-failed" title={routine.lastError ?? undefined}>
-                            Last run failed
-                          </span>
-                        ) : state === "paused" ? (
-                          "Paused"
-                        ) : routine.nextRunAt ? (
-                          <span title={formatTimestamp(routine.nextRunAt)}>
-                            {formatRelative(routine.nextRunAt)}
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </span>
-                    </div>
-
-                    <div className="sched-row-actions">
-                      {sharedChatId && onOpenSession ? (
-                        <button
-                          type="button"
-                          className="sched-text-button"
-                          onClick={() => onOpenSession(sharedChatId)}
-                        >
-                          Open chat
-                        </button>
-                      ) : null}
-                      {sharedChatId ? (
-                        <button
-                          type="button"
-                          className="sched-text-button"
-                          disabled={busy}
-                          onClick={() => void resetSharedChat(routine)}
-                        >
-                          Fresh chat next run
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="sched-icon-button"
-                        title={`Run ${routine.name} now`}
-                        aria-label={`Run ${routine.name} now`}
-                        disabled={busy}
-                        onClick={() => void runNow(routine)}
-                      >
-                        <Play size={14} aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
-                        className="sched-icon-button"
-                        title={`Edit ${routine.name}`}
-                        aria-label={`Edit ${routine.name}`}
-                        onClick={() => startEdit(routine)}
-                      >
-                        <Pencil size={14} aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
-                        className="sched-icon-button sched-icon-button-danger"
-                        title={`Delete ${routine.name}`}
-                        aria-label={`Delete ${routine.name}`}
-                        disabled={busy}
-                        onClick={() => void removeRoutine(routine)}
-                      >
-                        <Trash2 size={14} aria-hidden="true" />
-                      </button>
-                      <label className="settings-toggle sched-row-toggle">
-                        <input
-                          type="checkbox"
-                          aria-label={routine.enabled ? `Pause ${routine.name}` : `Resume ${routine.name}`}
-                          checked={routine.enabled}
-                          onChange={() => void toggleEnabled(routine)}
-                        />
-                        <span className="settings-toggle-track" aria-hidden="true">
-                          <span className="settings-toggle-thumb" />
+                  <div className="sched-row-when">
+                    <span className="sched-row-cadence">{describeSchedule(routine)}</span>
+                    <span className="sched-row-next">
+                      {state === "failed" ? (
+                        <span className="sched-row-failed" title={routine.lastError ?? undefined}>
+                          Last run failed
                         </span>
-                      </label>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+                      ) : state === "paused" ? (
+                        "Paused"
+                      ) : routine.nextRunAt ? (
+                        <span title={formatTimestamp(routine.nextRunAt)}>
+                          {formatRelative(routine.nextRunAt)}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="sched-row-actions">
+                    {sharedChatId && onOpenSession ? (
+                      <button
+                        type="button"
+                        className="sched-text-button"
+                        onClick={() => onOpenSession(sharedChatId)}
+                      >
+                        Open chat
+                      </button>
+                    ) : null}
+                    {sharedChatId ? (
+                      <button
+                        type="button"
+                        className="sched-text-button"
+                        disabled={busy}
+                        onClick={() => void resetSharedChat(routine)}
+                      >
+                        Fresh chat next run
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="sched-icon-button"
+                      title={`Run ${routine.name} now`}
+                      aria-label={`Run ${routine.name} now`}
+                      disabled={busy}
+                      onClick={() => void runNow(routine)}
+                    >
+                      <Play size={14} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="sched-icon-button"
+                      title={`Edit ${routine.name}`}
+                      aria-label={`Edit ${routine.name}`}
+                      onClick={() => startEdit(routine)}
+                    >
+                      <Pencil size={14} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="sched-icon-button sched-icon-button-danger"
+                      title={`Delete ${routine.name}`}
+                      aria-label={`Delete ${routine.name}`}
+                      disabled={busy}
+                      onClick={() => void removeRoutine(routine)}
+                    >
+                      <Trash2 size={14} aria-hidden="true" />
+                    </button>
+                    <label className="settings-toggle sched-row-toggle">
+                      <input
+                        type="checkbox"
+                        aria-label={
+                          routine.enabled ? `Pause ${routine.name}` : `Resume ${routine.name}`
+                        }
+                        checked={routine.enabled}
+                        onChange={() => void toggleEnabled(routine)}
+                      />
+                      <span className="settings-toggle-track" aria-hidden="true">
+                        <span className="settings-toggle-thumb" />
+                      </span>
+                    </label>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </SchedulePage>
   );
@@ -565,7 +591,7 @@ export function ScheduledTasksPanel({
 function SchedulePage({
   children,
   summary,
-  action
+  action,
 }: {
   children: ReactNode;
   summary?: ReactNode;
@@ -591,7 +617,7 @@ function SchedulePage({
 function EmptyState({
   headline,
   body,
-  action
+  action,
 }: {
   headline: string;
   body: string;
@@ -616,7 +642,7 @@ function ScheduledTaskEditor({
   saveError,
   busy,
   onSave,
-  onCancel
+  onCancel,
 }: {
   draft: DraftState;
   setDraft: Dispatch<SetStateAction<DraftState | null>>;
@@ -642,14 +668,14 @@ function ScheduledTaskEditor({
   // home drops the selection rather than saving a mismatched pair.
   const projectArcs = useMemo(
     () => arcs.filter((arc) => arc.homeProjectId === draft.projectId),
-    [arcs, draft.projectId]
+    [arcs, draft.projectId],
   );
   const arcOptions = useMemo(
     () =>
       projectArcs.length > 0
         ? projectArcs.map((arc) => ({ value: arc.id, label: arc.name }))
         : [{ value: "", label: "No Arcs in this repository" }],
-    [projectArcs]
+    [projectArcs],
   );
 
   const patchControls = (changes: Partial<ScheduleControls>): void => {
@@ -674,291 +700,293 @@ function ScheduledTaskEditor({
         onSave();
       }}
     >
-          <section className="sched-group">
-            <div className="sched-field">
-              <label className="sched-label" htmlFor="scheduled-name">
-                Name
-              </label>
-              <input
-                id="scheduled-name"
-                className="sched-input"
-                value={draft.name}
-                placeholder="Morning board triage"
-                autoComplete="off"
-                onChange={(event) => patch({ name: event.target.value })}
+      <section className="sched-group">
+        <div className="sched-field">
+          <label className="sched-label" htmlFor="scheduled-name">
+            Name
+          </label>
+          <input
+            id="scheduled-name"
+            className="sched-input"
+            value={draft.name}
+            placeholder="Morning board triage"
+            autoComplete="off"
+            onChange={(event) => patch({ name: event.target.value })}
+          />
+        </div>
+
+        <div className="sched-field">
+          <label className="sched-label" htmlFor="scheduled-prompt">
+            Prompt
+          </label>
+          <textarea
+            id="scheduled-prompt"
+            className="sched-input sched-textarea"
+            rows={4}
+            value={draft.prompt}
+            placeholder="Triage the priority column, summarize blockers, and open follow-up chats for anything urgent."
+            onChange={(event) => patch({ prompt: event.target.value })}
+          />
+        </div>
+      </section>
+
+      <section className="sched-group">
+        <p className="sched-eyebrow">When</p>
+
+        <div className="sched-field sched-field-inline">
+          <span className="sched-label">Repeats</span>
+          <div className="sched-picker">
+            <SettingsListPicker
+              ariaLabel="Repeats"
+              value={draft.kind}
+              onChange={(kind) => patch({ kind })}
+              options={SCHEDULE_KIND_OPTIONS}
+            />
+          </div>
+        </div>
+
+        {draft.kind === "once" ? (
+          <div className="sched-field sched-field-inline">
+            <label className="sched-label" htmlFor="scheduled-once">
+              Run at
+            </label>
+            <RunAtPicker
+              id="scheduled-once"
+              value={draft.controls.onceAt}
+              onChange={(onceAt) => patchControls({ onceAt })}
+            />
+          </div>
+        ) : null}
+        {draft.kind === "hourly" ? (
+          <div className="sched-field sched-field-inline">
+            <label className="sched-label" htmlFor="scheduled-hourly-minute">
+              Minute
+            </label>
+            <input
+              id="scheduled-hourly-minute"
+              type="number"
+              min={0}
+              max={59}
+              className="sched-input sched-input-number"
+              value={minuteDraft ?? String(draft.controls.minute)}
+              onChange={(event) => setMinuteDraft(event.target.value)}
+              onBlur={(event) => commitMinute(event.target.value)}
+              // Enter here would submit the form before blur commits the
+              // draft, saving the previous minute. Commit instead.
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                commitMinute(event.currentTarget.value);
+              }}
+            />
+          </div>
+        ) : null}
+        {draft.kind === "daily" || draft.kind === "weekly" ? (
+          <div className="sched-field sched-field-inline">
+            <label className="sched-label" htmlFor="scheduled-time">
+              Time
+            </label>
+            <input
+              id="scheduled-time"
+              type="time"
+              className="sched-input sched-input-compact"
+              value={timeValue}
+              onChange={(event) => {
+                const [hour, minute] = event.target.value.split(":").map(Number);
+                patchControls({
+                  hour: Number.isInteger(hour) ? hour : draft.controls.hour,
+                  minute: Number.isInteger(minute) ? minute : draft.controls.minute,
+                });
+              }}
+            />
+          </div>
+        ) : null}
+        {draft.kind === "weekly" ? (
+          <div className="sched-field sched-field-inline">
+            <span className="sched-label">Day</span>
+            <div className="sched-picker">
+              <SettingsListPicker
+                ariaLabel="Day"
+                value={String(draft.controls.weekday)}
+                onChange={(weekday) => patchControls({ weekday: Number(weekday) })}
+                options={WEEKDAY_PICKER_OPTIONS}
               />
             </div>
+          </div>
+        ) : null}
+        {draft.kind === "custom" ? (
+          <div className="sched-field">
+            <label className="sched-label" htmlFor="scheduled-cron">
+              Cron expression
+            </label>
+            <input
+              id="scheduled-cron"
+              className="sched-input sched-input-mono"
+              value={draft.controls.custom}
+              placeholder="0 30 8 * * 1-5"
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => patchControls({ custom: event.target.value })}
+            />
+            <p className="sched-help">
+              Six fields — second minute hour day month weekday. <code>0 30 8 * * 1-5</code> is
+              weekdays at 08:30.
+            </p>
+          </div>
+        ) : null}
 
-            <div className="sched-field">
-              <label className="sched-label" htmlFor="scheduled-prompt">
-                Prompt
-              </label>
-              <textarea
-                id="scheduled-prompt"
-                className="sched-input sched-textarea"
-                rows={4}
-                value={draft.prompt}
-                placeholder="Triage the priority column, summarize blockers, and open follow-up chats for anything urgent."
-                onChange={(event) => patch({ prompt: event.target.value })}
-              />
-            </div>
-          </section>
+        {/* The schedule read back as a sentence: six cron fields never have
+                to be decoded by eye, and the sentence is what the row will say. */}
+        <p className="sched-readback">
+          {cadence ? (
+            <>
+              Runs <strong>{cadence}</strong>
+              {repositoryName ? <> in {repositoryName}</> : null}.
+            </>
+          ) : (
+            <span className="sched-readback-empty">
+              {draft.kind === "custom"
+                ? "Runs on your cron expression."
+                : "Pick a time to finish the schedule."}
+            </span>
+          )}
+        </p>
+      </section>
 
-          <section className="sched-group">
-            <p className="sched-eyebrow">When</p>
+      <section className="sched-group">
+        <p className="sched-eyebrow">Where</p>
 
+        <div className="sched-field sched-field-inline">
+          <span className="sched-label">Repository</span>
+          <div className="sched-picker">
+            <SettingsListPicker
+              ariaLabel="Repository"
+              value={draft.projectId}
+              onChange={(projectId) => {
+                // An Arc chosen for the old repository is almost never
+                // right for a new one — the CHECK constraint would reject
+                // it outright, so drop it rather than save a mismatch.
+                const stillHomed = arcs.some(
+                  (arc) => arc.id === draft.arcId && arc.homeProjectId === projectId,
+                );
+                patch({ projectId, arcId: stillHomed ? draft.arcId : null });
+              }}
+              options={projects.map((project) => ({ value: project.id, label: project.name }))}
+            />
+          </div>
+        </div>
+        {draft.runTarget === "arc_coordinator" ? (
+          <p className="sched-help">Runs on the coordinator's own model.</p>
+        ) : (
+          <>
             <div className="sched-field sched-field-inline">
-              <span className="sched-label">Repeats</span>
+              <span className="sched-label">Agent</span>
               <div className="sched-picker">
                 <SettingsListPicker
-                  ariaLabel="Repeats"
-                  value={draft.kind}
-                  onChange={(kind) => patch({ kind })}
-                  options={SCHEDULE_KIND_OPTIONS}
+                  ariaLabel="Agent"
+                  value={draft.provider}
+                  onChange={(provider) => {
+                    const known = PROVIDER_MODELS[provider].some(
+                      (model) => model.modelId === draft.modelId,
+                    );
+                    patch({
+                      provider,
+                      modelId: known
+                        ? draft.modelId
+                        : resolveModelId(provider, PROVIDER_MODEL_DEFAULTS[provider].modelId),
+                    });
+                  }}
+                  options={(Object.keys(PROVIDER_MODELS) as ProviderId[]).map((provider) => ({
+                    value: provider,
+                    label: PROVIDER_DISPLAY_NAMES[provider],
+                  }))}
                 />
               </div>
             </div>
+            <div className="sched-field sched-field-inline">
+              <span className="sched-label">Model</span>
+              <div className="sched-picker">
+                <SettingsListPicker
+                  ariaLabel="Model"
+                  value={draft.modelId}
+                  onChange={(modelId) =>
+                    patch({ modelId: resolveModelId(draft.provider, modelId) })
+                  }
+                  options={modelOptions}
+                />
+              </div>
+            </div>
+          </>
+        )}
 
-            {draft.kind === "once" ? (
+        <div className="sched-field sched-field-inline">
+          <span className="sched-label">Run in</span>
+          <div className="sched-picker">
+            <SettingsListPicker<RoutineRunTarget>
+              ariaLabel="Run in"
+              value={draft.runTarget}
+              onChange={(runTarget) => patch({ runTarget })}
+              options={RUN_TARGET_OPTIONS}
+              placement="above"
+            />
+          </div>
+        </div>
+        {draft.runTarget === "same_session" ? (
+          <p className="sched-help">
+            Every run sends the prompt as a follow-up in the same chat. A long-running schedule
+            keeps one growing conversation — pick New chat if you want a clean slate each time.
+          </p>
+        ) : null}
+        {draft.runTarget === "arc_coordinator" ? (
+          <>
+            {arcsError ? (
+              <p className="sched-alert" role="alert">
+                {arcsError}
+              </p>
+            ) : (
               <div className="sched-field sched-field-inline">
-                <label className="sched-label" htmlFor="scheduled-once">
-                  Run at
-                </label>
-                <RunAtPicker
-                  id="scheduled-once"
-                  value={draft.controls.onceAt}
-                  onChange={(onceAt) => patchControls({ onceAt })}
-                />
-              </div>
-            ) : null}
-            {draft.kind === "hourly" ? (
-              <div className="sched-field sched-field-inline">
-                <label className="sched-label" htmlFor="scheduled-hourly-minute">
-                  Minute
-                </label>
-                <input
-                  id="scheduled-hourly-minute"
-                  type="number"
-                  min={0}
-                  max={59}
-                  className="sched-input sched-input-number"
-                  value={minuteDraft ?? String(draft.controls.minute)}
-                  onChange={(event) => setMinuteDraft(event.target.value)}
-                  onBlur={(event) => commitMinute(event.target.value)}
-                  // Enter here would submit the form before blur commits the
-                  // draft, saving the previous minute. Commit instead.
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter") return;
-                    event.preventDefault();
-                    commitMinute(event.currentTarget.value);
-                  }}
-                />
-              </div>
-            ) : null}
-            {draft.kind === "daily" || draft.kind === "weekly" ? (
-              <div className="sched-field sched-field-inline">
-                <label className="sched-label" htmlFor="scheduled-time">
-                  Time
-                </label>
-                <input
-                  id="scheduled-time"
-                  type="time"
-                  className="sched-input sched-input-compact"
-                  value={timeValue}
-                  onChange={(event) => {
-                    const [hour, minute] = event.target.value.split(":").map(Number);
-                    patchControls({
-                      hour: Number.isInteger(hour) ? hour : draft.controls.hour,
-                      minute: Number.isInteger(minute) ? minute : draft.controls.minute
-                    });
-                  }}
-                />
-              </div>
-            ) : null}
-            {draft.kind === "weekly" ? (
-              <div className="sched-field sched-field-inline">
-                <span className="sched-label">Day</span>
+                <span className="sched-label">Arc</span>
                 <div className="sched-picker">
                   <SettingsListPicker
-                    ariaLabel="Day"
-                    value={String(draft.controls.weekday)}
-                    onChange={(weekday) => patchControls({ weekday: Number(weekday) })}
-                    options={WEEKDAY_PICKER_OPTIONS}
+                    ariaLabel="Arc"
+                    disabled={projectArcs.length === 0}
+                    value={draft.arcId ?? ""}
+                    onChange={(arcId) => patch({ arcId: arcId || null })}
+                    options={arcOptions}
+                    placement="above"
                   />
                 </div>
               </div>
-            ) : null}
-            {draft.kind === "custom" ? (
-              <div className="sched-field">
-                <label className="sched-label" htmlFor="scheduled-cron">
-                  Cron expression
-                </label>
-                <input
-                  id="scheduled-cron"
-                  className="sched-input sched-input-mono"
-                  value={draft.controls.custom}
-                  placeholder="0 30 8 * * 1-5"
-                  autoComplete="off"
-                  spellCheck={false}
-                  onChange={(event) => patchControls({ custom: event.target.value })}
-                />
-                <p className="sched-help">
-                  Six fields — second minute hour day month weekday. <code>0 30 8 * * 1-5</code> is
-                  weekdays at 08:30.
-                </p>
-              </div>
-            ) : null}
-
-            {/* The schedule read back as a sentence: six cron fields never have
-                to be decoded by eye, and the sentence is what the row will say. */}
-            <p className="sched-readback">
-              {cadence ? (
-                <>
-                  Runs <strong>{cadence}</strong>
-                  {repositoryName ? <> in {repositoryName}</> : null}.
-                </>
-              ) : (
-                <span className="sched-readback-empty">
-                  {draft.kind === "custom"
-                    ? "Runs on your cron expression."
-                    : "Pick a time to finish the schedule."}
-                </span>
-              )}
-            </p>
-          </section>
-
-          <section className="sched-group">
-            <p className="sched-eyebrow">Where</p>
-
-            <div className="sched-field sched-field-inline">
-              <span className="sched-label">Repository</span>
-              <div className="sched-picker">
-                <SettingsListPicker
-                  ariaLabel="Repository"
-                  value={draft.projectId}
-                  onChange={(projectId) => {
-                    // An Arc chosen for the old repository is almost never
-                    // right for a new one — the CHECK constraint would reject
-                    // it outright, so drop it rather than save a mismatch.
-                    const stillHomed = arcs.some(
-                      (arc) => arc.id === draft.arcId && arc.homeProjectId === projectId
-                    );
-                    patch({ projectId, arcId: stillHomed ? draft.arcId : null });
-                  }}
-                  options={projects.map((project) => ({ value: project.id, label: project.name }))}
-                />
-              </div>
-            </div>
-            {draft.runTarget === "arc_coordinator" ? (
-              <p className="sched-help">Runs on the coordinator's own model.</p>
-            ) : (
-              <>
-                <div className="sched-field sched-field-inline">
-                  <span className="sched-label">Agent</span>
-                  <div className="sched-picker">
-                    <SettingsListPicker
-                      ariaLabel="Agent"
-                      value={draft.provider}
-                      onChange={(provider) => {
-                        const known = PROVIDER_MODELS[provider].some(
-                          (model) => model.modelId === draft.modelId
-                        );
-                        patch({
-                          provider,
-                          modelId: known
-                            ? draft.modelId
-                            : PROVIDER_MODEL_DEFAULTS[provider].modelId
-                        });
-                      }}
-                      options={(Object.keys(PROVIDER_MODELS) as ProviderId[]).map((provider) => ({
-                        value: provider,
-                        label: PROVIDER_DISPLAY_NAMES[provider]
-                      }))}
-                    />
-                  </div>
-                </div>
-                <div className="sched-field sched-field-inline">
-                  <span className="sched-label">Model</span>
-                  <div className="sched-picker">
-                    <SettingsListPicker
-                      ariaLabel="Model"
-                      value={draft.modelId}
-                      onChange={(modelId) => patch({ modelId })}
-                      options={modelOptions}
-                    />
-                  </div>
-                </div>
-              </>
             )}
-
-            <div className="sched-field sched-field-inline">
-              <span className="sched-label">Run in</span>
-              <div className="sched-picker">
-                <SettingsListPicker<RoutineRunTarget>
-                  ariaLabel="Run in"
-                  value={draft.runTarget}
-                  onChange={(runTarget) => patch({ runTarget })}
-                  options={RUN_TARGET_OPTIONS}
-                  placement="above"
-                />
-              </div>
-            </div>
-            {draft.runTarget === "same_session" ? (
-              <p className="sched-help">
-                Every run sends the prompt as a follow-up in the same chat. A long-running schedule
-                keeps one growing conversation — pick New chat if you want a clean slate each time.
-              </p>
-            ) : null}
-            {draft.runTarget === "arc_coordinator" ? (
-              <>
-                {arcsError ? (
-                  <p className="sched-alert" role="alert">
-                    {arcsError}
-                  </p>
-                ) : (
-                  <div className="sched-field sched-field-inline">
-                    <span className="sched-label">Arc</span>
-                    <div className="sched-picker">
-                      <SettingsListPicker
-                        ariaLabel="Arc"
-                        disabled={projectArcs.length === 0}
-                        value={draft.arcId ?? ""}
-                        onChange={(arcId) => patch({ arcId: arcId || null })}
-                        options={arcOptions}
-                        placement="above"
-                      />
-                    </div>
-                  </div>
-                )}
-                <p className="sched-help">
-                  Every run sends the prompt to the Arc's coordinator chat instead of launching one
-                  of its own, on the coordinator's own model. A paused or done Arc skips the
-                  occurrence rather than fail; an Arc with no coordinator running yet records an
-                  error and backs off like a failed launch.
-                </p>
-              </>
-            ) : null}
-          </section>
-
-          {saveError ? (
-            <p className="sched-alert" role="alert">
-              {saveError}
+            <p className="sched-help">
+              Every run sends the prompt to the Arc's coordinator chat instead of launching one of
+              its own, on the coordinator's own model. A paused or done Arc skips the occurrence
+              rather than fail; an Arc with no coordinator running yet records an error and backs
+              off like a failed launch.
             </p>
-          ) : null}
+          </>
+        ) : null}
+      </section>
 
-          <footer className="sched-actions">
-            <p className="sched-actions-note">
-              Scheduled runs use the permission setting for their provider and may wait for approval.
-            </p>
-            <div className="sched-actions-buttons">
-              <button type="button" className="sched-button" onClick={onCancel}>
-                Cancel
-              </button>
-              <button type="submit" className="sched-button sched-button-primary" disabled={busy}>
-                {draft.routineId ? "Save changes" : "Create task"}
-              </button>
-            </div>
-          </footer>
+      {saveError ? (
+        <p className="sched-alert" role="alert">
+          {saveError}
+        </p>
+      ) : null}
+
+      <footer className="sched-actions">
+        <p className="sched-actions-note">
+          Scheduled runs use the permission setting for their provider and may wait for approval.
+        </p>
+        <div className="sched-actions-buttons">
+          <button type="button" className="sched-button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="submit" className="sched-button sched-button-primary" disabled={busy}>
+            {draft.routineId ? "Save changes" : "Create task"}
+          </button>
+        </div>
+      </footer>
     </form>
   );
 }

@@ -26,7 +26,7 @@ export function activeSnoozeUntil(workspace: WorkspaceSummary, nowMs: number): n
  * their normal section while snoozed: hiding the one thing an agent is waiting
  * on would stall it with nobody looking.
  */
-export function workspacesAwaitingAnswer(sessions: readonly SessionSummary[]): Set<string> {
+function workspacesAwaitingAnswer(sessions: readonly SessionSummary[]): Set<string> {
   const waiting = new Set<string>();
   for (const session of sessions) {
     if (URGENT_ATTENTION.has(session.attention)) waiting.add(session.workspaceId);
@@ -49,7 +49,7 @@ export interface SnoozeShelf {
 export function computeSnoozeShelf(
   workspaces: readonly WorkspaceSummary[],
   sessions: readonly SessionSummary[],
-  nowMs: number
+  nowMs: number,
 ): SnoozeShelf {
   const waiting = workspacesAwaitingAnswer(sessions);
   const shelfIds = new Set<string>();
@@ -85,7 +85,7 @@ function morning(from: Date, daysAhead: number): Date {
 
 export function snoozeChoices(from: Date): SnoozeChoice[] {
   return [
-    { key: "tomorrow", label: "Snooze Until Tomorrow", until: morning(from, 1).toISOString() }
+    { key: "tomorrow", label: "Snooze Until Tomorrow", until: morning(from, 1).toISOString() },
   ];
 }
 

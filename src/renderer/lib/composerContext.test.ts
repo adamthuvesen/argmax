@@ -6,7 +6,7 @@ import {
   decodeClipboardPayload,
   encodeClipboardPayload,
   findChatReferences,
-  referencedSessionIds
+  referencedSessionIds,
 } from "./composerContext.js";
 
 describe("chat references", () => {
@@ -18,13 +18,15 @@ describe("chat references", () => {
       {
         from: 4,
         to: 4 + link.length,
-        reference: { v: 1, sessionId: "abc-123", eventId: "evt_9", title: "Fix login" }
-      }
+        reference: { v: 1, sessionId: "abc-123", eventId: "evt_9", title: "Fix login" },
+      },
     ]);
   });
 
   it("keeps the backend's grant prefix in the link", () => {
-    expect(chatReferenceLink({ sessionId: "s1", title: "x" })).toContain(`(${CHAT_REFERENCE_PREFIX}s1?`);
+    expect(chatReferenceLink({ sessionId: "s1", title: "x" })).toContain(
+      `(${CHAT_REFERENCE_PREFIX}s1?`,
+    );
   });
 
   it("flattens titles that would break the link and never loses the id", () => {
@@ -32,16 +34,18 @@ describe("chat references", () => {
 
     expect(link).toBe("[a (b) c d](argmax://chat/s1?v=1)");
     expect(findChatReferences(link)[0]?.reference.sessionId).toBe("s1");
-    expect(chatReferenceLink({ sessionId: "s1", title: "  " })).toBe("[Chat](argmax://chat/s1?v=1)");
+    expect(chatReferenceLink({ sessionId: "s1", title: "  " })).toBe(
+      "[Chat](argmax://chat/s1?v=1)",
+    );
     expect(chatReferenceLink({ sessionId: "s1", title: "x".repeat(300) })).toHaveLength(
-      "[](argmax://chat/s1?v=1)".length + 120
+      "[](argmax://chat/s1?v=1)".length + 120,
     );
   });
 
   it("refuses ids that could escape the link", () => {
     expect(() => chatReferenceLink({ sessionId: "a)b", title: "x" })).toThrow("Not a chat id");
     expect(() => chatReferenceLink({ sessionId: "a", eventId: "e&v=2", title: "x" })).toThrow(
-      "Not an event id"
+      "Not an event id",
     );
   });
 
@@ -61,7 +65,7 @@ describe("chat references", () => {
     const text = [
       chatReferenceLink({ sessionId: "b", title: "B" }),
       chatReferenceLink({ sessionId: "a", title: "A" }),
-      chatReferenceLink({ sessionId: "b", eventId: "e1", title: "B again" })
+      chatReferenceLink({ sessionId: "b", eventId: "e1", title: "B again" }),
     ].join(" and ");
 
     expect(referencedSessionIds(text)).toEqual(["b", "a"]);
@@ -73,7 +77,9 @@ describe("chatReferencesAsTitles", () => {
     const text = `a ${chatReferenceLink({ sessionId: "s1", title: "One" })} b ${chatReferenceLink({ sessionId: "s2", title: "Two" })}`;
 
     expect(chatReferencesAsTitles(text)).toBe("a One b Two");
-    expect(chatReferencesAsTitles("no links [here](https://x.dev)")).toBe("no links [here](https://x.dev)");
+    expect(chatReferencesAsTitles("no links [here](https://x.dev)")).toBe(
+      "no links [here](https://x.dev)",
+    );
   });
 });
 
@@ -85,7 +91,7 @@ describe("composer clipboard payload", () => {
     expect(decoded).toEqual({
       v: 1,
       text,
-      references: [{ v: 1, sessionId: "s1", title: "Source" }]
+      references: [{ v: 1, sessionId: "s1", title: "Source" }],
     });
   });
 
@@ -94,7 +100,7 @@ describe("composer clipboard payload", () => {
     const forged = JSON.stringify({
       v: 1,
       text,
-      references: [{ v: 1, sessionId: "other", title: "Other" }]
+      references: [{ v: 1, sessionId: "other", title: "Other" }],
     });
 
     expect(decodeClipboardPayload("{nope")).toBeNull();

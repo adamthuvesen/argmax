@@ -13,7 +13,12 @@ describe("refreshSessionPrs", () => {
 
   it("collapses the callers that open a chat into one gh round trip", async () => {
     let settle = (): void => {};
-    const refresh = vi.fn(() => new Promise((resolve) => { settle = () => resolve([]); }));
+    const refresh = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          settle = () => resolve([]);
+        }),
+    );
     stubRefresh(refresh);
 
     // The actions menu and the workspace card both ask on mount.

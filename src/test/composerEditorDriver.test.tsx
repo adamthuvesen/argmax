@@ -17,7 +17,7 @@ function mount(doc: string): EditorView {
   const view = new EditorView({
     doc,
     parent: document.body,
-    extensions: [placeholder("Argmax Verification Chat")]
+    extensions: [placeholder("Argmax Verification Chat")],
   });
   views.push(view);
   return view;
@@ -36,7 +36,9 @@ describe("composerEditorCommand against the installed CodeMirror", () => {
 
   it("reads the document, not the rendered text", () => {
     const view = mount("look at [Chat](argmax://chat/s1?v=1) end");
-    expect(composerEditorCommand(view.contentDOM, "text")).toBe("look at [Chat](argmax://chat/s1?v=1) end");
+    expect(composerEditorCommand(view.contentDOM, "text")).toBe(
+      "look at [Chat](argmax://chat/s1?v=1) end",
+    );
   });
 
   it("selects everything, or puts the caret at the end", () => {

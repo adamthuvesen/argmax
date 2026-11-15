@@ -21,7 +21,7 @@ type ApprovalAction = {
  *  decision, and printing them is what made this row a JSON dump. */
 function scalarInput(input: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(input).filter(([, value]) => value === null || typeof value !== "object")
+    Object.entries(input).filter(([, value]) => value === null || typeof value !== "object"),
   );
 }
 

@@ -8,27 +8,14 @@ use std::{
 };
 
 use crate::support::git_repo::seed_git_repo;
-use argmax_lib::sessions::state::SessionState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::{NonEmptyString, Prompt, WorkspaceId};
+use argmax_contracts::validation::{PermissionMode, ProviderId};
+use argmax_lib::workspaces::orchestration::WorkspaceService;
 use argmax_lib::{
     arcs::{launch_coordinator, promote_session, LaunchCoordinatorRequest, PromoteSessionRequest},
-    error::{ArgmaxError, ArgmaxResult},
     ipc::inputs::{ProvidersLaunchInput, TerminalCols, TerminalRows},
-    ipc::validation::{NonEmptyString, Prompt, WorkspaceId},
-    persistence::{
-        arc_events::{list_arc_timeline, ArcEventKind, ArcTimelineEvent},
-        arcs::{
-            create_arc, get_arc, set_arc_state, update_arc, ArcCreateInput, ArcState,
-            ArcUpdateInput,
-        },
-        database::Database,
-        projects::{persist_project, PersistProjectInput, ProjectSettings},
-        session_messages::session_message_exists,
-        sessions::{
-            find_session_by_id, persist_session, record_session_launch, PersistSessionInput,
-        },
-        time::now_iso,
-        workspaces::{persist_workspace, PersistWorkspaceInput},
-    },
     providers::{
         normalizer::ProviderOutputStream,
         runtime::{
@@ -36,9 +23,20 @@ use argmax_lib::{
             ProviderRuntimeEventType, ProviderRuntimeHandle,
         },
         session_service::ProviderSessionService,
-        PermissionMode, ProviderId, ProviderLaunchInput,
+        ProviderLaunchInput,
     },
-    workspaces::WorkspaceService,
+};
+use argmax_store::{
+    arc_events::{list_arc_timeline, ArcEventKind, ArcTimelineEvent},
+    arcs::{
+        create_arc, get_arc, set_arc_state, update_arc, ArcCreateInput, ArcState, ArcUpdateInput,
+    },
+    database::Database,
+    projects::{persist_project, PersistProjectInput, ProjectSettings},
+    session_messages::session_message_exists,
+    sessions::{find_session_by_id, persist_session, record_session_launch, PersistSessionInput},
+    time::now_iso,
+    workspaces::{persist_workspace, PersistWorkspaceInput},
 };
 use serde_json::json;
 
@@ -174,8 +172,9 @@ fn fixture() -> Fixture {
     )
     .expect("project");
     let launcher = Arc::new(ScriptedLauncher::default());
-    let providers =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .build();
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     Fixture {
         database,
@@ -271,6 +270,7 @@ async fn an_arc_records_its_story_newest_first_and_pages_without_overlap() {
     let member = fixture
         .providers
         .launch(ProvidersLaunchInput {
+            submitted_at_ms: None,
             workspace_id: WorkspaceId::try_from("workspace-member-host".to_string()).unwrap(),
             provider: ProviderId::Claude,
             prompt: Prompt::try_from("Build the pricing page".to_string()).unwrap(),

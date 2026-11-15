@@ -9,14 +9,14 @@ import type { JSX, ReactNode } from "react";
  */
 export function PickerLead({
   selected = false,
-  children
+  children,
 }: {
   selected?: boolean;
   children?: ReactNode;
 }): JSX.Element {
   return (
     <span className="picker-lead" aria-hidden="true">
-      {selected ? <Check size={13} strokeWidth={2.4} /> : children}
+      {selected ? <Check size={13} strokeWidth={2.4} data-testid="picker-lead-check" /> : children}
     </span>
   );
 }

@@ -1,0 +1,4248 @@
+use chrono::{SecondsFormat, Utc};
+use phf::phf_map;
+use rusqlite::Connection;
+use sha2::{Digest, Sha256};
+
+use super::sqlite_error;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+
+pub struct Migration {
+    pub version: u32,
+    pub name: &'static str,
+    pub up: &'static str,
+    pub affected_tables: &'static [&'static str],
+    pub expected_columns: &'static phf::Map<&'static str, &'static [&'static str]>,
+    pub requires_foreign_keys_off: bool,
+}
+
+// Checksums of migration bodies that were applied to real databases by
+// pre-release builds and then edited before the migration was merged. Drift
+// detection exists to catch an applied migration being rewritten, and that is
+// exactly what happened here — but the databases already carry the draft shape,
+// so refusing to open them only strands the user. Accepting a *named* historical
+// body keeps the check strict for genuinely unknown drift, and the follow-up
+// migration re-normalizes the table to the canonical shape.
+//
+// v19 (routines): the draft body created the table with `permission_mode` and
+// `agent_mode` columns that no code ever read; v20 rebuilds without them.
+static ACCEPTED_LEGACY_CHECKSUMS: phf::Map<u32, &'static [&'static str]> = phf_map! {
+    19u32 => &[
+        "51cdcb4c128ae4b43895a0f674dcbf88cab9262e01510d790cea0e39f89d434b",
+    ] as &'static [&'static str],
+};
+
+const ALL_TABLES: &[&str] = &[
+    "projects",
+    "workspaces",
+    "sessions",
+    "raw_outputs",
+    "events",
+    "approvals",
+    "checks",
+    "checkpoints",
+    "ui_state",
+    "usage_events",
+    "learnings",
+    "gh_pr",
+    "schema_migrations",
+];
+
+pub static EMPTY_EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {};
+
+static LINKED_REPOSITORY_SUMMARY_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "project_linked_repos" => &[
+        "id", "project_id", "name", "root_path", "enabled", "created_at", "updated_at", "summary",
+    ] as &'static [&'static str],
+};
+
+const LINKED_REPOSITORY_SUMMARIES: &str =
+    "ALTER TABLE project_linked_repos ADD COLUMN summary TEXT;";
+
+// v68 replaces the `archive_on_merge` boolean with a three-way
+// `merge_cleanup` setting, and gives `workspaces` the column that keeps a
+// chat in its sidebar section after Argmax removed its checkout on merge.
+static MERGE_CLEANUP_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &[
+        "branch_template", "check_commands_json", "created_at", "current_branch",
+        "default_branch", "id", "merge_cleanup", "name", "repo_path", "repo_remote_name",
+        "repo_remote_owner", "setup_command", "ui_preferences_json", "updated_at",
+        "worktree_location",
+    ] as &'static [&'static str],
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "checkout_removed_at", "created_at", "dirty",
+        "icon", "icon_color", "id", "kind", "last_activity_at", "last_viewed_at", "path",
+        "pinned", "priority_added_at", "priority_dismissed_at", "project_id",
+        "shared_workspace", "snoozed_until", "state", "task_label", "task_label_auto",
+        "updated_at",
+    ] as &'static [&'static str],
+};
+
+// `merge_cleanup` is what a merged PR does to an isolated workspace: 'off',
+// 'archive' (the old `archive_on_merge = 1`), or 'remove-checkout'. A project
+// that had archive on merge keeps it. `checkout_removed_at` is set when Argmax
+// removed an archived workspace's checkout because its PR merged; such a row
+// stays in its sidebar section instead of the Archived section.
+const MERGE_CLEANUP: &str = r#"
+ALTER TABLE projects ADD COLUMN merge_cleanup TEXT NOT NULL DEFAULT 'off'
+  CHECK (merge_cleanup IN ('off', 'archive', 'remove-checkout'));
+UPDATE projects SET merge_cleanup = 'archive' WHERE archive_on_merge = 1;
+ALTER TABLE projects DROP COLUMN archive_on_merge;
+ALTER TABLE workspaces ADD COLUMN checkout_removed_at TEXT;
+"#;
+
+pub static FINITE_GOAL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "goals" => &[
+        "active_elapsed_ms", "active_started_at", "attempt_count", "candidate_snapshot",
+        "checks_json", "config_revision", "created_at", "criteria_json", "current_step_index",
+        "failure_reason", "id", "max_active_ms", "max_attempts", "max_repair_rounds", "objective",
+        "phase", "repair_rounds", "reviewer_json", "session_id", "state", "steps_json",
+        "updated_at", "workspace_id",
+    ] as &'static [&'static str],
+    "goal_attempts" => &[
+        "candidate_snapshot", "config_revision", "goal_id", "id", "invocation_id", "kind",
+        "model_id", "provider", "result_json", "sequence", "session_id", "settled_at",
+        "started_at", "state",
+    ] as &'static [&'static str],
+};
+
+// v43 drops `goal_attempts` outright, so the head shape for it is "no table".
+// An empty expected set is how `verify_table_columns` says that: `PRAGMA
+// table_info` on a missing table returns no rows, which matches.
+pub static GOAL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "goals" => &[
+        "condition", "created_at", "id", "last_reason", "max_turns", "session_id", "state",
+        "turns", "updated_at", "workspace_id",
+    ] as &'static [&'static str],
+    "goal_attempts" => &[] as &'static [&'static str],
+};
+
+// The Activity page's own ledger: commits the user authored across every
+// registered project, plus the cached `gh` half. `activity_commits.project_id`
+// carries no foreign key on purpose — the sweep reconciles it against the
+// `projects` table, so a project removed while the app was closed is forgotten
+// by the next sweep rather than by a cascade nobody ran.
+pub static ACTIVITY_LEDGER_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "activity_commits" => &[
+        "author_at", "author_email", "committed_at", "files_changed", "lines_added",
+        "lines_removed", "project_id", "sha",
+    ] as &'static [&'static str],
+    "activity_scan_meta" => &["key", "value"] as &'static [&'static str],
+    "activity_github_prs" => &[
+        "additions", "author_login", "closed_at", "created_at", "deletions", "is_draft",
+        "merged_at", "number", "repository", "state", "title", "url",
+    ] as &'static [&'static str],
+    "activity_github_reviews" => &[
+        "number", "repository", "state", "submitted_at", "title", "url",
+    ] as &'static [&'static str],
+    "activity_github_meta" => &["key", "value"] as &'static [&'static str],
+};
+
+pub static SYNC_TOMBSTONE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "synced_session_tombstones" => &[
+        "deleted_at", "external_id", "provider",
+    ] as &'static [&'static str],
+};
+
+pub static DURABLE_CHECKPOINT_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "checkpoints" => &[
+        "branch", "created_at", "git_ref", "head_sha", "id", "index_tree", "label",
+        "patch_path", "provider_conversation_id", "recovery_of", "session_id", "turn_boundary",
+        "untracked_paths_json", "workspace_id", "worktree_tree",
+    ] as &'static [&'static str],
+    "checkpoint_rewinds" => &[
+        "checkpoint_id", "completed_at", "failure", "id", "recovery_checkpoint_id",
+        "started_at", "status", "workspace_id",
+    ] as &'static [&'static str],
+};
+
+// Post-v4 `workspaces` shape: the v1 column set plus `task_label_auto`. Kept
+// separate from `EXPECTED_COLUMNS` (which still describes the v1 schema) so the
+// v1 migration's own column check keeps passing — each migration validates the
+// affected tables against its own expected set at its own point in history.
+pub static WORKSPACES_AUTO_LABEL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "id",
+        "last_activity_at", "path", "pinned", "project_id", "shared_workspace",
+        "state", "task_label", "task_label_auto", "updated_at",
+    ] as &'static [&'static str],
+};
+
+// Post-v5 `sessions` shape: the v1 column set plus the two context-window
+// columns. `context_tokens` is the latest measured input-side occupancy, not a
+// cumulative token count. `context_window` is the model's reported maximum.
+pub static SESSIONS_CONTEXT_WINDOW_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "attention", "cache_read_tokens", "cache_write_tokens",
+        "completed_at", "context_tokens", "context_window", "cost_usd", "id",
+        "input_tokens", "last_activity_at", "last_model_id", "model_id",
+        "model_label", "output_tokens", "permission_mode", "prompt", "provider",
+        "provider_conversation_id", "reasoning_effort", "started_at", "state",
+        "workspace_id",
+    ] as &'static [&'static str],
+};
+
+// Post-v6 shapes: `workspaces` gains `priority_dismissed_at` (when the user
+// marked the workspace done in the sidebar's Priority section) and `sessions`
+// gains `attention_changed_at` (when `attention` last changed value). The
+// renderer treats a dismissal as spent once attention changes again, so both
+// timestamps travel together.
+pub static PRIORITY_DISMISSAL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "id",
+        "last_activity_at", "path", "pinned", "priority_dismissed_at",
+        "project_id", "shared_workspace", "state", "task_label",
+        "task_label_auto", "updated_at",
+    ] as &'static [&'static str],
+    "sessions" => &[
+        "agent_mode", "attention", "attention_changed_at", "cache_read_tokens",
+        "cache_write_tokens", "completed_at", "context_tokens", "context_window",
+        "cost_usd", "id", "input_tokens", "last_activity_at", "last_model_id",
+        "model_id", "model_label", "output_tokens", "permission_mode", "prompt",
+        "provider", "provider_conversation_id", "reasoning_effort", "started_at",
+        "state", "workspace_id",
+    ] as &'static [&'static str],
+};
+
+// Post-v7 `workspaces` shape: v6 plus `priority_added_at` (user manually added
+// the workspace to the sidebar Priority section; no attention required, no
+// staleness expiry — cleared by dismissal or an explicit remove).
+pub static PRIORITY_MANUAL_ADD_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "id",
+        "last_activity_at", "path", "pinned", "priority_added_at",
+        "priority_dismissed_at", "project_id", "shared_workspace", "state",
+        "task_label", "task_label_auto", "updated_at",
+    ] as &'static [&'static str],
+};
+
+// Post-v12 `workspaces` shape: v7 plus the custom sidebar glyph the user picked
+// for the row. `icon` holds a curated Lucide icon name, `icon_color` a named
+// palette entry. Both NULL means "use the live status marker".
+pub static WORKSPACE_CUSTOM_ICON_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "icon",
+        "icon_color", "id", "last_activity_at", "path", "pinned",
+        "priority_added_at", "priority_dismissed_at", "project_id",
+        "shared_workspace", "state", "task_label", "task_label_auto",
+        "updated_at",
+    ] as &'static [&'static str],
+};
+
+// Post-v15 `workspaces` shape: v12 plus `kind`. 'git' is a workspace on a real
+// project checkout (worktree or shared); 'scratch' is a repo-less side chat
+// backed by an app-owned scratch directory; 'popup' is an ephemeral scratch
+// used by the "More details" popup, excluded from the sidebar and prunable.
+pub static WORKSPACE_KIND_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "icon",
+        "icon_color", "id", "kind", "last_activity_at", "path", "pinned",
+        "priority_added_at", "priority_dismissed_at", "project_id",
+        "shared_workspace", "state", "task_label", "task_label_auto",
+        "updated_at",
+    ] as &'static [&'static str],
+};
+
+// Post-v47 `workspaces` shape: records the latest activity timestamp the user
+// actually viewed. Existing rows start read so an upgrade does not promote the
+// entire history into Priority; new rows receive their creation timestamp.
+pub static WORKSPACE_LAST_VIEWED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "icon",
+        "icon_color", "id", "kind", "last_activity_at", "last_viewed_at", "path",
+        "pinned", "priority_added_at", "priority_dismissed_at", "project_id",
+        "shared_workspace", "state", "task_label", "task_label_auto", "updated_at",
+    ] as &'static [&'static str],
+};
+
+pub static PROJECT_SOURCE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "project_sources" => &[
+        "added_by", "added_by_session_id", "created_at", "guidance", "id", "kind",
+        "location", "project_id", "title", "updated_at",
+    ] as &'static [&'static str],
+};
+
+// Post-v50 `sessions` shape: v37/v38 plus the Arc pointer.
+pub static ARC_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "arcs" => &[
+        "brief", "coordinator_session_id", "created_at", "dir", "home_project_id",
+        "id", "name", "state", "updated_at",
+    ] as &'static [&'static str],
+    "sessions" => &[
+        "agent_mode", "arc_id", "attention", "attention_changed_at",
+        "cache_read_tokens", "cache_write_tokens", "completed_at", "context_tokens",
+        "context_window", "cost_usd", "id", "imported", "input_tokens",
+        "last_activity_at", "last_model_id", "launch_depth", "launch_kind",
+        "launched_by_session_id", "model_id", "model_label", "output_tokens",
+        "permission_mode", "pr_branch_at_start", "pr_branch_last_active", "prompt",
+        "provider", "provider_conversation_id", "reasoning_effort", "resume_fork",
+        "started_at", "state", "wait_reported_at", "workspace_id",
+    ] as &'static [&'static str],
+};
+
+// v56: Auto routing. `sessions.auto_tier` marks a chat the router drives and
+// `auto_route` carries its latest routing reason for the model chip;
+// `turn_routes` keeps every decision for the routing report.
+pub static AUTO_ROUTING_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "arc_id", "attention", "attention_changed_at", "auto_route",
+        "auto_tier", "cache_read_tokens", "cache_write_tokens", "completed_at",
+        "context_tokens", "context_window", "cost_usd", "id", "imported",
+        "input_tokens", "last_activity_at", "last_model_id", "launch_depth",
+        "launch_kind", "launched_by_session_id", "model_id", "model_label",
+        "output_tokens", "permission_mode", "pr_branch_at_start",
+        "pr_branch_last_active", "prompt", "provider", "provider_conversation_id",
+        "reasoning_effort", "resume_fork", "started_at", "state", "wait_reported_at",
+        "workspace_id",
+    ] as &'static [&'static str],
+    "turn_routes" => &[
+        "created_at", "decision", "difficulty", "difficulty_confidence", "id",
+        "kind", "kind_confidence", "model_id", "provider", "reason",
+        "reasoning_effort", "session_id", "tier",
+    ] as &'static [&'static str],
+};
+
+// v60: Jev's raw answers on each route row, for tuning the thresholds.
+pub static TURN_ROUTE_SIGNALS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "turn_routes" => &[
+        "created_at", "decision", "difficulty", "difficulty_confidence", "id",
+        "kind", "kind_confidence", "model_id", "provider", "reason",
+        "reasoning_effort", "session_id", "signals_json", "tier",
+    ] as &'static [&'static str],
+};
+
+// v61: The Economy tier widens both routing CHECKs without changing saved
+// choices or the history attached to a session.
+pub static ROUTER_ECONOMY_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "arc_id", "attention", "attention_changed_at", "auto_route",
+        "auto_tier", "cache_read_tokens", "cache_write_tokens", "completed_at",
+        "context_tokens", "context_window", "cost_usd", "id", "imported",
+        "input_tokens", "last_activity_at", "last_model_id", "launch_depth",
+        "launch_kind", "launched_by_session_id", "model_id", "model_label",
+        "output_tokens", "permission_mode", "pr_branch_at_start",
+        "pr_branch_last_active", "prompt", "provider", "provider_conversation_id",
+        "reasoning_effort", "resume_fork", "started_at", "state", "wait_reported_at",
+        "workspace_id",
+    ] as &'static [&'static str],
+    "turn_routes" => &[
+        "created_at", "decision", "difficulty", "difficulty_confidence", "id",
+        "kind", "kind_confidence", "model_id", "provider", "reason",
+        "reasoning_effort", "session_id", "signals_json", "tier",
+    ] as &'static [&'static str],
+};
+
+// v58: Project check. One row per suggestion the user answered or switch
+// Argmax made, read back for pair suppression (docs/routing.md).
+pub static PROJECT_CHECKS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "project_checks" => &[
+        "created_at", "current_probability", "current_project_id", "decision", "id",
+        "outcome", "prompt_hash", "reasons", "resolved_at", "session_id",
+        "suggested_probability", "suggested_project_id",
+    ] as &'static [&'static str],
+};
+
+// v62: PR watches. One row per session and PR, with the cursors the gh
+// poller's watch pass advances (docs/gh.md#pr-watch).
+pub static PR_WATCHES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "pr_watches" => &[
+        "cleanup_on_merge", "created_at", "head_sha", "id", "last_pr_updated_at",
+        "not_found_count", "notice_seq", "pending_ends_watch", "pending_notice_body",
+        "pending_notice_id", "pr_number", "project_id", "reported_ready_sha",
+        "seen_check_failures", "seen_feedback_ids", "session_id", "updated_at",
+    ] as &'static [&'static str],
+};
+
+const PR_WATCH_FEEDBACK_AND_FETCH_HEALTH: &str = "ALTER TABLE pr_watches ADD COLUMN feedback_fingerprints TEXT;
+             ALTER TABLE pr_watches ADD COLUMN fetch_failure_count INTEGER NOT NULL DEFAULT 0 CHECK (fetch_failure_count >= 0);
+             ALTER TABLE pr_watches ADD COLUMN fetch_degraded INTEGER NOT NULL DEFAULT 0 CHECK (fetch_degraded IN (0, 1));";
+
+static PR_WATCH_FEEDBACK_AND_FETCH_HEALTH_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "pr_watches" => &[
+        "cleanup_on_merge", "conflict_state", "created_at", "feedback_fingerprints",
+        "fetch_degraded", "fetch_failure_count", "head_sha", "id", "last_pr_updated_at",
+        "not_found_count", "notice_seq", "pending_ends_watch", "pending_notice_body",
+        "pending_notice_id", "pr_number", "project_id", "reported_ready_sha",
+        "seen_check_failures", "seen_feedback_ids", "session_id", "updated_at",
+    ] as &'static [&'static str],
+};
+
+// v71 records the branch an isolated launch created and the commit it was
+// created at. An agent that starts its own branch leaves the generated one
+// behind, and disposal can only delete it if it knows which one it was and
+// that nothing moved it. Both are NULL for workspaces created before v71 and
+// for checkouts Argmax did not create.
+const WORKSPACE_CREATED_BRANCH: &str = "ALTER TABLE workspaces ADD COLUMN created_branch TEXT;
+             ALTER TABLE workspaces ADD COLUMN created_branch_oid TEXT;";
+
+static WORKSPACE_CREATED_BRANCH_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "checkout_removed_at", "created_at",
+        "created_branch", "created_branch_oid", "dirty", "icon", "icon_color", "id", "kind",
+        "last_activity_at", "last_viewed_at", "path", "pinned", "priority_added_at",
+        "priority_dismissed_at", "project_id", "shared_workspace", "snoozed_until", "state",
+        "task_label", "task_label_auto", "updated_at",
+    ] as &'static [&'static str],
+};
+
+// v72 lets an Arc be archived: hidden from the sidebar's Arcs list without
+// deleting its folder, timeline, or chats. A column rather than a fourth
+// `state`, because widening the CHECK means rebuilding `arcs`, and
+// `arc_events` and `routines` cascade from it.
+const ARC_ARCHIVED_AT: &str = "ALTER TABLE arcs ADD COLUMN archived_at TEXT;";
+
+static ARC_ARCHIVED_AT_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "arcs" => &[
+        "archived_at", "brief", "coordinator_session_id", "created_at", "dir",
+        "home_project_id", "id", "name", "notes_snapshot", "state", "updated_at",
+    ] as &'static [&'static str],
+};
+
+// v63 gives `pr_watches` its conflict cursor, adds the linked-repository table,
+// and gives `projects` and `workspaces` one nullable column each.
+pub static WORKSPACE_IMPROVEMENTS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &[
+        "archive_on_merge", "branch_template", "check_commands_json", "created_at",
+        "current_branch", "default_branch", "id", "name", "repo_path", "repo_remote_name",
+        "repo_remote_owner", "setup_command", "ui_preferences_json", "updated_at",
+        "worktree_location",
+    ] as &'static [&'static str],
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "icon",
+        "icon_color", "id", "kind", "last_activity_at", "last_viewed_at", "path",
+        "pinned", "priority_added_at", "priority_dismissed_at", "project_id",
+        "shared_workspace", "snoozed_until", "state", "task_label", "task_label_auto",
+        "updated_at",
+    ] as &'static [&'static str],
+    "pr_watches" => &[
+        "cleanup_on_merge", "conflict_state", "created_at", "head_sha", "id",
+        "last_pr_updated_at", "not_found_count", "notice_seq", "pending_ends_watch",
+        "pending_notice_body", "pending_notice_id", "pr_number", "project_id",
+        "reported_ready_sha", "seen_check_failures", "seen_feedback_ids", "session_id",
+        "updated_at",
+    ] as &'static [&'static str],
+    "project_linked_repos" => &[
+        "created_at", "enabled", "id", "name", "project_id", "root_path", "updated_at",
+    ] as &'static [&'static str],
+};
+
+// v64: launch receipts (a retried `session_launch` finds its first answer) and
+// the provider a queued follow-up should run under. `pending_messages` is
+// listed in full because the head-shape check reads the newest map per table.
+pub static LAUNCH_RECEIPTS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "launch_receipts" => &[
+        "caller_session_id", "client_request_id", "created_at", "error_code",
+        "error_message", "request_hash", "result_json", "session_id", "status",
+        "updated_at", "workspace_id",
+    ] as &'static [&'static str],
+    "pending_messages" => &[
+        "agent_mode", "agent_references_json", "attachments_json", "content",
+        "delivery_state", "fast_mode", "id", "model_id", "model_label",
+        "origin_json", "position", "provider", "queued_at", "reasoning_effort",
+        "session_id", "updated_at",
+    ] as &'static [&'static str],
+    "session_messages" => &[
+        "body", "created_at", "delivered_at", "from_session_id", "id", "kind",
+        "to_session_id", "wake_due_at",
+    ] as &'static [&'static str],
+};
+
+// v65: native provider continuity (docs/providers.md#native-continuity-and-forks).
+pub static NATIVE_CONTINUITY_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "provider_bindings" => &[
+        "config_identity", "conversation_id", "created_at", "delivered_through_event_id", "id",
+        "invalid_reason", "pending_since_event_id", "provider", "session_id", "state",
+        "updated_at", "working_dir",
+    ] as &'static [&'static str],
+    "provider_binding_turns" => &["binding_id", "provider_turn_id", "user_event_id"] as &'static [&'static str],
+    "session_forks" => &[
+        "boundary_event_id", "child_base_event_id", "child_session_id", "created_at", "id",
+        "native_conversation_id", "native_mode", "native_provider", "native_turn_id",
+        "source_last_event_id", "source_session_id", "workspace_mode",
+    ] as &'static [&'static str],
+    "fork_merges" => &[
+        "created_at", "fork_id", "from_event_id", "id", "marker_id", "outcome",
+        "through_event_id",
+    ] as &'static [&'static str],
+};
+
+// v66: who wrote a prompt (`persistence/authorship.rs`). Both tables are listed
+// in full because the head-shape check reads the newest map per table.
+pub static PROMPT_AUTHORSHIP_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "events" => &[
+        "created_at", "id", "message", "payload_json", "prompt_author", "session_id", "type",
+    ] as &'static [&'static str],
+    "pending_messages" => &[
+        "agent_mode", "agent_references_json", "attachments_json", "content",
+        "delivery_state", "fast_mode", "id", "model_id", "model_label",
+        "origin_json", "position", "prompt_author", "provider", "queued_at",
+        "reasoning_effort", "session_id", "updated_at",
+    ] as &'static [&'static str],
+};
+
+pub static SESSION_PR_MODEL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "gh_pull_requests" => &[
+        "head_ref_name", "head_sha", "last_seen_check_state", "pr_created_at",
+        "pr_merged_at", "pr_number", "pr_state", "project_id", "refresh_error",
+        "refreshed_at", "title", "updated_at", "url",
+    ] as &'static [&'static str],
+    "session_pr_links" => &[
+        "created_at", "dismissed_at", "is_pinned", "pr_number", "project_id",
+        "relationship", "session_id", "activity_at", "notified_at", "notified_head_sha",
+        "updated_at",
+    ] as &'static [&'static str],
+    "session_pr_evidence" => &[
+        "created_at", "occurred_at", "pr_number", "project_id", "relationship",
+        "session_id", "source_id",
+    ] as &'static [&'static str],
+    "session_pr_evidence_scans" => &[
+        "last_change_sequence", "last_event_rowid", "parser_version", "scanned_at", "session_id",
+    ] as &'static [&'static str],
+};
+
+// Post-v16 `sessions` shape: adds the `resume_fork` flag consumed (and
+// cleared) by the next resumed launch of a forked session.
+pub static SESSION_RESUME_FORK_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "attention", "attention_changed_at", "cache_read_tokens",
+        "cache_write_tokens", "completed_at", "context_tokens", "context_window",
+        "cost_usd", "id", "input_tokens", "last_activity_at", "last_model_id",
+        "model_id", "model_label", "output_tokens", "permission_mode", "prompt",
+        "provider", "provider_conversation_id", "reasoning_effort", "resume_fork",
+        "started_at", "state", "workspace_id",
+    ] as &'static [&'static str],
+};
+
+// v18: `sessions.imported` is the denormalized display flag (the sidebar's
+// "imported" marker), kept on the row so the dashboard's `SELECT *` reads
+// need no join. `synced_sessions` holds the sync bookkeeping.
+pub static SYNCED_SESSIONS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "attention", "attention_changed_at", "cache_read_tokens",
+        "cache_write_tokens", "completed_at", "context_tokens", "context_window",
+        "cost_usd", "id", "imported", "input_tokens", "last_activity_at",
+        "last_model_id", "model_id", "model_label", "output_tokens",
+        "permission_mode", "prompt", "provider", "provider_conversation_id",
+        "reasoning_effort", "resume_fork", "started_at", "state", "workspace_id",
+    ] as &'static [&'static str],
+    "synced_sessions" => &[
+        "adopted", "byte_cursor", "external_id", "last_synced_at", "provider",
+        "session_id", "source_mtime_ms", "source_path", "started_at",
+    ] as &'static [&'static str],
+};
+
+// Post-v40 sync shape: byte_cursor finally stores a real seek offset, while
+// line_cursor preserves the absolute transcript row used in deterministic
+// event ids. NULL marks a v18-v39 row awaiting one legacy line-based read.
+pub static SYNC_BYTE_AND_LINE_CURSOR_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "synced_sessions" => &[
+        "adopted", "byte_cursor", "external_id", "last_synced_at", "line_cursor",
+        "provider", "session_id", "source_mtime_ms", "source_path", "started_at",
+    ] as &'static [&'static str],
+};
+
+// Post-v23 `sessions` shape: adds the lineage an agent-launched session
+// carries — who launched it, and how deep the chain already is.
+pub static SESSION_LAUNCH_LINEAGE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "attention", "attention_changed_at", "cache_read_tokens",
+        "cache_write_tokens", "completed_at", "context_tokens", "context_window",
+        "cost_usd", "id", "imported", "input_tokens", "last_activity_at",
+        "last_model_id", "launch_depth", "launched_by_session_id", "model_id",
+        "model_label", "output_tokens", "permission_mode", "prompt", "provider",
+        "provider_conversation_id", "reasoning_effort", "resume_fork",
+        "started_at", "state", "workspace_id",
+    ] as &'static [&'static str],
+};
+
+// Post-v26 `sessions` shape: `launch_kind` separates the sessions an agent
+// launched for itself from the multitasks a person dispatched from a chat.
+pub static SESSION_LAUNCH_KIND_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "attention", "attention_changed_at", "cache_read_tokens",
+        "cache_write_tokens", "completed_at", "context_tokens", "context_window",
+        "cost_usd", "id", "imported", "input_tokens", "last_activity_at",
+        "last_model_id", "launch_depth", "launch_kind", "launched_by_session_id",
+        "model_id", "model_label", "output_tokens", "permission_mode", "prompt",
+        "provider", "provider_conversation_id", "reasoning_effort", "resume_fork",
+        "started_at", "state", "workspace_id",
+    ] as &'static [&'static str],
+};
+
+// Post-v24 `session_messages` shape: the inbox one session's agent writes to
+// another's, and the completion notice a launched session leaves behind.
+pub static SESSION_MESSAGES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "session_messages" => &[
+        "body", "created_at", "delivered_at", "from_session_id", "id", "kind",
+        "to_session_id",
+    ] as &'static [&'static str],
+};
+
+// v27: the usage dashboard's scan of every provider transcript on disk.
+pub static USAGE_SCAN_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "usage_scan_files" => &[
+        "cursor_offset", "guard_hash", "mtime_ms", "path", "provider",
+        "scanned_at", "session_id", "size",
+    ] as &'static [&'static str],
+    "usage_hourly" => &[
+        "cache_read", "cache_write_1h", "cache_write_5m", "hour_utc",
+        "input_uncached", "model_id", "output", "provider", "reasoning",
+        "records", "reported_cost_usd", "reported_records", "session_id",
+        "source_path",
+    ] as &'static [&'static str],
+    "usage_dedupe_keys" => &["hour_utc", "key", "source_path"] as &'static [&'static str],
+    "usage_scan_meta" => &["key", "value"] as &'static [&'static str],
+};
+
+// Post-v39 usage scan shape: parser state makes tail parsing equivalent to a
+// cold parse, while source-local contributions let repeated calls elect a
+// replacement when the previous winning transcript disappears or improves.
+pub static USAGE_CONTRIBUTIONS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "usage_scan_files" => &[
+        "cursor_offset", "guard_hash", "mtime_ms", "parser_state", "path", "provider",
+        "scanned_at", "session_id", "size",
+    ] as &'static [&'static str],
+    "usage_contributions" => &[
+        "at_ms", "billed_call_key", "cache_read", "cache_write_1h",
+        "cache_write_5m", "hour_utc", "input_uncached", "model_id", "output",
+        "processed_tokens", "provider", "reasoning", "reported_cost_usd",
+        "session_id", "source_path",
+    ] as &'static [&'static str],
+};
+
+pub static SESSION_CHANGE_FEED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "session_changes" => &[
+        "entity_id", "entity_kind", "operation", "sequence", "session_id",
+    ] as &'static [&'static str],
+    "session_change_watermarks" => &[
+        "pruned_through", "session_id",
+    ] as &'static [&'static str],
+};
+
+// Post-v19 `routines` shape: the scheduled-task table as created.
+pub static ROUTINES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "routines" => &[
+        "cron_expr", "created_at", "enabled", "id", "last_error",
+        "last_run_at", "model_id", "model_label", "name", "next_run_at",
+        "project_id", "prompt", "provider", "run_once_at",
+        "updated_at", "worktree",
+    ] as &'static [&'static str],
+};
+
+// Post-v36 `routines` shape: each task names where a run lands — a fresh
+// chat in the shared checkout (`new_session`), a follow-up in the same
+// chat every time (`same_session`, tracked by `last_session_id`), or a
+// fresh isolated worktree (`worktree`). `worktree` stays as a derived copy of
+// the target so older readers keep working.
+pub static ROUTINE_RUN_TARGET_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "routines" => &[
+        "cron_expr", "created_at", "enabled", "id", "last_error",
+        "last_run_at", "last_session_id", "model_id", "model_label", "name",
+        "next_run_at", "project_id", "prompt", "provider", "run_once_at",
+        "run_target", "updated_at", "worktree",
+    ] as &'static [&'static str],
+};
+
+// Post-v50 `routines` shape: each task records who put it in the list, so a
+// wake a chat set for itself can be cleared when it fires while a task the
+// user wrote is kept.
+pub static ROUTINE_AUTHOR_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "routines" => &[
+        "created_by", "cron_expr", "created_at", "enabled", "id", "last_error",
+        "last_run_at", "last_session_id", "model_id", "model_label", "name",
+        "next_run_at", "project_id", "prompt", "provider", "run_once_at",
+        "run_target", "updated_at", "worktree",
+    ] as &'static [&'static str],
+};
+
+// Post-v52 `routines` shape: a fourth `run_target`, `arc_coordinator`, points
+// a task at a live Arc's coordinator instead of a session or a fresh
+// checkout; `arc_id` names which one.
+// v53: the Arc timeline, and the notes snapshot its `notes_updated` rows
+// are diffed against.
+pub static ARC_EVENTS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "arc_events" => &[
+        "arc_id", "detail", "id", "kind", "occurred_at", "pr_number", "pr_url",
+        "project_id", "session_id", "status", "title",
+    ] as &'static [&'static str],
+    "arcs" => &[
+        "brief", "coordinator_session_id", "created_at", "dir", "home_project_id",
+        "id", "name", "notes_snapshot", "state", "updated_at",
+    ] as &'static [&'static str],
+};
+
+pub static ROUTINE_ARC_TARGET_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "routines" => &[
+        "arc_id", "created_by", "cron_expr", "created_at", "enabled", "id",
+        "last_error", "last_run_at", "last_session_id", "model_id",
+        "model_label", "name", "next_run_at", "project_id", "prompt",
+        "provider", "run_once_at", "run_target", "updated_at", "worktree",
+    ] as &'static [&'static str],
+};
+
+// Post-v9 `approvals` shape: provider-native requests retain the opaque
+// correlation id required to make replay idempotent across terminal states.
+pub static APPROVAL_PROVIDER_REQUEST_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "approvals" => &[
+        "command", "created_at", "cwd", "id", "provider",
+        "provider_request_id", "resolved_at", "risk_level", "session_id", "status",
+    ] as &'static [&'static str],
+};
+
+// Post-v10 `approvals` shape: provider request ids are scoped to the
+// Argmax-owned provider invocation that emitted them.
+pub static APPROVAL_PROVIDER_INVOCATION_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "approvals" => &[
+        "command", "created_at", "cwd", "id", "provider",
+        "provider_invocation_id", "provider_request_id", "resolved_at",
+        "risk_level", "session_id", "status",
+    ] as &'static [&'static str],
+};
+
+// Post-v14 `projects` shape: the per-project default model stores its id next
+// to the display label so Rust launch paths never resolve labels themselves.
+pub static PROJECT_DEFAULT_MODEL_ID_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &[
+        "check_commands_json", "created_at", "current_branch", "default_branch",
+        "default_model_id", "default_model_label", "default_provider", "id", "name",
+        "repo_path", "repo_remote_name", "repo_remote_owner", "setup_command",
+        "ui_preferences_json", "updated_at", "worktree_location",
+    ] as &'static [&'static str],
+};
+
+// Post-v24 `projects` shape: the per-project default agent is gone — Settings
+// → Agents holds one default model and effort for the whole app.
+pub static PROJECT_DEFAULT_AGENT_REMOVED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &[
+        "check_commands_json", "created_at", "current_branch", "default_branch",
+        "id", "name", "repo_path", "repo_remote_name", "repo_remote_owner",
+        "setup_command", "ui_preferences_json", "updated_at", "worktree_location",
+    ] as &'static [&'static str],
+};
+
+// Post-v31 `projects` shape: a project can ask for its workspaces to be
+// archived once the PR on their branch merges.
+pub static PROJECT_ARCHIVE_ON_MERGE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &[
+        "archive_on_merge", "check_commands_json", "created_at", "current_branch",
+        "default_branch", "id", "name", "repo_path", "repo_remote_name",
+        "repo_remote_owner", "setup_command", "ui_preferences_json", "updated_at",
+        "worktree_location",
+    ] as &'static [&'static str],
+};
+
+pub static EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &[
+        "check_commands_json", "created_at", "current_branch", "default_branch",
+        "default_model_label", "default_provider", "id", "name", "repo_path",
+        "repo_remote_name", "repo_remote_owner", "setup_command", "ui_preferences_json",
+        "updated_at", "worktree_location",
+    ] as &'static [&'static str],
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "id",
+        "last_activity_at", "path", "pinned", "project_id", "shared_workspace",
+        "state", "task_label", "updated_at",
+    ] as &'static [&'static str],
+    "sessions" => &[
+        "agent_mode", "attention", "cache_read_tokens", "cache_write_tokens",
+        "completed_at", "cost_usd", "id", "input_tokens",
+        "last_activity_at", "last_model_id", "model_id", "model_label",
+        "output_tokens", "permission_mode", "prompt", "provider",
+        "provider_conversation_id", "reasoning_effort", "started_at", "state",
+        "workspace_id",
+    ] as &'static [&'static str],
+    "raw_outputs" => &["content", "created_at", "id", "session_id", "stream"] as &'static [&'static str],
+    "events" => &["created_at", "id", "message", "payload_json", "session_id", "type"] as &'static [&'static str],
+    "approvals" => &[
+        "command", "created_at", "cwd", "id", "provider", "resolved_at",
+        "risk_level", "session_id", "status",
+    ] as &'static [&'static str],
+    "checks" => &[
+        "command", "completed_at", "exit_code", "id", "started_at", "status",
+        "summary", "workspace_id",
+    ] as &'static [&'static str],
+    "checkpoints" => &[
+        "branch", "created_at", "git_ref", "id", "label", "patch_path",
+        "workspace_id",
+    ] as &'static [&'static str],
+    "ui_state" => &["key", "updated_at", "value_json"] as &'static [&'static str],
+    "usage_events" => &[
+        "cache_read_tokens", "cache_write_tokens", "cost_usd", "created_at",
+        "event_id", "id", "input_tokens", "model_id", "output_tokens", "session_id",
+    ] as &'static [&'static str],
+    "learnings" => &[
+        "created_at", "evidence_event_id", "evidence_session_id", "hits", "id",
+        "kind", "last_seen_at", "project_id", "summary", "verified",
+    ] as &'static [&'static str],
+    "gh_pr" => &[
+        "head_sha", "last_seen_check_state", "notified_at", "pr_number",
+        "pr_state", "session_id", "updated_at",
+    ] as &'static [&'static str],
+    "schema_migrations" => &["applied_at", "checksum", "name", "version"] as &'static [&'static str],
+};
+
+// Post-v22 `gh_pr` shape: adds the PR's own head branch, read straight from
+// `gh pr view --json headRefName`. A pull request belongs to a branch, not to
+// the session that happened to observe it, so this is the column the read
+// paths join on. Pre-existing rows stay NULL on purpose — a shared checkout
+// moves across branches over its life, so the observing workspace's *current*
+// `branch` is not evidence of what an older PR was opened from. Those rows
+// re-populate the first time the poller refreshes them.
+pub static GH_PR_HEAD_REF_NAME_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "gh_pr" => &[
+        "head_ref_name", "head_sha", "last_seen_check_state", "notified_at",
+        "pr_number", "pr_state", "session_id", "updated_at",
+    ] as &'static [&'static str],
+};
+
+// Post-v30 `gh_pr` shape: records GitHub's authoritative PR creation and
+// merge timestamps. The renderer uses these to distinguish a new milestone
+// from the first successful observation of an older pull request.
+pub static GH_PR_MILESTONE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "gh_pr" => &[
+        "head_ref_name", "head_sha", "last_seen_check_state", "notified_at",
+        "pr_created_at", "pr_merged_at", "pr_number", "pr_state",
+        "session_id", "updated_at",
+    ] as &'static [&'static str],
+};
+
+pub static PENDING_MESSAGES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "pending_messages" => &[
+        "agent_mode", "agent_references_json", "attachments_json", "content",
+        "delivery_state", "fast_mode", "id", "model_id", "model_label",
+        "origin_json", "position", "queued_at", "reasoning_effort", "session_id",
+        "updated_at",
+    ] as &'static [&'static str],
+};
+
+pub static MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "initial_schema",
+        up: INITIAL_SCHEMA,
+        affected_tables: ALL_TABLES,
+        expected_columns: &EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 2,
+        name: "dashboard_read_indexes",
+        up: DASHBOARD_READ_INDEXES,
+        affected_tables: &[],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 3,
+        name: "dashboard_extra_read_indexes",
+        up: DASHBOARD_EXTRA_READ_INDEXES,
+        affected_tables: &[],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 4,
+        name: "workspace_auto_label_flag",
+        up: WORKSPACE_AUTO_LABEL_FLAG,
+        affected_tables: &["workspaces"],
+        expected_columns: &WORKSPACES_AUTO_LABEL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 5,
+        name: "session_context_window",
+        up: SESSION_CONTEXT_WINDOW,
+        affected_tables: &["sessions"],
+        expected_columns: &SESSIONS_CONTEXT_WINDOW_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 6,
+        name: "priority_dismissal",
+        up: PRIORITY_DISMISSAL,
+        affected_tables: &["workspaces", "sessions"],
+        expected_columns: &PRIORITY_DISMISSAL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 7,
+        name: "priority_manual_add",
+        up: PRIORITY_MANUAL_ADD,
+        affected_tables: &["workspaces"],
+        expected_columns: &PRIORITY_MANUAL_ADD_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 8,
+        name: "invalidate_codex_context_occupancy",
+        up: INVALIDATE_CODEX_CONTEXT_OCCUPANCY,
+        affected_tables: &["sessions"],
+        expected_columns: &PRIORITY_DISMISSAL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 9,
+        name: "approval_provider_request_identity",
+        up: APPROVAL_PROVIDER_REQUEST_IDENTITY,
+        affected_tables: &["approvals"],
+        expected_columns: &APPROVAL_PROVIDER_REQUEST_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 10,
+        name: "approval_provider_invocation_identity",
+        up: APPROVAL_PROVIDER_INVOCATION_IDENTITY,
+        affected_tables: &["approvals"],
+        expected_columns: &APPROVAL_PROVIDER_INVOCATION_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 11,
+        name: "cancel_legacy_provider_approvals",
+        up: CANCEL_LEGACY_PROVIDER_APPROVALS,
+        affected_tables: &["approvals"],
+        expected_columns: &APPROVAL_PROVIDER_INVOCATION_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 12,
+        name: "workspace_custom_icon",
+        up: WORKSPACE_CUSTOM_ICON,
+        affected_tables: &["workspaces"],
+        expected_columns: &WORKSPACE_CUSTOM_ICON_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 13,
+        name: "events_restart_recovery_index",
+        up: EVENTS_RESTART_RECOVERY_INDEX,
+        affected_tables: &[],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 14,
+        name: "project_default_model_id",
+        up: PROJECT_DEFAULT_MODEL_ID,
+        affected_tables: &["projects"],
+        expected_columns: &PROJECT_DEFAULT_MODEL_ID_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 15,
+        name: "workspace_kind",
+        up: WORKSPACE_KIND,
+        affected_tables: &["workspaces"],
+        expected_columns: &WORKSPACE_KIND_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 16,
+        name: "session_resume_fork",
+        up: SESSION_RESUME_FORK,
+        affected_tables: &["sessions"],
+        expected_columns: &SESSION_RESUME_FORK_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 17,
+        name: "reset_project_default_agent",
+        up: RESET_PROJECT_DEFAULT_AGENT,
+        affected_tables: &["projects"],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 18,
+        name: "synced_sessions",
+        up: SYNCED_SESSIONS,
+        affected_tables: &["sessions", "synced_sessions"],
+        expected_columns: &SYNCED_SESSIONS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 19,
+        name: "routines",
+        up: ROUTINES,
+        affected_tables: &["routines"],
+        expected_columns: &ROUTINES_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 20,
+        name: "routines_canonical_shape",
+        up: ROUTINES_CANONICAL_SHAPE,
+        affected_tables: &["routines"],
+        expected_columns: &ROUTINES_COLUMNS,
+        requires_foreign_keys_off: true,
+    },
+    Migration {
+        version: 21,
+        name: "reset_codex_corrupted_context_tokens",
+        up: RESET_CODEX_CORRUPTED_CONTEXT_TOKENS,
+        affected_tables: &["sessions"],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 22,
+        name: "gh_pr_head_ref_name",
+        up: GH_PR_HEAD_REF_NAME,
+        affected_tables: &["gh_pr"],
+        expected_columns: &GH_PR_HEAD_REF_NAME_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 23,
+        name: "session_launch_lineage",
+        up: SESSION_LAUNCH_LINEAGE,
+        affected_tables: &["sessions"],
+        expected_columns: &SESSION_LAUNCH_LINEAGE_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 24,
+        name: "drop_project_default_agent",
+        up: DROP_PROJECT_DEFAULT_AGENT,
+        affected_tables: &["projects"],
+        expected_columns: &PROJECT_DEFAULT_AGENT_REMOVED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 25,
+        name: "session_messages",
+        up: SESSION_MESSAGES,
+        affected_tables: &["session_messages"],
+        expected_columns: &SESSION_MESSAGES_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 26,
+        name: "session_launch_kind",
+        up: SESSION_LAUNCH_KIND,
+        affected_tables: &["sessions"],
+        expected_columns: &SESSION_LAUNCH_KIND_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 27,
+        name: "usage_scan",
+        up: USAGE_SCAN,
+        affected_tables: &[
+            "usage_scan_files",
+            "usage_hourly",
+            "usage_dedupe_keys",
+            "usage_scan_meta",
+        ],
+        expected_columns: &USAGE_SCAN_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 28,
+        name: "session_change_feed",
+        up: SESSION_CHANGE_FEED,
+        affected_tables: &["session_changes", "session_change_watermarks"],
+        expected_columns: &SESSION_CHANGE_FEED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 29,
+        name: "session_change_feed_cleanup",
+        up: SESSION_CHANGE_FEED_CLEANUP,
+        affected_tables: &[],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 30,
+        name: "gh_pr_milestone_timestamps",
+        up: GH_PR_MILESTONE_TIMESTAMPS,
+        affected_tables: &["gh_pr"],
+        expected_columns: &GH_PR_MILESTONE_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 31,
+        name: "project_archive_on_merge",
+        up: PROJECT_ARCHIVE_ON_MERGE,
+        affected_tables: &["projects"],
+        expected_columns: &PROJECT_ARCHIVE_ON_MERGE_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 32,
+        name: "pending_messages",
+        up: PENDING_MESSAGES,
+        affected_tables: &["pending_messages"],
+        expected_columns: &PENDING_MESSAGES_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 33,
+        name: "remote_operation_outcomes",
+        up: REMOTE_OPERATION_OUTCOMES,
+        affected_tables: &["remote_operations"],
+        expected_columns: &REMOTE_OPERATION_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 34,
+        name: "session_after_turn",
+        up: SESSION_AFTER_TURN,
+        affected_tables: &["session_after_turn"],
+        expected_columns: &SESSION_AFTER_TURN_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 35,
+        name: "session_wait_reported",
+        up: SESSION_WAIT_REPORTED,
+        affected_tables: &["sessions"],
+        expected_columns: &SESSION_WAIT_REPORTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 36,
+        name: "routine_run_target",
+        up: ROUTINE_RUN_TARGET,
+        affected_tables: &["routines"],
+        expected_columns: &ROUTINE_RUN_TARGET_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 37,
+        name: "session_pr_attribution",
+        up: SESSION_PR_ATTRIBUTION,
+        affected_tables: &["sessions", "gh_pr"],
+        expected_columns: &SESSION_PR_ATTRIBUTION_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 38,
+        name: "session_permission_provider_defaults",
+        up: SESSION_PERMISSION_PROVIDER_DEFAULTS,
+        affected_tables: &["sessions"],
+        expected_columns: &SESSION_PR_ATTRIBUTION_COLUMNS,
+        requires_foreign_keys_off: true,
+    },
+    Migration {
+        version: 39,
+        name: "usage_source_contributions",
+        up: USAGE_SOURCE_CONTRIBUTIONS,
+        affected_tables: &["usage_scan_files", "usage_contributions"],
+        expected_columns: &USAGE_CONTRIBUTIONS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 40,
+        name: "sync_byte_and_line_cursor",
+        up: SYNC_BYTE_AND_LINE_CURSOR,
+        affected_tables: &["synced_sessions"],
+        expected_columns: &SYNC_BYTE_AND_LINE_CURSOR_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 41,
+        name: "durable_checkpoints",
+        up: crate::checkpoints::MIGRATION_SQL,
+        affected_tables: &["checkpoints", "checkpoint_rewinds"],
+        expected_columns: &DURABLE_CHECKPOINT_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 42,
+        name: "finite_goals",
+        up: FINITE_GOALS,
+        affected_tables: &["goals", "goal_attempts"],
+        expected_columns: &FINITE_GOAL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 43,
+        name: "goals_reset",
+        up: crate::goals::MIGRATION_SQL,
+        affected_tables: &["goals", "goal_attempts"],
+        expected_columns: &GOAL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 44,
+        name: "activity_ledger",
+        up: crate::activity::MIGRATION_SQL,
+        affected_tables: &[
+            "activity_commits",
+            "activity_scan_meta",
+            "activity_github_prs",
+            "activity_github_reviews",
+            "activity_github_meta",
+        ],
+        expected_columns: &ACTIVITY_LEDGER_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 45,
+        name: "synced_session_tombstones",
+        up: SYNCED_SESSION_TOMBSTONES,
+        affected_tables: &["synced_session_tombstones"],
+        expected_columns: &SYNC_TOMBSTONE_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 46,
+        name: "data_migrations",
+        up: DATA_MIGRATIONS,
+        affected_tables: &["data_migrations"],
+        expected_columns: &phf_map! {
+            "data_migrations" => &["name", "applied_at"],
+        },
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 47,
+        name: "workspace_last_viewed_at",
+        up: WORKSPACE_LAST_VIEWED_AT,
+        affected_tables: &["workspaces"],
+        expected_columns: &WORKSPACE_LAST_VIEWED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 48,
+        name: "project_sources",
+        up: crate::project_sources::MIGRATION_SQL,
+        affected_tables: &["project_sources"],
+        expected_columns: &PROJECT_SOURCE_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 49,
+        name: "canonical_session_pull_requests",
+        up: SESSION_PR_MODEL,
+        affected_tables: &[
+            "gh_pull_requests",
+            "session_pr_links",
+            "session_pr_evidence",
+            "session_pr_evidence_scans",
+        ],
+        expected_columns: &SESSION_PR_MODEL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 50,
+        name: "routine_author",
+        up: ROUTINE_AUTHOR,
+        affected_tables: &["routines"],
+        expected_columns: &ROUTINE_AUTHOR_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 51,
+        name: "arcs",
+        up: crate::arcs::MIGRATION_SQL,
+        affected_tables: &["arcs", "sessions"],
+        expected_columns: &ARC_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 52,
+        name: "routine_arc_target",
+        up: ROUTINE_ARC_TARGET,
+        affected_tables: &["routines"],
+        expected_columns: &ROUTINE_ARC_TARGET_COLUMNS,
+        requires_foreign_keys_off: true,
+    },
+    Migration {
+        version: 53,
+        name: "arc_events",
+        up: crate::arc_events::MIGRATION_SQL,
+        affected_tables: &["arc_events", "arcs"],
+        expected_columns: &ARC_EVENTS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 54,
+        name: "drop_raw_outputs_session_created_index",
+        up: DROP_RAW_OUTPUTS_SESSION_CREATED_INDEX,
+        affected_tables: &[],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 55,
+        name: "rename_scratch_project_to_chat",
+        up: RENAME_SCRATCH_PROJECT_TO_CHAT,
+        affected_tables: &["projects"],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 56,
+        name: "auto_routing",
+        up: AUTO_ROUTING,
+        affected_tables: &["sessions", "turn_routes"],
+        expected_columns: &AUTO_ROUTING_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 57,
+        name: "turn_routes_pinned_decision",
+        up: TURN_ROUTES_PINNED_DECISION,
+        affected_tables: &["turn_routes"],
+        expected_columns: &AUTO_ROUTING_COLUMNS,
+        requires_foreign_keys_off: true,
+    },
+    Migration {
+        version: 58,
+        name: "project_checks",
+        up: crate::project_checks::MIGRATION_SQL,
+        affected_tables: &["project_checks"],
+        expected_columns: &PROJECT_CHECKS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 59,
+        name: "events_session_moved_index",
+        up: EVENTS_SESSION_MOVED_INDEX,
+        affected_tables: &[],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 60,
+        name: "turn_route_signals",
+        up: TURN_ROUTE_SIGNALS,
+        affected_tables: &["turn_routes"],
+        expected_columns: &TURN_ROUTE_SIGNALS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 61,
+        name: "router_economy_tier",
+        up: ROUTER_ECONOMY_TIER,
+        affected_tables: &["sessions", "turn_routes"],
+        expected_columns: &ROUTER_ECONOMY_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 62,
+        name: "pr_watches",
+        up: crate::pr_watches::MIGRATION_SQL,
+        affected_tables: &["pr_watches"],
+        expected_columns: &PR_WATCHES_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 63,
+        name: "workspace_improvements",
+        up: WORKSPACE_IMPROVEMENTS,
+        affected_tables: &[
+            "projects",
+            "workspaces",
+            "pr_watches",
+            "project_linked_repos",
+        ],
+        expected_columns: &WORKSPACE_IMPROVEMENTS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 64,
+        name: "launch_receipts_and_pending_provider",
+        up: LAUNCH_RECEIPTS_AND_PENDING_PROVIDER,
+        affected_tables: &["launch_receipts", "pending_messages", "session_messages"],
+        expected_columns: &LAUNCH_RECEIPTS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 65,
+        name: "native_continuity",
+        up: crate::continuity::MIGRATION_SQL,
+        affected_tables: &[
+            "provider_bindings",
+            "provider_binding_turns",
+            "session_forks",
+            "fork_merges",
+        ],
+        expected_columns: &NATIVE_CONTINUITY_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 66,
+        name: "prompt_authorship",
+        up: PROMPT_AUTHORSHIP,
+        affected_tables: &["events", "pending_messages"],
+        expected_columns: &PROMPT_AUTHORSHIP_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 67,
+        name: "linked_repository_summaries",
+        up: LINKED_REPOSITORY_SUMMARIES,
+        affected_tables: &["project_linked_repos"],
+        expected_columns: &LINKED_REPOSITORY_SUMMARY_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 68,
+        name: "merge_cleanup",
+        up: MERGE_CLEANUP,
+        affected_tables: &["projects", "workspaces"],
+        expected_columns: &MERGE_CLEANUP_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 69,
+        name: "events_session_type_index",
+        up: EVENTS_SESSION_TYPE_INDEX,
+        affected_tables: &[],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 70,
+        name: "pr_watch_feedback_and_fetch_health",
+        up: PR_WATCH_FEEDBACK_AND_FETCH_HEALTH,
+        affected_tables: &["pr_watches"],
+        expected_columns: &PR_WATCH_FEEDBACK_AND_FETCH_HEALTH_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 71,
+        name: "workspace_created_branch",
+        up: WORKSPACE_CREATED_BRANCH,
+        affected_tables: &["workspaces"],
+        expected_columns: &WORKSPACE_CREATED_BRANCH_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 72,
+        name: "arc_archived_at",
+        up: ARC_ARCHIVED_AT,
+        affected_tables: &["arcs"],
+        expected_columns: &ARC_ARCHIVED_AT_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 73,
+        name: "named_project_folders",
+        up: PROJECT_FOLDERS,
+        affected_tables: &["projects", "workspaces", "project_linked_repos"],
+        expected_columns: &PROJECT_FOLDER_COLUMNS,
+        requires_foreign_keys_off: true,
+    },
+    Migration {
+        version: 74,
+        name: "project_overviews",
+        up: PROJECT_OVERVIEWS,
+        affected_tables: &["projects"],
+        expected_columns: &PROJECT_OVERVIEW_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 75,
+        name: "folder_workspaces",
+        up: FOLDER_WORKSPACES,
+        affected_tables: &["workspaces"],
+        expected_columns: &FOLDER_WORKSPACE_COLUMNS,
+        requires_foreign_keys_off: true,
+    },
+    Migration {
+        version: 76,
+        name: "turn_waterfalls",
+        up: crate::turn_waterfalls::MIGRATION_SQL,
+        affected_tables: &["turn_waterfalls"],
+        expected_columns: &TURN_WATERFALL_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+];
+
+static TURN_WATERFALL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "turn_waterfalls" => &["id", "session_id", "turn_key", "provider", "stamps_json", "created_at"] as &'static [&'static str],
+};
+
+static FOLDER_WORKSPACE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &["project_folder_id", "base_ref", "branch", "changed_files", "checkout_removed_at", "created_at", "created_branch", "created_branch_oid", "dirty", "icon", "icon_color", "id", "kind", "last_activity_at", "last_viewed_at", "path", "pinned", "priority_added_at", "priority_dismissed_at", "project_id", "shared_workspace", "snoozed_until", "state", "task_label", "task_label_auto", "updated_at"] as &'static [&'static str],
+};
+
+const FOLDER_WORKSPACES: &str = r#"
+CREATE TABLE workspaces_folder (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  task_label TEXT NOT NULL, branch TEXT NOT NULL, base_ref TEXT NOT NULL,
+  path TEXT NOT NULL, state TEXT NOT NULL,
+  shared_workspace INTEGER NOT NULL DEFAULT 0 CHECK (shared_workspace IN (0, 1)),
+  dirty INTEGER NOT NULL DEFAULT 0 CHECK (dirty IN (0, 1)), changed_files INTEGER NOT NULL DEFAULT 0,
+  last_activity_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+  kind TEXT NOT NULL DEFAULT 'git' CHECK (kind IN ('git', 'scratch', 'popup', 'folder')),
+  task_label_auto INTEGER NOT NULL DEFAULT 1, priority_dismissed_at TEXT, priority_added_at TEXT,
+  icon TEXT, icon_color TEXT, last_viewed_at TEXT, snoozed_until TEXT, checkout_removed_at TEXT,
+  created_branch TEXT, created_branch_oid TEXT,
+  project_folder_id TEXT REFERENCES project_folders(id)
+);
+INSERT INTO workspaces_folder (id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
+ dirty, changed_files, last_activity_at, created_at, updated_at, pinned, kind, task_label_auto,
+ priority_dismissed_at, priority_added_at, icon, icon_color, last_viewed_at, snoozed_until,
+ checkout_removed_at, created_branch, created_branch_oid, project_folder_id)
+SELECT id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
+ dirty, changed_files, last_activity_at, created_at, updated_at, pinned, kind, task_label_auto,
+ priority_dismissed_at, priority_added_at, icon, icon_color, last_viewed_at, snoozed_until,
+ checkout_removed_at, created_branch, created_branch_oid, project_folder_id FROM workspaces;
+DROP TABLE workspaces;
+ALTER TABLE workspaces_folder RENAME TO workspaces;
+CREATE INDEX idx_workspaces_project_id ON workspaces(project_id);
+CREATE INDEX idx_workspaces_last_activity_id ON workspaces(last_activity_at DESC, id DESC);
+CREATE INDEX idx_workspaces_project_folder ON workspaces(project_folder_id);
+"#;
+
+const PROJECT_OVERVIEWS: &str = "ALTER TABLE projects ADD COLUMN overview_json TEXT; ALTER TABLE projects ADD COLUMN overview_generation_json TEXT;";
+
+static PROJECT_OVERVIEW_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &["id", "name", "repo_path", "current_branch", "default_branch", "worktree_location", "setup_command", "check_commands_json", "ui_preferences_json", "created_at", "updated_at", "repo_remote_owner", "repo_remote_name", "branch_template", "merge_cleanup", "pr_repository_folder_id", "overview_json", "overview_generation_json"] as &'static [&'static str],
+};
+
+static PROJECT_FOLDER_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &["id", "name", "repo_path", "current_branch", "default_branch", "worktree_location", "setup_command", "check_commands_json", "ui_preferences_json", "created_at", "updated_at", "repo_remote_owner", "repo_remote_name", "branch_template", "merge_cleanup", "pr_repository_folder_id"] as &'static [&'static str],
+    "project_linked_repos" => &[] as &'static [&'static str],
+    "workspaces" => &["project_folder_id",
+        "base_ref", "branch", "changed_files", "checkout_removed_at", "created_at",
+        "created_branch", "created_branch_oid", "dirty", "icon", "icon_color", "id", "kind",
+        "last_activity_at", "last_viewed_at", "path", "pinned", "priority_added_at",
+        "priority_dismissed_at", "project_id", "shared_workspace", "snoozed_until", "state",
+        "task_label", "task_label_auto", "updated_at",
+    ] as &'static [&'static str],
+};
+
+const PROJECT_FOLDERS: &str = r#"
+CREATE TABLE projects_multi_folder (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, repo_path TEXT NOT NULL,
+  current_branch TEXT NOT NULL, default_branch TEXT, worktree_location TEXT NOT NULL,
+  setup_command TEXT NOT NULL DEFAULT '', check_commands_json TEXT NOT NULL DEFAULT '[]',
+  ui_preferences_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  repo_remote_owner TEXT, repo_remote_name TEXT, branch_template TEXT,
+  merge_cleanup TEXT NOT NULL DEFAULT 'off' CHECK (merge_cleanup IN ('off', 'archive', 'remove-checkout'))
+);
+INSERT INTO projects_multi_folder SELECT id, name, repo_path, current_branch, default_branch,
+  worktree_location, setup_command, check_commands_json, ui_preferences_json, created_at,
+  updated_at, repo_remote_owner, repo_remote_name, branch_template, merge_cleanup FROM projects;
+DROP TABLE projects;
+ALTER TABLE projects_multi_folder RENAME TO projects;
+CREATE INDEX idx_projects_repo_path ON projects(repo_path);
+ALTER TABLE projects ADD COLUMN pr_repository_folder_id TEXT;
+UPDATE projects SET pr_repository_folder_id = 'primary:' || id;
+CREATE TABLE project_folders (
+  id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, root_path TEXT NOT NULL,
+  is_primary INTEGER NOT NULL DEFAULT 0 CHECK (is_primary IN (0, 1)),
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  removed INTEGER NOT NULL DEFAULT 0 CHECK (removed IN (0, 1)), summary TEXT,
+  current_branch TEXT NOT NULL DEFAULT 'HEAD', default_branch TEXT,
+  repo_remote_owner TEXT, repo_remote_name TEXT, worktree_location TEXT NOT NULL,
+  setup_command TEXT NOT NULL DEFAULT '', check_commands_json TEXT NOT NULL DEFAULT '[]',
+  merge_cleanup TEXT NOT NULL DEFAULT 'off', branch_template TEXT,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, root_path)
+);
+CREATE UNIQUE INDEX idx_project_folders_primary ON project_folders(project_id) WHERE is_primary = 1;
+INSERT INTO project_folders (id, project_id, name, root_path, is_primary, current_branch,
+  default_branch, repo_remote_owner, repo_remote_name, worktree_location, setup_command,
+  check_commands_json, merge_cleanup, branch_template, created_at, updated_at)
+SELECT 'primary:' || p.id, p.id,
+  (WITH RECURSIVE candidates(n) AS (
+    SELECT 0 UNION ALL SELECT n + 1 FROM candidates
+    WHERE n <= (SELECT COUNT(*) FROM project_linked_repos WHERE project_id = p.id)
+  ) SELECT CASE WHEN n = 0 THEN 'primary' ELSE 'primary-' || n END FROM candidates
+    WHERE NOT EXISTS (SELECT 1 FROM project_linked_repos WHERE project_id = p.id
+      AND name = CASE WHEN n = 0 THEN 'primary' ELSE 'primary-' || n END)
+    ORDER BY n LIMIT 1),
+  repo_path, 1, current_branch, default_branch,
+  repo_remote_owner, repo_remote_name, worktree_location, setup_command, check_commands_json,
+  merge_cleanup, branch_template, created_at, updated_at FROM projects p;
+INSERT INTO project_folders (id, project_id, name, root_path, enabled, summary, worktree_location, created_at, updated_at)
+SELECT id, project_id, name, root_path, enabled, summary,
+  (SELECT worktree_location FROM projects WHERE projects.id = project_id) || '/' || id,
+  created_at, updated_at FROM project_linked_repos;
+CREATE UNIQUE INDEX idx_project_folders_names ON project_folders(project_id, name) WHERE removed = 0;
+DROP TABLE project_linked_repos;
+ALTER TABLE workspaces ADD COLUMN project_folder_id TEXT REFERENCES project_folders(id);
+UPDATE workspaces SET project_folder_id = 'primary:' || project_id WHERE kind = 'git';
+CREATE INDEX idx_workspaces_project_folder ON workspaces(project_folder_id);
+"#;
+
+// Linked repositories, configurable isolated-branch names, PR conflict notices
+// and the snooze shelf. One migration, four independent additions:
+// - `project_linked_repos`: named canonical roots a project's agents may read.
+//   `root_path` is the allowlist entry and is unique per project, as is `name`.
+// - `projects.branch_template`: the project's override of the global branch
+//   template. NULL means "use the global default".
+// - `pr_watches.conflict_state`: whether the last mergeable read reported a
+//   conflict. NULL until a pass has seen `MERGEABLE` or `CONFLICTING`, so
+//   `UNKNOWN` never invents a transition.
+// - `workspaces.snoozed_until`: an RFC 3339 instant the sidebar hides the row
+//   until. Display metadata only; it never changes execution state.
+const WORKSPACE_IMPROVEMENTS: &str = r#"
+CREATE TABLE project_linked_repos (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 40),
+  root_path TEXT NOT NULL CHECK (length(root_path) > 0),
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (project_id, name),
+  UNIQUE (project_id, root_path)
+);
+CREATE INDEX idx_project_linked_repos_project ON project_linked_repos(project_id);
+
+ALTER TABLE projects ADD COLUMN branch_template TEXT;
+ALTER TABLE pr_watches ADD COLUMN conflict_state TEXT
+  CHECK (conflict_state IS NULL OR conflict_state IN ('clean', 'conflicting'));
+ALTER TABLE workspaces ADD COLUMN snoozed_until TEXT;
+"#;
+
+// A `session_launch` that carries a `clientRequestId` leaves one receipt per
+// (caller, key) before any budget, routing or provider work. `status` says
+// what a retry may do: `completed` replays `result_json`; `failed` means no
+// provider session accepted the launch, so the key may be tried again; `pending` is in
+// flight; `uncertain` means the process stopped (or the call was dropped)
+// mid-launch, so the provider may already have been paid and a retry must not
+// spend again. `session_id` is allocated up front so every state names it.
+// A queued follow-up may name a provider; NULL keeps the chat's current one.
+// `session_messages.wake_due_at` marks a completion row whose automatic wake of
+// the launcher has not been attempted yet. The coalescing window is in memory,
+// so boot reads this column to wake a launcher whose window died with the app.
+// Rows from before v64 stay NULL and are never woken for retroactively.
+const LAUNCH_RECEIPTS_AND_PENDING_PROVIDER: &str = r#"
+CREATE TABLE launch_receipts (
+  caller_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  client_request_id TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'failed', 'uncertain')),
+  session_id TEXT NOT NULL,
+  workspace_id TEXT,
+  result_json TEXT,
+  error_code TEXT,
+  error_message TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (caller_session_id, client_request_id)
+);
+
+ALTER TABLE pending_messages ADD COLUMN provider TEXT;
+ALTER TABLE session_messages ADD COLUMN wake_due_at TEXT;
+"#;
+
+// A prompt grants a chat reference only when a person wrote it, and that is
+// recorded, not inferred. NULL (every row that exists, and every writer that
+// does not say) means unattested. No backfill: nothing has shipped.
+const PROMPT_AUTHORSHIP: &str = r#"
+ALTER TABLE events ADD COLUMN prompt_author TEXT
+  CHECK (prompt_author IS NULL OR prompt_author = 'person');
+ALTER TABLE pending_messages ADD COLUMN prompt_author TEXT
+  CHECK (prompt_author IS NULL OR prompt_author = 'person');
+"#;
+
+// GitHub state belongs to a project and PR number. Session links keep the
+// evidence, relationship and user selection separate so a refresh cannot
+// change which PR the workspace foregrounds.
+const SESSION_PR_MODEL: &str = r#"
+CREATE TABLE gh_pull_requests (
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  pr_number INTEGER NOT NULL CHECK (pr_number > 0),
+  url TEXT,
+  title TEXT,
+  head_sha TEXT NOT NULL DEFAULT '',
+  last_seen_check_state TEXT NOT NULL DEFAULT 'unknown',
+  pr_state TEXT,
+  head_ref_name TEXT,
+  pr_created_at TEXT,
+  pr_merged_at TEXT,
+  refreshed_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  refresh_error TEXT,
+  PRIMARY KEY (project_id, pr_number)
+);
+
+CREATE TABLE session_pr_links (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL,
+  pr_number INTEGER NOT NULL,
+  relationship TEXT NOT NULL CHECK (relationship IN ('worked', 'referenced', 'unverified')),
+  activity_at TEXT NOT NULL,
+  is_pinned INTEGER NOT NULL DEFAULT 0 CHECK (is_pinned IN (0, 1)),
+  dismissed_at TEXT,
+  notified_head_sha TEXT,
+  notified_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (session_id, pr_number),
+  FOREIGN KEY (project_id, pr_number)
+    REFERENCES gh_pull_requests(project_id, pr_number) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX idx_session_pr_one_pin
+  ON session_pr_links(session_id) WHERE is_pinned = 1;
+CREATE INDEX idx_session_pr_links_project_pr
+  ON session_pr_links(project_id, pr_number);
+
+CREATE TABLE session_pr_evidence (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL,
+  pr_number INTEGER NOT NULL,
+  relationship TEXT NOT NULL CHECK (relationship IN ('worked', 'referenced', 'unverified')),
+  source_id TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (session_id, pr_number, source_id),
+  FOREIGN KEY (project_id, pr_number)
+    REFERENCES gh_pull_requests(project_id, pr_number) ON DELETE CASCADE
+);
+
+CREATE TABLE session_pr_evidence_scans (
+  session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  last_event_rowid INTEGER NOT NULL DEFAULT 0,
+  last_change_sequence INTEGER NOT NULL DEFAULT 0,
+  parser_version INTEGER NOT NULL DEFAULT 0,
+  scanned_at TEXT NOT NULL
+);
+
+WITH ranked AS (
+  SELECT workspaces.project_id,
+         gh_pr.session_id,
+         gh_pr.pr_number,
+         gh_pr.head_sha,
+         gh_pr.last_seen_check_state,
+         gh_pr.updated_at,
+         gh_pr.pr_state,
+         gh_pr.head_ref_name,
+         gh_pr.pr_created_at,
+         gh_pr.pr_merged_at,
+         ROW_NUMBER() OVER (
+           PARTITION BY workspaces.project_id, gh_pr.pr_number
+           ORDER BY (gh_pr.pr_state = 'MERGED') DESC,
+                    gh_pr.updated_at DESC,
+                    gh_pr.session_id DESC
+         ) AS rank
+  FROM gh_pr
+  JOIN sessions ON sessions.id = gh_pr.session_id
+  JOIN workspaces ON workspaces.id = sessions.workspace_id
+)
+INSERT INTO gh_pull_requests (
+  project_id, pr_number, head_sha, last_seen_check_state, pr_state,
+  head_ref_name, pr_created_at, pr_merged_at, refreshed_at, updated_at
+)
+SELECT project_id, pr_number, head_sha, last_seen_check_state, pr_state,
+       head_ref_name, pr_created_at, pr_merged_at, updated_at, updated_at
+FROM ranked
+WHERE rank = 1;
+
+INSERT INTO session_pr_links (
+  session_id, project_id, pr_number, relationship, activity_at,
+  notified_head_sha, notified_at, created_at, updated_at
+)
+SELECT gh_pr.session_id, workspaces.project_id, gh_pr.pr_number, 'unverified',
+       sessions.last_activity_at,
+       CASE WHEN gh_pr.notified_at IS NOT NULL THEN gh_pr.head_sha END,
+       gh_pr.notified_at, gh_pr.updated_at, gh_pr.updated_at
+FROM gh_pr
+JOIN sessions ON sessions.id = gh_pr.session_id
+JOIN workspaces ON workspaces.id = sessions.workspace_id;
+"#;
+
+const WORKSPACE_LAST_VIEWED_AT: &str = r#"
+ALTER TABLE workspaces ADD COLUMN last_viewed_at TEXT;
+UPDATE workspaces SET last_viewed_at = last_activity_at;
+"#;
+
+// Machine-specific settings upgrades cannot embed local paths in schema SQL.
+// Record their completion atomically with the corresponding data update.
+const DATA_MIGRATIONS: &str = r#"
+CREATE TABLE data_migrations (
+  name TEXT PRIMARY KEY NOT NULL,
+  applied_at TEXT NOT NULL
+);
+"#;
+
+// A provider transcript remains on disk when Settings deletes the projected
+// Argmax chat. Keep the provider conversation id independently of `sessions`
+// so a later session-sync sweep cannot recreate that chat.
+const SYNCED_SESSION_TOMBSTONES: &str = r#"
+CREATE TABLE synced_session_tombstones (
+  provider TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  deleted_at TEXT NOT NULL,
+  PRIMARY KEY (provider, external_id)
+);
+"#;
+
+// The first Goal shape: an ordered work plan, a shell-check phase, an
+// out-of-process reviewer bound to a JSON report, and an attempt ledger. v43
+// replaces all of it with one free-text condition a per-turn evaluator judges,
+// but this body stays exactly as released — migrations are append-only, and
+// databases that ran it need their recorded checksum to keep matching.
+const FINITE_GOALS: &str = r#"
+CREATE TABLE goals (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  config_revision INTEGER NOT NULL,
+  objective TEXT NOT NULL,
+  criteria_json TEXT NOT NULL,
+  steps_json TEXT NOT NULL,
+  checks_json TEXT NOT NULL,
+  reviewer_json TEXT NOT NULL,
+  state TEXT NOT NULL,
+  phase TEXT NOT NULL,
+  current_step_index INTEGER NOT NULL,
+  repair_rounds INTEGER NOT NULL,
+  max_repair_rounds INTEGER NOT NULL,
+  attempt_count INTEGER NOT NULL,
+  max_attempts INTEGER NOT NULL,
+  active_started_at TEXT,
+  active_elapsed_ms INTEGER NOT NULL,
+  max_active_ms INTEGER NOT NULL,
+  candidate_snapshot TEXT,
+  failure_reason TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(session_id),
+  CHECK(state IN ('draft','running','paused','completed','cancelled')),
+  CHECK(phase IN ('work','checks','review','done'))
+);
+CREATE INDEX idx_goals_workspace_state ON goals(workspace_id, state, updated_at DESC);
+CREATE TABLE goal_attempts (
+  id TEXT PRIMARY KEY,
+  goal_id TEXT NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+  invocation_id TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  provider TEXT,
+  model_id TEXT,
+  session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  config_revision INTEGER NOT NULL,
+  candidate_snapshot TEXT,
+  state TEXT NOT NULL,
+  result_json TEXT,
+  started_at TEXT NOT NULL,
+  settled_at TEXT,
+  UNIQUE(goal_id, sequence),
+  CHECK(kind IN ('work','repair','check','review')),
+  CHECK(state IN ('running','succeeded','failed','cancelled','uncertain'))
+);
+CREATE INDEX idx_goal_attempts_goal_sequence ON goal_attempts(goal_id, sequence);
+"#;
+
+// Widen permission choices without rewriting existing chats or migration history.
+const SESSION_PERMISSION_PROVIDER_DEFAULTS: &str = r#"
+CREATE TABLE sessions_rebuilt (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  model_label TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  state TEXT NOT NULL,
+  attention TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  last_activity_at TEXT NOT NULL,
+  provider_conversation_id TEXT,
+  model_id TEXT,
+  reasoning_effort TEXT,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  last_model_id TEXT,
+  permission_mode TEXT NOT NULL DEFAULT 'provider-defaults'
+    CHECK (permission_mode IN ('auto-approve', 'ask-each-time', 'provider-defaults')),
+  agent_mode TEXT NOT NULL DEFAULT 'auto'
+    CHECK (agent_mode IN ('auto', 'plan'))
+, context_tokens INTEGER NOT NULL DEFAULT 0, context_window INTEGER, attention_changed_at TEXT, resume_fork INTEGER NOT NULL DEFAULT 0, imported INTEGER NOT NULL DEFAULT 0, launched_by_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL, launch_depth INTEGER NOT NULL DEFAULT 0, launch_kind TEXT NOT NULL DEFAULT 'agent', wait_reported_at TEXT, pr_branch_at_start TEXT, pr_branch_last_active TEXT);
+INSERT INTO sessions_rebuilt (id, workspace_id, provider, model_label, prompt, state, attention, started_at, completed_at, last_activity_at, provider_conversation_id, model_id, reasoning_effort, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, last_model_id, permission_mode, agent_mode, context_tokens, context_window, attention_changed_at, resume_fork, imported, launched_by_session_id, launch_depth, launch_kind, wait_reported_at, pr_branch_at_start, pr_branch_last_active)
+SELECT id, workspace_id, provider, model_label, prompt, state, attention, started_at, completed_at, last_activity_at, provider_conversation_id, model_id, reasoning_effort, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, last_model_id, permission_mode, agent_mode, context_tokens, context_window, attention_changed_at, resume_fork, imported, launched_by_session_id, launch_depth, launch_kind, wait_reported_at, pr_branch_at_start, pr_branch_last_active FROM sessions;
+DROP TABLE sessions;
+ALTER TABLE sessions_rebuilt RENAME TO sessions;
+CREATE INDEX idx_sessions_workspace_id ON sessions(workspace_id);
+CREATE INDEX idx_sessions_last_activity_id
+  ON sessions(last_activity_at DESC, id DESC);
+CREATE INDEX idx_sessions_workspace_last_activity_id
+  ON sessions(workspace_id, last_activity_at DESC, id DESC);
+CREATE INDEX idx_sessions_state
+  ON sessions(state);
+CREATE INDEX idx_sessions_launched_by ON sessions(launched_by_session_id);
+CREATE TRIGGER session_changes_sessions_after_delete
+AFTER DELETE ON sessions BEGIN
+  DELETE FROM session_changes WHERE session_id = old.id;
+  DELETE FROM session_change_watermarks WHERE session_id = old.id;
+END;
+"#;
+
+// Post-v37 shapes: launched sessions retain the branch they started on and
+// the last branch observed while their turn was active. PR observations carry
+// whether the association came from an explicit PR reference or a branch
+// inference. Existing rows remain `legacy`; a shared checkout's current HEAD
+// is not trustworthy evidence for retroactively assigning them.
+static SESSION_PR_ATTRIBUTION_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "attention", "attention_changed_at", "cache_read_tokens",
+        "cache_write_tokens", "completed_at", "context_tokens", "context_window",
+        "cost_usd", "id", "imported", "input_tokens", "last_activity_at",
+        "last_model_id", "launch_depth", "launch_kind", "launched_by_session_id",
+        "model_id", "model_label", "output_tokens", "permission_mode",
+        "pr_branch_at_start", "pr_branch_last_active", "prompt", "provider",
+        "provider_conversation_id", "reasoning_effort", "resume_fork", "started_at",
+        "state", "wait_reported_at", "workspace_id",
+    ] as &'static [&'static str],
+    "gh_pr" => &[
+        "attribution", "head_ref_name", "head_sha", "last_seen_check_state",
+        "notified_at", "pr_created_at", "pr_merged_at", "pr_number", "pr_state",
+        "session_id", "updated_at",
+    ] as &'static [&'static str],
+};
+
+const SESSION_PR_ATTRIBUTION: &str = r#"
+ALTER TABLE sessions ADD COLUMN pr_branch_at_start TEXT;
+ALTER TABLE sessions ADD COLUMN pr_branch_last_active TEXT;
+ALTER TABLE gh_pr ADD COLUMN attribution TEXT NOT NULL DEFAULT 'legacy'
+  CHECK (attribution IN ('legacy', 'inferred', 'explicit'));
+"#;
+
+static SESSION_AFTER_TURN_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "session_after_turn" => &["session_id", "action", "payload_json", "requested_at"],
+};
+
+// Post-v35 `sessions` shape: v26 plus the wait high-water mark.
+static SESSION_WAIT_REPORTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "attention", "attention_changed_at", "cache_read_tokens",
+        "cache_write_tokens", "completed_at", "context_tokens", "context_window",
+        "cost_usd", "id", "imported", "input_tokens", "last_activity_at",
+        "last_model_id", "launch_depth", "launch_kind", "launched_by_session_id",
+        "model_id", "model_label", "output_tokens", "permission_mode", "prompt",
+        "provider", "provider_conversation_id", "reasoning_effort", "resume_fork",
+        "started_at", "state", "wait_reported_at", "workspace_id",
+    ] as &'static [&'static str],
+};
+
+// When the argument-less `session_wait` last handed this session's finish to
+// whoever launched it. NULL until that happens. Every state write moves
+// `last_activity_at`, so a child that runs again passes the mark and is
+// reported once more when it settles — and one that has not run again is not.
+// Without the mark, a parent watching two children got the first one back the
+// moment it asked about the second, forever.
+const SESSION_WAIT_REPORTED: &str = r#"
+ALTER TABLE sessions ADD COLUMN wait_reported_at TEXT;
+"#;
+
+// Scheduled runs choose where each firing lands: a fresh chat in the shared
+// checkout (`new_session`), a follow-up in the same chat every time
+// (`same_session`, tracked by `last_session_id`), or a fresh isolated
+// worktree (`worktree`). Existing rows backfill from the old `worktree`
+// boolean; `worktree` stays as a derived copy so older readers keep working.
+const ROUTINE_RUN_TARGET: &str = r#"
+ALTER TABLE routines ADD COLUMN run_target TEXT NOT NULL DEFAULT 'worktree'
+  CHECK (run_target IN ('new_session', 'same_session', 'worktree'));
+ALTER TABLE routines ADD COLUMN last_session_id TEXT;
+UPDATE routines SET run_target = CASE WHEN worktree = 0 THEN 'new_session' ELSE 'worktree' END;
+"#;
+
+// Who put a scheduled task in the list. A wake a chat sets for itself with
+// `schedule_followup` is an alarm clock: once it rings, the chat it woke holds
+// the record, and the row is only clutter in the user's panel. Existing rows
+// backfill from the shape only a follow-up had — a one-shot that fires into
+// the same chat — and the spent ones among them, which ran without an error
+// and can never fire again, go with it.
+const ROUTINE_AUTHOR: &str = r#"
+ALTER TABLE routines ADD COLUMN created_by TEXT NOT NULL DEFAULT 'user'
+  CHECK (created_by IN ('user', 'agent'));
+UPDATE routines SET created_by = 'agent'
+  WHERE run_once_at IS NOT NULL AND run_target = 'same_session';
+DELETE FROM routines
+  WHERE created_by = 'agent' AND enabled = 0
+    AND last_run_at IS NOT NULL AND last_error IS NULL;
+"#;
+
+// A fourth `run_target`: `arc_coordinator` points a scheduled task at a live
+// Arc's coordinator session instead of a fresh chat, the same chat every
+// time, or a fresh worktree. SQLite cannot widen `run_target`'s existing
+// CHECK (v36's `ROUTINE_RUN_TARGET`) in place, so this rebuilds the table
+// through an explicit column list — the same idiom v20's
+// `ROUTINES_CANONICAL_SHAPE` used to converge a draft schema. Existing rows
+// carry no `arc_id` and keep whichever `run_target` they already had. The
+// second CHECK ties the new column to the new value: a task can name an Arc
+// only by also targeting it, and can target it only by naming one.
+const ROUTINE_ARC_TARGET: &str = r#"
+CREATE TABLE routines_canonical (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  prompt TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model_label TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  worktree INTEGER NOT NULL DEFAULT 1,
+  cron_expr TEXT,
+  run_once_at TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_run_at TEXT,
+  next_run_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  run_target TEXT NOT NULL DEFAULT 'worktree'
+    CHECK (run_target IN ('new_session', 'same_session', 'worktree', 'arc_coordinator')),
+  last_session_id TEXT,
+  created_by TEXT NOT NULL DEFAULT 'user' CHECK (created_by IN ('user', 'agent')),
+  arc_id TEXT REFERENCES arcs(id) ON DELETE CASCADE,
+  CHECK ((run_target = 'arc_coordinator') = (arc_id IS NOT NULL))
+);
+
+INSERT INTO routines_canonical (
+  id, name, project_id, prompt, provider, model_label, model_id, worktree,
+  cron_expr, run_once_at, enabled, last_run_at, next_run_at, last_error,
+  created_at, updated_at, run_target, last_session_id, created_by, arc_id
+)
+SELECT
+  id, name, project_id, prompt, provider, model_label, model_id, worktree,
+  cron_expr, run_once_at, enabled, last_run_at, next_run_at, last_error,
+  created_at, updated_at, run_target, last_session_id, created_by, NULL
+FROM routines;
+
+DROP TABLE routines;
+ALTER TABLE routines_canonical RENAME TO routines;
+
+CREATE INDEX idx_routines_enabled_next
+  ON routines(enabled, next_run_at);
+CREATE INDEX idx_routines_arc_id ON routines(arc_id);
+"#;
+
+// `raw_outputs` reads walk `idx_raw_outputs_session_id` in rowid order — the
+// transcript tail and its pages — and the retention sweep uses
+// `idx_raw_outputs_created_at`. The composite `(session_id, created_at)` index
+// only served the legacy Cursor resume-id fallback, which reads a session's
+// whole output anyway and stays in the tens of milliseconds on the
+// single-column index. It cost as much disk as a day of provider output.
+// Dropping an index rewrites no table rows.
+const DROP_RAW_OUTPUTS_SESSION_CREATED_INDEX: &str = r#"
+DROP INDEX IF EXISTS idx_raw_outputs_session_created;
+"#;
+
+// Repo-less chats are called "Chat" in the UI now. The scratch project's name
+// is the label its rows wear (sidebar subtitle, phone list), so rename the row
+// seeded under the old name.
+const RENAME_SCRATCH_PROJECT_TO_CHAT: &str = r#"
+UPDATE projects SET name = 'Chat' WHERE id = 'scratch-side-chats' AND name = 'Side chats';
+"#;
+
+// Auto routing (docs/routing.md). One `turn_routes` row per decision: the
+// launch route, and later re-routes, escalations, kept routes and fallbacks.
+const AUTO_ROUTING: &str = r#"
+ALTER TABLE sessions ADD COLUMN auto_tier TEXT CHECK (auto_tier IN ('cost', 'balanced', 'intelligence'));
+ALTER TABLE sessions ADD COLUMN auto_route TEXT;
+CREATE TABLE turn_routes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  tier TEXT NOT NULL CHECK (tier IN ('cost', 'balanced', 'intelligence')),
+  provider TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  reasoning_effort TEXT,
+  kind TEXT CHECK (kind IN ('coding', 'mechanical', 'research', 'review', 'question')),
+  difficulty TEXT CHECK (difficulty IN ('light', 'standard', 'heavy')),
+  kind_confidence REAL,
+  difficulty_confidence REAL,
+  decision TEXT NOT NULL CHECK (decision IN ('launch', 'reroute', 'escalate', 'kept', 'fallback')),
+  reason TEXT NOT NULL
+);
+CREATE INDEX idx_turn_routes_session ON turn_routes(session_id, id);
+"#;
+
+// A hand-picked model ends Auto routing for a chat; a 'pinned' row marks that
+// moment so the Router cost card can close the previous route's window. It is
+// neither a turn nor a switch. SQLite cannot widen v56's `decision` CHECK in
+// place, so this rebuilds `turn_routes` through an explicit column list, the
+// idiom v52's `ROUTINE_ARC_TARGET` uses. Row ids carry over, so rows keep
+// their order.
+const TURN_ROUTES_PINNED_DECISION: &str = r#"
+CREATE TABLE turn_routes_canonical (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  tier TEXT NOT NULL CHECK (tier IN ('cost', 'balanced', 'intelligence')),
+  provider TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  reasoning_effort TEXT,
+  kind TEXT CHECK (kind IN ('coding', 'mechanical', 'research', 'review', 'question')),
+  difficulty TEXT CHECK (difficulty IN ('light', 'standard', 'heavy')),
+  kind_confidence REAL,
+  difficulty_confidence REAL,
+  decision TEXT NOT NULL
+    CHECK (decision IN ('launch', 'reroute', 'escalate', 'kept', 'fallback', 'pinned')),
+  reason TEXT NOT NULL
+);
+
+INSERT INTO turn_routes_canonical (
+  id, session_id, created_at, tier, provider, model_id, reasoning_effort, kind,
+  difficulty, kind_confidence, difficulty_confidence, decision, reason
+)
+SELECT
+  id, session_id, created_at, tier, provider, model_id, reasoning_effort, kind,
+  difficulty, kind_confidence, difficulty_confidence, decision, reason
+FROM turn_routes;
+
+DROP TABLE turn_routes;
+ALTER TABLE turn_routes_canonical RENAME TO turn_routes;
+
+CREATE INDEX idx_turn_routes_session ON turn_routes(session_id, id);
+"#;
+
+// The disposal an agent asked for while its own turn was still running.
+// `session_move` and `workspace_archive` answer `{scheduled: true}` before
+// they run, so the promise has to outlive the process that made it: without
+// this row, a quit before the turn settled left the workspace live and the
+// timeline saying "scheduled" forever. One row per session — both disposals
+// end the chat, so a session can only be promised one.
+const SESSION_AFTER_TURN: &str = r#"
+CREATE TABLE session_after_turn (
+  session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  action TEXT NOT NULL CHECK (action IN ('move', 'archive')),
+  payload_json TEXT NOT NULL,
+  requested_at TEXT NOT NULL
+);
+"#;
+
+static REMOTE_OPERATION_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "remote_operations" => &["client_id", "operation_id", "request_digest", "run_id", "outcome_json", "created_at"],
+};
+
+const REMOTE_OPERATION_OUTCOMES: &str = r#"
+CREATE TABLE remote_operations (
+  client_id TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  request_digest TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  outcome_json TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (client_id, operation_id)
+);
+"#;
+
+// A pending follow-up is acknowledged only after this journal row commits.
+// `launching` is deliberately distinct from deletion: after a crash, Argmax
+// cannot know whether the provider accepted the turn, so recovery exposes it
+// as `delivery_unknown` and waits for an explicit user decision.
+const PENDING_MESSAGES: &str = r#"
+CREATE TABLE pending_messages (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL CHECK (position >= 0),
+  content TEXT NOT NULL,
+  agent_mode TEXT NOT NULL,
+  model_label TEXT,
+  model_id TEXT,
+  reasoning_effort TEXT,
+  fast_mode INTEGER NOT NULL DEFAULT 0 CHECK (fast_mode IN (0, 1)),
+  attachments_json TEXT NOT NULL DEFAULT '[]',
+  agent_references_json TEXT NOT NULL DEFAULT '[]',
+  origin_json TEXT,
+  queued_at TEXT NOT NULL,
+  delivery_state TEXT NOT NULL DEFAULT 'pending'
+    CHECK (delivery_state IN ('pending', 'recovered', 'launching', 'delivery_unknown')),
+  updated_at TEXT NOT NULL,
+  UNIQUE (session_id, position)
+);
+
+CREATE INDEX idx_pending_messages_session_position
+  ON pending_messages(session_id, position);
+"#;
+
+// Opt-in per project: when the PR on a workspace's branch merges, the gh
+// poller archives that workspace, retaining its checkout and branch in the
+// archive location. Off by default.
+const PROJECT_ARCHIVE_ON_MERGE: &str = r#"
+ALTER TABLE projects ADD COLUMN archive_on_merge INTEGER NOT NULL DEFAULT 0
+  CHECK (archive_on_merge IN (0, 1));
+"#;
+
+const GH_PR_MILESTONE_TIMESTAMPS: &str = r#"
+ALTER TABLE gh_pr ADD COLUMN pr_created_at TEXT;
+ALTER TABLE gh_pr ADD COLUMN pr_merged_at TEXT;
+"#;
+
+// Session removal is authoritative metadata: the renderer drops the matching
+// transcript bucket instead of replaying each child-row deletion. Cascades run
+// before this parent AFTER DELETE trigger, so it also removes revisions written
+// by the event and raw-output delete triggers. The one-time deletes repair any
+// orphan left by a database that briefly ran v28 on its own.
+const SESSION_CHANGE_FEED_CLEANUP: &str = r#"
+DELETE FROM session_changes
+WHERE NOT EXISTS (
+  SELECT 1 FROM sessions WHERE sessions.id = session_changes.session_id
+);
+DELETE FROM session_change_watermarks
+WHERE NOT EXISTS (
+  SELECT 1 FROM sessions WHERE sessions.id = session_change_watermarks.session_id
+);
+
+CREATE TRIGGER session_changes_sessions_after_delete
+AFTER DELETE ON sessions BEGIN
+  DELETE FROM session_changes WHERE session_id = old.id;
+  DELETE FROM session_change_watermarks WHERE session_id = old.id;
+END;
+"#;
+
+// A durable sequence for mutations whose SQLite rowid does not move. The
+// renderer can therefore recover event rewrites, deletes, and session
+// reparenting after a stalled live-update callback. Existing transcript rows
+// are intentionally not backfilled: the first revision-aware read returns an
+// authoritative bounded tail and the sequence high-water mark atomically.
+//
+// The feed retains the newest 50,000 mutations globally. Before pruning, the
+// per-session watermark records exactly which sessions lost history, avoiding
+// needless resets for sparse sessions. The AUTOINCREMENT sequence survives an
+// empty feed through sqlite_sequence.
+const SESSION_CHANGE_FEED: &str = r#"
+CREATE TABLE session_changes (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  entity_kind TEXT NOT NULL CHECK (entity_kind IN ('event', 'raw_output')),
+  entity_id TEXT NOT NULL,
+  operation TEXT NOT NULL CHECK (operation IN ('upsert', 'delete'))
+);
+
+CREATE INDEX idx_session_changes_session_sequence
+  ON session_changes(session_id, sequence);
+
+CREATE TABLE session_change_watermarks (
+  session_id TEXT PRIMARY KEY,
+  pruned_through INTEGER NOT NULL
+);
+
+CREATE TRIGGER session_changes_prune_after_insert
+AFTER INSERT ON session_changes
+WHEN new.sequence % 256 = 0 BEGIN
+  INSERT INTO session_change_watermarks (session_id, pruned_through)
+    SELECT session_id, MAX(sequence)
+    FROM session_changes
+    WHERE sequence <= new.sequence - 49745
+    GROUP BY session_id
+    ON CONFLICT(session_id) DO UPDATE
+      SET pruned_through = MAX(pruned_through, excluded.pruned_through);
+  DELETE FROM session_changes
+    WHERE sequence <= new.sequence - 49745;
+END;
+
+CREATE TRIGGER session_changes_events_after_insert
+AFTER INSERT ON events BEGIN
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    VALUES (new.session_id, 'event', new.id, 'upsert');
+END;
+
+CREATE TRIGGER session_changes_events_after_update
+AFTER UPDATE ON events BEGIN
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    SELECT old.session_id, 'event', old.id, 'delete'
+    WHERE old.session_id <> new.session_id OR old.id <> new.id;
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    VALUES (new.session_id, 'event', new.id, 'upsert');
+END;
+
+CREATE TRIGGER session_changes_events_after_delete
+AFTER DELETE ON events BEGIN
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    VALUES (old.session_id, 'event', old.id, 'delete');
+END;
+
+CREATE TRIGGER session_changes_raw_outputs_after_insert
+AFTER INSERT ON raw_outputs BEGIN
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    VALUES (new.session_id, 'raw_output', new.id, 'upsert');
+END;
+
+CREATE TRIGGER session_changes_raw_outputs_after_update
+AFTER UPDATE ON raw_outputs BEGIN
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    SELECT old.session_id, 'raw_output', old.id, 'delete'
+    WHERE old.session_id <> new.session_id OR old.id <> new.id;
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    VALUES (new.session_id, 'raw_output', new.id, 'upsert');
+END;
+
+CREATE TRIGGER session_changes_raw_outputs_after_delete
+AFTER DELETE ON raw_outputs BEGIN
+  INSERT INTO session_changes (session_id, entity_kind, entity_id, operation)
+    VALUES (old.session_id, 'raw_output', old.id, 'delete');
+END;
+"#;
+
+// Why a launched session exists, not just who launched it. `agent` is a
+// session an agent started for itself through `session_launch`; `multitask` is
+// one a person dispatched from a chat to run alongside the turn they were
+// watching. The two differ in every way that matters downstream: the caps that
+// stop runaway fan-out count only `agent` launches, and a finished `multitask`
+// must not wake its parent as a turn. Rows that predate this are `agent`,
+// which is what they were.
+const SESSION_LAUNCH_KIND: &str = r#"
+ALTER TABLE sessions ADD COLUMN launch_kind TEXT NOT NULL DEFAULT 'agent';
+"#;
+
+// The default agent is an app-wide setting now, not a per-project one: one
+// default model and effort in Settings → Agents seeds every launch, including
+// the chats Argmax starts on its own. The three columns have no reader left.
+const DROP_PROJECT_DEFAULT_AGENT: &str = r#"
+ALTER TABLE projects DROP COLUMN default_provider;
+ALTER TABLE projects DROP COLUMN default_model_label;
+ALTER TABLE projects DROP COLUMN default_model_id;
+"#;
+
+// Who launched a session, and how far from a person that launch is. An agent
+// using the `argmax` MCP tools may launch sessions itself, so the caps that
+// keep a runaway chain finite (depth, per-session count) need the lineage on
+// the row. A launch by the user or a routine leaves both at their defaults.
+// The parent reference goes to NULL rather than cascading: a pruned parent
+// must not take its children's transcripts with it.
+const SESSION_LAUNCH_LINEAGE: &str = r#"
+ALTER TABLE sessions ADD COLUMN launched_by_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL;
+ALTER TABLE sessions ADD COLUMN launch_depth INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX idx_sessions_launched_by ON sessions(launched_by_session_id);
+"#;
+
+// One session's message to another, and the completion notice a launched
+// session leaves for whoever launched it. The row outlives the delivery: it is
+// what `inbox_read` and `session_wait` read, while `delivered_at` records that
+// the message also reached the recipient as a turn. Both session references
+// go to NULL rather than cascading, so pruning one session never deletes
+// another session's inbox history.
+const SESSION_MESSAGES: &str = r#"
+CREATE TABLE session_messages (
+  id TEXT PRIMARY KEY,
+  from_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  to_session_id TEXT NOT NULL,
+  body TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  delivered_at TEXT
+);
+CREATE INDEX idx_session_messages_inbox
+  ON session_messages(to_session_id, delivered_at);
+"#;
+
+// The usage dashboard reads every provider transcript on disk, not just the
+// sessions Argmax launched, and keeps what it found here so a page open is a
+// query, not a rescan. `usage_scan_files` is the per-file cursor: an unchanged
+// (size, mtime) skips the file, a grown file whose bytes before the cursor
+// still match `guard_hash` parses only the tail, anything else drops the
+// file's rows and parses it again. `usage_hourly` is the token ledger, one row
+// per provider, model, session, source file, and UTC hour; the file is part of
+// the key so a rewritten file can replace exactly its own rows. Dollar figures
+// are computed at query time from the pricing table, except
+// `reported_cost_usd`, which is the CLI's own accounting where it keeps one.
+// `usage_dedupe_keys` remembers billed calls across files, because a resumed
+// or forked session repeats history under the same ids. `usage_scan_meta`
+// holds the parser version; a bump truncates everything and rescans.
+const USAGE_SCAN: &str = r#"
+CREATE TABLE usage_scan_files (
+  path TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  session_id TEXT,
+  size INTEGER NOT NULL,
+  mtime_ms INTEGER NOT NULL,
+  cursor_offset INTEGER NOT NULL DEFAULT 0,
+  guard_hash TEXT,
+  scanned_at TEXT NOT NULL
+);
+CREATE TABLE usage_hourly (
+  provider TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  source_path TEXT NOT NULL,
+  hour_utc INTEGER NOT NULL,
+  input_uncached INTEGER NOT NULL DEFAULT 0,
+  cache_read INTEGER NOT NULL DEFAULT 0,
+  cache_write_5m INTEGER NOT NULL DEFAULT 0,
+  cache_write_1h INTEGER NOT NULL DEFAULT 0,
+  output INTEGER NOT NULL DEFAULT 0,
+  reasoning INTEGER NOT NULL DEFAULT 0,
+  reported_cost_usd REAL,
+  reported_records INTEGER NOT NULL DEFAULT 0,
+  records INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (provider, model_id, session_id, source_path, hour_utc)
+);
+CREATE INDEX idx_usage_hourly_hour ON usage_hourly(hour_utc);
+CREATE INDEX idx_usage_hourly_source ON usage_hourly(source_path);
+CREATE TABLE usage_dedupe_keys (
+  key TEXT PRIMARY KEY,
+  source_path TEXT NOT NULL,
+  hour_utc INTEGER NOT NULL
+);
+CREATE INDEX idx_usage_dedupe_keys_source ON usage_dedupe_keys(source_path);
+CREATE INDEX idx_usage_dedupe_keys_hour ON usage_dedupe_keys(hour_utc);
+CREATE TABLE usage_scan_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+"#;
+
+const USAGE_SOURCE_CONTRIBUTIONS: &str = r#"
+ALTER TABLE usage_scan_files ADD COLUMN parser_state TEXT;
+
+CREATE TABLE usage_contributions (
+  source_path TEXT NOT NULL,
+  billed_call_key TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  at_ms INTEGER NOT NULL,
+  hour_utc INTEGER NOT NULL,
+  input_uncached INTEGER NOT NULL DEFAULT 0,
+  cache_read INTEGER NOT NULL DEFAULT 0,
+  cache_write_5m INTEGER NOT NULL DEFAULT 0,
+  cache_write_1h INTEGER NOT NULL DEFAULT 0,
+  output INTEGER NOT NULL DEFAULT 0,
+  reasoning INTEGER NOT NULL DEFAULT 0,
+  reported_cost_usd REAL,
+  processed_tokens INTEGER NOT NULL,
+  PRIMARY KEY (source_path, billed_call_key)
+);
+CREATE INDEX idx_usage_contributions_key_winner
+  ON usage_contributions(billed_call_key, processed_tokens DESC, source_path);
+CREATE INDEX idx_usage_contributions_bucket
+  ON usage_contributions(provider, model_id, session_id, source_path, hour_utc);
+CREATE INDEX idx_usage_contributions_hour ON usage_contributions(hour_utc);
+"#;
+
+// The branch a PR was opened from, so a workspace can find the PR for the
+// branch it is on rather than the PRs its own sessions happened to watch.
+const GH_PR_HEAD_REF_NAME: &str = r#"
+ALTER TABLE gh_pr ADD COLUMN head_ref_name TEXT;
+CREATE INDEX idx_gh_pr_head_ref_name ON gh_pr(head_ref_name);
+"#;
+
+// Cumulative Codex turn usage previously recorded as live context occupancy,
+// causing sessions to show overflowed context rings (e.g. 503k of 258k).
+// Reset context_tokens to 0 for Codex sessions so next turn or rollout read
+// measures the true occupancy.
+const RESET_CODEX_CORRUPTED_CONTEXT_TOKENS: &str = r#"
+UPDATE sessions SET context_tokens = 0 WHERE provider = 'codex';
+"#;
+
+// Distinguishes real project checkouts ('git') from app-owned scratch
+// directories that back repo-less side chats ('scratch') and the ephemeral
+// "More details" popup ('popup'). Existing rows are all real checkouts.
+const WORKSPACE_KIND: &str = r#"
+ALTER TABLE workspaces ADD COLUMN kind TEXT NOT NULL DEFAULT 'git'
+  CHECK (kind IN ('git', 'scratch', 'popup'));
+"#;
+
+// Set on a forked session so its first resumed turn passes `--fork-session`
+// (Claude) and diverges into a new provider conversation instead of appending
+// to the original's. Cleared whenever a new provider conversation id is
+// persisted for the session.
+const SESSION_RESUME_FORK: &str = r#"
+ALTER TABLE sessions ADD COLUMN resume_fork INTEGER NOT NULL DEFAULT 0;
+"#;
+
+// One-time reset: per-project default agents had accumulated stale hard-coded
+// values (models that left the catalog, per-provider drift). Every real
+// project falls back to the app default agent — Opus 5, mirroring
+// PROVIDER_MODEL_DEFAULTS.claude and the factory launch model. The scratch
+// side-chats project keeps its empty "provider default" sentinel.
+const RESET_PROJECT_DEFAULT_AGENT: &str = r#"
+UPDATE projects
+SET default_provider = 'claude',
+    default_model_label = 'Opus 5',
+    default_model_id = 'claude-opus-5'
+WHERE id <> 'scratch-side-chats';
+"#;
+
+// Sessions imported from a provider CLI's own transcript store. `adopted`
+// flips the moment the user continues the session inside Argmax; everything
+// still un-adopted is disposable — turning sync off (or aging out of the
+// window) prunes it, and re-enabling re-imports from the provider's files,
+// which stay the source of truth. `byte_cursor` makes re-reads incremental.
+const SYNCED_SESSIONS: &str = r#"
+ALTER TABLE sessions ADD COLUMN imported INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE synced_sessions (
+  session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  source_path TEXT NOT NULL,
+  byte_cursor INTEGER NOT NULL DEFAULT 0,
+  source_mtime_ms INTEGER NOT NULL DEFAULT 0,
+  adopted INTEGER NOT NULL DEFAULT 0,
+  started_at TEXT NOT NULL,
+  last_synced_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX idx_synced_sessions_provider_external
+  ON synced_sessions(provider, external_id);
+CREATE INDEX idx_synced_sessions_provider_adopted
+  ON synced_sessions(provider, adopted);
+"#;
+
+const SYNC_BYTE_AND_LINE_CURSOR: &str = r#"
+ALTER TABLE synced_sessions ADD COLUMN line_cursor INTEGER;
+"#;
+
+// Scheduled tasks ("routines"): a stored prompt plus schedule that the
+// in-app scheduler launches as a normal top-level session. Exactly one of
+// `cron_expr` (6-field cron dialect, validated at upsert) or `run_once_at`
+// (RFC 3339) is set. `next_run_at` is maintained by Rust so the scheduler
+// tick and the UI read due-ness without recomputing; `last_error` surfaces
+// failed launches inline. `worktree` defaults isolated, matching the
+// safer default for unattended runs. The project cascade matches every other
+// `projects(id)` reference: removing a repository takes its scheduled tasks
+// with it instead of failing `projects:remove` on the constraint.
+const ROUTINES: &str = r#"
+CREATE TABLE routines (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  prompt TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model_label TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  worktree INTEGER NOT NULL DEFAULT 1,
+  cron_expr TEXT,
+  run_once_at TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_run_at TEXT,
+  next_run_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_routines_enabled_next
+  ON routines(enabled, next_run_at);
+"#;
+
+// A pre-release build of v19 created `routines` with `permission_mode` and
+// `agent_mode` columns; the merged v19 dropped them. Databases that ran the
+// draft therefore carry two columns the head schema does not expect, which
+// fails `verify_head_table_columns` even once the checksum is accepted.
+// Rebuilding through an explicit column list converges both shapes — it is a
+// no-op copy for databases that only ever saw the merged body.
+const ROUTINES_CANONICAL_SHAPE: &str = r#"
+CREATE TABLE routines_canonical (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  prompt TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model_label TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  worktree INTEGER NOT NULL DEFAULT 1,
+  cron_expr TEXT,
+  run_once_at TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_run_at TEXT,
+  next_run_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+INSERT INTO routines_canonical (
+  id, name, project_id, prompt, provider, model_label, model_id, worktree,
+  cron_expr, run_once_at, enabled, last_run_at, next_run_at, last_error,
+  created_at, updated_at
+)
+SELECT
+  id, name, project_id, prompt, provider, model_label, model_id, worktree,
+  cron_expr, run_once_at, enabled, last_run_at, next_run_at, last_error,
+  created_at, updated_at
+FROM routines;
+
+DROP TABLE routines;
+ALTER TABLE routines_canonical RENAME TO routines;
+
+CREATE INDEX idx_routines_enabled_next
+  ON routines(enabled, next_run_at);
+"#;
+
+// The per-project default model previously stored only its display label,
+// which nothing could resolve to a launchable model id on the Rust side. The
+// id is stored alongside it; '' means "not chosen yet" and launch paths fall
+// back to the built-in per-provider default.
+const PROJECT_DEFAULT_MODEL_ID: &str = r#"
+ALTER TABLE projects ADD COLUMN default_model_id TEXT NOT NULL DEFAULT '';
+"#;
+
+// Boot-path orphan recovery probes every session for a
+// `process_did_not_survive_restart` event. Without a type-scoped index the
+// probe walks each session's full event history (~670 ms on a 166 MB
+// database), so recovery dominated cold start. The partial index keeps the
+// probe O(1) per session and stays tiny — it only holds restart events.
+const EVENTS_RESTART_RECOVERY_INDEX: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_events_restart_recovery
+  ON events(session_id) WHERE type = 'process_did_not_survive_restart';
+"#;
+
+// Project check reads a project's history without the chats that were later
+// moved elsewhere. Asking that per session walked each session's whole event
+// history (1.8 s for a project with 800 chats); like the restart-recovery
+// index above, this partial index holds only the few move events.
+const EVENTS_SESSION_MOVED_INDEX: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_events_session_moved
+  ON events(session_id) WHERE type = 'session.moved';
+"#;
+
+// The Usage page's Router card reads each routed turn's start, end and first
+// answer from the timeline by event type. `idx_events_session_created` cannot
+// answer the type filter, so every read fetched every row in the range, and
+// `message.delta` is 82% of `events`. With the type in the index the card
+// seeks to the few rows it needs without touching the table: 920 ms cold and
+// 142 ms warm before, 146 ms and 53 ms after, on a 30-day window.
+const EVENTS_SESSION_TYPE_INDEX: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_events_session_type_created
+  ON events(session_id, type, created_at);
+"#;
+
+// Every answer Jev gave for a route (kind and level probabilities, correction,
+// scope, simpler, UI) as JSON, so routing thresholds can be tuned from real
+// decisions. NULL for rows Jev did not classify.
+const TURN_ROUTE_SIGNALS: &str = r#"
+ALTER TABLE turn_routes ADD COLUMN signals_json TEXT;
+"#;
+
+// Keep sessions as the parent table. Replacing only its constrained column
+// preserves every child row and foreign key; rebuilding turn_routes retains
+// its row IDs, pinned decisions, index, and v60 classifier signals.
+const ROUTER_ECONOMY_TIER: &str = r#"
+ALTER TABLE sessions RENAME COLUMN auto_tier TO auto_tier_legacy;
+ALTER TABLE sessions ADD COLUMN auto_tier TEXT
+  CHECK (auto_tier IN ('cost', 'economy', 'balanced', 'intelligence'));
+UPDATE sessions SET auto_tier = auto_tier_legacy;
+ALTER TABLE sessions DROP COLUMN auto_tier_legacy;
+
+CREATE TABLE turn_routes_economy (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  tier TEXT NOT NULL CHECK (tier IN ('cost', 'economy', 'balanced', 'intelligence')),
+  provider TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  reasoning_effort TEXT,
+  kind TEXT CHECK (kind IN ('coding', 'mechanical', 'research', 'review', 'question')),
+  difficulty TEXT CHECK (difficulty IN ('light', 'standard', 'heavy')),
+  kind_confidence REAL,
+  difficulty_confidence REAL,
+  decision TEXT NOT NULL
+    CHECK (decision IN ('launch', 'reroute', 'escalate', 'kept', 'fallback', 'pinned')),
+  reason TEXT NOT NULL,
+  signals_json TEXT
+);
+
+INSERT INTO turn_routes_economy (
+  id, session_id, created_at, tier, provider, model_id, reasoning_effort,
+  kind, difficulty, kind_confidence, difficulty_confidence, decision, reason,
+  signals_json
+)
+SELECT
+  id, session_id, created_at, tier, provider, model_id, reasoning_effort,
+  kind, difficulty, kind_confidence, difficulty_confidence, decision, reason,
+  signals_json
+FROM turn_routes;
+
+UPDATE sqlite_sequence
+SET seq = MAX(seq, (SELECT seq FROM sqlite_sequence WHERE name = 'turn_routes'))
+WHERE name = 'turn_routes_economy';
+
+DROP TABLE turn_routes;
+ALTER TABLE turn_routes_economy RENAME TO turn_routes;
+CREATE INDEX idx_turn_routes_session ON turn_routes(session_id, id);
+"#;
+
+// Per-row sidebar glyph chosen from the Edit Icon picker. NULL in both columns
+// keeps the row on its live status marker, so existing workspaces are unchanged.
+const WORKSPACE_CUSTOM_ICON: &str = r#"
+ALTER TABLE workspaces ADD COLUMN icon TEXT;
+ALTER TABLE workspaces ADD COLUMN icon_color TEXT;
+"#;
+
+// Earlier Codex normalization stored cumulative turn usage as live context
+// occupancy. Clear those values so upgraded sessions do not keep showing a
+// bogus full ring. A later token_count event can repopulate the measurement.
+const INVALIDATE_CODEX_CONTEXT_OCCUPANCY: &str = r#"
+UPDATE sessions SET context_tokens = 0 WHERE provider = 'codex';
+"#;
+
+const APPROVAL_PROVIDER_REQUEST_IDENTITY: &str = r#"
+ALTER TABLE approvals ADD COLUMN provider_request_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_approvals_provider_request
+  ON approvals(session_id, provider, provider_request_id)
+  WHERE provider_request_id IS NOT NULL;
+"#;
+
+const APPROVAL_PROVIDER_INVOCATION_IDENTITY: &str = r#"
+ALTER TABLE approvals ADD COLUMN provider_invocation_id TEXT;
+DROP INDEX IF EXISTS idx_approvals_provider_request;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_approvals_provider_invocation_request
+  ON approvals(session_id, provider, provider_invocation_id, provider_request_id)
+  WHERE provider_invocation_id IS NOT NULL AND provider_request_id IS NOT NULL;
+"#;
+
+// A v9 provider request row has a provider request id but no Argmax-owned
+// invocation id. It cannot be resumed safely after restart because its native
+// transport is gone. Manual approvals keep both ids NULL and remain valid.
+const CANCEL_LEGACY_PROVIDER_APPROVALS: &str = r#"
+UPDATE approvals
+SET status = 'cancelled',
+    resolved_at = COALESCE(resolved_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+WHERE status = 'pending'
+  AND provider_request_id IS NOT NULL
+  AND provider_invocation_id IS NULL;
+"#;
+
+// Manual "Add to priority": floats the workspace into the sidebar Priority
+// section regardless of attention, until removed or dismissed.
+const PRIORITY_MANUAL_ADD: &str = r#"
+ALTER TABLE workspaces ADD COLUMN priority_added_at TEXT;
+"#;
+
+// Sidebar Priority section: `priority_dismissed_at` records when the user
+// marked a workspace done; `attention_changed_at` records when a session's
+// `attention` last changed value. A dismissal only suppresses the workspace
+// while it is newer than the attention change — a fresh attention event
+// re-promotes without any server-side clearing. Existing session rows start
+// NULL ("unknown"), which the renderer treats as older than any dismissal.
+const PRIORITY_DISMISSAL: &str = r#"
+ALTER TABLE workspaces ADD COLUMN priority_dismissed_at TEXT;
+ALTER TABLE sessions ADD COLUMN attention_changed_at TEXT;
+"#;
+
+// Tracks context-window usage per session. `context_tokens` holds the latest
+// measured input-side occupancy. `context_window` holds the model's maximum
+// when the provider reports it.
+const SESSION_CONTEXT_WINDOW: &str = r#"
+ALTER TABLE sessions ADD COLUMN context_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN context_window INTEGER;
+"#;
+
+// Tracks whether `task_label` is still the auto-generated title (1) or has been
+// renamed by the user (0). The session-title generator only overwrites while
+// this is 1, so a manual rename is never clobbered. Existing rows default to 1.
+const WORKSPACE_AUTO_LABEL_FLAG: &str = r#"
+ALTER TABLE workspaces ADD COLUMN task_label_auto INTEGER NOT NULL DEFAULT 1;
+"#;
+
+const DASHBOARD_READ_INDEXES: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_sessions_last_activity_id
+  ON sessions(last_activity_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_workspace_last_activity_id
+  ON sessions(workspace_id, last_activity_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_state
+  ON sessions(state);
+CREATE INDEX IF NOT EXISTS idx_workspaces_last_activity_id
+  ON workspaces(last_activity_at DESC, id DESC);
+"#;
+
+const DASHBOARD_EXTRA_READ_INDEXES: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_raw_outputs_session_id
+  ON raw_outputs(session_id);
+CREATE INDEX IF NOT EXISTS idx_checks_started_id
+  ON checks(started_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_created_id
+  ON checkpoints(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_approvals_created_id
+  ON approvals(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_approvals_status_created_id
+  ON approvals(status, created_at DESC, id DESC);
+"#;
+
+const INITIAL_SCHEMA: &str = r#"
+CREATE TABLE projects (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  repo_path TEXT NOT NULL UNIQUE,
+  current_branch TEXT NOT NULL,
+  default_branch TEXT,
+  default_provider TEXT NOT NULL,
+  default_model_label TEXT NOT NULL,
+  worktree_location TEXT NOT NULL,
+  setup_command TEXT NOT NULL DEFAULT '',
+  check_commands_json TEXT NOT NULL DEFAULT '[]',
+  ui_preferences_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  repo_remote_owner TEXT,
+  repo_remote_name TEXT
+);
+
+CREATE TABLE workspaces (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  task_label TEXT NOT NULL,
+  branch TEXT NOT NULL,
+  base_ref TEXT NOT NULL,
+  path TEXT NOT NULL,
+  state TEXT NOT NULL,
+  shared_workspace INTEGER NOT NULL DEFAULT 0 CHECK (shared_workspace IN (0, 1)),
+  dirty INTEGER NOT NULL DEFAULT 0 CHECK (dirty IN (0, 1)),
+  changed_files INTEGER NOT NULL DEFAULT 0,
+  last_activity_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1))
+);
+
+CREATE TABLE sessions (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  model_label TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  state TEXT NOT NULL,
+  attention TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  last_activity_at TEXT NOT NULL,
+  provider_conversation_id TEXT,
+  model_id TEXT,
+  reasoning_effort TEXT,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  last_model_id TEXT,
+  permission_mode TEXT NOT NULL DEFAULT 'auto-approve'
+    CHECK (permission_mode IN ('auto-approve', 'ask-each-time')),
+  agent_mode TEXT NOT NULL DEFAULT 'auto'
+    CHECK (agent_mode IN ('auto', 'plan'))
+);
+
+CREATE TABLE raw_outputs (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  stream TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE events (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  message TEXT NOT NULL,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE approvals (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  command TEXT NOT NULL,
+  cwd TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  risk_level TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  resolved_at TEXT
+);
+
+CREATE TABLE checks (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  command TEXT NOT NULL,
+  status TEXT NOT NULL,
+  exit_code INTEGER,
+  summary TEXT,
+  started_at TEXT NOT NULL,
+  completed_at TEXT
+);
+
+CREATE TABLE checkpoints (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  branch TEXT NOT NULL,
+  git_ref TEXT,
+  patch_path TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE ui_state (
+  key TEXT PRIMARY KEY,
+  value_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE usage_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  event_id TEXT,
+  model_id TEXT NOT NULL,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE learnings (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('pitfall', 'convention', 'command')),
+  summary TEXT NOT NULL,
+  evidence_session_id TEXT,
+  evidence_event_id TEXT,
+  verified INTEGER NOT NULL DEFAULT 0 CHECK (verified IN (0, 1)),
+  hits INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL
+);
+
+CREATE TABLE gh_pr (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  pr_number INTEGER NOT NULL,
+  head_sha TEXT NOT NULL,
+  last_seen_check_state TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  pr_state TEXT,
+  notified_at TEXT,
+  PRIMARY KEY (session_id, pr_number)
+);
+
+CREATE INDEX idx_workspaces_project_id ON workspaces(project_id);
+CREATE INDEX idx_sessions_workspace_id ON sessions(workspace_id);
+CREATE INDEX idx_events_session_created ON events(session_id, created_at);
+CREATE INDEX idx_events_session_id ON events(session_id);
+CREATE INDEX idx_events_created_at ON events(created_at);
+CREATE INDEX idx_raw_outputs_session_created ON raw_outputs(session_id, created_at);
+CREATE INDEX idx_raw_outputs_created_at ON raw_outputs(created_at);
+CREATE INDEX idx_approvals_session_status ON approvals(session_id, status);
+CREATE INDEX idx_approvals_status_created ON approvals(status, created_at);
+CREATE INDEX idx_checks_workspace_started ON checks(workspace_id, started_at);
+CREATE INDEX idx_usage_events_session ON usage_events(session_id);
+CREATE INDEX idx_learnings_project ON learnings(project_id, last_seen_at DESC);
+CREATE INDEX idx_gh_pr_session ON gh_pr(session_id);
+
+CREATE VIRTUAL TABLE learnings_fts USING fts5(
+  summary,
+  content='learnings',
+  content_rowid='rowid'
+);
+
+CREATE TRIGGER learnings_after_insert AFTER INSERT ON learnings BEGIN
+  INSERT INTO learnings_fts (rowid, summary) VALUES (new.rowid, new.summary);
+END;
+
+CREATE TRIGGER learnings_after_delete AFTER DELETE ON learnings BEGIN
+  INSERT INTO learnings_fts (learnings_fts, rowid, summary)
+    VALUES ('delete', old.rowid, old.summary);
+END;
+
+CREATE TRIGGER learnings_after_update AFTER UPDATE OF summary ON learnings BEGIN
+  INSERT INTO learnings_fts (learnings_fts, rowid, summary)
+    VALUES ('delete', old.rowid, old.summary);
+  INSERT INTO learnings_fts (rowid, summary) VALUES (new.rowid, new.summary);
+END;
+
+CREATE VIRTUAL TABLE events_fts USING fts5(
+  message,
+  content='events',
+  content_rowid='rowid'
+);
+
+CREATE TRIGGER events_after_insert AFTER INSERT ON events BEGIN
+  INSERT INTO events_fts (rowid, message) VALUES (new.rowid, new.message);
+END;
+
+CREATE TRIGGER events_after_delete AFTER DELETE ON events BEGIN
+  INSERT INTO events_fts (events_fts, rowid, message)
+    VALUES ('delete', old.rowid, old.message);
+END;
+
+CREATE TRIGGER events_after_update AFTER UPDATE OF message ON events BEGIN
+  INSERT INTO events_fts (events_fts, rowid, message)
+    VALUES ('delete', old.rowid, old.message);
+  INSERT INTO events_fts (rowid, message) VALUES (new.rowid, new.message);
+END;
+
+"#;
+
+#[derive(Debug)]
+struct SchemaMigrationRow {
+    version: u32,
+    checksum: Option<String>,
+}
+
+pub fn run_migrations(connection: &mut Connection) -> ArgmaxResult<()> {
+    run_migrations_with(connection, MIGRATIONS)
+}
+
+pub fn run_migrations_with(
+    connection: &mut Connection,
+    migrations: &[Migration],
+) -> ArgmaxResult<()> {
+    assert_migrations_contiguous(migrations)?;
+    connection
+        .pragma_update(None, "foreign_keys", "ON")
+        .map_err(sqlite_error)?;
+    ensure_schema_migrations_shape(connection)?;
+
+    let applied_rows = {
+        let mut statement = connection
+            .prepare("SELECT version, checksum FROM schema_migrations")
+            .map_err(sqlite_error)?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok(SchemaMigrationRow {
+                    version: row.get(0)?,
+                    checksum: row.get(1)?,
+                })
+            })
+            .map_err(sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(sqlite_error)?;
+        rows
+    };
+
+    let mut applied_by_version = std::collections::HashMap::new();
+    for row in applied_rows {
+        applied_by_version.insert(row.version, row);
+    }
+
+    let mut ordered: Vec<&Migration> = migrations.iter().collect();
+    ordered.sort_by_key(|migration| migration.version);
+    for migration in ordered {
+        match applied_by_version.get(&migration.version) {
+            Some(applied) => verify_applied_checksum(migration, applied)?,
+            None => apply_migration(connection, migration)?,
+        }
+    }
+
+    verify_head_table_columns(connection, migrations)?;
+
+    Ok(())
+}
+
+pub fn compute_migration_checksum(up: &str) -> String {
+    let digest = Sha256::digest(up.as_bytes());
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn ensure_schema_migrations_shape(connection: &Connection) -> ArgmaxResult<()> {
+    connection
+        .execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+              version INTEGER PRIMARY KEY,
+              name TEXT NOT NULL,
+              applied_at TEXT NOT NULL,
+              checksum TEXT
+            );
+            "#,
+        )
+        .map_err(sqlite_error)
+}
+
+fn apply_migration(connection: &mut Connection, migration: &Migration) -> ArgmaxResult<()> {
+    let restore_foreign_keys = migration.requires_foreign_keys_off;
+    if restore_foreign_keys {
+        connection
+            .pragma_update(None, "foreign_keys", "OFF")
+            .map_err(sqlite_error)?;
+    }
+
+    let apply_result = (|| {
+        let tx = connection.transaction().map_err(sqlite_error)?;
+        let checksum = compute_migration_checksum(migration.up);
+        tx.execute_batch(migration.up).map_err(sqlite_error)?;
+
+        if migration.requires_foreign_keys_off {
+            let violations = foreign_key_violations(&tx)?;
+            if !violations.is_empty() {
+                return Err(migration_drift(format!(
+                    "Migration v{} ({}) produced {} foreign-key violation(s): {}",
+                    migration.version,
+                    migration.name,
+                    violations.len(),
+                    violations.join("; ")
+                )));
+            }
+        }
+
+        tx.execute(
+            "INSERT INTO schema_migrations (version, name, applied_at, checksum) VALUES (?, ?, ?, ?)",
+            (
+                migration.version,
+                migration.name,
+                Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+                checksum.as_str(),
+            ),
+        )
+        .map_err(sqlite_error)?;
+
+        for table in migration.affected_tables {
+            verify_table_columns(&tx, migration.expected_columns, table)?;
+        }
+
+        tx.commit().map_err(sqlite_error)
+    })();
+
+    if restore_foreign_keys {
+        let restore_result = connection.pragma_update(None, "foreign_keys", "ON");
+        if let Err(error) = restore_result {
+            return Err(sqlite_error(error));
+        }
+    }
+
+    apply_result
+}
+
+fn verify_applied_checksum(
+    migration: &Migration,
+    applied: &SchemaMigrationRow,
+) -> ArgmaxResult<()> {
+    let expected = compute_migration_checksum(migration.up);
+    let accepted_legacy = ACCEPTED_LEGACY_CHECKSUMS
+        .get(&migration.version)
+        .copied()
+        .unwrap_or(&[]);
+    match &applied.checksum {
+        Some(stored) if stored == &expected => Ok(()),
+        Some(stored) if accepted_legacy.contains(&stored.as_str()) => {
+            tracing::warn!(
+                version = migration.version,
+                name = migration.name,
+                "migration body was edited after release; accepting a known legacy checksum"
+            );
+            Ok(())
+        }
+        Some(stored) => Err(migration_drift(format!(
+            "Migration v{} ({}) checksum drift: stored={} expected={}",
+            migration.version, migration.name, stored, expected
+        ))),
+        None => Err(migration_drift(format!(
+            "Migration v{} ({}) has no stored checksum",
+            migration.version, migration.name
+        ))),
+    }
+}
+
+pub fn assert_migrations_contiguous(migrations: &[Migration]) -> ArgmaxResult<()> {
+    if migrations.is_empty() {
+        return Ok(());
+    }
+
+    let mut versions: Vec<u32> = migrations
+        .iter()
+        .map(|migration| migration.version)
+        .collect();
+    versions.sort_unstable();
+
+    if versions[0] != 1 {
+        return Err(migration_drift(format!(
+            "Migrations must start at v1, got v{}",
+            versions[0]
+        )));
+    }
+
+    for pair in versions.windows(2) {
+        let [prev, next] = pair else { continue };
+        if prev == next {
+            return Err(migration_drift(format!(
+                "Duplicate migration version: v{next}"
+            )));
+        }
+        if *next != *prev + 1 {
+            return Err(migration_drift(format!(
+                "Migration version gap detected: missing v{}",
+                prev + 1
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn verify_table_columns(
+    connection: &Connection,
+    expected_columns: &phf::Map<&'static str, &'static [&'static str]>,
+    table: &str,
+) -> ArgmaxResult<()> {
+    let Some(expected) = expected_columns.get(table) else {
+        return Ok(());
+    };
+    let mut statement = connection
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(sqlite_error)?;
+    let mut actual = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    actual.sort();
+
+    let mut expected_sorted = expected.to_vec();
+    expected_sorted.sort_unstable();
+
+    if actual != expected_sorted {
+        return Err(migration_drift(format!(
+            "Schema drift on table \"{table}\": expected columns [{}], got [{}]",
+            expected_sorted.join(", "),
+            actual.join(", ")
+        )));
+    }
+
+    Ok(())
+}
+
+fn verify_head_table_columns(
+    connection: &Connection,
+    migrations: &[Migration],
+) -> ArgmaxResult<()> {
+    let mut head_expected_columns = std::collections::HashMap::new();
+    for migration in migrations {
+        for table in migration.affected_tables {
+            if migration.expected_columns.contains_key(table) {
+                head_expected_columns.insert(*table, migration.expected_columns);
+            }
+        }
+    }
+
+    for (table, expected_columns) in head_expected_columns {
+        verify_table_columns(connection, expected_columns, table)?;
+    }
+    Ok(())
+}
+
+fn foreign_key_violations(connection: &Connection) -> ArgmaxResult<Vec<String>> {
+    let mut statement = connection
+        .prepare("PRAGMA foreign_key_check")
+        .map_err(sqlite_error)?;
+    let violations = statement
+        .query_map([], |row| {
+            Ok(format!(
+                "table={} rowid={} parent={} fkid={}",
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?
+            ))
+        })
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(violations)
+}
+
+fn migration_drift(detail: impl Into<String>) -> ArgmaxError {
+    ArgmaxError::MigrationDrift {
+        detail: detail.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::projects::{persist_project, PersistProjectInput, ProjectSettings};
+
+    #[test]
+    fn folder_workspace_upgrade_preserves_checkout_rows_and_children() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        run_migrations_with(&mut connection, &MIGRATIONS[..74]).unwrap();
+        connection.execute_batch("INSERT INTO projects (id,name,repo_path,current_branch,worktree_location,created_at,updated_at) VALUES ('p','Project','/repo','main','/trees','now','now');
+          INSERT INTO workspaces (id,project_id,task_label,branch,base_ref,path,state,last_activity_at,created_at,updated_at,created_branch,created_branch_oid,kind,snoozed_until) VALUES ('w','p','Chat','topic','main','/tree','complete','now','now','now','topic','abc','git','tomorrow');
+          INSERT INTO sessions (id,workspace_id,provider,model_label,prompt,state,attention,started_at,last_activity_at) VALUES ('s','w','claude','Model','Task','complete','none','now','now');
+          INSERT INTO events (id,session_id,type,message,payload_json,created_at) VALUES ('e','s','user.message','Task','{}','now');").unwrap();
+        run_migrations(&mut connection).unwrap();
+        let preserved: (String, String, String, String) = connection.query_row("SELECT created_branch,created_branch_oid,kind,snoozed_until FROM workspaces WHERE id='w'", [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).unwrap();
+        assert_eq!(
+            preserved,
+            (
+                "topic".into(),
+                "abc".into(),
+                "git".into(),
+                "tomorrow".into()
+            )
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM events WHERE session_id='s'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            0
+        );
+        connection
+            .execute("UPDATE workspaces SET kind='folder' WHERE id='w'", [])
+            .unwrap();
+        assert!(connection
+            .execute("UPDATE workspaces SET kind='unknown' WHERE id='w'", [])
+            .is_err());
+        connection
+            .execute("DELETE FROM workspaces WHERE id='w'", [])
+            .unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM sessions", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn pr_watch_health_upgrade_preserves_legacy_cursors_and_outbox() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        run_migrations_with(&mut connection, &MIGRATIONS[..69]).expect("migrate through v69");
+        seed_minimal_session(&connection);
+        connection
+            .execute_batch(
+                "INSERT INTO pr_watches (id, session_id, project_id, pr_number, head_sha,
+             seen_feedback_ids, seen_check_failures, notice_seq, pending_notice_id,
+             pending_notice_body, conflict_state, created_at, updated_at)
+             VALUES ('watch-1', 's1', 'p1', 42, 'feedface', '[\"RC1\"]', '[\"build@feedface\"]',
+             2, 'notice-2', 'pending notice', 'conflicting', 'created', 'updated');",
+            )
+            .expect("legacy watch");
+        run_migrations(&mut connection).expect("upgrade");
+        let watch = crate::pr_watches::find_pr_watch(&connection, "s1", "p1", 42)
+            .expect("read upgraded watch")
+            .expect("watch retained");
+        assert_eq!(watch.head_sha, "feedface");
+        assert_eq!(watch.seen_feedback_ids, Some(vec!["RC1".to_string()]));
+        assert_eq!(watch.seen_check_failures, vec!["build@feedface"]);
+        assert_eq!(watch.notice_seq, 2);
+        assert_eq!(
+            watch.pending_notice.expect("outbox retained").body,
+            "pending notice"
+        );
+        assert_eq!(
+            watch.conflict_state,
+            Some(crate::pr_watches::ConflictState::Conflicting)
+        );
+        assert!(watch.feedback_fingerprints.is_none());
+        assert_eq!(watch.fetch_failure_count, 0);
+        assert!(!watch.fetch_degraded);
+    }
+
+    #[test]
+    fn named_project_upgrade_preserves_folders_workspace_identity_and_children() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        run_migrations_with(&mut connection, &MIGRATIONS[..72]).unwrap();
+        seed_minimal_session(&connection);
+        connection.execute("INSERT INTO project_linked_repos (id, project_id, name, root_path, enabled, summary, created_at, updated_at) VALUES ('linked-1', 'p1', 'research', '/tmp/research', 0, 'Stored context', 'created', 'updated')", []).unwrap();
+        connection.execute("INSERT INTO project_linked_repos (id, project_id, name, root_path, enabled, created_at, updated_at) VALUES ('linked-primary', 'p1', 'primary', '/tmp/other-primary', 1, 'created', 'updated')", []).unwrap();
+        connection.execute("UPDATE projects SET setup_command = 'setup-original', branch_template = 'adam/{task}-{id}' WHERE id = 'p1'", []).unwrap();
+        run_migrations(&mut connection).unwrap();
+        let folder =
+            crate::project_folders::require_project_folder(&connection, "linked-1").unwrap();
+        assert_eq!(folder.name, "research");
+        assert_eq!(folder.summary.as_deref(), Some("Stored context"));
+        assert!(!folder.enabled);
+        assert_eq!(
+            crate::linked_repos::find_linked_repo_by_name(&connection, "p1", "primary")
+                .unwrap()
+                .id,
+            "linked-primary"
+        );
+        assert_eq!(
+            crate::project_folders::require_project_folder(&connection, "primary:p1")
+                .unwrap()
+                .name,
+            "primary-1"
+        );
+        let original =
+            crate::project_folders::require_workspace_project(&connection, "w1").unwrap();
+        assert_eq!(original.settings.setup_command, "setup-original");
+        assert_eq!(
+            original.branch_template.as_deref(),
+            Some("adam/{task}-{id}")
+        );
+        let workspace_id: String = connection
+            .query_row(
+                "SELECT workspace_id FROM sessions WHERE id = 's1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(workspace_id, "w1");
+        let folder_id: String = connection
+            .query_row(
+                "SELECT project_folder_id FROM workspaces WHERE id = 'w1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(folder_id, "primary:p1");
+        assert!(foreign_key_violations(&connection).unwrap().is_empty());
+        run_migrations(&mut connection).unwrap();
+    }
+
+    #[test]
+    fn linked_repository_summary_upgrade_preserves_existing_roots() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        run_migrations_with(&mut connection, &MIGRATIONS[..66]).unwrap();
+        seed_minimal_session(&connection);
+        connection.execute(
+            "INSERT INTO project_linked_repos (id, project_id, name, root_path, enabled, created_at, updated_at) VALUES ('linked-1', 'p1', 'shared', '/tmp/shared', 1, 'created', 'updated')",
+            [],
+        ).unwrap();
+
+        run_migrations(&mut connection).unwrap();
+
+        let repo =
+            crate::linked_repos::find_linked_repo_by_id(&connection, "p1", "linked-1").unwrap();
+        assert_eq!(repo.root_path, "/tmp/shared");
+        assert!(repo.enabled);
+        assert_eq!(repo.summary, None);
+        run_migrations(&mut connection).unwrap();
+    }
+
+    #[test]
+    fn economy_tier_upgrade_preserves_routes_sessions_and_children() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        run_migrations_with(&mut connection, &MIGRATIONS[..60]).unwrap();
+        seed_minimal_session(&connection);
+        connection
+            .execute_batch(
+                r#"
+            UPDATE sessions SET auto_tier = 'cost', auto_route = 'saved route' WHERE id = 's1';
+            INSERT INTO sessions (
+              id, workspace_id, provider, model_label, prompt, state, attention,
+              started_at, last_activity_at, auto_tier
+            ) VALUES
+              ('s2', 'w1', 'claude', 'Sonnet', 'hello', 'running', 'normal',
+               '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z', 'balanced'),
+              ('s3', 'w1', 'claude', 'Sonnet', 'hello', 'running', 'normal',
+               '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z', 'intelligence');
+            INSERT INTO events (id, session_id, type, message, created_at)
+              VALUES ('e1', 's1', 'message.completed', 'saved', '2026-05-24T10:00:00.000Z');
+            INSERT INTO turn_routes (
+              id, session_id, created_at, tier, provider, model_id,
+              decision, reason, signals_json
+            ) VALUES
+              (7, 's1', '2026-05-24T10:00:00.000Z', 'cost', 'claude',
+               'sonnet', 'launch', 'saved reason', '{"kind":"coding"}'),
+              (8, 's2', '2026-05-24T10:00:00.000Z', 'balanced', 'claude',
+               'sonnet', 'pinned', 'hand-picked', NULL),
+              (9, 's3', '2026-05-24T10:00:00.000Z', 'intelligence', 'claude',
+               'opus', 'fallback', 'saved fallback', NULL);
+            INSERT INTO turn_routes (
+              id, session_id, created_at, tier, provider, model_id, decision, reason
+            ) VALUES (20, 's1', '2026-05-24T10:00:00.000Z', 'cost', 'claude',
+              'sonnet', 'kept', 'old deleted route');
+            DELETE FROM turn_routes WHERE id = 20;
+        "#,
+            )
+            .unwrap();
+
+        run_migrations(&mut connection).unwrap();
+        let tiers: Vec<(String, String)> = connection
+            .prepare("SELECT id, auto_tier FROM sessions ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            tiers,
+            [
+                ("s1".into(), "cost".into()),
+                ("s2".into(), "balanced".into()),
+                ("s3".into(), "intelligence".into())
+            ]
+        );
+        let routes: Vec<(i64, String, String, String, Option<String>)> = connection
+            .prepare("SELECT id, tier, decision, reason, signals_json FROM turn_routes ORDER BY id")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            routes,
+            [
+                (
+                    7,
+                    "cost".into(),
+                    "launch".into(),
+                    "saved reason".into(),
+                    Some("{\"kind\":\"coding\"}".into())
+                ),
+                (
+                    8,
+                    "balanced".into(),
+                    "pinned".into(),
+                    "hand-picked".into(),
+                    None
+                ),
+                (
+                    9,
+                    "intelligence".into(),
+                    "fallback".into(),
+                    "saved fallback".into(),
+                    None
+                ),
+            ]
+        );
+        let event_session: String = connection
+            .query_row("SELECT session_id FROM events WHERE id = 'e1'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(event_session, "s1");
+        let auto_route: String = connection
+            .query_row(
+                "SELECT auto_route FROM sessions WHERE id = 's1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(auto_route, "saved route");
+
+        connection
+            .execute(
+                "UPDATE sessions SET auto_tier = 'economy' WHERE id = 's1'",
+                [],
+            )
+            .unwrap();
+        connection.execute("INSERT INTO turn_routes (session_id, created_at, tier, provider, model_id, decision, reason) VALUES ('s1', '2026-05-24T10:01:00.000Z', 'economy', 'codex', 'luna', 'reroute', 'cheap')", []).unwrap();
+        let next_id: i64 = connection
+            .query_row("SELECT MAX(id) FROM turn_routes", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(next_id, 21);
+        assert!(connection
+            .execute(
+                "UPDATE sessions SET auto_tier = 'invalid' WHERE id = 's1'",
+                []
+            )
+            .is_err());
+        assert!(connection
+            .execute("UPDATE turn_routes SET tier = 'invalid' WHERE id = 7", [])
+            .is_err());
+        let index_count: i64 = connection.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_turn_routes_session'", [], |row| row.get(0)).unwrap();
+        assert_eq!(index_count, 1);
+        let fk_violations: i64 = connection
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(fk_violations, 0);
+        connection
+            .execute("DELETE FROM sessions WHERE id = 's1'", [])
+            .unwrap();
+        let child_count: i64 = connection.query_row("SELECT (SELECT COUNT(*) FROM events WHERE id = 'e1') + (SELECT COUNT(*) FROM turn_routes WHERE session_id = 's1')", [], |row| row.get(0)).unwrap();
+        assert_eq!(child_count, 0);
+        run_migrations(&mut connection).unwrap();
+    }
+
+    #[test]
+    fn provider_defaults_upgrade_preserves_chats_and_session_triggers() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        run_migrations_with(&mut connection, &MIGRATIONS[..37]).unwrap();
+        seed_minimal_session(&connection);
+        connection.execute("UPDATE sessions SET provider_conversation_id = 'native-123', pr_branch_at_start = 'adam/test' WHERE id = 's1'", []).unwrap();
+        run_migrations(&mut connection).unwrap();
+        let row: (String, String, String) = connection.query_row("SELECT permission_mode, provider_conversation_id, pr_branch_at_start FROM sessions WHERE id = 's1'", [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).unwrap();
+        assert_eq!(
+            row,
+            (
+                "auto-approve".into(),
+                "native-123".into(),
+                "adam/test".into()
+            )
+        );
+        connection
+            .execute(
+                "UPDATE sessions SET permission_mode = 'provider-defaults' WHERE id = 's1'",
+                [],
+            )
+            .unwrap();
+        assert!(connection
+            .execute(
+                "UPDATE sessions SET permission_mode = 'invented' WHERE id = 's1'",
+                []
+            )
+            .is_err());
+        let trigger_count: i64 = connection.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND name = 'session_changes_sessions_after_delete'", [], |row| row.get(0)).unwrap();
+        assert_eq!(trigger_count, 1);
+        let indexes: i64 = connection.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'sessions' AND name LIKE 'idx_sessions_%'", [], |row| row.get(0)).unwrap();
+        assert_eq!(indexes, 6);
+        run_migrations(&mut connection).unwrap();
+    }
+
+    #[test]
+    fn initial_schema_migration_creates_head_tables_and_fts_sidecars() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations(&mut connection).expect("migrate");
+
+        verify_table_columns(&connection, &EXPECTED_COLUMNS, "learnings").expect("learnings");
+        // `events` gained `prompt_author` in v66.
+        verify_table_columns(&connection, &PROMPT_AUTHORSHIP_COLUMNS, "events").expect("events");
+        // projects, sessions, and workspaces gained columns in later
+        // migrations, so verify them against the head shapes rather than the
+        // v1 EXPECTED_COLUMNS.
+        verify_table_columns(&connection, &PROJECT_OVERVIEW_COLUMNS, "projects").expect("projects");
+        verify_table_columns(&connection, &ROUTER_ECONOMY_COLUMNS, "sessions").expect("sessions");
+        verify_table_columns(&connection, &ROUTER_ECONOMY_COLUMNS, "turn_routes")
+            .expect("turn_routes");
+        verify_table_columns(&connection, &ROUTINE_ARC_TARGET_COLUMNS, "routines")
+            .expect("routines");
+        // `arcs` gained `archived_at` in v72.
+        verify_table_columns(&connection, &ARC_ARCHIVED_AT_COLUMNS, "arcs").expect("arcs");
+        verify_table_columns(&connection, &ARC_EVENTS_COLUMNS, "arc_events").expect("arc_events");
+        verify_table_columns(&connection, &PROJECT_FOLDER_COLUMNS, "workspaces")
+            .expect("workspaces");
+        verify_table_columns(
+            &connection,
+            &APPROVAL_PROVIDER_INVOCATION_COLUMNS,
+            "approvals",
+        )
+        .expect("approvals");
+
+        let fts_tables: Vec<String> = connection
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('events_fts', 'learnings_fts') ORDER BY name",
+            )
+            .expect("prepare fts query")
+            .query_map([], |row| row.get(0))
+            .expect("query fts")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect fts");
+        assert_eq!(fts_tables, vec!["events_fts", "learnings_fts"]);
+
+        let rows = connection
+            .prepare("SELECT version, checksum FROM schema_migrations ORDER BY version")
+            .expect("prepare checksum")
+            .query_map([], |row| {
+                Ok((row.get::<_, u32>(0)?, row.get::<_, String>(1)?))
+            })
+            .expect("query checksums")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("checksum rows");
+        assert_eq!(
+            rows,
+            vec![
+                (1, compute_migration_checksum(INITIAL_SCHEMA)),
+                (2, compute_migration_checksum(DASHBOARD_READ_INDEXES)),
+                (3, compute_migration_checksum(DASHBOARD_EXTRA_READ_INDEXES)),
+                (4, compute_migration_checksum(WORKSPACE_AUTO_LABEL_FLAG)),
+                (5, compute_migration_checksum(SESSION_CONTEXT_WINDOW)),
+                (6, compute_migration_checksum(PRIORITY_DISMISSAL)),
+                (7, compute_migration_checksum(PRIORITY_MANUAL_ADD)),
+                (
+                    8,
+                    compute_migration_checksum(INVALIDATE_CODEX_CONTEXT_OCCUPANCY)
+                ),
+                (
+                    9,
+                    compute_migration_checksum(APPROVAL_PROVIDER_REQUEST_IDENTITY)
+                ),
+                (
+                    10,
+                    compute_migration_checksum(APPROVAL_PROVIDER_INVOCATION_IDENTITY)
+                ),
+                (
+                    11,
+                    compute_migration_checksum(CANCEL_LEGACY_PROVIDER_APPROVALS)
+                ),
+                (12, compute_migration_checksum(WORKSPACE_CUSTOM_ICON)),
+                (
+                    13,
+                    compute_migration_checksum(EVENTS_RESTART_RECOVERY_INDEX)
+                ),
+                (14, compute_migration_checksum(PROJECT_DEFAULT_MODEL_ID)),
+                (15, compute_migration_checksum(WORKSPACE_KIND)),
+                (16, compute_migration_checksum(SESSION_RESUME_FORK)),
+                (17, compute_migration_checksum(RESET_PROJECT_DEFAULT_AGENT)),
+                (18, compute_migration_checksum(SYNCED_SESSIONS)),
+                (19, compute_migration_checksum(ROUTINES)),
+                (20, compute_migration_checksum(ROUTINES_CANONICAL_SHAPE)),
+                (
+                    21,
+                    compute_migration_checksum(RESET_CODEX_CORRUPTED_CONTEXT_TOKENS)
+                ),
+                (22, compute_migration_checksum(GH_PR_HEAD_REF_NAME)),
+                (23, compute_migration_checksum(SESSION_LAUNCH_LINEAGE)),
+                (24, compute_migration_checksum(DROP_PROJECT_DEFAULT_AGENT)),
+                (25, compute_migration_checksum(SESSION_MESSAGES)),
+                (26, compute_migration_checksum(SESSION_LAUNCH_KIND)),
+                (27, compute_migration_checksum(USAGE_SCAN)),
+                (28, compute_migration_checksum(SESSION_CHANGE_FEED)),
+                (29, compute_migration_checksum(SESSION_CHANGE_FEED_CLEANUP)),
+                (30, compute_migration_checksum(GH_PR_MILESTONE_TIMESTAMPS)),
+                (31, compute_migration_checksum(PROJECT_ARCHIVE_ON_MERGE)),
+                (32, compute_migration_checksum(PENDING_MESSAGES)),
+                (33, compute_migration_checksum(REMOTE_OPERATION_OUTCOMES)),
+                (34, compute_migration_checksum(SESSION_AFTER_TURN)),
+                (35, compute_migration_checksum(SESSION_WAIT_REPORTED)),
+                (36, compute_migration_checksum(ROUTINE_RUN_TARGET)),
+                (37, compute_migration_checksum(SESSION_PR_ATTRIBUTION)),
+                (
+                    38,
+                    compute_migration_checksum(SESSION_PERMISSION_PROVIDER_DEFAULTS)
+                ),
+                (39, compute_migration_checksum(USAGE_SOURCE_CONTRIBUTIONS)),
+                (40, compute_migration_checksum(SYNC_BYTE_AND_LINE_CURSOR)),
+                (
+                    41,
+                    compute_migration_checksum(crate::checkpoints::MIGRATION_SQL)
+                ),
+                (42, compute_migration_checksum(FINITE_GOALS)),
+                (43, compute_migration_checksum(crate::goals::MIGRATION_SQL)),
+                (
+                    44,
+                    compute_migration_checksum(crate::activity::MIGRATION_SQL)
+                ),
+                (45, compute_migration_checksum(SYNCED_SESSION_TOMBSTONES)),
+                (46, compute_migration_checksum(DATA_MIGRATIONS)),
+                (47, compute_migration_checksum(WORKSPACE_LAST_VIEWED_AT)),
+                (
+                    48,
+                    compute_migration_checksum(crate::project_sources::MIGRATION_SQL)
+                ),
+                (49, compute_migration_checksum(SESSION_PR_MODEL)),
+                (50, compute_migration_checksum(ROUTINE_AUTHOR)),
+                (51, compute_migration_checksum(crate::arcs::MIGRATION_SQL)),
+                (52, compute_migration_checksum(ROUTINE_ARC_TARGET)),
+                (
+                    53,
+                    compute_migration_checksum(crate::arc_events::MIGRATION_SQL)
+                ),
+                (
+                    54,
+                    compute_migration_checksum(DROP_RAW_OUTPUTS_SESSION_CREATED_INDEX)
+                ),
+                (
+                    55,
+                    compute_migration_checksum(RENAME_SCRATCH_PROJECT_TO_CHAT)
+                ),
+                (56, compute_migration_checksum(AUTO_ROUTING)),
+                (57, compute_migration_checksum(TURN_ROUTES_PINNED_DECISION)),
+                (
+                    58,
+                    compute_migration_checksum(crate::project_checks::MIGRATION_SQL)
+                ),
+                (59, compute_migration_checksum(EVENTS_SESSION_MOVED_INDEX)),
+                (60, compute_migration_checksum(TURN_ROUTE_SIGNALS)),
+                (61, compute_migration_checksum(ROUTER_ECONOMY_TIER)),
+                (
+                    62,
+                    compute_migration_checksum(crate::pr_watches::MIGRATION_SQL)
+                ),
+                (63, compute_migration_checksum(WORKSPACE_IMPROVEMENTS)),
+                (
+                    64,
+                    compute_migration_checksum(LAUNCH_RECEIPTS_AND_PENDING_PROVIDER)
+                ),
+                (
+                    65,
+                    compute_migration_checksum(crate::continuity::MIGRATION_SQL)
+                ),
+                (66, compute_migration_checksum(PROMPT_AUTHORSHIP)),
+                (67, compute_migration_checksum(LINKED_REPOSITORY_SUMMARIES)),
+                (68, compute_migration_checksum(MERGE_CLEANUP)),
+                (69, compute_migration_checksum(EVENTS_SESSION_TYPE_INDEX)),
+                (
+                    70,
+                    compute_migration_checksum(PR_WATCH_FEEDBACK_AND_FETCH_HEALTH)
+                ),
+                (71, compute_migration_checksum(WORKSPACE_CREATED_BRANCH)),
+                (72, compute_migration_checksum(ARC_ARCHIVED_AT)),
+                (73, compute_migration_checksum(PROJECT_FOLDERS)),
+                (74, compute_migration_checksum(PROJECT_OVERVIEWS)),
+                (75, compute_migration_checksum(FOLDER_WORKSPACES)),
+                (
+                    76,
+                    compute_migration_checksum(crate::turn_waterfalls::MIGRATION_SQL)
+                ),
+            ]
+        );
+
+        let indexes: Vec<String> = connection
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (
+                  'idx_sessions_last_activity_id',
+                  'idx_sessions_workspace_last_activity_id',
+                  'idx_sessions_state',
+                  'idx_workspaces_last_activity_id',
+                  'idx_raw_outputs_session_id',
+                  'idx_raw_outputs_session_created',
+                  'idx_checks_started_id',
+                  'idx_checkpoints_created_id',
+                  'idx_approvals_created_id',
+                  'idx_approvals_status_created_id',
+                  'idx_approvals_provider_invocation_request'
+                ) ORDER BY name",
+            )
+            .expect("prepare index query")
+            .query_map([], |row| row.get(0))
+            .expect("query indexes")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect indexes");
+        assert_eq!(
+            indexes,
+            vec![
+                "idx_approvals_created_id",
+                "idx_approvals_provider_invocation_request",
+                "idx_approvals_status_created_id",
+                "idx_checkpoints_created_id",
+                "idx_checks_started_id",
+                "idx_raw_outputs_session_id",
+                "idx_sessions_last_activity_id",
+                "idx_sessions_state",
+                "idx_sessions_workspace_last_activity_id",
+                "idx_workspaces_last_activity_id"
+            ]
+        );
+    }
+
+    #[test]
+    fn v11_cancels_legacy_provider_rows_but_keeps_manual_approvals() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations_with(&mut connection, &MIGRATIONS[..10]).expect("migrate through v10");
+        connection
+            .execute_batch(
+                r#"
+                INSERT INTO projects (
+                    id, name, repo_path, current_branch, default_provider,
+                    default_model_label, worktree_location, created_at, updated_at
+                ) VALUES ('p1', 'Project', '/tmp/project', 'main', 'codex', 'Default',
+                    '/tmp/worktrees', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+                INSERT INTO workspaces (
+                    id, project_id, task_label, branch, base_ref, path, state,
+                    last_activity_at, created_at, updated_at
+                ) VALUES ('w1', 'p1', 'Task', 'main', 'main', '/tmp/workspace', 'waiting',
+                    '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+                INSERT INTO sessions (
+                    id, workspace_id, provider, model_label, prompt, state, attention,
+                    started_at, last_activity_at
+                ) VALUES ('s1', 'w1', 'codex', 'Default', 'Prompt', 'waiting', 'approval-needed',
+                    '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+                INSERT INTO approvals (
+                    id, session_id, command, cwd, provider, provider_invocation_id,
+                    provider_request_id, risk_level, status, created_at
+                ) VALUES
+                    ('a-legacy', 's1', 'rm -rf build', '/tmp/workspace', 'codex', NULL,
+                        '50', 'high', 'pending', '2026-01-01T00:00:00.000Z'),
+                    ('a-manual', 's1', 'rm -rf build', '/tmp/workspace', 'codex', NULL,
+                        NULL, 'high', 'pending', '2026-01-01T00:00:00.000Z');
+                "#,
+            )
+            .expect("seed legacy approvals");
+
+        run_migrations(&mut connection).expect("apply v11");
+        let rows: Vec<(String, String, Option<String>)> = connection
+            .prepare("SELECT id, status, resolved_at FROM approvals ORDER BY id")
+            .expect("prepare approvals")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .expect("query approvals")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect approvals");
+        assert_eq!(rows[0].0, "a-legacy");
+        assert_eq!(rows[0].1, "cancelled");
+        assert!(rows[0].2.is_some());
+        assert_eq!(rows[1].0, "a-manual");
+        assert_eq!(rows[1].1, "pending");
+        assert!(rows[1].2.is_none());
+    }
+
+    #[test]
+    fn rerunning_migrations_accepts_head_workspace_shape() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations(&mut connection).expect("first migrate");
+        run_migrations(&mut connection).expect("second migrate");
+
+        verify_table_columns(&connection, &PROJECT_FOLDER_COLUMNS, "workspaces")
+            .expect("head workspace shape");
+    }
+
+    #[test]
+    fn workspace_read_state_migration_starts_existing_rows_as_viewed() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations_with(&mut connection, &MIGRATIONS[..46]).expect("migrate through v46");
+        seed_minimal_session(&connection);
+        connection
+            .execute(
+                "UPDATE workspaces SET last_activity_at = '2026-09-12T10:15:00.000Z' WHERE id = 'w1'",
+                [],
+            )
+            .expect("seed workspace activity");
+
+        run_migrations(&mut connection).expect("apply read-state migration");
+
+        let (activity, viewed): (String, String) = connection
+            .query_row(
+                "SELECT last_activity_at, last_viewed_at FROM workspaces WHERE id = 'w1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read migrated workspace");
+        assert_eq!(viewed, activity);
+    }
+
+    #[test]
+    fn codex_context_occupancy_migration_clears_only_codex_sessions() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations_with(&mut connection, &MIGRATIONS[..7]).expect("migrate through v7");
+        seed_minimal_session(&connection);
+        connection
+            .execute(
+                "UPDATE sessions SET context_tokens = 123, context_window = 258400 WHERE id = 's1'",
+                [],
+            )
+            .expect("seed Claude occupancy");
+        connection
+            .execute(
+                "INSERT INTO sessions (id, workspace_id, provider, model_label, prompt, state, attention, started_at, last_activity_at, context_tokens, context_window) VALUES ('s2', 'w1', 'codex', 'GPT-5.6 Sol', 'hello', 'complete', 'normal', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z', 501468, 258400)",
+                [],
+            )
+            .expect("seed Codex occupancy");
+
+        run_migrations(&mut connection).expect("apply v8");
+
+        let claude_context: (i64, i64) = connection
+            .query_row(
+                "SELECT context_tokens, context_window FROM sessions WHERE id = 's1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read Claude occupancy");
+        let codex_context: (i64, i64) = connection
+            .query_row(
+                "SELECT context_tokens, context_window FROM sessions WHERE id = 's2'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read Codex occupancy");
+
+        assert_eq!(claude_context, (123, 258_400));
+        assert_eq!(codex_context, (0, 258_400));
+    }
+
+    #[test]
+    fn a_released_migration_body_is_never_edited() {
+        // One `version checksum` line per migration that shipped. A body edited after release
+        // drifts on every user's database at launch. Fix the schema with a new migration.
+        let pinned = include_str!("../tests/fixtures/migration_checksums.txt");
+        let mut drifted = Vec::new();
+        for line in pinned.lines().filter(|line| !line.trim().is_empty()) {
+            let (version, checksum) = line.split_once(' ').expect("version and checksum");
+            let version: u32 = version.parse().expect("migration version");
+            let migration = MIGRATIONS
+                .iter()
+                .find(|migration| migration.version == version)
+                .unwrap_or_else(|| panic!("migration v{version} was removed after release"));
+            if compute_migration_checksum(migration.up) != checksum {
+                drifted.push(format!("v{version} ({})", migration.name));
+            }
+        }
+        assert!(
+            drifted.is_empty(),
+            "released migration bodies changed: {}. Add a new migration instead. If one never shipped, update its line in crates/argmax-store/tests/fixtures/migration_checksums.txt.",
+            drifted.join(", ")
+        );
+    }
+
+    #[test]
+    fn checksum_drift_is_reported_for_applied_migration() {
+        static EXPECTED: phf::Map<&'static str, &'static [&'static str]> = phf_map! {};
+        let first = [Migration {
+            version: 1,
+            name: "drift_probe",
+            up: "CREATE TABLE drift_probe (id TEXT PRIMARY KEY);",
+            affected_tables: &[],
+            expected_columns: &EXPECTED,
+            requires_foreign_keys_off: false,
+        }];
+        let changed = [Migration {
+            version: 1,
+            name: "drift_probe",
+            up: "CREATE TABLE drift_probe (id TEXT PRIMARY KEY, changed TEXT);",
+            affected_tables: &[],
+            expected_columns: &EXPECTED,
+            requires_foreign_keys_off: false,
+        }];
+
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations_with(&mut connection, &first).expect("first migrate");
+        let err = run_migrations_with(&mut connection, &changed).expect_err("drift");
+        assert!(matches!(err, ArgmaxError::MigrationDrift { .. }));
+    }
+
+    #[test]
+    fn a_draft_v19_database_converges_on_the_canonical_routines_shape() {
+        // Reproduces a database migrated by the pre-release v19 body: two extra
+        // columns and a checksum the merged body no longer computes.
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations(&mut connection).expect("migrate to head");
+        connection
+            .execute_batch(
+                "DROP TABLE routines;
+                 CREATE TABLE routines (
+                   id TEXT PRIMARY KEY,
+                   name TEXT NOT NULL,
+                   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                   prompt TEXT NOT NULL,
+                   provider TEXT NOT NULL,
+                   model_label TEXT NOT NULL,
+                   model_id TEXT NOT NULL,
+                   permission_mode TEXT NOT NULL DEFAULT 'auto-approve',
+                   agent_mode TEXT NOT NULL DEFAULT 'auto',
+                   worktree INTEGER NOT NULL DEFAULT 1,
+                   cron_expr TEXT,
+                   run_once_at TEXT,
+                   enabled INTEGER NOT NULL DEFAULT 1,
+                   last_run_at TEXT,
+                   next_run_at TEXT,
+                   last_error TEXT,
+                   created_at TEXT NOT NULL,
+                   updated_at TEXT NOT NULL
+                 );
+                 DELETE FROM schema_migrations WHERE version = 20;
+                 DELETE FROM schema_migrations WHERE version = 36;
+                 DELETE FROM schema_migrations WHERE version = 50;
+                 DELETE FROM schema_migrations WHERE version = 52;",
+            )
+            .expect("install draft routines table");
+        connection
+            .execute(
+                "UPDATE schema_migrations SET checksum = ? WHERE version = 19",
+                [ACCEPTED_LEGACY_CHECKSUMS.get(&19).expect("legacy list")[0]],
+            )
+            .expect("stamp legacy checksum");
+
+        run_migrations(&mut connection).expect("legacy checksum is accepted and v20 repairs");
+
+        let mut columns: Vec<String> = connection
+            .prepare("PRAGMA table_info(routines)")
+            .expect("prepare")
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("query")
+            .collect::<Result<_, _>>()
+            .expect("rows");
+        columns.sort();
+        let mut expected = ROUTINE_ARC_TARGET_COLUMNS["routines"].to_vec();
+        expected.sort_unstable();
+        assert_eq!(columns, expected);
+    }
+
+    #[test]
+    fn routine_arc_target_migration_preserves_existing_rows_of_each_target() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations_with(&mut connection, &MIGRATIONS[..51]).expect("migrate through v51");
+        // Raw SQL: `persist_project` reads the head `projects` shape back, and
+        // this database is at v51.
+        connection
+            .execute(
+                "INSERT INTO projects (id, name, repo_path, current_branch, default_branch, \
+                 worktree_location, created_at, updated_at) \
+                 VALUES ('p1', 'Project', '/tmp/routines-arc-preserve', 'main', 'main', \
+                 '/tmp/routines-arc-preserve/.worktrees', '2026-01-01', '2026-01-01')",
+                [],
+            )
+            .expect("seed project");
+        connection
+            .execute_batch(
+                r#"
+                INSERT INTO routines (
+                    id, name, project_id, prompt, provider, model_label, model_id,
+                    run_target, created_at, updated_at
+                ) VALUES
+                    ('r-new', 'new', 'p1', 'do it', 'claude', 'Sonnet', 'claude-sonnet',
+                        'new_session', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+                    ('r-same', 'same', 'p1', 'do it', 'claude', 'Sonnet', 'claude-sonnet',
+                        'same_session', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
+                    ('r-wt', 'wt', 'p1', 'do it', 'claude', 'Sonnet', 'claude-sonnet',
+                        'worktree', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+                "#,
+            )
+            .expect("seed a routine of each pre-existing target");
+
+        run_migrations_with(&mut connection, &MIGRATIONS[..52]).expect("migrate through v52");
+
+        let mut targets: Vec<(String, String, Option<String>)> = connection
+            .prepare("SELECT id, run_target, arc_id FROM routines ORDER BY id")
+            .expect("prepare")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .expect("query")
+            .collect::<Result<_, _>>()
+            .expect("rows");
+        targets.sort();
+        assert_eq!(
+            targets,
+            vec![
+                ("r-new".to_string(), "new_session".to_string(), None),
+                ("r-same".to_string(), "same_session".to_string(), None),
+                ("r-wt".to_string(), "worktree".to_string(), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn routine_arc_target_check_rejects_arc_coordinator_without_arc_id() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations(&mut connection).expect("migrate to head");
+        persist_project(
+            &connection,
+            &PersistProjectInput {
+                id: "p1".to_string(),
+                name: "Project".to_string(),
+                repo_path: "/tmp/routines-arc-check".to_string(),
+                default_branch: Some("main".to_string()),
+                current_branch: "main".to_string(),
+                settings: ProjectSettings {
+                    merge_cleanup: Default::default(),
+                    worktree_location: "/tmp/routines-arc-check/.worktrees".to_string(),
+                    setup_command: String::new(),
+                    check_commands: Vec::new(),
+                },
+            },
+        )
+        .expect("seed project");
+
+        let without_arc_id = connection.execute(
+            "INSERT INTO routines (
+                id, name, project_id, prompt, provider, model_label, model_id,
+                run_target, created_at, updated_at
+            ) VALUES ('r1', 'coordinate', 'p1', 'do it', 'claude', 'Sonnet',
+                'claude-sonnet', 'arc_coordinator', '2026-01-01T00:00:00.000Z',
+                '2026-01-01T00:00:00.000Z')",
+            [],
+        );
+        assert!(
+            without_arc_id.is_err(),
+            "arc_coordinator with no arc_id must violate the CHECK"
+        );
+
+        connection
+            .execute_batch(
+                r#"
+                INSERT INTO arcs (
+                    id, name, brief, state, home_project_id, dir, created_at, updated_at
+                ) VALUES ('arc-1', 'Arc', '', 'active', 'p1', '/tmp/arc-1',
+                    '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+                "#,
+            )
+            .expect("seed arc");
+        connection
+            .execute(
+                "INSERT INTO routines (
+                    id, name, project_id, prompt, provider, model_label, model_id,
+                    run_target, arc_id, created_at, updated_at
+                ) VALUES ('r2', 'coordinate', 'p1', 'do it', 'claude', 'Sonnet',
+                    'claude-sonnet', 'arc_coordinator', 'arc-1', '2026-01-01T00:00:00.000Z',
+                    '2026-01-01T00:00:00.000Z')",
+                [],
+            )
+            .expect("arc_coordinator with arc_id satisfies the CHECK");
+
+        let with_arc_id_but_wrong_target = connection.execute(
+            "INSERT INTO routines (
+                id, name, project_id, prompt, provider, model_label, model_id,
+                run_target, arc_id, created_at, updated_at
+            ) VALUES ('r3', 'coordinate', 'p1', 'do it', 'claude', 'Sonnet',
+                'claude-sonnet', 'worktree', 'arc-1', '2026-01-01T00:00:00.000Z',
+                '2026-01-01T00:00:00.000Z')",
+            [],
+        );
+        assert!(
+            with_arc_id_but_wrong_target.is_err(),
+            "a non-arc_coordinator target with an arc_id must also violate the CHECK"
+        );
+    }
+
+    #[test]
+    fn an_unlisted_checksum_for_v19_still_reports_drift() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations(&mut connection).expect("migrate to head");
+        connection
+            .execute(
+                "UPDATE schema_migrations SET checksum = ? WHERE version = 19",
+                ["not-a-body-we-ever-shipped"],
+            )
+            .expect("stamp unknown checksum");
+
+        let err = run_migrations(&mut connection).expect_err("unknown drift must still fail");
+        assert!(matches!(err, ArgmaxError::MigrationDrift { .. }));
+    }
+
+    #[test]
+    fn events_rowid_is_monotonic_when_timestamps_tie() {
+        let mut connection = Connection::open_in_memory().expect("open db");
+        run_migrations(&mut connection).expect("migrate");
+        seed_minimal_session(&connection);
+
+        let timestamp = "2026-05-24T10:00:00.000Z";
+        let mut insert = connection
+            .prepare(
+                "INSERT INTO events (id, session_id, type, message, payload_json, created_at) VALUES (?, 's1', 'message.delta', ?, '{}', ?)",
+            )
+            .expect("prepare insert");
+        insert
+            .execute(("e1", "first", timestamp))
+            .expect("insert first");
+        insert
+            .execute(("e2", "second", timestamp))
+            .expect("insert second");
+        drop(insert);
+
+        let rows: Vec<(i64, String)> = connection
+            .prepare("SELECT rowid, id FROM events WHERE session_id = 's1' ORDER BY rowid ASC")
+            .expect("prepare rowid")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("query rowid")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect rowid");
+
+        assert_eq!(rows[0].1, "e1");
+        assert_eq!(rows[1].1, "e2");
+        assert!(rows[0].0 < rows[1].0);
+    }
+
+    /// This seed is used both mid-history (before v24 dropped them) and at
+    /// head, so the insert follows whichever shape the table has.
+    fn has_default_agent_columns(connection: &Connection) -> bool {
+        connection
+            .prepare("SELECT default_provider FROM projects LIMIT 0")
+            .is_ok()
+    }
+
+    fn seed_minimal_session(connection: &Connection) {
+        let timestamp = "2026-05-24T10:00:00.000Z";
+        connection
+            .execute(
+                if has_default_agent_columns(connection) {
+                    "INSERT INTO projects (id, name, repo_path, current_branch, default_provider, default_model_label, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', 'claude', 'Sonnet', '~/.argmax', ?, ?)"
+                } else {
+                    "INSERT INTO projects (id, name, repo_path, current_branch, worktree_location, created_at, updated_at) VALUES ('p1', 'p1', '/tmp/p1', 'main', '~/.argmax', ?, ?)"
+                },
+                (timestamp, timestamp),
+            )
+            .expect("insert project");
+        connection
+            .execute(
+                "INSERT INTO workspaces (id, project_id, task_label, branch, base_ref, path, state, last_activity_at, created_at, updated_at) VALUES ('w1', 'p1', 'task', 'branch', 'main', '/tmp/w1', 'running', ?, ?, ?)",
+                (timestamp, timestamp, timestamp),
+            )
+            .expect("insert workspace");
+        connection
+            .execute(
+                "INSERT INTO sessions (id, workspace_id, provider, model_label, prompt, state, attention, started_at, last_activity_at) VALUES ('s1', 'w1', 'claude', 'Sonnet', 'hello', 'running', 'normal', ?, ?)",
+                (timestamp, timestamp),
+            )
+            .expect("insert session");
+    }
+}

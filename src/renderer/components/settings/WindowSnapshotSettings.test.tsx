@@ -4,9 +4,6 @@ import type { ArgmaxApi, WindowSnapshotStatus } from "../../../shared/types.js";
 import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
 import { WindowSnapshotSettings } from "./WindowSnapshotSettings.js";
 
-const remote = vi.hoisted(() => ({ active: false }));
-vi.mock("../../lib/tauriBridge.js", () => ({ isRemoteBridge: () => remote.active }));
-
 const base: WindowSnapshotStatus = {
   supported: true,
   permission: "granted",
@@ -14,17 +11,16 @@ const base: WindowSnapshotStatus = {
   chord: "CommandOrControl+Alt+Shift+S",
   defaultChord: "CommandOrControl+Alt+Shift+S",
   registered: false,
-  registrationError: null
+  registrationError: null,
 };
 
 const api = {
   status: vi.fn(),
   configure: vi.fn(),
-  requestPermission: vi.fn()
+  requestPermission: vi.fn(),
 };
 
 beforeEach(() => {
-  remote.active = false;
   resetToastForTests();
   for (const fn of Object.values(api)) fn.mockReset();
   api.status.mockResolvedValue(base);
@@ -44,10 +40,10 @@ describe("WindowSnapshotSettings", () => {
     fireEvent.click(await screen.findByRole("checkbox", { name: "Window snapshot shortcut" }));
 
     await waitFor(() =>
-      expect(api.configure).toHaveBeenCalledWith({ enabled: true, chord: base.chord })
+      expect(api.configure).toHaveBeenCalledWith({ enabled: true, chord: base.chord }),
     );
     await waitFor(() =>
-      expect(screen.getByRole("checkbox", { name: "Window snapshot shortcut" })).toBeChecked()
+      expect(screen.getByRole("checkbox", { name: "Window snapshot shortcut" })).toBeChecked(),
     );
   });
 
@@ -59,7 +55,7 @@ describe("WindowSnapshotSettings", () => {
     fireEvent.keyDown(window, { code: "KeyK", metaKey: true, altKey: true });
 
     await waitFor(() =>
-      expect(api.configure).toHaveBeenCalledWith({ enabled: false, chord: "Command+Alt+K" })
+      expect(api.configure).toHaveBeenCalledWith({ enabled: false, chord: "Command+Alt+K" }),
     );
   });
 
@@ -100,18 +96,13 @@ describe("WindowSnapshotSettings", () => {
   });
 
   it("says a registration failure out loud while the chord is enabled", async () => {
-    api.status.mockResolvedValue({ ...base, enabled: true, registrationError: "was rejected by the OS" });
+    api.status.mockResolvedValue({
+      ...base,
+      enabled: true,
+      registrationError: "was rejected by the OS",
+    });
     render(<WindowSnapshotSettings />);
     expect(await screen.findByRole("alert")).toHaveTextContent("was rejected by the OS");
-  });
-
-  it("renders nothing and asks the host nothing over the remote bridge", async () => {
-    remote.active = true;
-    const { container } = render(<WindowSnapshotSettings />);
-    await Promise.resolve();
-    expect(container).toBeEmptyDOMElement();
-    expect(api.status).not.toHaveBeenCalled();
-    expect(toastSnapshot()).toBeNull();
   });
 
   it("says plainly that it is macOS only elsewhere", async () => {

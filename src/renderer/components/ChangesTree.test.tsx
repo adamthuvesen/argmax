@@ -9,7 +9,7 @@ function makeFile(overrides: Partial<ChangedFileSummary> & { path: string }): Ch
     additions: 3,
     deletions: 2,
     staged: false,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -19,7 +19,7 @@ function renderTree(props: Partial<ChangesTreeProps> & { files: ChangedFileSumma
     onSelectFile: () => undefined,
     onRefresh: () => undefined,
     onOpenInFiles: () => undefined,
-    ...props
+    ...props,
   };
   return { ...render(<ChangesTree {...merged} />), props: merged };
 }
@@ -27,7 +27,7 @@ function renderTree(props: Partial<ChangesTreeProps> & { files: ChangedFileSumma
 describe("ChangesTree", () => {
   it("folds a single-child directory chain into one row that still toggles the deepest folder", () => {
     renderTree({
-      files: [makeFile({ path: "src/renderer/components/ChangesTree.tsx" })]
+      files: [makeFile({ path: "src/renderer/components/ChangesTree.tsx" })],
     });
 
     const chain = screen.getByRole("treeitem", { name: "src/renderer/components" });
@@ -42,7 +42,7 @@ describe("ChangesTree", () => {
 
   it("keeps a directory that also holds a file on its own row", () => {
     renderTree({
-      files: [makeFile({ path: "src/index.ts" }), makeFile({ path: "src/lib/util.ts" })]
+      files: [makeFile({ path: "src/index.ts" }), makeFile({ path: "src/lib/util.ts" })],
     });
 
     expect(screen.getByRole("treeitem", { name: "src" })).toBeVisible();
@@ -55,13 +55,21 @@ describe("ChangesTree", () => {
       files: [
         makeFile({ path: "added.ts", status: " M", additions: 12, deletions: 0 }),
         makeFile({ path: "gone.ts", status: " M", additions: 0, deletions: 1 }),
-        makeFile({ path: "touched.ts", status: "A ", additions: 4, deletions: 6 })
-      ]
+        makeFile({ path: "touched.ts", status: "A ", additions: 4, deletions: 6 }),
+      ],
     });
 
-    expect(screen.getByRole("img", { name: "Added, 12 insertions, 0 deletions" })).toHaveAttribute("data-status", "added");
-    expect(screen.getByRole("img", { name: "Deleted, 0 insertions, 1 deletion" })).toHaveAttribute("data-status", "deleted");
-    expect(screen.getByRole("img", { name: "Modified, 4 insertions, 6 deletions" })).toHaveAttribute("data-status", "modified");
+    expect(screen.getByRole("img", { name: "Added, 12 insertions, 0 deletions" })).toHaveAttribute(
+      "data-status",
+      "added",
+    );
+    expect(screen.getByRole("img", { name: "Deleted, 0 insertions, 1 deletion" })).toHaveAttribute(
+      "data-status",
+      "deleted",
+    );
+    expect(
+      screen.getByRole("img", { name: "Modified, 4 insertions, 6 deletions" }),
+    ).toHaveAttribute("data-status", "modified");
   });
 
   it("reports the selected row and passes clicks through as paths", () => {
@@ -69,11 +77,15 @@ describe("ChangesTree", () => {
     renderTree({
       files: [makeFile({ path: "src/a.ts" }), makeFile({ path: "src/b.ts" })],
       selectedPath: "src/b.ts",
-      onSelectFile
+      onSelectFile,
     });
 
-    expect(screen.getByRole("treeitem", { name: "b.ts" }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByRole("treeitem", { name: "a.ts" }).getAttribute("aria-selected")).toBe("false");
+    expect(screen.getByRole("treeitem", { name: "b.ts" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("treeitem", { name: "a.ts" }).getAttribute("aria-selected")).toBe(
+      "false",
+    );
 
     fireEvent.click(screen.getByRole("treeitem", { name: "a.ts" }));
     expect(onSelectFile).toHaveBeenCalledWith("src/a.ts");
@@ -81,7 +93,7 @@ describe("ChangesTree", () => {
 
   it("starts expanded, folds everything from the toolbar, and reveals a newly selected file", () => {
     const { rerender, props } = renderTree({
-      files: [makeFile({ path: "src/lib/deep.ts" }), makeFile({ path: "README.md" })]
+      files: [makeFile({ path: "src/lib/deep.ts" }), makeFile({ path: "README.md" })],
     });
 
     expect(screen.getByRole("treeitem", { name: "deep.ts" })).toBeVisible();

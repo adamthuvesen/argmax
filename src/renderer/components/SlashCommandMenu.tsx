@@ -20,7 +20,7 @@ function slashRow(item: SlashItem): SlashRow {
       icon: item.command.icon,
       label: item.command.label,
       hint: item.command.hint,
-      badge: null
+      badge: null,
     };
   }
   return {
@@ -28,7 +28,7 @@ function slashRow(item: SlashItem): SlashRow {
     icon: Package,
     label: item.skill.name,
     hint: item.skill.description,
-    badge: SKILL_SOURCE_LABELS[item.skill.source]
+    badge: SKILL_SOURCE_LABELS[item.skill.source],
   };
 }
 

@@ -1,8 +1,46 @@
-[package]
-name = "argmax"
+[workspace]
+members = ["crates/argmax-contracts", "crates/argmax-process", "crates/argmax-store"]
+
+[workspace.package]
 version = "0.6.0"
 edition = "2021"
-rust-version = "1.95"
+rust-version = "1.100"
+
+# Versions the app and the lower crates must agree on.
+[workspace.dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+phf = { version = "0.13", features = ["macros"] }
+regex = "1"
+# `bundled-full` ships SQLite (sqlite3.c vendored) with FTS5 enabled,
+# which we need for `events_fts` and `learnings_fts` sidecars.
+rusqlite = { version = "0.42", features = ["bundled-full"] }
+# rmcp 3 derives its tool schemas with schemars 1; the contract enums that MCP
+# tools carry derive the same major.
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+specta = { version = "=2.0.0-rc.22", features = ["derive", "serde_json"] }
+tempfile = "3"
+thiserror = "1"
+tokio = { version = "1", features = [
+    "macros",
+    "rt-multi-thread",
+    "sync",
+    "time",
+    "process",
+    "fs",
+    "io-util",
+    "net",
+] }
+tracing = "0.1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[package]
+name = "argmax"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 description = "Argmax — local Tauri shell over the Rust core."
 publish = false
 default-run = "argmax"
@@ -62,42 +100,33 @@ tauri-plugin-wdio-webdriver = { version = "1.3.0", optional = true }
 
 # Multi-thread Tokio runtime. Provider PTYs and git shellouts fan out
 # in parallel; a current-thread runtime would block command handlers.
-tokio = { version = "1", features = [
-    "macros",
-    "rt-multi-thread",
-    "sync",
-    "time",
-    "process",
-    "fs",
-    "io-util",
-    "net",
-] }
+tokio.workspace = true
 
 # Optional remote bridge (src/remote): a loopback HTTP + WebSocket server that
 # lets a browser on the tailnet drive the same IPC channels as the webview.
 # `futures-util` is only for splitting the WebSocket into a read half and a
 # write half, which axum's own API does not cover.
 axum = { version = "0.8", features = ["ws"] }
-# Gzip for the bridge's JS/CSS (~4:1); already in the tree transitively, so
+# Gzip for the bridge's HTTP transcript pages; already in the tree transitively, so
 # this only turns on the compression feature. WebSocket upgrades are exempt
 # by default (no content-encoding on 101s).
 tower-http = { version = "0.6", features = ["compression-gzip"] }
-# Phone push via ntfy: one blocking POST per qualifying session transition,
-# fired from a throwaway thread. Small on purpose — reqwest would drag a
-# second HTTP/TLS stack onto the boot path for a fire-and-forget request.
-ureq = "2"
-# Phone push via APNs (src/remote/apns.rs). Apple requires HTTP/2, which ureq
-# above cannot speak, so this rides the reqwest client tauri-plugin-updater
-# already pulls in — `http2` adds the `h2` crate and nothing else, and the
-# rustls stack and roots are the ones already in the tree (the provider is
-# not — see the `rustls` entry below). The
-# maintained `a2` APNs crate was the other candidate; it pins rustls ^0.22 and
-# hyper-rustls ^0.26 against the tree's 0.23/0.27, so it would have compiled a
-# second, older TLS stack into the binary (9 new crates), and its `APS` struct
-# carries neither `thread-id` nor `interruption-level`, both of which we send.
+# The one HTTP client. The ntfy push, Codex Cloud, the gateway key check, and
+# the usage reads run on blocking threads and use `blocking`; the OpenCode
+# server and APNs run on the Tokio runtime. APNs needs HTTP/2, which `http2`
+# adds through the `h2` crate. `query` encodes the OpenCode `directory`
+# parameter. The rustls stack and roots are the ones tauri-plugin-updater
+# already pulls in (the provider is not; see the `rustls` entry below).
+# The maintained `a2` APNs crate was the other candidate; it pins rustls ^0.22
+# and hyper-rustls ^0.26 against the tree's 0.23/0.27, so it would have
+# compiled a second, older TLS stack into the binary (9 new crates), and its
+# `APS` struct carries neither `thread-id` nor `interruption-level`, both of
+# which we send.
 reqwest = { version = "0.13", default-features = false, features = [
+    "blocking",
     "http2",
     "json",
+    "query",
     "rustls-no-provider",
 ] }
 # `rustls-no-provider` above means nothing picks a default `CryptoProvider`
@@ -122,32 +151,34 @@ futures-util = { version = "0.3", default-features = false, features = [
 # (remote/ws.rs `outbound_message`); already in the tree through tower-http.
 flate2 = "1"
 
-# `bundled-full` ships SQLite (sqlite3.c vendored) with FTS5 enabled,
-# which we need for `events_fts` and `learnings_fts` sidecars.
-rusqlite = { version = "0.32", features = ["bundled-full"] }
+argmax-contracts = { path = "crates/argmax-contracts" }
+argmax-process = { path = "crates/argmax-process" }
+argmax-store = { path = "crates/argmax-store" }
+
+rusqlite.workspace = true
 
 # Wezterm's cross-platform PTY crate; production-tested.
 portable-pty = "0.9"
 
-serde = { version = "1", features = ["derive"] }
+serde.workspace = true
 # Reads back a window snapshot to prove it is a real, non-transparent image
 # before it is attached (src/window_snapshot/capture.rs). Already in the tree.
 png = "0.17"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
-serde_json = "1"
-thiserror = "1"
+serde_json.workspace = true
+thiserror.workspace = true
 # Push bodies are rendered by native notification surfaces, so they need a
 # Markdown-aware plain-text projection instead of the renderer's HTML output.
 pulldown-cmark = { version = "0.13", default-features = false }
 
-tracing = "0.1"
+tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
 tracing-appender = "0.2"
 
 notify = "6"
-tempfile = "3"
-uuid = { version = "1", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
+tempfile.workspace = true
+uuid.workspace = true
+chrono.workspace = true
 # The Activity page cuts its day buckets on an IANA zone the renderer names,
 # not on the machine zone `chrono::Local` gives (which is all the Usage page
 # needs). `default-features = false` keeps the crate to `std` — no serde impls,
@@ -157,17 +188,17 @@ chrono-tz = { version = "0.10", default-features = false, features = ["std"] }
 # `cron` dialect (sec min hour dom month dow [year]) is what the renderer
 # generates from its friendly schedule controls.
 cron = "0.15"
-sha2 = "0.11"
-regex = "1"
+sha2.workspace = true
+regex.workspace = true
 lol_html = "3"
 walkdir = "2"
 nix = { version = "0.31", features = ["signal", "fs", "term", "process", "poll", "resource"] }
-phf = { version = "0.13", features = ["macros"] }
+phf.workspace = true
 
 # `tauri-specta` emits TypeScript bindings from the Rust command surface
 # so the renderer's `bindings.d.ts` stays in lockstep with the backend.
 tauri-specta = { version = "=2.0.0-rc.21", features = ["typescript", "derive"] }
-specta = { version = "=2.0.0-rc.22", features = ["serde_json"] }
+specta.workspace = true
 specta-typescript = "=0.0.9"
 
 
@@ -282,6 +313,8 @@ objc2-core-graphics = { version = "0.3", default-features = false, features = [
 block2 = "0.6"
 
 [dev-dependencies]
+argmax-process = { path = "crates/argmax-process", features = ["test-support"] }
+argmax-store = { path = "crates/argmax-store", features = ["test-support"] }
 tauri = { version = "2.11", features = ["test"] }
 
 [features]

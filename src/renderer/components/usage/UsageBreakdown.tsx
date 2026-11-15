@@ -9,7 +9,7 @@ import {
   formatPercent,
   formatTokens,
   formatUsd,
-  formatUsdRate
+  formatUsdRate,
 } from "./usageFormat.js";
 import {
   isEstimatedProvider,
@@ -18,14 +18,14 @@ import {
   processedTokens,
   providerLabel,
   shareOfTotal,
-  type UsageMetric
+  type UsageMetric,
 } from "./usagePresentation.js";
 
 type BreakdownMode = "model" | "day";
 
 const MODE_OPTIONS = [
   { value: "model", label: "Model" },
-  { value: "day", label: "Day" }
+  { value: "day", label: "Day" },
 ];
 
 /**
@@ -103,7 +103,7 @@ function compareName(a: BreakdownRow, b: BreakdownRow): number {
 function sortRows(
   rows: readonly BreakdownRow[],
   sort: SortState,
-  metric: UsageMetric
+  metric: UsageMetric,
 ): BreakdownRow[] {
   const direction = sort.direction === "asc" ? 1 : -1;
   const parkUnpriced = isCostColumn(sort.column, metric);
@@ -158,7 +158,7 @@ function modelRows(models: readonly UsageModelRow[]): BreakdownRow[] {
     sessions: row.sessions,
     costUsd: row.costUsd,
     tokens: processedTokens(row.tokens),
-    unpriced: isUnpriced(row.costSource)
+    unpriced: isUnpriced(row.costSource),
   }));
 }
 
@@ -175,7 +175,7 @@ function dayRows(days: readonly UsageDayRow[], summary: UsageSummary): Breakdown
     sessions: row.sessions,
     costUsd: row.costUsd,
     tokens: processedTokens(row.tokens),
-    unpriced: isUnpriced(row.costSource)
+    unpriced: isUnpriced(row.costSource),
   }));
 }
 
@@ -185,7 +185,7 @@ function SortHeader({
   title,
   numeric,
   sort,
-  onSort
+  onSort,
 }: {
   column: SortColumn;
   label: string;
@@ -211,7 +211,11 @@ function SortHeader({
         <span>{label}</span>
         {/* The glyph, not its colour, is what marks the sorted column; it
             keeps its box when inactive so the labels never shift. */}
-        <span className="usage-sort-caret" data-active={active ? "true" : "false"} aria-hidden="true">
+        <span
+          className="usage-sort-caret"
+          data-active={active ? "true" : "false"}
+          aria-hidden="true"
+        >
           {active && sort.direction === "asc" ? "↑" : "↓"}
         </span>
       </button>
@@ -221,7 +225,7 @@ function SortHeader({
 
 export function UsageBreakdown({
   summary,
-  metric
+  metric,
 }: {
   summary: UsageSummary;
   metric: UsageMetric;
@@ -263,7 +267,10 @@ export function UsageBreakdown({
   const hiddenTokens = hidden.reduce((sum, row) => sum + row.tokens, 0);
   const hiddenCost = hidden.reduce((sum, row) => (row.unpriced ? sum : sum + row.costUsd), 0);
   // The tail's rate divides its priced dollars by its priced tokens only.
-  const hiddenPricedTokens = hidden.reduce((sum, row) => (row.unpriced ? sum : sum + row.tokens), 0);
+  const hiddenPricedTokens = hidden.reduce(
+    (sum, row) => (row.unpriced ? sum : sum + row.tokens),
+    0,
+  );
   const hiddenPrimary = metric === "cost" ? hiddenCost : hiddenTokens;
   const countLabel =
     visible.length === sorted.length
@@ -274,7 +281,7 @@ export function UsageBreakdown({
     setSort((current) =>
       current.column === column
         ? { column, direction: current.direction === "asc" ? "desc" : "asc" }
-        : { column, direction: column === "name" ? "asc" : "desc" }
+        : { column, direction: column === "name" ? "asc" : "desc" },
     );
   };
 
@@ -297,7 +304,10 @@ export function UsageBreakdown({
         <p className="usage-empty-note">Nothing recorded in this window yet.</p>
       ) : (
         <div className="usage-table-scroll">
-          <table className="usage-table" aria-label={mode === "model" ? "Usage by model" : "Usage by day"}>
+          <table
+            className="usage-table"
+            aria-label={mode === "model" ? "Usage by model" : "Usage by day"}
+          >
             <thead>
               <tr>
                 <SortHeader
@@ -306,8 +316,20 @@ export function UsageBreakdown({
                   sort={sort}
                   onSort={onSort}
                 />
-                <SortHeader column="sessions" label="Sessions" numeric sort={sort} onSort={onSort} />
-                <SortHeader column="primary" label={primaryLabel} numeric sort={sort} onSort={onSort} />
+                <SortHeader
+                  column="sessions"
+                  label="Sessions"
+                  numeric
+                  sort={sort}
+                  onSort={onSort}
+                />
+                <SortHeader
+                  column="primary"
+                  label={primaryLabel}
+                  numeric
+                  sort={sort}
+                  onSort={onSort}
+                />
                 <SortHeader column="share" label="Share" numeric sort={sort} onSort={onSort} />
                 <SortHeader
                   column="secondary"

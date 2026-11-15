@@ -1,4 +1,6 @@
-import { useEffect, useState, type JSX } from "react";
+import { useState, type JSX } from "react";
+import { projectActions, settingsActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import type { ProjectSummary } from "../../../shared/types.js";
 import { validationMessage } from "../../../shared/validationMessage.js";
 
@@ -14,7 +16,7 @@ const PLACEHOLDERS = "{type}, {slug}, {word}, {id}, {date}";
  */
 export function BranchTemplatePanel({
   project,
-  onProjectUpdated
+  onProjectUpdated,
 }: {
   project: ProjectSummary;
   onProjectUpdated: (updated: ProjectSummary) => void;
@@ -26,32 +28,26 @@ export function BranchTemplatePanel({
   const [projectError, setProjectError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const api = window.argmax;
 
-  useEffect(() => {
-    let active = true;
+  useBridgeQuery({
+    key: ["settings.branchTemplate"],
     // Optional chaining: a host older than this setting has no such channel.
-    void api?.settings
-      ?.branchTemplate?.()
-      .then((settings) => {
-        if (!active) return;
-        setAppTemplate(settings.template ?? "");
-        setDefaultTemplate(settings.defaultTemplate);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [api]);
+    read: (api) => api.settings?.branchTemplate?.(),
+    onData: (settings) => {
+      setAppTemplate(settings.template ?? "");
+      setDefaultTemplate(settings.defaultTemplate);
+    },
+  });
 
   async function saveApp(): Promise<void> {
-    if (!api) return;
+    const settings = settingsActions();
+    if (!settings) return;
     setBusy(true);
     setAppError(null);
     setStatus(null);
     try {
-      const saved = await api.settings.setBranchTemplate({
-        template: appTemplate.trim() === "" ? null : appTemplate.trim()
+      const saved = await settings.setBranchTemplate({
+        template: appTemplate.trim() === "" ? null : appTemplate.trim(),
       });
       setAppTemplate(saved.template ?? "");
       setStatus("Default branch template saved.");
@@ -63,14 +59,15 @@ export function BranchTemplatePanel({
   }
 
   async function saveProject(): Promise<void> {
-    if (!api) return;
+    const projects = projectActions();
+    if (!projects) return;
     setBusy(true);
     setProjectError(null);
     setStatus(null);
     try {
-      const updated = await api.projects.setBranchTemplate({
+      const updated = await projects.setBranchTemplate({
         projectId: project.id,
-        template: projectTemplate.trim() === "" ? null : projectTemplate.trim()
+        template: projectTemplate.trim() === "" ? null : projectTemplate.trim(),
       });
       setProjectTemplate(updated.branchTemplate ?? "");
       onProjectUpdated(updated);
@@ -86,8 +83,8 @@ export function BranchTemplatePanel({
     <section id="settings-branch-names" className="settings-card" aria-label="Branch names">
       <h3>Branch names</h3>
       <p className="settings-note">
-        Names the branch of each new worktree chat. Placeholders: {PLACEHOLDERS}. A taken name gets a
-        numeric suffix. Existing branches keep their names.
+        Names the branch of each new worktree chat. Placeholders: {PLACEHOLDERS}. A taken name gets
+        a numeric suffix. Existing branches keep their names.
       </p>
       <div className="settings-field">
         <label className="settings-field-label" htmlFor="settings-branch-template-app">
@@ -108,7 +105,12 @@ export function BranchTemplatePanel({
           </p>
         ) : null}
         <div className="settings-form-footer">
-          <button type="button" className="settings-button" disabled={busy} onClick={() => void saveApp()}>
+          <button
+            type="button"
+            className="settings-button"
+            disabled={busy}
+            onClick={() => void saveApp()}
+          >
             Save default
           </button>
         </div>
@@ -132,7 +134,12 @@ export function BranchTemplatePanel({
           </p>
         ) : null}
         <div className="settings-form-footer">
-          <button type="button" className="settings-button" disabled={busy} onClick={() => void saveProject()}>
+          <button
+            type="button"
+            className="settings-button"
+            disabled={busy}
+            onClick={() => void saveProject()}
+          >
             Save project template
           </button>
         </div>

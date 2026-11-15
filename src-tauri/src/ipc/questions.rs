@@ -1,7 +1,7 @@
 use super::inputs::QuestionsResolveInput;
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::questions::service::{QuestionResolveResult, QuestionService};
 use crate::state::AppState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use std::sync::Arc;
 use tauri::State;
 

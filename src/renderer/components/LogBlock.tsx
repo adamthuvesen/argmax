@@ -1,10 +1,5 @@
 import { type JSX } from "react";
-import {
-  logBlockLabel,
-  parseLogDump,
-  type LogLevel,
-  type LogRecord
-} from "../lib/logDump.js";
+import { logBlockLabel, parseLogDump, type LogLevel, type LogRecord } from "../lib/logDump.js";
 
 function recordTone(level: LogLevel | null, fallbackError: boolean): "error" | "warn" | "info" {
   switch (level) {
@@ -26,9 +21,7 @@ function recordTone(level: LogLevel | null, fallbackError: boolean): "error" | "
   }
 }
 
-function blockTone(
-  label: string
-): "error" | "warn" | "log" {
+function blockTone(label: string): "error" | "warn" | "log" {
   switch (label) {
     case "Error":
       return "error";
@@ -41,7 +34,7 @@ function blockTone(
 
 function LogRecordView({
   record,
-  fallbackError
+  fallbackError,
 }: {
   record: LogRecord;
   fallbackError: boolean;
@@ -64,7 +57,7 @@ function LogRecordView({
 
 export function LogBlock({
   text,
-  tone = "auto"
+  tone = "auto",
 }: {
   text: string;
   tone?: "auto" | "error";

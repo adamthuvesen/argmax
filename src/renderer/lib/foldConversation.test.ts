@@ -9,7 +9,7 @@ function event(
   type: EventType,
   createdAt: string,
   message = id,
-  payload: Record<string, unknown> = {}
+  payload: Record<string, unknown> = {},
 ): TimelineEvent {
   return {
     id,
@@ -17,7 +17,7 @@ function event(
     type,
     message,
     payload,
-    createdAt
+    createdAt,
   };
 }
 
@@ -25,7 +25,7 @@ function tool(
   id: string,
   name: string,
   createdAt: string,
-  parentToolUseId: string | null = null
+  parentToolUseId: string | null = null,
 ): ToolCall {
   return {
     id,
@@ -38,7 +38,7 @@ function tool(
     createdAt,
     completedAt: createdAt,
     error: null,
-    parentToolUseId
+    parentToolUseId,
   };
 }
 
@@ -68,8 +68,8 @@ describe("foldConversationItems", () => {
         [
           tool(`${name}-read`, "Read", "2026-05-12T15:00:01.000Z"),
           tool(`${name}-agent`, name, "2026-05-12T15:00:02.000Z"),
-          tool(`${name}-bash`, "Bash", "2026-05-12T15:00:03.000Z")
-        ]
+          tool(`${name}-bash`, "Bash", "2026-05-12T15:00:03.000Z"),
+        ],
       );
 
       expect(folded.map((item) => item.kind)).toEqual(["tool", "tool", "tool"]);
@@ -93,17 +93,29 @@ describe("foldRenderItems", () => {
   it("anchors a turn id to the user message when early assistant deltas are capped away", () => {
     const user: ConversationItem = {
       kind: "message",
-      event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Go")
+      event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Go"),
     };
     const firstView: ConversationItem[] = [
       user,
-      { kind: "message", event: event("delta-1", "message.delta", "2026-05-12T15:00:01.000Z", "Hello ") },
-      { kind: "message", event: event("delta-2", "message.delta", "2026-05-12T15:00:02.000Z", "world") }
+      {
+        kind: "message",
+        event: event("delta-1", "message.delta", "2026-05-12T15:00:01.000Z", "Hello "),
+      },
+      {
+        kind: "message",
+        event: event("delta-2", "message.delta", "2026-05-12T15:00:02.000Z", "world"),
+      },
     ];
     const cappedView: ConversationItem[] = [
       user,
-      { kind: "message", event: event("delta-2", "message.delta", "2026-05-12T15:00:02.000Z", "world") },
-      { kind: "message", event: event("delta-3", "message.delta", "2026-05-12T15:00:03.000Z", "!") }
+      {
+        kind: "message",
+        event: event("delta-2", "message.delta", "2026-05-12T15:00:02.000Z", "world"),
+      },
+      {
+        kind: "message",
+        event: event("delta-3", "message.delta", "2026-05-12T15:00:03.000Z", "!"),
+      },
     ];
 
     const firstTurn = foldRenderItems(firstView, null).find((item) => item.kind === "turn");
@@ -116,19 +128,19 @@ describe("foldRenderItems", () => {
   it("keeps active tool progress in its stable turn when steering adds guidance", () => {
     const user: ConversationItem = {
       kind: "message",
-      event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Implement it")
+      event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Implement it"),
     };
     const reading = {
       ...tool("read", "Read", "2026-05-12T15:00:02.000Z"),
       status: "running" as const,
-      completedAt: null
+      completedAt: null,
     };
     const beforeSteer = foldRenderItems(
       foldConversationItems(
         [user.event, event("intro", "message.delta", "2026-05-12T15:00:01.000Z", "Reading first")],
-        [reading]
+        [reading],
       ),
-      null
+      null,
     );
     const afterSteer = foldRenderItems(
       foldConversationItems(
@@ -136,42 +148,49 @@ describe("foldRenderItems", () => {
           user.event,
           event("intro", "message.delta", "2026-05-12T15:00:01.000Z", "Reading first"),
           event("steer", "user.message", "2026-05-12T15:00:03.000Z", "Use the existing helper", {
-            delivery: "steer"
+            delivery: "steer",
           }),
-          event("answer", "message.delta", "2026-05-12T15:00:04.000Z", "Got it")
+          event("answer", "message.delta", "2026-05-12T15:00:04.000Z", "Got it"),
         ],
-        [reading]
+        [reading],
       ),
-      null
+      null,
     );
 
     const turnBeforeSteer = beforeSteer.find((item) => item.kind === "turn");
     const turnsAfterSteer = afterSteer.filter((item) => item.kind === "turn");
-    expect(afterSteer.map((item) => item.kind)).toEqual([
-      "user-message",
-      "turn"
-    ]);
+    expect(afterSteer.map((item) => item.kind)).toEqual(["user-message", "turn"]);
     expect(turnsAfterSteer[0]?.id).toBe(turnBeforeSteer?.id);
     expect(topLevelToolIds(turnsAfterSteer[0])).toEqual(["read"]);
-    expect(turnsAfterSteer[0]?.kind === "turn" ? turnsAfterSteer[0].toolItems[0]?.tool.status : null)
-      .toBe("running");
+    expect(
+      turnsAfterSteer[0]?.kind === "turn" ? turnsAfterSteer[0].toolItems[0]?.tool.status : null,
+    ).toBe("running");
     expect(turnsAfterSteer[0]?.steerEvents.map((event) => event.id)).toEqual(["steer"]);
-    expect(turnsAfterSteer[0]?.assistantEvents.map((event) => event.id)).toEqual(["intro", "answer"]);
+    expect(turnsAfterSteer[0]?.assistantEvents.map((event) => event.id)).toEqual([
+      "intro",
+      "answer",
+    ]);
   });
 
   it("collapses a compaction bracket into one seam that ends the turn", () => {
     const items: ConversationItem[] = [
       { kind: "message", event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Go") },
-      { kind: "message", event: event("delta-1", "message.delta", "2026-05-12T15:00:01.000Z", "Working") },
+      {
+        kind: "message",
+        event: event("delta-1", "message.delta", "2026-05-12T15:00:01.000Z", "Working"),
+      },
       { kind: "message", event: event("start", "session.compacting", "2026-05-12T15:00:02.000Z") },
       {
         kind: "message",
         event: event("end", "session.compacted", "2026-05-12T15:02:00.000Z", "Compacted context", {
           preTokens: 470664,
-          postTokens: 10703
-        })
+          postTokens: 10703,
+        }),
       },
-      { kind: "message", event: event("delta-2", "message.delta", "2026-05-12T15:02:01.000Z", "Resumed") }
+      {
+        kind: "message",
+        event: event("delta-2", "message.delta", "2026-05-12T15:02:01.000Z", "Resumed"),
+      },
     ];
 
     const out = foldRenderItems(items, null);
@@ -186,14 +205,14 @@ describe("foldRenderItems", () => {
     expect(notice?.kind === "compaction" ? notice.notice : null).toEqual({
       running: false,
       preTokens: 470664,
-      postTokens: 10703
+      postTokens: 10703,
     });
   });
 
   it("keeps an unfinished compaction marked running", () => {
     const items: ConversationItem[] = [
       { kind: "message", event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Go") },
-      { kind: "message", event: event("start", "session.compacting", "2026-05-12T15:00:02.000Z") }
+      { kind: "message", event: event("start", "session.compacting", "2026-05-12T15:00:02.000Z") },
     ];
 
     const out = foldRenderItems(items, null);
@@ -204,18 +223,27 @@ describe("foldRenderItems", () => {
 
   it("renders a project move as a turn boundary", () => {
     const items: ConversationItem[] = [
-      { kind: "message", event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Move it") },
-      { kind: "message", event: event("answer-1", "message.completed", "2026-05-12T15:00:01.000Z", "Moving") },
+      {
+        kind: "message",
+        event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Move it"),
+      },
+      {
+        kind: "message",
+        event: event("answer-1", "message.completed", "2026-05-12T15:00:01.000Z", "Moving"),
+      },
       {
         kind: "message",
         event: event("move", "session.moved", "2026-05-12T15:00:02.000Z", "Moved.", {
           direction: "destination",
           sourceProjectName: "HQ",
           destinationProjectName: "Argmax",
-          checkoutMode: "shared"
-        })
+          checkoutMode: "shared",
+        }),
       },
-      { kind: "message", event: event("user-2", "user.message", "2026-05-12T15:00:03.000Z", "Continue") }
+      {
+        kind: "message",
+        event: event("user-2", "user.message", "2026-05-12T15:00:03.000Z", "Continue"),
+      },
     ];
 
     const out = foldRenderItems(items, null);
@@ -224,14 +252,14 @@ describe("foldRenderItems", () => {
       "user-message",
       "turn",
       "project-move",
-      "user-message"
+      "user-message",
     ]);
     const move = out.find((item) => item.kind === "project-move");
     expect(move?.kind === "project-move" ? move.notice : null).toEqual({
       from: "HQ",
       to: "Argmax",
       checkoutMode: "shared",
-      sourceArchiveState: null
+      sourceArchiveState: null,
     });
   });
   // Unlike a move or a handoff, a note says what Argmax did to the chat, not
@@ -239,15 +267,30 @@ describe("foldRenderItems", () => {
   // of cutting one answer into two blocks.
   it("puts a session note after the turn it lands in without ending it", () => {
     const items: ConversationItem[] = [
-      { kind: "message", event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Move it") },
-      { kind: "message", event: event("answer-1", "message.completed", "2026-05-12T15:00:01.000Z", "Working") },
       {
         kind: "message",
-        event: event("note", "session.note", "2026-05-12T15:00:02.000Z", "The scheduled move was cancelled.", {
-          operation: "session.move"
-        })
+        event: event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Move it"),
       },
-      { kind: "message", event: event("answer-2", "message.completed", "2026-05-12T15:00:03.000Z", "Still here") }
+      {
+        kind: "message",
+        event: event("answer-1", "message.completed", "2026-05-12T15:00:01.000Z", "Working"),
+      },
+      {
+        kind: "message",
+        event: event(
+          "note",
+          "session.note",
+          "2026-05-12T15:00:02.000Z",
+          "The scheduled move was cancelled.",
+          {
+            operation: "session.move",
+          },
+        ),
+      },
+      {
+        kind: "message",
+        event: event("answer-2", "message.completed", "2026-05-12T15:00:03.000Z", "Still here"),
+      },
     ];
 
     const out = foldRenderItems(items, null);
@@ -256,11 +299,11 @@ describe("foldRenderItems", () => {
     const turn = out.find((item) => item.kind === "turn");
     expect(turn?.kind === "turn" ? turn.assistantEvents.map((e) => e.id) : null).toEqual([
       "answer-1",
-      "answer-2"
+      "answer-2",
     ]);
     const note = out.find((item) => item.kind === "session-note");
     expect(note?.kind === "session-note" ? note.message : null).toBe(
-      "The scheduled move was cancelled."
+      "The scheduled move was cancelled.",
     );
   });
 
@@ -274,9 +317,9 @@ describe("foldRenderItems", () => {
     const items = foldConversationItems(
       [
         event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Delegate it"),
-        event("user-2", "user.message", "2026-05-12T15:00:04.000Z", "Meanwhile, read this")
+        event("user-2", "user.message", "2026-05-12T15:00:04.000Z", "Meanwhile, read this"),
       ],
-      [launch, sameTurnChild, lateChild, ownWork]
+      [launch, sameTurnChild, lateChild, ownWork],
     );
 
     const out = foldRenderItems(items, null);
@@ -286,7 +329,7 @@ describe("foldRenderItems", () => {
     // The same-turn child still nests under the launch it belongs to.
     const launchItem = turns[0]?.kind === "turn" ? turns[0].toolItems[0] : undefined;
     expect(launchItem?.kind === "tool" ? launchItem.children?.map((t) => t.id) : null).toEqual([
-      "child-1"
+      "child-1",
     ]);
   });
 
@@ -294,7 +337,7 @@ describe("foldRenderItems", () => {
     const orphan = tool("orphan", "Bash", "2026-05-12T15:00:05.000Z", "evicted-launch");
     const items = foldConversationItems(
       [event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Go")],
-      [orphan]
+      [orphan],
     );
 
     const out = foldRenderItems(items, null);
@@ -307,7 +350,7 @@ describe("multitask rows", () => {
   const items = (events: TimelineEvent[]): RenderItem[] =>
     foldRenderItems(
       events.map((e) => ({ kind: "message" as const, event: e })),
-      null
+      null,
     );
   const multitasksOf = (rendered: RenderItem[]): MultitaskNotice[] =>
     rendered.flatMap((item) => (item.kind === "turn" ? item.multitasks : []));
@@ -320,10 +363,10 @@ describe("multitask rows", () => {
       event("a1", "message.completed", "2026-09-02T10:00:01.000Z"),
       event("m1", "multitask.launched", "2026-09-02T10:00:02.000Z", "Running alongside: Fix typo", {
         childSessionId: "child-1",
-        taskLabel: "Fix typo"
+        taskLabel: "Fix typo",
       }),
       event("a2", "message.completed", "2026-09-02T10:00:03.000Z"),
-      event("u2", "user.message", "2026-09-02T10:00:04.000Z")
+      event("u2", "user.message", "2026-09-02T10:00:04.000Z"),
     ]);
 
     expect(rendered.map((item) => item.kind)).toEqual(["user-message", "turn", "user-message"]);
@@ -342,7 +385,7 @@ describe("multitask rows", () => {
       event("m1", "multitask.launched", "2026-09-02T10:00:01.000Z", "Running alongside", {
         childSessionId: "child-1",
         taskLabel: "Fix typo",
-        prompt: "Fix typo"
+        prompt: "Fix typo",
       }),
       event("a1", "message.completed", "2026-09-02T10:00:02.000Z"),
       event("u2", "user.message", "2026-09-02T10:00:08.000Z"),
@@ -351,8 +394,8 @@ describe("multitask rows", () => {
         childSessionId: "child-1",
         taskLabel: "Fix typo",
         state: "complete",
-        answer: "Fixed it."
-      })
+        answer: "Fixed it.",
+      }),
     ]);
 
     const notices = multitasksOf(rendered);
@@ -373,8 +416,8 @@ describe("multitask rows", () => {
       event("m2", "multitask.finished", "2026-09-02T10:00:09.000Z", "Fix typo finished alongside", {
         childSessionId: "child-1",
         taskLabel: "Fix typo",
-        state: "complete"
-      })
+        state: "complete",
+      }),
     ]);
     const turn = rendered[0];
     expect(turn?.kind).toBe("turn");
@@ -387,7 +430,7 @@ describe("plans within conversation turns", () => {
   const update = (id: string, at: string, status: string): TimelineEvent =>
     event(id, "todo.updated", at, "plan", {
       mode: id === "plan-1" ? "snapshot" : "merge",
-      items: [{ id: "step", ...(id === "plan-1" ? { text: "Ship the fix" } : {}), status }]
+      items: [{ id: "step", ...(id === "plan-1" ? { text: "Ship the fix" } : {}), status }],
     });
 
   it("keeps a follow-up's early plan in its own turn, including a plan-only turn", () => {
@@ -396,26 +439,37 @@ describe("plans within conversation turns", () => {
       update("plan-1", "2026-05-12T15:00:01.000Z", "pending"),
       event("a1", "message.completed", "2026-05-12T15:00:02.000Z"),
       event("u2", "user.message", "2026-05-12T15:00:03.000Z"),
-      update("plan-2", "2026-05-12T15:00:04.000Z", "active")
+      update("plan-2", "2026-05-12T15:00:04.000Z", "active"),
     ];
-    const fold = (input: TimelineEvent[]) => foldRenderItems(foldConversationItems(input, []), null)
-      .filter((item) => item.kind === "turn");
+    const fold = (input: TimelineEvent[]) =>
+      foldRenderItems(foldConversationItems(input, []), null).filter(
+        (item) => item.kind === "turn",
+      );
     const turns = fold(events);
     expect(turns.map((item) => item.id)).toEqual(["turn-u1", "turn-u2"]);
     expect(turns[0].todo?.items[0].status).toBe("pending");
     expect(turns[1].todo?.active?.text).toBe("Ship the fix");
     expect(turns[1].assistantEvents).toEqual([]);
-    expect(fold([...events, event("a2", "message.completed", "2026-05-12T15:00:05.000Z")])
-      .map((item) => item.todo)).toEqual(turns.map((item) => item.todo));
+    expect(
+      fold([...events, event("a2", "message.completed", "2026-05-12T15:00:05.000Z")]).map(
+        (item) => item.todo,
+      ),
+    ).toEqual(turns.map((item) => item.todo));
   });
 
   it("does not add a plan to a turn that never updated it", () => {
-    const turns = foldRenderItems(foldConversationItems([
-      event("u1", "user.message", "2026-05-12T15:00:00.000Z"),
-      update("plan-1", "2026-05-12T15:00:01.000Z", "done"),
-      event("u2", "user.message", "2026-05-12T15:00:02.000Z"),
-      event("a2", "message.completed", "2026-05-12T15:00:03.000Z")
-    ], []), null).filter((item) => item.kind === "turn");
+    const turns = foldRenderItems(
+      foldConversationItems(
+        [
+          event("u1", "user.message", "2026-05-12T15:00:00.000Z"),
+          update("plan-1", "2026-05-12T15:00:01.000Z", "done"),
+          event("u2", "user.message", "2026-05-12T15:00:02.000Z"),
+          event("a2", "message.completed", "2026-05-12T15:00:03.000Z"),
+        ],
+        [],
+      ),
+      null,
+    ).filter((item) => item.kind === "turn");
     expect(turns[0].todo?.doneCount).toBe(1);
     expect(turns[1].todo).toBeUndefined();
   });

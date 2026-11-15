@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   agentLaunchAriaLabel,
   agentLaunchLabel,
-  isInternalAgentLaunchMetadata
+  isInternalAgentLaunchMetadata,
 } from "./agentLaunch.js";
 import type { ToolCall } from "./toolCalls.js";
 
@@ -18,26 +18,34 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
     createdAt: "2026-05-12T15:00:00.000Z",
     completedAt: "2026-05-12T15:00:01.000Z",
     error: null,
-    ...overrides
+    ...overrides,
   };
 }
 
-
 describe("agentLaunchLabel", () => {
   it("leads with the agent's own description and follows it with the codename", () => {
-    const out = agentLaunchLabel(tool({ inputFull: { description: "Map the renderer" } }), "Turing");
+    const out = agentLaunchLabel(
+      tool({ inputFull: { description: "Map the renderer" } }),
+      "Turing",
+    );
     expect(out).toEqual({ title: "Map the renderer", identity: "Turing" });
   });
 
   it("names the codename outright when the provider gave no description", () => {
-    expect(agentLaunchLabel(tool(), "Turing")).toEqual({ title: "Launched Turing", identity: null });
+    expect(agentLaunchLabel(tool(), "Turing")).toEqual({
+      title: "Launched Turing",
+      identity: null,
+    });
     expect(agentLaunchLabel(tool())).toEqual({ title: "Launched subagent", identity: null });
     expect(agentLaunchLabel(tool(), "  ")).toEqual({ title: "Launched subagent", identity: null });
   });
 
   it("never promotes the prompt into the title", () => {
     const prompt = "Inspect the repository at /Users/adamthuvesen/dev/menti/revops-backoffice.";
-    const out = agentLaunchLabel(tool({ inputPreview: prompt.slice(0, 72), inputFull: { prompt } }), "Turing");
+    const out = agentLaunchLabel(
+      tool({ inputPreview: prompt.slice(0, 72), inputFull: { prompt } }),
+      "Turing",
+    );
     expect(out.title).toBe("Launched Turing");
   });
 });
@@ -50,36 +58,46 @@ describe("agentLaunchAriaLabel", () => {
 
 describe("isInternalAgentLaunchMetadata", () => {
   it("detects async launch confirmation phrases", () => {
-    expect(isInternalAgentLaunchMetadata("Async agent launched successfully. output_file: /tmp/out")).toBe(true);
-    expect(isInternalAgentLaunchMetadata("This tool result is internal metadata. Use SendMessage with to: ...")).toBe(true);
+    expect(
+      isInternalAgentLaunchMetadata("Async agent launched successfully. output_file: /tmp/out"),
+    ).toBe(true);
+    expect(
+      isInternalAgentLaunchMetadata(
+        "This tool result is internal metadata. Use SendMessage with to: ...",
+      ),
+    ).toBe(true);
     expect(isInternalAgentLaunchMetadata("Background task launched.")).toBe(true);
     expect(isInternalAgentLaunchMetadata("Subagent launched successfully.")).toBe(true);
     expect(
       isInternalAgentLaunchMetadata(
-        "Subagent started in background.\nsubagent_id: 01a07579-bad6-7b31-b248-8aa103ee10a8"
-      )
+        "Subagent started in background.\nsubagent_id: 01a07579-bad6-7b31-b248-8aa103ee10a8",
+      ),
     ).toBe(true);
     expect(
       isInternalAgentLaunchMetadata(
         JSON.stringify({
           type: "Text",
-          text: "Subagent started in background.\nsubagent_id: child-1\ntype: reviewer"
-        })
-      )
+          text: "Subagent started in background.\nsubagent_id: child-1\ntype: reviewer",
+        }),
+      ),
     ).toBe(true);
   });
 
   it("detects Claude SendMessage resume receipts", () => {
     expect(
       isInternalAgentLaunchMetadata(
-        '{"success":true,"message":"Resuming agent a5c5b27","resumedAgentId":"a5c5b27a1557fa19e","pin":{"id":"a5c5b27a1557fa19e","name":"a5c5b27a1557fa19e","ref":"eeee52"}}'
-      )
+        '{"success":true,"message":"Resuming agent a5c5b27","resumedAgentId":"a5c5b27a1557fa19e","pin":{"id":"a5c5b27a1557fa19e","name":"a5c5b27a1557fa19e","ref":"eeee52"}}',
+      ),
     ).toBe(true);
   });
 
   it("returns false for real subagent completion text", () => {
-    expect(isInternalAgentLaunchMetadata("Checked the repository layout. Found 12 components.")).toBe(false);
-    expect(isInternalAgentLaunchMetadata("I'll resume the agent work from the last typecheck.")).toBe(false);
+    expect(
+      isInternalAgentLaunchMetadata("Checked the repository layout. Found 12 components."),
+    ).toBe(false);
+    expect(
+      isInternalAgentLaunchMetadata("I'll resume the agent work from the last typecheck."),
+    ).toBe(false);
   });
 
   it("does not mistake the footer on a finished subagent result for a launch", () => {
@@ -87,8 +105,8 @@ describe("isInternalAgentLaunchMetadata", () => {
     // one that already returned its answer — with this block.
     expect(
       isInternalAgentLaunchMetadata(
-        "**Verdict: B.** Delete the projection.\n\nagentId: a1ee15e7eb144fead (use SendMessage with to: 'a1ee15e7eb144fead', summary: '<5-10 word recap>' to continue this agent)\n<usage>subagent_tokens: 64476</usage>"
-      )
+        "**Verdict: B.** Delete the projection.\n\nagentId: a1ee15e7eb144fead (use SendMessage with to: 'a1ee15e7eb144fead', summary: '<5-10 word recap>' to continue this agent)\n<usage>subagent_tokens: 64476</usage>",
+      ),
     ).toBe(false);
     expect(isInternalAgentLaunchMetadata("README is updated.")).toBe(false);
   });

@@ -46,10 +46,8 @@ export const VERIFICATION_CURSOR_PROVIDER = Object.freeze({
   homeEnv: "ARGMAX_VERIFICATION_HOME",
 });
 
-export const VERIFICATION_CONVERSATION_ID =
-  "argmax-verification-conversation";
-export const VERIFICATION_MOVED_CONVERSATION_ID =
-  "argmax-verification-moved-conversation";
+export const VERIFICATION_CONVERSATION_ID = "argmax-verification-conversation";
+export const VERIFICATION_MOVED_CONVERSATION_ID = "argmax-verification-moved-conversation";
 
 export const VERIFICATION_SUBAGENT = Object.freeze({
   id: "verification-persistent-agent",
@@ -229,8 +227,7 @@ export const VERIFICATION_SCENARIOS = Object.freeze({
   },
 });
 
-const delay = (milliseconds) =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
+const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 async function waitAtBarrier(name) {
   const controlDirectory = process.env.ARGMAX_VERIFICATION_CONTROL_DIR;
@@ -417,17 +414,19 @@ async function runPersistentSubagentFirst(args) {
   }
   await emitInit();
   await emitAssistant(
-    [{
-      type: "tool_use",
-      id: VERIFICATION_SUBAGENT.rootToolUseId,
-      name: "Agent",
-      input: {
-        description: VERIFICATION_SUBAGENT.description,
-        prompt: "Reply with the first verification response.",
-        subagent_type: VERIFICATION_SUBAGENT.subagentType,
-        run_in_background: false,
+    [
+      {
+        type: "tool_use",
+        id: VERIFICATION_SUBAGENT.rootToolUseId,
+        name: "Agent",
+        input: {
+          description: VERIFICATION_SUBAGENT.description,
+          prompt: "Reply with the first verification response.",
+          subagent_type: VERIFICATION_SUBAGENT.subagentType,
+          run_in_background: false,
+        },
       },
-    }],
+    ],
     "verification-persistent-parent-task",
   );
   await emitTaskStarted({
@@ -444,11 +443,15 @@ async function runPersistentSubagentFirst(args) {
     type: "user",
     message: {
       role: "user",
-      content: [{
-        tool_use_id: VERIFICATION_SUBAGENT.rootToolUseId,
-        type: "tool_result",
-        content: [{ type: "text", text: VERIFICATION_SCENARIOS.persistentSubagentFirst.visibleText }],
-      }],
+      content: [
+        {
+          tool_use_id: VERIFICATION_SUBAGENT.rootToolUseId,
+          type: "tool_result",
+          content: [
+            { type: "text", text: VERIFICATION_SCENARIOS.persistentSubagentFirst.visibleText },
+          ],
+        },
+      ],
     },
     session_id: VERIFICATION_CONVERSATION_ID,
     tool_use_result: {
@@ -467,20 +470,24 @@ async function runPersistentSubagentFirst(args) {
 async function runPersistentSubagentSecond(args) {
   const resumeId = optionValue(args, "--resume");
   if (resumeId !== VERIFICATION_CONVERSATION_ID) {
-    throw new Error(`persistent-subagent expected --resume ${VERIFICATION_CONVERSATION_ID}, received ${resumeId ?? "nothing"}`);
+    throw new Error(
+      `persistent-subagent expected --resume ${VERIFICATION_CONVERSATION_ID}, received ${resumeId ?? "nothing"}`,
+    );
   }
   await emitInit();
   await emitAssistant(
-    [{
-      type: "tool_use",
-      id: VERIFICATION_SUBAGENT.followUpToolUseId,
-      name: "SendMessage",
-      input: {
-        to: VERIFICATION_SUBAGENT.id,
-        message: "Reply with the follow-up verification response.",
-        summary: "persistent verification follow-up",
+    [
+      {
+        type: "tool_use",
+        id: VERIFICATION_SUBAGENT.followUpToolUseId,
+        name: "SendMessage",
+        input: {
+          to: VERIFICATION_SUBAGENT.id,
+          message: "Reply with the follow-up verification response.",
+          summary: "persistent verification follow-up",
+        },
       },
-    }],
+    ],
     "verification-persistent-parent-follow-up",
   );
   await emitTaskStarted({
@@ -492,11 +499,13 @@ async function runPersistentSubagentSecond(args) {
     type: "user",
     message: {
       role: "user",
-      content: [{
-        tool_use_id: VERIFICATION_SUBAGENT.followUpToolUseId,
-        type: "tool_result",
-        content: [{ type: "text", text: "Resuming verification persistent agent" }],
-      }],
+      content: [
+        {
+          tool_use_id: VERIFICATION_SUBAGENT.followUpToolUseId,
+          type: "tool_result",
+          content: [{ type: "text", text: "Resuming verification persistent agent" }],
+        },
+      ],
     },
     session_id: VERIFICATION_CONVERSATION_ID,
     tool_use_result: {
@@ -586,9 +595,11 @@ function emitCodexTurn(prompt, turnId, resumed) {
     throw new Error("Codex app-server fixture received an unknown verification prompt");
   }
   if (first === resumed) {
-    throw new Error(first
-      ? "fresh Codex scenario unexpectedly resumed a thread"
-      : "follow-up Codex scenario did not resume its thread");
+    throw new Error(
+      first
+        ? "fresh Codex scenario unexpectedly resumed a thread"
+        : "follow-up Codex scenario did not resume its thread",
+    );
   }
   const visibleText = first
     ? VERIFICATION_SCENARIOS.persistentCodexSubagentFirst.visibleText
@@ -599,36 +610,53 @@ function emitCodexTurn(prompt, turnId, resumed) {
     turn: { id: turnId, status: "inProgress", items: [] },
   });
   if (first) {
-    emitCodexItem(turnId, codexCollabItem({
-      id: child.rootToolUseId,
-      tool: "spawnAgent",
-      prompt: "Reply with the first persistent Codex verification response.",
-      childStatus: "pendingInit",
-    }));
+    emitCodexItem(
+      turnId,
+      codexCollabItem({
+        id: child.rootToolUseId,
+        tool: "spawnAgent",
+        prompt: "Reply with the first persistent Codex verification response.",
+        childStatus: "pendingInit",
+      }),
+    );
   } else {
-    emitCodexItem(turnId, codexCollabItem({
-      id: "verification-codex-resume-agent",
-      tool: "resumeAgent",
-      childStatus: "pendingInit",
-    }));
-    emitCodexItem(turnId, codexCollabItem({
-      id: child.followUpToolUseId,
-      tool: "sendInput",
-      prompt: "Reply with the follow-up persistent Codex verification response.",
-      childStatus: "pendingInit",
-    }));
+    emitCodexItem(
+      turnId,
+      codexCollabItem({
+        id: "verification-codex-resume-agent",
+        tool: "resumeAgent",
+        childStatus: "pendingInit",
+      }),
+    );
+    emitCodexItem(
+      turnId,
+      codexCollabItem({
+        id: child.followUpToolUseId,
+        tool: "sendInput",
+        prompt: "Reply with the follow-up persistent Codex verification response.",
+        childStatus: "pendingInit",
+      }),
+    );
   }
-  emitCodexItem(turnId, codexCollabItem({
-    id: first ? "verification-codex-wait-pending-first" : "verification-codex-wait-pending-follow-up",
-    tool: "wait",
-    childStatus: "pendingInit",
-  }));
-  emitCodexItem(turnId, codexCollabItem({
-    id: first ? "verification-codex-wait-first" : "verification-codex-wait-follow-up",
-    tool: "wait",
-    childStatus: "completed",
-    message: visibleText,
-  }));
+  emitCodexItem(
+    turnId,
+    codexCollabItem({
+      id: first
+        ? "verification-codex-wait-pending-first"
+        : "verification-codex-wait-pending-follow-up",
+      tool: "wait",
+      childStatus: "pendingInit",
+    }),
+  );
+  emitCodexItem(
+    turnId,
+    codexCollabItem({
+      id: first ? "verification-codex-wait-first" : "verification-codex-wait-follow-up",
+      tool: "wait",
+      childStatus: "completed",
+      message: visibleText,
+    }),
+  );
   codexNotification("item/completed", {
     threadId: VERIFICATION_CONVERSATION_ID,
     turnId,
@@ -657,9 +685,12 @@ async function runCodexAppServer(args) {
     "tools.update_plan.enabled=true",
     "tools.experimental_request_user_input.enabled=true",
   ]);
-  if (args[0] !== "app-server" || args[1] !== "--stdio"
-      || config.length % 2 !== 0
-      || config.some((value, index) => index % 2 === 0 ? value !== "-c" : !allowedConfig.has(value))) {
+  if (
+    args[0] !== "app-server" ||
+    args[1] !== "--stdio" ||
+    config.length % 2 !== 0 ||
+    config.some((value, index) => (index % 2 === 0 ? value !== "-c" : !allowedConfig.has(value)))
+  ) {
     throw new Error(`unsupported Codex app-server arguments: ${args.join(" ")}`);
   }
   const lines = createInterface({ input: process.stdin });
@@ -676,14 +707,23 @@ async function runCodexAppServer(args) {
     if (method === undefined && id === VERIFICATION_SCENARIOS.codexUserInput.requestId) {
       const definition = VERIFICATION_SCENARIOS.codexUserInput;
       const answers = request.result?.answers?.[definition.questionId]?.answers;
-      if (!questionTurnId || request.error || !Array.isArray(answers)
-          || answers.length !== 1 || answers[0] !== definition.expectedAnswer) {
+      if (
+        !questionTurnId ||
+        request.error ||
+        !Array.isArray(answers) ||
+        answers.length !== 1 ||
+        answers[0] !== definition.expectedAnswer
+      ) {
         throw new Error("Codex question did not receive the expected structured answer");
       }
       codexNotification("item/completed", {
         threadId: VERIFICATION_CONVERSATION_ID,
         turnId: questionTurnId,
-        item: { id: "verification-question-answer", type: "agentMessage", text: definition.visibleText },
+        item: {
+          id: "verification-question-answer",
+          type: "agentMessage",
+          text: definition.visibleText,
+        },
       });
       codexNotification("turn/completed", {
         threadId: VERIFICATION_CONVERSATION_ID,
@@ -694,27 +734,48 @@ async function runCodexAppServer(args) {
     }
     if (method === "initialized" && id === undefined) continue;
     if (id === undefined) {
-      throw new Error(`Codex app-server fixture received unsupported notification ${method ?? "<missing>"}`);
+      throw new Error(
+        `Codex app-server fixture received unsupported notification ${method ?? "<missing>"}`,
+      );
     }
     if (method === "initialize") {
       writeJsonRpc({ jsonrpc: "2.0", id, result: { userAgent: "argmax-verification" } });
     } else if (method === "thread/start") {
       resumed = false;
-      writeJsonRpc({ jsonrpc: "2.0", id, result: { thread: { id: VERIFICATION_CONVERSATION_ID } } });
+      writeJsonRpc({
+        jsonrpc: "2.0",
+        id,
+        result: { thread: { id: VERIFICATION_CONVERSATION_ID } },
+      });
     } else if (method === "thread/resume" || method === "thread/fork") {
       if (params.threadId !== VERIFICATION_CONVERSATION_ID) {
-        writeJsonRpc({ jsonrpc: "2.0", id, error: { code: -32602, message: "unexpected threadId" } });
+        writeJsonRpc({
+          jsonrpc: "2.0",
+          id,
+          error: { code: -32602, message: "unexpected threadId" },
+        });
         continue;
       }
       resumed = true;
-      writeJsonRpc({ jsonrpc: "2.0", id, result: { thread: { id: VERIFICATION_CONVERSATION_ID } } });
+      writeJsonRpc({
+        jsonrpc: "2.0",
+        id,
+        result: { thread: { id: VERIFICATION_CONVERSATION_ID } },
+      });
     } else if (method === "turn/start") {
       if (params.threadId !== VERIFICATION_CONVERSATION_ID) {
-        writeJsonRpc({ jsonrpc: "2.0", id, error: { code: -32602, message: "unexpected threadId" } });
+        writeJsonRpc({
+          jsonrpc: "2.0",
+          id,
+          error: { code: -32602, message: "unexpected threadId" },
+        });
         continue;
       }
       const prompt = Array.isArray(params.input)
-        ? params.input.filter((part) => part?.type === "text").map((part) => part.text ?? "").join("\n")
+        ? params.input
+            .filter((part) => part?.type === "text")
+            .map((part) => part.text ?? "")
+            .join("\n")
         : "";
       const turnId = `argmax-verification-turn-${resumed ? "follow-up" : "first"}`;
       const first = prompt.includes(VERIFICATION_SCENARIOS.persistentCodexSubagentFirst.prompt);
@@ -724,11 +785,18 @@ async function runCodexAppServer(args) {
         writeJsonRpc({
           jsonrpc: "2.0",
           id,
-          error: { code: -32602, message: "Codex fixture received an unexpected scenario or thread mode" },
+          error: {
+            code: -32602,
+            message: "Codex fixture received an unexpected scenario or thread mode",
+          },
         });
         continue;
       }
-      writeJsonRpc({ jsonrpc: "2.0", id, result: { turn: { id: turnId, status: "inProgress", items: [] } } });
+      writeJsonRpc({
+        jsonrpc: "2.0",
+        id,
+        result: { turn: { id: turnId, status: "inProgress", items: [] } },
+      });
       if (question) {
         if (!config.includes("tools.experimental_request_user_input.enabled=true")) {
           throw new Error("Codex question tool was not enabled at launch");
@@ -740,25 +808,38 @@ async function runCodexAppServer(args) {
           turn: { id: turnId, status: "inProgress", items: [] },
         });
         writeJsonRpc({
-          jsonrpc: "2.0", id: definition.requestId, method: "item/tool/requestUserInput",
+          jsonrpc: "2.0",
+          id: definition.requestId,
+          method: "item/tool/requestUserInput",
           params: {
-            threadId: VERIFICATION_CONVERSATION_ID, turnId, itemId: "verification-question",
+            threadId: VERIFICATION_CONVERSATION_ID,
+            turnId,
+            itemId: "verification-question",
             isBlocking: true,
-            questions: [{
-              id: definition.questionId, header: "Route", question: definition.questionText,
-              isOther: true, isSecret: false,
-              options: [
-                { label: definition.expectedAnswer, description: "Resume the waiting request." },
-                { label: "Alternative", description: "Choose another route." },
-              ],
-            }],
+            questions: [
+              {
+                id: definition.questionId,
+                header: "Route",
+                question: definition.questionText,
+                isOther: true,
+                isSecret: false,
+                options: [
+                  { label: definition.expectedAnswer, description: "Resume the waiting request." },
+                  { label: "Alternative", description: "Choose another route." },
+                ],
+              },
+            ],
           },
         });
       } else {
         emitCodexTurn(prompt, turnId, resumed);
       }
     } else {
-      writeJsonRpc({ jsonrpc: "2.0", id, error: { code: -32601, message: `unsupported method ${method}` } });
+      writeJsonRpc({
+        jsonrpc: "2.0",
+        id,
+        error: { code: -32601, message: `unsupported method ${method}` },
+      });
     }
   }
 }
@@ -766,7 +847,8 @@ async function runCodexAppServer(args) {
 function opencodeScenarioParts(prompt) {
   const first = prompt.includes(VERIFICATION_SCENARIOS.persistentOpencodeSubagentFirst.prompt);
   const second = prompt.includes(VERIFICATION_SCENARIOS.persistentOpencodeSubagentSecond.prompt);
-  if (!first && !second) throw new Error("OpenCode fixture received an unknown verification prompt");
+  if (!first && !second)
+    throw new Error("OpenCode fixture received an unknown verification prompt");
   const definition = first
     ? VERIFICATION_SCENARIOS.persistentOpencodeSubagentFirst
     : VERIFICATION_SCENARIOS.persistentOpencodeSubagentSecond;
@@ -774,7 +856,12 @@ function opencodeScenarioParts(prompt) {
     ? VERIFICATION_OPENCODE_SUBAGENT.rootToolUseId
     : VERIFICATION_OPENCODE_SUBAGENT.followUpToolUseId;
   return [
-    { id: `${callId}-start`, type: "step-start", sessionID: VERIFICATION_CONVERSATION_ID, messageID: `${callId}-message` },
+    {
+      id: `${callId}-start`,
+      type: "step-start",
+      sessionID: VERIFICATION_CONVERSATION_ID,
+      messageID: `${callId}-message`,
+    },
     opencodeTaskPart({
       callId,
       childId: VERIFICATION_OPENCODE_SUBAGENT.id,
@@ -860,7 +947,10 @@ async function runOpencodeServer(args) {
         await readRequestJson(request);
         response.writeHead(200, { "Content-Type": "application/json" });
         response.end(JSON.stringify({ id: VERIFICATION_CONVERSATION_ID }));
-      } else if (request.method === "POST" && /^\/session\/[^/]+\/prompt_async$/.test(url.pathname)) {
+      } else if (
+        request.method === "POST" &&
+        /^\/session\/[^/]+\/prompt_async$/.test(url.pathname)
+      ) {
         const sessionId = url.pathname.split("/")[2];
         if (sessionId !== VERIFICATION_CONVERSATION_ID) {
           fail(422, "unexpected OpenCode session id");
@@ -868,7 +958,10 @@ async function runOpencodeServer(args) {
         }
         const body = await readRequestJson(request);
         const prompt = Array.isArray(body.parts)
-          ? body.parts.filter((part) => part?.type === "text").map((part) => part.text ?? "").join("\n")
+          ? body.parts
+              .filter((part) => part?.type === "text")
+              .map((part) => part.text ?? "")
+              .join("\n")
           : "";
         const parts = opencodeScenarioParts(prompt);
         response.writeHead(200, { "Content-Type": "application/json" });
@@ -909,9 +1002,7 @@ function cursorTaskData({ callId, visibleText, continuation = false }) {
       : "Reply with the first persistent Cursor verification response.",
     subagentType: { unspecified: {} },
     model: VERIFICATION_CURSOR_PROVIDER.modelId,
-    ...(continuation
-      ? { resume: child.id, agentId: child.id }
-      : { agentId: child.initialAgentId }),
+    ...(continuation ? { resume: child.id, agentId: child.id } : { agentId: child.initialAgentId }),
     attachments: [],
     mode: "TASK_MODE_UNSPECIFIED",
     respondingToMessageIds: [],
@@ -961,21 +1052,60 @@ async function emitCursorTask({ callId, visibleText, continuation = false }) {
 }
 
 async function runPersistentCursorSubagentFirst(args) {
-  if (args.includes("--resume")) throw new Error("fresh persistent-cursor-subagent fixture unexpectedly received --resume");
+  if (args.includes("--resume"))
+    throw new Error("fresh persistent-cursor-subagent fixture unexpectedly received --resume");
   const definition = VERIFICATION_SCENARIOS.persistentCursorSubagentFirst;
-  await emitCursorEvent({ type: "system", subtype: "init", model: VERIFICATION_CURSOR_PROVIDER.modelId });
-  await emitCursorTask({ callId: VERIFICATION_CURSOR_SUBAGENT.rootToolUseId, visibleText: definition.visibleText });
-  await emitCursorEvent({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Verification Cursor parent first turn complete." }] } });
-  await emitCursorEvent({ type: "result", subtype: "success", is_error: false, result: "Verification Cursor parent first turn complete." });
+  await emitCursorEvent({
+    type: "system",
+    subtype: "init",
+    model: VERIFICATION_CURSOR_PROVIDER.modelId,
+  });
+  await emitCursorTask({
+    callId: VERIFICATION_CURSOR_SUBAGENT.rootToolUseId,
+    visibleText: definition.visibleText,
+  });
+  await emitCursorEvent({
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "Verification Cursor parent first turn complete." }],
+    },
+  });
+  await emitCursorEvent({
+    type: "result",
+    subtype: "success",
+    is_error: false,
+    result: "Verification Cursor parent first turn complete.",
+  });
 }
 
 async function runPersistentCursorSubagentSecond(args) {
-  if (!args.includes("--resume")) throw new Error("persistent-cursor-subagent fixture expected cursor --resume");
+  if (!args.includes("--resume"))
+    throw new Error("persistent-cursor-subagent fixture expected cursor --resume");
   const definition = VERIFICATION_SCENARIOS.persistentCursorSubagentSecond;
-  await emitCursorEvent({ type: "system", subtype: "init", model: VERIFICATION_CURSOR_PROVIDER.modelId });
-  await emitCursorTask({ callId: VERIFICATION_CURSOR_SUBAGENT.followUpToolUseId, visibleText: definition.visibleText, continuation: true });
-  await emitCursorEvent({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Verification Cursor parent follow-up complete." }] } });
-  await emitCursorEvent({ type: "result", subtype: "success", is_error: false, result: "Verification Cursor parent follow-up complete." });
+  await emitCursorEvent({
+    type: "system",
+    subtype: "init",
+    model: VERIFICATION_CURSOR_PROVIDER.modelId,
+  });
+  await emitCursorTask({
+    callId: VERIFICATION_CURSOR_SUBAGENT.followUpToolUseId,
+    visibleText: definition.visibleText,
+    continuation: true,
+  });
+  await emitCursorEvent({
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "Verification Cursor parent follow-up complete." }],
+    },
+  });
+  await emitCursorEvent({
+    type: "result",
+    subtype: "success",
+    is_error: false,
+    result: "Verification Cursor parent follow-up complete.",
+  });
 }
 
 function cursorAcpUpdate(update) {
@@ -989,7 +1119,8 @@ function cursorAcpUpdate(update) {
 function emitCursorAcpTurn(prompt) {
   const first = prompt.includes(VERIFICATION_SCENARIOS.persistentCursorSubagentFirst.prompt);
   const second = prompt.includes(VERIFICATION_SCENARIOS.persistentCursorSubagentSecond.prompt);
-  if (!first && !second) throw new Error("Cursor ACP fixture received an unknown verification prompt");
+  if (!first && !second)
+    throw new Error("Cursor ACP fixture received an unknown verification prompt");
   const definition = first
     ? VERIFICATION_SCENARIOS.persistentCursorSubagentFirst
     : VERIFICATION_SCENARIOS.persistentCursorSubagentSecond;
@@ -1040,9 +1171,13 @@ async function runCursorAcp(args) {
       throw new Error("Cursor ACP fixture received malformed JSON-RPC");
     }
     const { id, method, params = {} } = request;
-    if (id === undefined) throw new Error(`Cursor ACP fixture received unsupported notification ${method ?? "<missing>"}`);
+    if (id === undefined)
+      throw new Error(
+        `Cursor ACP fixture received unsupported notification ${method ?? "<missing>"}`,
+      );
     const result = (value) => writeJsonRpc({ jsonrpc: "2.0", id, result: value });
-    const invalid = (message) => writeJsonRpc({ jsonrpc: "2.0", id, error: { code: -32602, message } });
+    const invalid = (message) =>
+      writeJsonRpc({ jsonrpc: "2.0", id, error: { code: -32602, message } });
     if (method === "initialize") {
       result({ protocolVersion: 1 });
     } else if (method === "session/new") {
@@ -1051,7 +1186,10 @@ async function runCursorAcp(args) {
       if (params.sessionId !== VERIFICATION_CONVERSATION_ID) invalid("unexpected sessionId");
       else result({ sessionId: VERIFICATION_CONVERSATION_ID, models });
     } else if (method === "session/set_model") {
-      if (params.sessionId !== VERIFICATION_CONVERSATION_ID || !String(params.modelId).startsWith("grok-4.6")) {
+      if (
+        params.sessionId !== VERIFICATION_CONVERSATION_ID ||
+        !String(params.modelId).startsWith("grok-4.6")
+      ) {
         invalid("unexpected Cursor model selection");
       } else result({});
     } else if (method === "session/set_mode") {
@@ -1064,7 +1202,10 @@ async function runCursorAcp(args) {
         continue;
       }
       const prompt = Array.isArray(params.prompt)
-        ? params.prompt.filter((part) => part?.type === "text").map((part) => part.text ?? "").join("\n")
+        ? params.prompt
+            .filter((part) => part?.type === "text")
+            .map((part) => part.text ?? "")
+            .join("\n")
         : "";
       try {
         emitCursorAcpTurn(prompt);
@@ -1073,7 +1214,11 @@ async function runCursorAcp(args) {
         invalid(error.message);
       }
     } else {
-      writeJsonRpc({ jsonrpc: "2.0", id, error: { code: -32601, message: `unsupported method ${method}` } });
+      writeJsonRpc({
+        jsonrpc: "2.0",
+        id,
+        error: { code: -32601, message: `unsupported method ${method}` },
+      });
     }
   }
 }
@@ -1181,8 +1326,10 @@ async function runSessionMoveFirst(args) {
   if (typeof scheduled.sourceSessionId !== "string" || !scheduled.sourceSessionId) {
     throw new Error("session move CLI did not return a source session id");
   }
-  if (typeof scheduled.path !== "string"
-      || await realpath(scheduled.path) !== canonicalMovePath) {
+  if (
+    typeof scheduled.path !== "string" ||
+    (await realpath(scheduled.path)) !== canonicalMovePath
+  ) {
     throw new Error("session move CLI returned the wrong destination path");
   }
   await writeFile(
@@ -1209,7 +1356,7 @@ async function runSessionMoveSecond(args) {
     throw new Error("session-move continuation expected --fork-session");
   }
   const movePath = requiredEnvironmentValue("ARGMAX_VERIFICATION_MOVE_PATH");
-  if (await realpath(process.cwd()) !== await realpath(movePath)) {
+  if ((await realpath(process.cwd())) !== (await realpath(movePath))) {
     throw new Error("session-move continuation started outside the destination checkout");
   }
   await emitInit(VERIFICATION_MOVED_CONVERSATION_ID);
@@ -1259,7 +1406,11 @@ async function runQuickTurn(prompt, text, conversationId = VERIFICATION_CONVERSA
   await recordPrompt(prompt);
   await emitInit(conversationId);
   await emitTextDelta(text, conversationId);
-  await emitAssistant([{ type: "text", text }], `verification-workflow-${text.length}`, conversationId);
+  await emitAssistant(
+    [{ type: "text", text }],
+    `verification-workflow-${text.length}`,
+    conversationId,
+  );
   await emitSuccess(text, conversationId);
 }
 
@@ -1281,22 +1432,42 @@ function workflowTurn(prompt) {
     return () => runQuickTurn(prompt, scenarios.forkMerge.visibleText);
   }
   if (prompt.includes(scenarios.forkChildFollowUp.prompt)) {
-    return () => runQuickTurn(prompt, scenarios.forkChildFollowUp.visibleText, VERIFICATION_FORK_CHILD_CONVERSATION_ID);
+    return () =>
+      runQuickTurn(
+        prompt,
+        scenarios.forkChildFollowUp.visibleText,
+        VERIFICATION_FORK_CHILD_CONVERSATION_ID,
+      );
   }
   if (prompt.includes(scenarios.forkChild.prompt)) {
-    return () => runQuickTurn(prompt, scenarios.forkChild.visibleText, VERIFICATION_FORK_CHILD_CONVERSATION_ID);
+    return () =>
+      runQuickTurn(
+        prompt,
+        scenarios.forkChild.visibleText,
+        VERIFICATION_FORK_CHILD_CONVERSATION_ID,
+      );
   }
   if (prompt.includes(scenarios.forkHold.prompt)) return () => runForkHold(prompt);
-  if (prompt.includes(scenarios.forkTurnTwo.prompt)) return () => runQuickTurn(prompt, scenarios.forkTurnTwo.visibleText);
-  if (prompt.includes(scenarios.forkTurnOne.prompt)) return () => runQuickTurn(prompt, scenarios.forkTurnOne.visibleText);
-  if (prompt.includes(scenarios.composerBackground.prompt)) return () => runQuickTurn(prompt, scenarios.composerBackground.visibleText);
-  if (prompt.includes(scenarios.occupiedFollowUp.prompt)) return () => runQuickTurn(prompt, scenarios.occupiedFollowUp.visibleText);
-  if (prompt.includes(scenarios.occupiedCheckout.prompt)) return () => runQuickTurn(prompt, scenarios.occupiedCheckout.visibleText);
-  if (prompt.includes(scenarios.occupiedSeed.prompt)) return () => runQuickTurn(prompt, scenarios.occupiedSeed.visibleText);
-  if (prompt.includes(scenarios.occupiedShare.prompt)) return () => runQuickTurn(prompt, scenarios.occupiedShare.visibleText);
-  if (prompt.includes(scenarios.occupiedWorktree.prompt)) return () => runQuickTurn(prompt, scenarios.occupiedWorktree.visibleText);
-  if (prompt.includes(scenarios.workspaceSettings.prompt)) return () => runQuickTurn(prompt, scenarios.workspaceSettings.visibleText);
-  if (prompt.includes(scenarios.composerSource.prompt)) return () => runQuickTurn(prompt, scenarios.composerSource.visibleText);
+  if (prompt.includes(scenarios.forkTurnTwo.prompt))
+    return () => runQuickTurn(prompt, scenarios.forkTurnTwo.visibleText);
+  if (prompt.includes(scenarios.forkTurnOne.prompt))
+    return () => runQuickTurn(prompt, scenarios.forkTurnOne.visibleText);
+  if (prompt.includes(scenarios.composerBackground.prompt))
+    return () => runQuickTurn(prompt, scenarios.composerBackground.visibleText);
+  if (prompt.includes(scenarios.occupiedFollowUp.prompt))
+    return () => runQuickTurn(prompt, scenarios.occupiedFollowUp.visibleText);
+  if (prompt.includes(scenarios.occupiedCheckout.prompt))
+    return () => runQuickTurn(prompt, scenarios.occupiedCheckout.visibleText);
+  if (prompt.includes(scenarios.occupiedSeed.prompt))
+    return () => runQuickTurn(prompt, scenarios.occupiedSeed.visibleText);
+  if (prompt.includes(scenarios.occupiedShare.prompt))
+    return () => runQuickTurn(prompt, scenarios.occupiedShare.visibleText);
+  if (prompt.includes(scenarios.occupiedWorktree.prompt))
+    return () => runQuickTurn(prompt, scenarios.occupiedWorktree.visibleText);
+  if (prompt.includes(scenarios.workspaceSettings.prompt))
+    return () => runQuickTurn(prompt, scenarios.workspaceSettings.visibleText);
+  if (prompt.includes(scenarios.composerSource.prompt))
+    return () => runQuickTurn(prompt, scenarios.composerSource.visibleText);
   return null;
 }
 
@@ -1332,14 +1503,18 @@ export async function runProviderFixture(args = process.argv.slice(2)) {
   if (args.includes("text") && prompt.includes("PROJECT OVERVIEW GENERATION")) {
     const folderId = prompt.match(/Folder ID: ([^\n]+)/)?.[1];
     if (!folderId) throw new Error("Project overview fixture received no sampled folder");
-    process.stdout.write(JSON.stringify({
-      text: "Verification project overview: the primary application uses reference material from the supporting folder.",
-      sources: [{ folderId, path: "README.md" }],
-    }) + "\n");
+    process.stdout.write(
+      JSON.stringify({
+        text: "Verification project overview: the primary application uses reference material from the supporting folder.",
+        sources: [{ folderId, path: "README.md" }],
+      }) + "\n",
+    );
     return;
   }
   if (args.includes("text") && prompt.includes("REPOSITORY SAMPLE:")) {
-    process.stdout.write(JSON.stringify({ summary: "Shared API contracts and types for the application." }) + "\n");
+    process.stdout.write(
+      JSON.stringify({ summary: "Shared API contracts and types for the application." }) + "\n",
+    );
     return;
   }
   // A one-shot title request quotes the prompt; it gets a title, not a turn.

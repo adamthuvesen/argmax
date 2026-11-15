@@ -28,7 +28,7 @@ function launcher(overrides: Partial<LaunchSurfaceProps> = {}): JSX.Element {
 function focusedNeighbor(): HTMLTextAreaElement {
   const view = render(<textarea aria-label="Neighbor draft" />);
   const neighbor = within(view.container).getByRole<HTMLTextAreaElement>("textbox", {
-    name: "Neighbor draft"
+    name: "Neighbor draft",
   });
   neighbor.focus();
   return neighbor;
@@ -75,7 +75,7 @@ describe("LaunchSurface focus ownership", () => {
     const prompt = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Task prompt" });
     expect(prompt).toHaveFocus();
     fireEvent.change(prompt, { target: { value: "Start the background agent" } });
-    fireEvent.submit(prompt.closest("form")!);
+    fireEvent.submit(prompt);
     expect(onLaunchTask).toHaveBeenCalledOnce();
     expect(prompt).toBeDisabled();
     view.rerender(launcher({ isFocused: false, onLaunchTask }));

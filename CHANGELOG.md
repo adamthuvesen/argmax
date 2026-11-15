@@ -18,6 +18,7 @@ Argmax is pre-1.0 and every release is marked a pre-release on GitHub.
 ### Added
 
 - Cursor can launch Claude Sonnet 5.5 (`claude-sonnet-5-5-medium`), with effort through Max. The CLI has no Fast variant for it.
+- Cursor can launch Gemini 4 Hydrogen (`gemini-4-hydrogen-medium`), with effort through Extra High, and Gemini 4 Carbon and Argon (`gemini-4-carbon-medium`, `gemini-4-argon-medium`), with effort through High. None has a Fast variant. Gemini 4 Hydrogen replaces Gemini 3.8 Flash in the picker, and saved Gemini 3.8 Flash chats continue on Hydrogen.
 
 ### Changed
 

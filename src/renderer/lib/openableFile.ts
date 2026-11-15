@@ -22,7 +22,7 @@ import { isExternalFilePath } from "./reviewIpc.js";
 export async function resolveOpenablePath(
   api: ArgmaxApi | undefined,
   workspaceId: string,
-  path: string
+  path: string,
 ): Promise<string | null> {
   if (!api) return null;
   try {

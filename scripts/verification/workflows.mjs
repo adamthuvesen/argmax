@@ -27,7 +27,18 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import { delay, runChecked } from "./common.mjs";
-import { ensureDesktopForeground, openContextMenu, pressChord, pressMouseDown, pressNativeEscape, readComposerText, selectComposerText, setInputValue, typeIntoComposer, waitForCodeMirror } from "./desktop.mjs";
+import {
+  ensureDesktopForeground,
+  openContextMenu,
+  pressChord,
+  pressMouseDown,
+  pressNativeEscape,
+  readComposerText,
+  selectComposerText,
+  setInputValue,
+  typeIntoComposer,
+  waitForCodeMirror,
+} from "./desktop.mjs";
 import { writeJson } from "./evidence.mjs";
 import {
   VERIFICATION_BARRIERS,
@@ -62,29 +73,47 @@ function diagnose(name, value) {
 // and the shelf toggle's state.
 async function describeSnoozeShelf(browser, workspaceId) {
   return browser.execute(function describe(id) {
-    const matches = [...document.querySelectorAll(`[data-workspace-id="${id}"] button[title]`)].map((element) => {
-      const box = element.getBoundingClientRect();
-      const style = window.getComputedStyle(element);
-      return {
-        title: element.getAttribute("title"),
-        connected: element.isConnected,
-        rect: [Math.round(box.left), Math.round(box.top), Math.round(box.width), Math.round(box.height)],
-        opacity: style.opacity,
-        laidOut: element.offsetParent !== null,
-      };
-    });
-    const toggles = [...document.querySelectorAll('[aria-label$="Snoozed chats"]')].map((element) => ({
-      label: element.getAttribute("aria-label"),
-      expanded: element.getAttribute("aria-expanded"),
-    }));
-    const menuItems = [...document.querySelectorAll('[role="menuitem"]')].map((element) => element.textContent.trim());
-    return { rows: document.querySelectorAll(`[data-workspace-id="${id}"]`).length, matches, toggles, menuItems };
+    const matches = [...document.querySelectorAll(`[data-workspace-id="${id}"] button[title]`)].map(
+      (element) => {
+        const box = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return {
+          title: element.getAttribute("title"),
+          connected: element.isConnected,
+          rect: [
+            Math.round(box.left),
+            Math.round(box.top),
+            Math.round(box.width),
+            Math.round(box.height),
+          ],
+          opacity: style.opacity,
+          laidOut: element.offsetParent !== null,
+        };
+      },
+    );
+    const toggles = [...document.querySelectorAll('[aria-label$="Snoozed chats"]')].map(
+      (element) => ({
+        label: element.getAttribute("aria-label"),
+        expanded: element.getAttribute("aria-expanded"),
+      }),
+    );
+    const menuItems = [...document.querySelectorAll('[role="menuitem"]')].map((element) =>
+      element.textContent.trim(),
+    );
+    return {
+      rows: document.querySelectorAll(`[data-workspace-id="${id}"]`).length,
+      matches,
+      toggles,
+      menuItems,
+    };
   }, workspaceId);
 }
 
 function check(assertions, name, condition, value = undefined) {
   if (!condition) {
-    throw new Error(`workflow verification failed: ${name}${value === undefined ? "" : ` (${JSON.stringify(value)})`}`);
+    throw new Error(
+      `workflow verification failed: ${name}${value === undefined ? "" : ` (${JSON.stringify(value)})`}`,
+    );
   }
   assertions.push({ name, ok: true, ...(value === undefined ? {} : { value }) });
 }
@@ -130,7 +159,9 @@ async function waitForSession(bridge, sessionId, accept, timeoutMs, label) {
     if (last && accept(last, dashboard)) return { session: last, dashboard };
     await delay(150);
   }
-  throw new Error(`${label}: session ${sessionId} did not get there within ${timeoutMs}ms (last state ${last?.state ?? "missing"})`);
+  throw new Error(
+    `${label}: session ${sessionId} did not get there within ${timeoutMs}ms (last state ${last?.state ?? "missing"})`,
+  );
 }
 
 async function waitForEventText(bridge, sessionId, text, timeoutMs) {
@@ -144,14 +175,22 @@ async function waitForEventText(bridge, sessionId, text, timeoutMs) {
 }
 
 async function waitForCompleted(bridge, sessionId, timeoutMs, label) {
-  const { session } = await waitForSession(bridge, sessionId, (entry) => entry.state === "complete", timeoutMs, label);
+  const { session } = await waitForSession(
+    bridge,
+    sessionId,
+    (entry) => entry.state === "complete",
+    timeoutMs,
+    label,
+  );
   return session;
 }
 
 // sqlite3 prints nothing for an empty result set. Ids come from our own IPC
 // replies, so they are checked rather than bound (the CLI cannot bind).
 async function sqliteRows(databasePath, sql) {
-  const { stdout } = await runChecked("sqlite3", ["-json", databasePath, sql], { timeoutMs: 20_000 });
+  const { stdout } = await runChecked("sqlite3", ["-json", databasePath, sql], {
+    timeoutMs: 20_000,
+  });
   const text = stdout.trim();
   return text ? JSON.parse(text) : [];
 }
@@ -172,7 +211,12 @@ async function sessionUserMessages(databasePath, sessionId) {
 // suggestion and title one-shots reuse the same binary with no session
 // (`--no-session-persistence --tools ""`); they are helper calls, counted apart.
 function isConversationLaunch(args) {
-  return args.includes("--brief") || args.includes("--resume") || args.includes("--session-id") || args.includes("stream-json");
+  return (
+    args.includes("--brief") ||
+    args.includes("--resume") ||
+    args.includes("--session-id") ||
+    args.includes("stream-json")
+  );
 }
 
 async function readInvocations(invocationLog) {
@@ -234,7 +278,11 @@ async function openWorkspaceRow(browser, workspaceId, timeoutMs) {
       for (const expander of expanders) await expander.click();
       return false;
     },
-    { timeout: timeoutMs, interval: 250, timeoutMsg: `Sidebar row for workspace ${workspaceId} was not visible` },
+    {
+      timeout: timeoutMs,
+      interval: 250,
+      timeoutMsg: `Sidebar row for workspace ${workspaceId} was not visible`,
+    },
   );
   await row.click();
   await ensureDesktopForeground(browser);
@@ -244,8 +292,10 @@ async function waitForIdleControls(browser, timeoutMs) {
   await browser.waitUntil(
     async () =>
       browser.execute(function sessionIsIdle() {
-        return document.querySelector('[aria-label="Send follow-up"]') instanceof HTMLButtonElement
-          && document.querySelector('[aria-label="Stop chat"]') === null;
+        return (
+          document.querySelector('[aria-label="Send follow-up"]') instanceof HTMLButtonElement &&
+          document.querySelector('[aria-label="Stop chat"]') === null
+        );
       }),
     { timeout: timeoutMs, interval: 100, timeoutMsg: "Chat did not render idle controls" },
   );
@@ -264,9 +314,16 @@ async function openLauncher(browser, timeoutMs) {
 // model whose provider the fixture stands in for, then reload so the shell
 // reads it, so the background launch cannot route to a provider with no fixture.
 async function pinLauncherModel(browser, timeoutMs) {
-  await browser.execute(function pinModel(key, value) {
-    window.localStorage.setItem(key, value);
-  }, LAUNCH_MODEL_STORAGE_KEY, JSON.stringify({ provider: VERIFICATION_PROVIDER.provider, modelId: VERIFICATION_PROVIDER.modelId }));
+  await browser.execute(
+    function pinModel(key, value) {
+      window.localStorage.setItem(key, value);
+    },
+    LAUNCH_MODEL_STORAGE_KEY,
+    JSON.stringify({
+      provider: VERIFICATION_PROVIDER.provider,
+      modelId: VERIFICATION_PROVIDER.modelId,
+    }),
+  );
   await browser.refresh();
   const newChat = await browser.$('button[aria-label="New chat"]');
   await newChat.waitForDisplayed({ timeout: timeoutMs });
@@ -290,7 +347,9 @@ async function verifyUsageChip(browser, evidenceDir, assertions, screenshots) {
   check(
     assertions,
     "usage-chip-shows-the-tightest-window",
-    label.includes("63% left in the 5-hour window") && label.includes("resets in") && (await chip.getAttribute("data-old")) === null,
+    label.includes("63% left in the 5-hour window") &&
+      label.includes("resets in") &&
+      (await chip.getAttribute("data-old")) === null,
     { label, appearedAfterMs },
   );
   await chip.click();
@@ -305,7 +364,11 @@ async function verifyUsageChip(browser, evidenceDir, assertions, screenshots) {
   );
   screenshots.push(await screenshot(browser, evidenceDir, "usage-popover"));
   await browser.keys(["Escape"]);
-  await popover.waitForExist({ reverse: true, timeout: 5_000, timeoutMsg: "Escape did not close the usage popover" });
+  await popover.waitForExist({
+    reverse: true,
+    timeout: 5_000,
+    timeoutMsg: "Escape did not close the usage popover",
+  });
   check(assertions, "usage-popover-closes-on-escape", true);
 }
 
@@ -345,11 +408,13 @@ export async function verifyComposerReference({
   await pinLauncherModel(browser, timeoutMs);
   const sourceDone = await waitForCompleted(bridge, source.id, timeoutMs, "reference source chat");
   check(assertions, "source-chat-completed", sourceDone.state === "complete");
-  phases.push(await verifyUi({
-    name: "reference-source",
-    expectedTexts: [scenarios.composerSource.visibleText],
-    expectIdle: true,
-  }));
+  phases.push(
+    await verifyUi({
+      name: "reference-source",
+      expectedTexts: [scenarios.composerSource.visibleText],
+      expectIdle: true,
+    }),
+  );
   const sourceEventsBefore = (await readAllEvents(bridge, source.id)).length;
 
   // 1. Attach the source as a chip from the `@` menu.
@@ -368,7 +433,12 @@ export async function verifyComposerReference({
     timeoutMsg: "Selecting the chat did not draw a reference chip",
   });
   const [chip] = await launcherChips(browser);
-  check(assertions, "reference-chip-resolved", chip.status === "resolved" && chip.label.includes(sourceTitle), chip);
+  check(
+    assertions,
+    "reference-chip-resolved",
+    chip.status === "resolved" && chip.label.includes(sourceTitle),
+    chip,
+  );
   await typeIntoComposer(browser, launcher, "and summarize");
   const draftShot = await screenshot(browser, evidenceDir, "reference-chip-in-composer");
 
@@ -381,14 +451,22 @@ export async function verifyComposerReference({
     },
     { timeout: 5_000, interval: 150, timeoutMsg: "The draft with the reference was never stored" },
   );
-  check(assertions, "draft-stores-link-text", draft.text.includes(`[${sourceTitle}](${sourceLink}`) && draft.text.includes(scenarios.composerBackground.prompt), draft.text);
+  check(
+    assertions,
+    "draft-stores-link-text",
+    draft.text.includes(`[${sourceTitle}](${sourceLink}`) &&
+      draft.text.includes(scenarios.composerBackground.prompt),
+    draft.text,
+  );
 
   // 3. Leave for another chat and come back: the chip is restored.
-  phases.push(await verifyUi({
-    name: "reference-draft-away",
-    expectedTexts: [scenarios.composerSource.visibleText],
-    expectIdle: true,
-  }));
+  phases.push(
+    await verifyUi({
+      name: "reference-draft-away",
+      expectedTexts: [scenarios.composerSource.visibleText],
+      expectIdle: true,
+    }),
+  );
   const restored = await openLauncher(browser, timeoutMs);
   await browser.waitUntil(async () => (await launcherChips(browser)).length === 1, {
     timeout: 10_000,
@@ -396,18 +474,29 @@ export async function verifyComposerReference({
     timeoutMsg: "The reference chip was not restored when the launcher came back",
   });
   const restoredText = await readComposerText(browser, restored);
-  check(assertions, "draft-restored-after-navigation", restoredText.includes(sourceLink) && restoredText.includes("and summarize"), restoredText);
+  check(
+    assertions,
+    "draft-restored-after-navigation",
+    restoredText.includes(sourceLink) && restoredText.includes("and summarize"),
+    restoredText,
+  );
   const restoredShot = await screenshot(browser, evidenceDir, "reference-chip-restored");
 
   // 4. Background send: the chord launches and leaves the launcher in place.
-  const sessionsBefore = (await bridge.call("dashboard:list", {})).sessions.map((entry) => entry.id);
+  const sessionsBefore = (await bridge.call("dashboard:list", {})).sessions.map(
+    (entry) => entry.id,
+  );
   const chordField = await browser.$(`[aria-label="${LAUNCHER_PROMPT_LABEL}"]`);
   await browser.execute(function focusField(element) {
     element.focus();
   }, chordField);
   // `browser.keys` drops the Alt modifier from Enter, so the chord is sent as a
   // keydown that carries it; the launcher's own handler must act on it.
-  check(assertions, "alt-enter-chord-is-handled", await pressChord(browser, { key: "Enter", altKey: true }));
+  check(
+    assertions,
+    "alt-enter-chord-is-handled",
+    await pressChord(browser, { key: "Enter", altKey: true }),
+  );
   let background = null;
   await browser.waitUntil(
     async () => {
@@ -418,18 +507,30 @@ export async function verifyComposerReference({
     { timeout: 20_000, interval: 150, timeoutMsg: "Alt+Enter did not start a new chat" },
   );
   const backgroundShot = await screenshot(browser, evidenceDir, "reference-background-launched");
-  const afterLaunch = await browser.execute(function launcherState(promptLabel, sessionLabel) {
-    return {
-      launcherOpen: document.querySelector(`[aria-label="${promptLabel}"]`) !== null,
-      sessionComposerOpen: document.querySelector(`[aria-label="${sessionLabel}"]`) !== null,
-      chipCount: document.querySelectorAll(".composer-chat-chip").length,
-      bodyText: document.body.innerText,
-    };
-  }, LAUNCHER_PROMPT_LABEL, SESSION_PROMPT_LABEL);
-  check(assertions, "launcher-stays-open-after-background-send", afterLaunch.launcherOpen && !afterLaunch.sessionComposerOpen);
+  const afterLaunch = await browser.execute(
+    function launcherState(promptLabel, sessionLabel) {
+      return {
+        launcherOpen: document.querySelector(`[aria-label="${promptLabel}"]`) !== null,
+        sessionComposerOpen: document.querySelector(`[aria-label="${sessionLabel}"]`) !== null,
+        chipCount: document.querySelectorAll(".composer-chat-chip").length,
+        bodyText: document.body.innerText,
+      };
+    },
+    LAUNCHER_PROMPT_LABEL,
+    SESSION_PROMPT_LABEL,
+  );
+  check(
+    assertions,
+    "launcher-stays-open-after-background-send",
+    afterLaunch.launcherOpen && !afterLaunch.sessionComposerOpen,
+  );
   check(assertions, "launcher-resets-for-next-draft", afterLaunch.chipCount === 0);
   const launcherAfter = await browser.$(`[aria-label="${LAUNCHER_PROMPT_LABEL}"]`);
-  check(assertions, "launcher-text-cleared", (await readComposerText(browser, launcherAfter)) === "");
+  check(
+    assertions,
+    "launcher-text-cleared",
+    (await readComposerText(browser, launcherAfter)) === "",
+  );
   check(
     assertions,
     "stored-draft-cleared",
@@ -445,32 +546,58 @@ export async function verifyComposerReference({
   const done = await waitForCompleted(bridge, background.id, timeoutMs, "background chat");
   const dashboard = await bridge.call("dashboard:list", {});
   const backgroundWorkspace = dashboard.workspaces.find((entry) => entry.id === done.workspaceId);
-  check(assertions, "background-chat-in-selected-project", backgroundWorkspace?.projectId === project.id);
-  check(assertions, "background-chat-is-new", done.id !== source.id && done.workspaceId !== workspace.id);
+  check(
+    assertions,
+    "background-chat-in-selected-project",
+    backgroundWorkspace?.projectId === project.id,
+  );
+  check(
+    assertions,
+    "background-chat-is-new",
+    done.id !== source.id && done.workspaceId !== workspace.id,
+  );
   const userMessages = await sessionUserMessages(databasePath, done.id);
   const carrying = userMessages.filter((entry) => entry.message.includes(sourceLink));
-  check(assertions, "background-prompt-carries-link-once", userMessages.length === 1 && carrying.length === 1, userMessages.map((entry) => entry.message));
-  check(assertions, "source-chat-untouched", (await readAllEvents(bridge, source.id)).length === sourceEventsBefore);
+  check(
+    assertions,
+    "background-prompt-carries-link-once",
+    userMessages.length === 1 && carrying.length === 1,
+    userMessages.map((entry) => entry.message),
+  );
+  check(
+    assertions,
+    "source-chat-untouched",
+    (await readAllEvents(bridge, source.id)).length === sourceEventsBefore,
+  );
   const pending = await sqliteRows(databasePath, "SELECT count(*) AS n FROM pending_messages");
   check(assertions, "no-queued-messages-left", pending[0].n === 0);
   const events = await readAllEvents(bridge, done.id);
 
   // 6. Open the new chat from its row; its transcript chip opens the source.
-  phases.push(await verifyUi({
-    name: "reference-background-chat",
-    titleIncludes: backgroundWorkspace.taskLabel,
-    expectedTexts: [scenarios.composerBackground.visibleText],
-    expectIdle: true,
-  }));
-  check(assertions, "source-text-not-in-background-chat", !(await bodyText(browser)).includes(scenarios.composerSource.visibleText));
+  phases.push(
+    await verifyUi({
+      name: "reference-background-chat",
+      titleIncludes: backgroundWorkspace.taskLabel,
+      expectedTexts: [scenarios.composerBackground.visibleText],
+      expectIdle: true,
+    }),
+  );
+  check(
+    assertions,
+    "source-text-not-in-background-chat",
+    !(await bodyText(browser)).includes(scenarios.composerSource.visibleText),
+  );
   const sourceChip = await browser.$(`button[aria-label="Open chat: ${sourceTitle}"]`);
   await sourceChip.waitForDisplayed({ timeout: 10_000 });
   await sourceChip.click();
-  await browser.waitUntil(async () => (await bodyText(browser)).includes(scenarios.composerSource.visibleText), {
-    timeout: 10_000,
-    interval: 150,
-    timeoutMsg: "Clicking the source chip did not open the source chat",
-  });
+  await browser.waitUntil(
+    async () => (await bodyText(browser)).includes(scenarios.composerSource.visibleText),
+    {
+      timeout: 10_000,
+      interval: 150,
+      timeoutMsg: "Clicking the source chip did not open the source chat",
+    },
+  );
   check(assertions, "transcript-chip-opens-source-chat", true);
   const chipShot = await screenshot(browser, evidenceDir, "reference-chip-opened-source");
 
@@ -505,15 +632,23 @@ async function forkRows(databasePath, sourceId) {
 // hover first, then click, the way a person reaches them.
 async function clickTurnForkAction(browser, label, turnIndex) {
   const buttons = await browser.$$(`button[aria-label="${label}"]`);
-  if (buttons.length <= turnIndex) throw new Error(`Expected a "${label}" action on turn ${turnIndex + 1}, found ${buttons.length}`);
+  if (buttons.length <= turnIndex)
+    throw new Error(
+      `Expected a "${label}" action on turn ${turnIndex + 1}, found ${buttons.length}`,
+    );
   await buttons[turnIndex].scrollIntoView({ block: "center" });
   await buttons[turnIndex].moveTo();
   await buttons[turnIndex].click();
 }
 
 async function clickInForkBar(browser, label, timeoutMs) {
-  const control = await browser.$(`//*[@aria-label="Forked chat"]//button[normalize-space(.)="${label}"]`);
-  await control.waitForClickable({ timeout: timeoutMs, timeoutMsg: `The fork bar never offered "${label}"` });
+  const control = await browser.$(
+    `//*[@aria-label="Forked chat"]//button[normalize-space(.)="${label}"]`,
+  );
+  await control.waitForClickable({
+    timeout: timeoutMs,
+    timeoutMsg: `The fork bar never offered "${label}"`,
+  });
   await control.click();
 }
 
@@ -531,17 +666,28 @@ async function openMergeDialog(browser, timeoutMs) {
     return {
       summary: dialog.querySelector(".fork-merge-summary")?.textContent ?? "",
       notes: [...dialog.querySelectorAll(".fork-merge-note")].map((note) => note.textContent),
-      text: dialog.querySelector('pre[aria-label="Message the source will receive"]')?.textContent ?? null,
-      buttons: [...dialog.querySelectorAll("footer button")].map((button) => button.textContent.trim()),
+      text:
+        dialog.querySelector('pre[aria-label="Message the source will receive"]')?.textContent ??
+        null,
+      buttons: [...dialog.querySelectorAll("footer button")].map((button) =>
+        button.textContent.trim(),
+      ),
     };
   }, MERGE_DIALOG);
 }
 
 async function clickMergeDialogButton(browser, label, timeoutMs) {
-  const button = await browser.$(`//*[@role="dialog"][@aria-label="Bring findings back"]//footer//button[normalize-space(.)="${label}"]`);
-  await button.waitForClickable({ timeout: timeoutMs, timeoutMsg: `The merge dialog has no "${label}" button` });
+  const button = await browser.$(
+    `//*[@role="dialog"][@aria-label="Bring findings back"]//footer//button[normalize-space(.)="${label}"]`,
+  );
+  await button.waitForClickable({
+    timeout: timeoutMs,
+    timeoutMsg: `The merge dialog has no "${label}" button`,
+  });
   await button.click();
-  await browser.$(MERGE_DIALOG).then((dialog) => dialog.waitForExist({ reverse: true, timeout: timeoutMs }));
+  await browser
+    .$(MERGE_DIALOG)
+    .then((dialog) => dialog.waitForExist({ reverse: true, timeout: timeoutMs }));
 }
 
 /**
@@ -569,17 +715,19 @@ export async function verifyForkMergeBack({
   await mkdir(evidenceDir, { recursive: true });
   const assertions = (progress.assertions = []);
   const phases = [];
-  const sendToSource = (sessionId, input) => bridge.call("providers:send-input", {
-    sessionId,
-    input,
-    provider: null,
-    modelLabel: null,
-    modelId: null,
-    reasoningEffort: null,
-    fastMode: false,
-  });
+  const sendToSource = (sessionId, input) =>
+    bridge.call("providers:send-input", {
+      sessionId,
+      input,
+      provider: null,
+      modelLabel: null,
+      modelId: null,
+      reasoningEffort: null,
+      fastMode: false,
+    });
   const bodyHas = (text) => bodyText(browser).then((body) => body.includes(text));
-  const waitForBody = (text, message) => browser.waitUntil(() => bodyHas(text), { timeout: 15_000, interval: 150, timeoutMsg: message });
+  const waitForBody = (text, message) =>
+    browser.waitUntil(() => bodyHas(text), { timeout: 15_000, interval: 150, timeoutMsg: message });
 
   // Two finished turns, so the fork point is a selected earlier turn.
   await waitForCompleted(bridge, source.id, timeoutMs, "fork source turn one");
@@ -588,12 +736,17 @@ export async function verifyForkMergeBack({
   await waitForCompleted(bridge, source.id, timeoutMs, "fork source turn two");
   const sourceEvents = await readAllEvents(bridge, source.id);
   const boundary = sourceEvents.find(
-    (event) => event.type === "user.message" && String(event.message).includes(scenarios.forkTurnOne.prompt),
+    (event) =>
+      event.type === "user.message" && String(event.message).includes(scenarios.forkTurnOne.prompt),
   );
   check(assertions, "turn-one-boundary-found", Boolean(boundary));
-  const sourceSnapshot = JSON.stringify(sourceEvents.map((event) => [event.id, event.type, event.message ?? null]));
+  const sourceSnapshot = JSON.stringify(
+    sourceEvents.map((event) => [event.id, event.type, event.message ?? null]),
+  );
   const invocationsBeforeFork = await readInvocations(invocationLog);
-  const launchesBeforeFork = invocationsBeforeFork.filter((entry) => isConversationLaunch(entry.args)).length;
+  const launchesBeforeFork = invocationsBeforeFork.filter((entry) =>
+    isConversationLaunch(entry.args),
+  ).length;
 
   // 1. Fork from turn one's footer action. Turn two's footer offers the same
   // action, so the boundary in SQLite is what proves the selected turn.
@@ -601,19 +754,38 @@ export async function verifyForkMergeBack({
   await waitForBody(scenarios.forkTurnTwo.visibleText, "The source chat never showed turn two");
   await clickTurnForkAction(browser, FORK_FROM_TURN, 0);
   let forks = [];
-  await browser.waitUntil(async () => (forks = await forkRows(databasePath, source.id)).length === 1, {
-    timeout: 20_000,
-    interval: 200,
-    timeoutMsg: `Clicking "${FORK_FROM_TURN}" on turn one created no fork`,
-  });
+  await browser.waitUntil(
+    async () => (forks = await forkRows(databasePath, source.id)).length === 1,
+    {
+      timeout: 20_000,
+      interval: 200,
+      timeoutMsg: `Clicking "${FORK_FROM_TURN}" on turn one created no fork`,
+    },
+  );
   const [forkRow] = forks;
-  check(assertions, "fork-boundary-is-the-clicked-turn", forkRow.boundary_event_id === boundary.id, forkRow);
-  check(assertions, "fork-is-portable-and-shares-the-checkout", forkRow.native_mode === "none" && forkRow.workspace_mode === "shared", forkRow);
+  check(
+    assertions,
+    "fork-boundary-is-the-clicked-turn",
+    forkRow.boundary_event_id === boundary.id,
+    forkRow,
+  );
+  check(
+    assertions,
+    "fork-is-portable-and-shares-the-checkout",
+    forkRow.native_mode === "none" && forkRow.workspace_mode === "shared",
+    forkRow,
+  );
   const childId = forkRow.child_session_id;
   const dashboardAfterFork = await bridge.call("dashboard:list", {});
   const child = dashboardAfterFork.sessions.find((entry) => entry.id === childId);
-  const childWorkspace = dashboardAfterFork.workspaces.find((entry) => entry.id === child.workspaceId);
-  check(assertions, "fork-is-a-new-chat", childId !== source.id && childWorkspace.id !== workspace.id);
+  const childWorkspace = dashboardAfterFork.workspaces.find(
+    (entry) => entry.id === child.workspaceId,
+  );
+  check(
+    assertions,
+    "fork-is-a-new-chat",
+    childId !== source.id && childWorkspace.id !== workspace.id,
+  );
   check(assertions, "fork-has-no-native-conversation-yet", !child.providerConversationId);
   const childEvents = await readAllEvents(bridge, childId);
   const childText = childEvents.map((event) => String(event.message ?? "")).join("\n");
@@ -621,26 +793,44 @@ export async function verifyForkMergeBack({
   check(
     assertions,
     "fork-leaves-out-turn-two",
-    !childText.includes(scenarios.forkTurnTwo.visibleText) && !childText.includes(scenarios.forkTurnTwo.prompt),
+    !childText.includes(scenarios.forkTurnTwo.visibleText) &&
+      !childText.includes(scenarios.forkTurnTwo.prompt),
   );
   check(
     assertions,
     "fork-leaves-source-unchanged",
-    JSON.stringify((await readAllEvents(bridge, source.id)).map((event) => [event.id, event.type, event.message ?? null])) === sourceSnapshot,
+    JSON.stringify(
+      (await readAllEvents(bridge, source.id)).map((event) => [
+        event.id,
+        event.type,
+        event.message ?? null,
+      ]),
+    ) === sourceSnapshot,
   );
   await delay(1_000);
   const invocationsAfterFork = await readInvocations(invocationLog);
   check(
     assertions,
     "fork-starts-no-provider-conversation",
-    invocationsAfterFork.filter((entry) => isConversationLaunch(entry.args)).length === launchesBeforeFork,
-    { helperOneShotsSinceFork: invocationsAfterFork.slice(invocationsBeforeFork.length).filter((entry) => !isConversationLaunch(entry.args) && entry.args.includes("--no-session-persistence")).length },
+    invocationsAfterFork.filter((entry) => isConversationLaunch(entry.args)).length ===
+      launchesBeforeFork,
+    {
+      helperOneShotsSinceFork: invocationsAfterFork
+        .slice(invocationsBeforeFork.length)
+        .filter(
+          (entry) =>
+            !isConversationLaunch(entry.args) && entry.args.includes("--no-session-persistence"),
+        ).length,
+    },
   );
   const lineage = await bridge.call("session:fork-lineage", { sessionId: childId });
   check(
     assertions,
     "lineage-names-source-and-boundary",
-    lineage?.sourceSessionId === source.id && lineage.boundaryEventId === boundary.id && lineage.workspace === "shared" && lineage.lastMergedThroughEventId == null,
+    lineage?.sourceSessionId === source.id &&
+      lineage.boundaryEventId === boundary.id &&
+      lineage.workspace === "shared" &&
+      lineage.lastMergedThroughEventId == null,
     lineage,
   );
 
@@ -651,30 +841,47 @@ export async function verifyForkMergeBack({
   const bar = await browser.$('[aria-label="Forked chat"]');
   const opened = await bar.waitForDisplayed({ timeout: 15_000 }).catch(() => false);
   check(assertions, "fork-action-opens-the-new-chat", opened === true, { childSessionId: childId });
-  phases.push(await verifyUi({
-    name: "fork-child-history",
-    titleIncludes: childWorkspace.taskLabel,
-    expectedTexts: [scenarios.forkTurnOne.visibleText],
-    expectIdle: true,
-  }));
-  check(assertions, "child-chat-hides-turn-two", !(await bodyHas(scenarios.forkTurnTwo.visibleText)));
+  phases.push(
+    await verifyUi({
+      name: "fork-child-history",
+      titleIncludes: childWorkspace.taskLabel,
+      expectedTexts: [scenarios.forkTurnOne.visibleText],
+      expectIdle: true,
+    }),
+  );
+  check(
+    assertions,
+    "child-chat-hides-turn-two",
+    !(await bodyHas(scenarios.forkTurnTwo.visibleText)),
+  );
   const barShot = await screenshot(browser, evidenceDir, "fork-bar");
-  const sourceLabel = dashboardAfterFork.workspaces.find((entry) => entry.id === workspace.id).taskLabel;
-  check(assertions, "fork-bar-names-the-source", (await bar.getText()).includes(sourceLabel), { sourceLabel });
+  const sourceLabel = dashboardAfterFork.workspaces.find(
+    (entry) => entry.id === workspace.id,
+  ).taskLabel;
+  check(assertions, "fork-bar-names-the-source", (await bar.getText()).includes(sourceLabel), {
+    sourceLabel,
+  });
   await clickInForkBar(browser, sourceLabel, 10_000);
-  await waitForBody(scenarios.forkTurnTwo.visibleText, "The source chat's name did not open the source chat");
+  await waitForBody(
+    scenarios.forkTurnTwo.visibleText,
+    "The source chat's name did not open the source chat",
+  );
   check(assertions, "open-source-action-opens-the-source", true);
   await openWorkspaceRow(browser, childWorkspace.id, timeoutMs);
   await sendInput(childId, scenarios.forkChild.prompt);
   await waitForEventText(bridge, childId, scenarios.forkChild.visibleText, timeoutMs);
   await waitForCompleted(bridge, childId, timeoutMs, "fork child first turn");
-  phases.push(await verifyUi({
-    name: "fork-child-first-turn",
-    titleIncludes: childWorkspace.taskLabel,
-    expectedTexts: [scenarios.forkChild.visibleText],
-    expectIdle: true,
-  }));
-  const childLaunch = (await readInvocations(invocationLog)).find((entry) => entry.prompt?.includes(scenarios.forkChild.prompt));
+  phases.push(
+    await verifyUi({
+      name: "fork-child-first-turn",
+      titleIncludes: childWorkspace.taskLabel,
+      expectedTexts: [scenarios.forkChild.visibleText],
+      expectIdle: true,
+    }),
+  );
+  const childLaunch = (await readInvocations(invocationLog)).find((entry) =>
+    entry.prompt?.includes(scenarios.forkChild.prompt),
+  );
   check(assertions, "child-first-turn-reached-the-provider", Boolean(childLaunch));
   check(
     assertions,
@@ -686,39 +893,57 @@ export async function verifyForkMergeBack({
   check(
     assertions,
     "portable-context-holds-turn-one-only",
-    (portable.includes(scenarios.forkTurnOne.visibleText) || portable.includes(scenarios.forkTurnOne.prompt))
-      && !portable.includes(scenarios.forkTurnTwo.visibleText)
-      && !portable.includes(scenarios.forkTurnTwo.prompt),
+    (portable.includes(scenarios.forkTurnOne.visibleText) ||
+      portable.includes(scenarios.forkTurnOne.prompt)) &&
+      !portable.includes(scenarios.forkTurnTwo.visibleText) &&
+      !portable.includes(scenarios.forkTurnTwo.prompt),
   );
-  check(assertions, "current-prompt-stays-intact-and-single", portable.split(scenarios.forkChild.prompt).length === 2);
+  check(
+    assertions,
+    "current-prompt-stays-intact-and-single",
+    portable.split(scenarios.forkChild.prompt).length === 2,
+  );
 
   // 3. Merge from the fork bar while the source works: it queues once, never steers.
   await sendToSource(source.id, scenarios.forkHold.prompt);
-  await waitForFile(path.join(controlDir, `${VERIFICATION_BARRIERS.forkSourceHold}.ready`), timeoutMs);
-  const running = await waitForSession(bridge, source.id, (entry) => entry.state === "running", timeoutMs, "held source turn");
+  await waitForFile(
+    path.join(controlDir, `${VERIFICATION_BARRIERS.forkSourceHold}.ready`),
+    timeoutMs,
+  );
+  const running = await waitForSession(
+    bridge,
+    source.id,
+    (entry) => entry.state === "running",
+    timeoutMs,
+    "held source turn",
+  );
   check(assertions, "source-is-running-during-merge", running.session.state === "running");
   const dialog = await openMergeDialog(browser, 10_000);
   check(
     assertions,
     "dialog-previews-fork-findings",
-    dialog.text !== null
-      && dialog.text.includes("Findings from the forked chat")
-      && dialog.text.includes(scenarios.forkChild.visibleText)
-      && !dialog.text.includes(scenarios.forkTurnTwo.visibleText)
-      && /new message/.test(dialog.summary),
+    dialog.text !== null &&
+      dialog.text.includes("Findings from the forked chat") &&
+      dialog.text.includes(scenarios.forkChild.visibleText) &&
+      !dialog.text.includes(scenarios.forkTurnTwo.visibleText) &&
+      /new message/.test(dialog.summary),
     { summary: dialog.summary },
   );
   check(
     assertions,
     "dialog-says-the-source-queue-waits",
-    dialog.notes.some((note) => note.includes("waits in its queue")) && dialog.buttons.includes("Queue for source"),
+    dialog.notes.some((note) => note.includes("waits in its queue")) &&
+      dialog.buttons.includes("Queue for source"),
     dialog,
   );
   const dialogShot = await screenshot(browser, evidenceDir, "fork-merge-dialog");
   await clickMergeDialogButton(browser, "Queue for source", 10_000);
   await waitForBody("Queued for", "No 'Queued for …' toast followed the merge");
   check(assertions, "native-merge-queued-toast", true);
-  const claimed = await sqliteRows(databasePath, `SELECT through_event_id FROM fork_merges WHERE fork_id = '${safeId(lineage.forkId)}'`);
+  const claimed = await sqliteRows(
+    databasePath,
+    `SELECT through_event_id FROM fork_merges WHERE fork_id = '${safeId(lineage.forkId)}'`,
+  );
   check(assertions, "one-merge-range-claimed", claimed.length === 1, claimed);
   const throughEventId = claimed[0].through_event_id;
   const queuedRows = await sqliteRows(
@@ -728,45 +953,94 @@ export async function verifyForkMergeBack({
   check(
     assertions,
     "one-queued-merge-message",
-    queuedRows.length === 1
-      && queuedRows[0].content.includes(VERIFICATION_FORK_MERGE_MARKER)
-      && queuedRows[0].content.includes(scenarios.forkChild.visibleText),
+    queuedRows.length === 1 &&
+      queuedRows[0].content.includes(VERIFICATION_FORK_MERGE_MARKER) &&
+      queuedRows[0].content.includes(scenarios.forkChild.visibleText),
     queuedRows.map((row) => row.id),
   );
   const again = await openMergeDialog(browser, 10_000);
-  check(assertions, "second-dialog-offers-nothing-new", again.summary.includes("Nothing new to bring back") && again.text === null && again.buttons.includes("Close"), again);
+  check(
+    assertions,
+    "second-dialog-offers-nothing-new",
+    again.summary.includes("Nothing new to bring back") &&
+      again.text === null &&
+      again.buttons.includes("Close"),
+    again,
+  );
   await clickMergeDialogButton(browser, "Close", 10_000);
   const repeated = await bridge.call("session:fork-merge", { sessionId: childId, throughEventId });
   check(assertions, "repeat-merge-over-ipc-is-a-no-op", repeated.merged === false);
   await openWorkspaceRow(browser, workspace.id, timeoutMs);
   await browser.waitUntil(
-    async () => (await browser.$$('button[aria-label^="Send queued follow-up: Findings from the forked chat"]')).length === 1,
-    { timeout: 10_000, interval: 150, timeoutMsg: "The source chat did not show exactly one queued merge message" },
+    async () =>
+      (
+        await browser.$$(
+          'button[aria-label^="Send queued follow-up: Findings from the forked chat"]',
+        )
+      ).length === 1,
+    {
+      timeout: 10_000,
+      interval: 150,
+      timeoutMsg: "The source chat did not show exactly one queued merge message",
+    },
   );
   check(assertions, "native-source-shows-queued-merge", true);
   const queuedShot = await screenshot(browser, evidenceDir, "fork-merge-queued");
 
   // 4. Release the source: the queued merge drains once.
-  await writeFile(path.join(controlDir, `${VERIFICATION_BARRIERS.forkSourceHold}.continue`), "continue\n");
+  await writeFile(
+    path.join(controlDir, `${VERIFICATION_BARRIERS.forkSourceHold}.continue`),
+    "continue\n",
+  );
   await waitForEventText(bridge, source.id, scenarios.forkMerge.visibleText, timeoutMs);
-  const finalSource = await waitForCompleted(bridge, source.id, timeoutMs, "source after merge drain");
-  const delivered = (await sessionUserMessages(databasePath, source.id)).filter((entry) => entry.message.includes(VERIFICATION_FORK_MERGE_MARKER));
-  check(assertions, "merge-delivered-exactly-once", delivered.length === 1, delivered.map((entry) => entry.id));
-  const leftover = await sqliteRows(databasePath, `SELECT count(*) AS n FROM pending_messages WHERE session_id = '${safeId(source.id)}'`);
+  const finalSource = await waitForCompleted(
+    bridge,
+    source.id,
+    timeoutMs,
+    "source after merge drain",
+  );
+  const delivered = (await sessionUserMessages(databasePath, source.id)).filter((entry) =>
+    entry.message.includes(VERIFICATION_FORK_MERGE_MARKER),
+  );
+  check(
+    assertions,
+    "merge-delivered-exactly-once",
+    delivered.length === 1,
+    delivered.map((entry) => entry.id),
+  );
+  const leftover = await sqliteRows(
+    databasePath,
+    `SELECT count(*) AS n FROM pending_messages WHERE session_id = '${safeId(source.id)}'`,
+  );
   check(assertions, "queue-empty-after-drain", leftover[0].n === 0);
-  const mergeInvocations = (await readInvocations(invocationLog)).filter((entry) => entry.prompt?.includes(VERIFICATION_FORK_MERGE_MARKER));
+  const mergeInvocations = (await readInvocations(invocationLog)).filter((entry) =>
+    entry.prompt?.includes(VERIFICATION_FORK_MERGE_MARKER),
+  );
   check(assertions, "provider-received-merge-once", mergeInvocations.length === 1);
   await waitForIdleControls(browser, timeoutMs);
   await browser.waitUntil(
-    async () => (await browser.$$('button[aria-label^="Send queued follow-up: Findings from the forked chat"]')).length === 0
-      && (await bodyHas(scenarios.forkMerge.visibleText)),
-    { timeout: 15_000, interval: 150, timeoutMsg: "The source chat did not show the delivered merge and an empty queue" },
+    async () =>
+      (
+        await browser.$$(
+          'button[aria-label^="Send queued follow-up: Findings from the forked chat"]',
+        )
+      ).length === 0 && (await bodyHas(scenarios.forkMerge.visibleText)),
+    {
+      timeout: 15_000,
+      interval: 150,
+      timeoutMsg: "The source chat did not show the delivered merge and an empty queue",
+    },
   );
   check(assertions, "native-source-shows-delivered-merge", true);
   const deliveredShot = await screenshot(browser, evidenceDir, "fork-merge-delivered");
   await openWorkspaceRow(browser, childWorkspace.id, timeoutMs);
   const afterDelivery = await openMergeDialog(browser, 10_000);
-  check(assertions, "dialog-after-delivery-offers-nothing-new", afterDelivery.summary.includes("Nothing new to bring back") && afterDelivery.text === null, afterDelivery);
+  check(
+    assertions,
+    "dialog-after-delivery-offers-nothing-new",
+    afterDelivery.summary.includes("Nothing new to bring back") && afterDelivery.text === null,
+    afterDelivery,
+  );
   await clickMergeDialogButton(browser, "Close", 10_000);
 
   // 5. The next merge carries only what the fork did since.
@@ -777,32 +1051,57 @@ export async function verifyForkMergeBack({
   check(
     assertions,
     "next-dialog-carries-only-new-work",
-    next.text !== null
-      && next.text.includes(scenarios.forkChildFollowUp.visibleText)
-      && !next.text.includes(scenarios.forkChild.visibleText),
+    next.text !== null &&
+      next.text.includes(scenarios.forkChildFollowUp.visibleText) &&
+      !next.text.includes(scenarios.forkChild.visibleText),
     { summary: next.summary },
   );
   await clickMergeDialogButton(browser, "Cancel", 10_000);
-  check(assertions, "cancel-sends-nothing", (await sqliteRows(databasePath, `SELECT count(*) AS n FROM fork_merges WHERE fork_id = '${safeId(lineage.forkId)}'`))[0].n === 1);
+  check(
+    assertions,
+    "cancel-sends-nothing",
+    (
+      await sqliteRows(
+        databasePath,
+        `SELECT count(*) AS n FROM fork_merges WHERE fork_id = '${safeId(lineage.forkId)}'`,
+      )
+    )[0].n === 1,
+  );
 
   // 6. Isolated fork from the same turn: a new checkout that starts from the
   // source's current files.
   await openWorkspaceRow(browser, workspace.id, timeoutMs);
   await clickTurnForkAction(browser, FORK_FROM_TURN_ISOLATED, 0);
   let both = [];
-  await browser.waitUntil(async () => (both = await forkRows(databasePath, source.id)).length === 2, {
-    timeout: 60_000,
-    interval: 300,
-    timeoutMsg: `Clicking "${FORK_FROM_TURN_ISOLATED}" created no second fork`,
-  });
+  await browser.waitUntil(
+    async () => (both = await forkRows(databasePath, source.id)).length === 2,
+    {
+      timeout: 60_000,
+      interval: 300,
+      timeoutMsg: `Clicking "${FORK_FROM_TURN_ISOLATED}" created no second fork`,
+    },
+  );
   const isolated = both.find((row) => row.child_session_id !== childId);
-  check(assertions, "isolated-fork-records-its-mode-and-boundary", isolated.workspace_mode === "isolated" && isolated.boundary_event_id === boundary.id, isolated);
+  check(
+    assertions,
+    "isolated-fork-records-its-mode-and-boundary",
+    isolated.workspace_mode === "isolated" && isolated.boundary_event_id === boundary.id,
+    isolated,
+  );
   const dashboardNow = await bridge.call("dashboard:list", {});
   const isolatedWorkspace = dashboardNow.workspaces.find(
-    (entry) => entry.id === dashboardNow.sessions.find((session) => session.id === isolated.child_session_id)?.workspaceId,
+    (entry) =>
+      entry.id ===
+      dashboardNow.sessions.find((session) => session.id === isolated.child_session_id)
+        ?.workspaceId,
   );
   const sourceWorkspaceNow = dashboardNow.workspaces.find((entry) => entry.id === workspace.id);
-  check(assertions, "isolated-fork-has-its-own-checkout", isolatedWorkspace && isolatedWorkspace.path !== sourceWorkspaceNow.path, isolatedWorkspace?.path);
+  check(
+    assertions,
+    "isolated-fork-has-its-own-checkout",
+    isolatedWorkspace && isolatedWorkspace.path !== sourceWorkspaceNow.path,
+    isolatedWorkspace?.path,
+  );
   await access(path.join(isolatedWorkspace.path, "README.md"));
   check(assertions, "isolated-fork-starts-from-the-current-files", true);
   const isolatedBar = await browser.$('[aria-label="Forked chat"]');
@@ -816,8 +1115,10 @@ export async function verifyForkMergeBack({
   const isolatedShot = await screenshot(browser, evidenceDir, "fork-isolated");
 
   const coverage = {
-    forkAndMergeDrive: "native clicks: turn footer fork actions (shared and isolated), fork bar source link and Bring findings back, merge dialog Queue for source, Close and Cancel",
-    secondRead: "SQLite (session_forks, fork_merges, pending_messages, events), IPC (session:fork-lineage, repeated session:fork-merge), provider prompt log",
+    forkAndMergeDrive:
+      "native clicks: turn footer fork actions (shared and isolated), fork bar source link and Bring findings back, merge dialog Queue for source, Close and Cancel",
+    secondRead:
+      "SQLite (session_forks, fork_merges, pending_messages, events), IPC (session:fork-lineage, repeated session:fork-merge), provider prompt log",
     notDriven: "merge into an idle source (Send to source), and a fork of a running source",
   };
   await writeJson(path.join(evidenceDir, "fork-merge.json"), {
@@ -840,8 +1141,6 @@ export async function verifyForkMergeBack({
   };
 }
 
-
-
 // Text match for controls whose role the renderer does not fix (menu items,
 // settings nav entries).
 function byText(text) {
@@ -850,7 +1149,10 @@ function byText(text) {
 
 async function clickByText(browser, text, timeoutMs) {
   const control = await browser.$(byText(text));
-  await control.waitForClickable({ timeout: timeoutMs, timeoutMsg: `No control labelled "${text}" became clickable` });
+  await control.waitForClickable({
+    timeout: timeoutMs,
+    timeoutMsg: `No control labelled "${text}" became clickable`,
+  });
   await control.click();
 }
 
@@ -908,11 +1210,13 @@ export async function verifyWorkspaceSettings({
   const screenshots = [];
 
   const seeded = await waitForCompleted(bridge, source.id, timeoutMs, "settings seed chat");
-  phases.push(await verifyUi({
-    name: "settings-seed",
-    expectedTexts: [scenarios.workspaceSettings.visibleText],
-    expectIdle: true,
-  }));
+  phases.push(
+    await verifyUi({
+      name: "settings-seed",
+      expectedTexts: [scenarios.workspaceSettings.visibleText],
+      expectIdle: true,
+    }),
+  );
 
   // 1. Snooze shelf: snooze from the row menu, find it on the collapsed shelf, unsnooze.
   const rowSelector = `[data-workspace-id="${workspace.id}"] button[data-open][title]`;
@@ -924,30 +1228,63 @@ export async function verifyWorkspaceSettings({
     return tomorrow.toISOString();
   });
   await clickByText(browser, "Snooze Until Tomorrow", 10_000);
-  const snoozedUntil = await waitForSnooze(bridge, workspace.id, (value) => value !== null, 10_000, "snooze");
+  const snoozedUntil = await waitForSnooze(
+    bridge,
+    workspace.id,
+    (value) => value !== null,
+    10_000,
+    "snooze",
+  );
   check(assertions, "snooze-until-tomorrow-morning", snoozedUntil === expectedSnooze, snoozedUntil);
-  check(assertions, "snooze-leaves-execution-state-alone", (await waitForCompleted(bridge, source.id, 5_000, "snoozed chat")).state === seeded.state);
+  check(
+    assertions,
+    "snooze-leaves-execution-state-alone",
+    (await waitForCompleted(bridge, source.id, 5_000, "snoozed chat")).state === seeded.state,
+  );
   // The snoozed chat is the open one, so the shelf opens by itself to keep it
   // in view (Sidebar.tsx). Hide it, then show it again: both are real toggles.
   // The toggle is invisible (opacity 0) until the heading is hovered, and
   // WebdriverIO's displayed check treats that as hidden, so these wait for the
   // control to exist and read its `aria-expanded`.
   const hideShelf = await browser.$('[aria-label="Hide Snoozed chats"]');
-  await hideShelf.waitForExist({ timeout: 10_000, timeoutMsg: "The Snoozed shelf did not open for the selected snoozed chat" });
+  await hideShelf.waitForExist({
+    timeout: 10_000,
+    timeoutMsg: "The Snoozed shelf did not open for the selected snoozed chat",
+  });
   const shelfNow = await describeSnoozeShelf(browser, workspace.id);
   diagnose("shelf-after-snooze", shelfNow);
   const openedSnoozed = await browser.$(rowSelector);
-  await openedSnoozed.waitForDisplayed({ timeout: 10_000, timeoutMsg: "The selected snoozed chat did not become visible" });
-  check(assertions, "shelf-opens-for-the-selected-snoozed-chat", (await hideShelf.getAttribute("aria-expanded")) === "true" && (await openedSnoozed.isDisplayed()), shelfNow);
+  await openedSnoozed.waitForDisplayed({
+    timeout: 10_000,
+    timeoutMsg: "The selected snoozed chat did not become visible",
+  });
+  check(
+    assertions,
+    "shelf-opens-for-the-selected-snoozed-chat",
+    (await hideShelf.getAttribute("aria-expanded")) === "true" &&
+      (await openedSnoozed.isDisplayed()),
+    shelfNow,
+  );
   screenshots.push(await screenshot(browser, evidenceDir, "snooze-shelf-expanded"));
   await hideShelf.click();
   const showShelf = await browser.$('[aria-label="Show Snoozed chats"]');
-  await showShelf.waitForExist({ timeout: 10_000, timeoutMsg: "Hiding the Snoozed shelf did not collapse it" });
-  check(assertions, "snoozed-row-hides-while-shelf-collapsed", (await showShelf.getAttribute("aria-expanded")) === "false" && (await browser.$$(rowSelector)).length === 0);
+  await showShelf.waitForExist({
+    timeout: 10_000,
+    timeoutMsg: "Hiding the Snoozed shelf did not collapse it",
+  });
+  check(
+    assertions,
+    "snoozed-row-hides-while-shelf-collapsed",
+    (await showShelf.getAttribute("aria-expanded")) === "false" &&
+      (await browser.$$(rowSelector)).length === 0,
+  );
   screenshots.push(await screenshot(browser, evidenceDir, "snooze-shelf-collapsed"));
   await showShelf.click();
   const shelved = await browser.$(rowSelector);
-  await shelved.waitForDisplayed({ timeout: 10_000, timeoutMsg: "Showing the Snoozed shelf did not bring the row back" });
+  await shelved.waitForDisplayed({
+    timeout: 10_000,
+    timeoutMsg: "Showing the Snoozed shelf did not bring the row back",
+  });
   diagnose("unsnooze-contextmenu", await openContextMenu(browser, rowSelector));
   diagnose("menu-after-unsnooze-contextmenu", await describeSnoozeShelf(browser, workspace.id));
   await clickByText(browser, "Unsnooze", 10_000);
@@ -959,43 +1296,81 @@ export async function verifyWorkspaceSettings({
   await (await browser.$('[aria-label="Customize"]')).click();
   await clickByText(browser, "Projects", 10_000);
   const branchCard = await browser.$("#settings-branch-names");
-  await branchCard.waitForDisplayed({ timeout: 10_000, timeoutMsg: "Settings → Projects did not show the Branch names card" });
+  await branchCard.waitForDisplayed({
+    timeout: 10_000,
+    timeoutMsg: "Settings → Projects did not show the Branch names card",
+  });
 
   await setInputValue(browser, await browser.$("#settings-branch-template-app"), "adam/{nope}");
   await clickByText(browser, "Save default", 5_000);
-  await waitForText(browser, '#settings-branch-names [role="alert"]', "Unknown placeholder {nope}", 10_000);
+  await waitForText(
+    browser,
+    '#settings-branch-names [role="alert"]',
+    "Unknown placeholder {nope}",
+    10_000,
+  );
   check(assertions, "invalid-template-is-rejected-on-save", true);
-  await setInputValue(browser, await browser.$("#settings-branch-template-project"), "adam/{type}-{slug}");
+  await setInputValue(
+    browser,
+    await browser.$("#settings-branch-template-project"),
+    "adam/{type}-{slug}",
+  );
   await clickByText(browser, "Save project template", 5_000);
-  await waitForText(browser, '#settings-branch-names [role="status"]', "Project branch template saved.", 10_000);
+  await waitForText(
+    browser,
+    '#settings-branch-names [role="status"]',
+    "Project branch template saved.",
+    10_000,
+  );
   check(assertions, "project-template-saves", true);
   screenshots.push(await screenshot(browser, evidenceDir, "settings-branch-names"));
 
   const linkedCard = "#settings-project-folders";
   const linkedDir = path.join(path.dirname(repoPath), "linked-docs");
   await mkdir(linkedDir, { recursive: true });
-  await writeFile(path.join(linkedDir, "README.md"), "# Shared API\n\nShared API contracts and types for the application.\n");
+  await writeFile(
+    path.join(linkedDir, "README.md"),
+    "# Shared API\n\nShared API contracts and types for the application.\n",
+  );
   const canonicalLinked = await realpath(linkedDir);
-  const linkedRows = async () => (await bridge.call("projects:get-folders", { projectId: project.id })).filter((folder) => !folder.isPrimary);
+  const linkedRows = async () =>
+    (await bridge.call("projects:get-folders", { projectId: project.id })).filter(
+      (folder) => !folder.isPrimary,
+    );
   for (const [bad, expected] of [
     ["relative/dir", "must be absolute"],
     [repoPath, "LINKED_REPO_OVERLAPS_PROJECT"],
   ]) {
-    const error = await browser.execute(async (projectId, candidate) => {
-      try {
-        await window.argmax.linkedRepos.add({ projectId, repo: { name: null, path: candidate } });
-        return "";
-      } catch (reason) {
-        return JSON.stringify(reason);
-      }
-    }, project.id, bad);
-    check(assertions, `linked-repository-rejects:${expected}`, error.includes(expected) && (await linkedRows()).length === 0, error);
+    const error = await browser.execute(
+      async (projectId, candidate) => {
+        try {
+          await window.argmax.linkedRepos.add({ projectId, repo: { name: null, path: candidate } });
+          return "";
+        } catch (reason) {
+          return JSON.stringify(reason);
+        }
+      },
+      project.id,
+      bad,
+    );
+    check(
+      assertions,
+      `linked-repository-rejects:${expected}`,
+      error.includes(expected) && (await linkedRows()).length === 0,
+      error,
+    );
   }
   // This driver controls the webview, not the OS folder sheet. Script only that
   // selection result and keep persistence, helper generation, and row actions real.
-  await browser.execute(() => { window.argmax.projects.pickDirectory = async () => ({ cancelled: true, path: null }); });
+  await browser.execute(() => {
+    window.argmax.projects.pickDirectory = async () => ({ cancelled: true, path: null });
+  });
   await clickByText(browser, "Add folder", 5_000);
-  check(assertions, "linked-repository-picker-cancellation-keeps-list-empty", (await linkedRows()).length === 0);
+  check(
+    assertions,
+    "linked-repository-picker-cancellation-keeps-list-empty",
+    (await linkedRows()).length === 0,
+  );
   await browser.execute((candidate) => {
     window.argmax.projects.pickDirectory = async () => ({ cancelled: false, path: candidate });
   }, linkedDir);
@@ -1010,8 +1385,18 @@ export async function verifyWorkspaceSettings({
   const expectedSummary = "Shared API contracts and types for the application.";
   await waitForText(browser, linkedCard, expectedSummary, 20_000);
   const added = (await linkedRows()).find((row) => Object.values(row).includes(canonicalLinked));
-  check(assertions, "linked-repository-stores-canonical-root", Boolean(added) && added.enabled === true, added);
-  check(assertions, "linked-repository-summary-generated-and-persisted", added.summary === expectedSummary, added);
+  check(
+    assertions,
+    "linked-repository-stores-canonical-root",
+    Boolean(added) && added.enabled === true,
+    added,
+  );
+  check(
+    assertions,
+    "linked-repository-summary-generated-and-persisted",
+    added.summary === expectedSummary,
+    added,
+  );
   screenshots.push(await screenshot(browser, evidenceDir, "settings-linked-repository"));
   await (await browser.$('[aria-label="Include linked-docs in agent context"]')).click();
   await browser.waitUntil(async () => (await linkedRows())[0]?.enabled === false, {
@@ -1030,7 +1415,8 @@ export async function verifyWorkspaceSettings({
   check(assertions, "linked-repository-remove-deletes-it", true);
 
   // 3. The saved project template names real worktree branches.
-  const createWorktreeChat = () => bridge.call("workspaces:create-isolated", { projectId: project.id, taskLabel: "Hello World" });
+  const createWorktreeChat = () =>
+    bridge.call("workspaces:create-isolated", { projectId: project.id, taskLabel: "Hello World" });
   const first = await createWorktreeChat();
   const second = await createWorktreeChat();
   check(
@@ -1045,12 +1431,22 @@ export async function verifyWorkspaceSettings({
   // Worktree off starts a fresh chat in the worktree that has the branch, and
   // Worktree on starts a new isolated tree from it. Either way the earlier chat
   // and the main checkout stay as they were.
-  const occupied = await bridge.call("workspaces:create-isolated", { projectId: project.id, taskLabel: "Occupied branch" });
+  const occupied = await bridge.call("workspaces:create-isolated", {
+    projectId: project.id,
+    taskLabel: "Occupied branch",
+  });
   await writeFile(path.join(occupied.path, "occupied.txt"), "work on the occupied branch\n");
   await git(occupied.path, "add", "occupied.txt");
   await git(occupied.path, "commit", "-q", "-m", "occupied branch work");
   const occupiedTip = await git(occupied.path, "rev-parse", "HEAD");
-  check(assertions, "occupied-branch-differs-from-main", occupiedTip !== (await git(repoPath, "rev-parse", "main")), { branch: occupied.branch });
+  check(
+    assertions,
+    "occupied-branch-differs-from-main",
+    occupiedTip !== (await git(repoPath, "rev-parse", "main")),
+    {
+      branch: occupied.branch,
+    },
+  );
   const oldChat = await bridge.call("providers:launch", {
     workspaceId: occupied.id,
     provider: VERIFICATION_PROVIDER.provider,
@@ -1066,7 +1462,12 @@ export async function verifyWorkspaceSettings({
     attachments: null,
   });
   await waitForEventText(bridge, oldChat.id, scenarios.occupiedSeed.visibleText, timeoutMs);
-  const oldChatBefore = await waitForCompleted(bridge, oldChat.id, timeoutMs, "existing chat in the occupied worktree");
+  const oldChatBefore = await waitForCompleted(
+    bridge,
+    oldChat.id,
+    timeoutMs,
+    "existing chat in the occupied worktree",
+  );
   let oldEventCount = (await readAllEvents(bridge, oldChat.id)).length;
   const occupiedPath = await realpath(occupied.path);
   const stillAsItWas = async (name) => {
@@ -1076,12 +1477,12 @@ export async function verifyWorkspaceSettings({
     check(
       assertions,
       `${name}:existing-chat-and-its-worktree-are-untouched`,
-      old?.state === oldChatBefore.state
-        && (await readAllEvents(bridge, oldChat.id)).length === oldEventCount
-        && oldWorkspace?.state !== "archived"
-        && (await realpath(oldWorkspace.path)) === occupiedPath
-        && (await git(occupied.path, "rev-parse", "HEAD")) === occupiedTip
-        && (await git(occupied.path, "rev-parse", "--abbrev-ref", "HEAD")) === occupied.branch,
+      old?.state === oldChatBefore.state &&
+        (await readAllEvents(bridge, oldChat.id)).length === oldEventCount &&
+        oldWorkspace?.state !== "archived" &&
+        (await realpath(oldWorkspace.path)) === occupiedPath &&
+        (await git(occupied.path, "rev-parse", "HEAD")) === occupiedTip &&
+        (await git(occupied.path, "rev-parse", "--abbrev-ref", "HEAD")) === occupied.branch,
     );
   };
 
@@ -1091,62 +1492,135 @@ export async function verifyWorkspaceSettings({
 
   // Worktree off: share the worktree that has the branch.
   const sharePrompt = `${scenarios.occupiedShare.prompt} share the checkout`;
-  const shared = await launchFromPicker({ bridge, browser, repoPath, branch: occupied.branch, worktree: false, prompt: sharePrompt, timeoutMs });
-  check(assertions, "picking-an-occupied-branch-raises-no-error", shared.alert === null && shared.chipLabel === occupied.branch, { alert: shared.alert, chipLabel: shared.chipLabel });
-  check(assertions, "picking-an-occupied-branch-leaves-the-main-checkout-alone", JSON.stringify(shared.rootAtPick) === JSON.stringify(rootBefore), shared.rootAtPick);
+  const shared = await launchFromPicker({
+    bridge,
+    browser,
+    repoPath,
+    branch: occupied.branch,
+    worktree: false,
+    prompt: sharePrompt,
+    timeoutMs,
+  });
+  check(
+    assertions,
+    "picking-an-occupied-branch-raises-no-error",
+    shared.alert === null && shared.chipLabel === occupied.branch,
+    { alert: shared.alert, chipLabel: shared.chipLabel },
+  );
+  check(
+    assertions,
+    "picking-an-occupied-branch-leaves-the-main-checkout-alone",
+    JSON.stringify(shared.rootAtPick) === JSON.stringify(rootBefore),
+    shared.rootAtPick,
+  );
   screenshots.push(await screenshot(browser, evidenceDir, "picker-occupied-branch-picked"));
-  const sharedChat = await waitForNewCompletedChat(bridge, shared.sessionsBefore, timeoutMs, "chat sharing the occupied worktree");
-  const sharedWorkspace = (await bridge.call("dashboard:list", {})).workspaces.find((entry) => entry.id === sharedChat.workspaceId);
+  const sharedChat = await waitForNewCompletedChat(
+    bridge,
+    shared.sessionsBefore,
+    timeoutMs,
+    "chat sharing the occupied worktree",
+  );
+  const sharedWorkspace = (await bridge.call("dashboard:list", {})).workspaces.find(
+    (entry) => entry.id === sharedChat.workspaceId,
+  );
   // The user asked for a NEW chat: a new session and a new workspace row, even
   // though the checkout underneath is the existing one.
-  check(assertions, "worktree-off-starts-a-new-session", sharedChat.id !== oldChat.id, { sessionId: sharedChat.id, existingSessionId: oldChat.id });
-  check(assertions, "worktree-off-starts-a-new-workspace-row", sharedWorkspace.id !== occupied.id, { workspaceId: sharedWorkspace.id, existingWorkspaceId: occupied.id });
+  check(assertions, "worktree-off-starts-a-new-session", sharedChat.id !== oldChat.id, {
+    sessionId: sharedChat.id,
+    existingSessionId: oldChat.id,
+  });
+  check(assertions, "worktree-off-starts-a-new-workspace-row", sharedWorkspace.id !== occupied.id, {
+    workspaceId: sharedWorkspace.id,
+    existingWorkspaceId: occupied.id,
+  });
   check(
     assertions,
     "worktree-off-shares-the-existing-checkout",
-    (await realpath(sharedWorkspace.path)) === occupiedPath && sharedWorkspace.branch === occupied.branch,
+    (await realpath(sharedWorkspace.path)) === occupiedPath &&
+      sharedWorkspace.branch === occupied.branch,
     { path: sharedWorkspace.path, branch: sharedWorkspace.branch },
   );
   check(assertions, "worktree-off-launch-shows-no-error", (await visibleError(browser)) === null);
-  check(assertions, "worktree-off-provider-runs-in-the-existing-checkout", (await providerCwdFor(invocationLog, scenarios.occupiedShare.prompt)) === occupiedPath);
+  check(
+    assertions,
+    "worktree-off-provider-runs-in-the-existing-checkout",
+    (await providerCwdFor(invocationLog, scenarios.occupiedShare.prompt)) === occupiedPath,
+  );
   await stillAsItWas("worktree-off");
   const rootAfterShare = await rootState(repoPath);
-  check(assertions, "worktree-off-leaves-the-main-checkout-alone", JSON.stringify(rootAfterShare) === JSON.stringify(rootBefore), rootAfterShare);
+  check(
+    assertions,
+    "worktree-off-leaves-the-main-checkout-alone",
+    JSON.stringify(rootAfterShare) === JSON.stringify(rootBefore),
+    rootAfterShare,
+  );
 
   // Worktree on: a fresh isolated tree from the picked branch.
   const worktreePrompt = `${scenarios.occupiedWorktree.prompt} isolate the work`;
-  const isolated = await launchFromPicker({ bridge, browser, repoPath, branch: occupied.branch, worktree: true, prompt: worktreePrompt, timeoutMs });
-  check(assertions, "worktree-on-picking-an-occupied-branch-raises-no-error", isolated.alert === null && isolated.chipLabel === occupied.branch, { alert: isolated.alert, chipLabel: isolated.chipLabel });
-  check(assertions, "worktree-on-pick-leaves-the-main-checkout-alone", JSON.stringify(isolated.rootAtPick) === JSON.stringify(rootBefore), isolated.rootAtPick);
-  const isolatedChat = await waitForNewCompletedChat(bridge, isolated.sessionsBefore, timeoutMs, "chat in a fresh worktree");
-  const isolatedWorkspace = (await bridge.call("dashboard:list", {})).workspaces.find((entry) => entry.id === isolatedChat.workspaceId);
+  const isolated = await launchFromPicker({
+    bridge,
+    browser,
+    repoPath,
+    branch: occupied.branch,
+    worktree: true,
+    prompt: worktreePrompt,
+    timeoutMs,
+  });
+  check(
+    assertions,
+    "worktree-on-picking-an-occupied-branch-raises-no-error",
+    isolated.alert === null && isolated.chipLabel === occupied.branch,
+    { alert: isolated.alert, chipLabel: isolated.chipLabel },
+  );
+  check(
+    assertions,
+    "worktree-on-pick-leaves-the-main-checkout-alone",
+    JSON.stringify(isolated.rootAtPick) === JSON.stringify(rootBefore),
+    isolated.rootAtPick,
+  );
+  const isolatedChat = await waitForNewCompletedChat(
+    bridge,
+    isolated.sessionsBefore,
+    timeoutMs,
+    "chat in a fresh worktree",
+  );
+  const isolatedWorkspace = (await bridge.call("dashboard:list", {})).workspaces.find(
+    (entry) => entry.id === isolatedChat.workspaceId,
+  );
   const isolatedPath = await realpath(isolatedWorkspace.path);
   check(
     assertions,
     "worktree-on-starts-a-new-session-and-workspace-row",
-    isolatedChat.id !== oldChat.id && isolatedChat.id !== sharedChat.id && isolatedWorkspace.id !== occupied.id && isolatedWorkspace.id !== sharedWorkspace.id,
+    isolatedChat.id !== oldChat.id &&
+      isolatedChat.id !== sharedChat.id &&
+      isolatedWorkspace.id !== occupied.id &&
+      isolatedWorkspace.id !== sharedWorkspace.id,
   );
   check(
     assertions,
     "worktree-on-makes-a-fresh-tree-from-the-picked-branch",
-    isolatedPath !== occupiedPath
-      && isolatedPath !== (await realpath(repoPath))
-      && isolatedWorkspace.branch !== occupied.branch
-      && isolatedWorkspace.branch.startsWith("adam/")
-      && (await git(isolatedWorkspace.path, "rev-parse", "HEAD")) === occupiedTip,
+    isolatedPath !== occupiedPath &&
+      isolatedPath !== (await realpath(repoPath)) &&
+      isolatedWorkspace.branch !== occupied.branch &&
+      isolatedWorkspace.branch.startsWith("adam/") &&
+      (await git(isolatedWorkspace.path, "rev-parse", "HEAD")) === occupiedTip,
     { path: isolatedWorkspace.path, branch: isolatedWorkspace.branch },
   );
   check(assertions, "worktree-on-launch-shows-no-error", (await visibleError(browser)) === null);
-  check(assertions, "worktree-on-provider-runs-in-the-new-tree", (await providerCwdFor(invocationLog, scenarios.occupiedWorktree.prompt)) === isolatedPath);
+  check(
+    assertions,
+    "worktree-on-provider-runs-in-the-new-tree",
+    (await providerCwdFor(invocationLog, scenarios.occupiedWorktree.prompt)) === isolatedPath,
+  );
   await stillAsItWas("worktree-on");
   const rootAfterIsolated = await rootState(repoPath);
   check(
     assertions,
     "worktree-on-leaves-the-main-checkout-alone",
-    rootAfterIsolated.branch === rootBefore.branch
-      && rootAfterIsolated.head === rootBefore.head
-      && rootAfterIsolated.status === rootBefore.status
-      && rootAfterIsolated.worktrees.length === rootBefore.worktrees.length + 1,
+    rootAfterIsolated.branch === rootBefore.branch &&
+      rootAfterIsolated.head === rootBefore.head &&
+      rootAfterIsolated.status === rootBefore.status &&
+      rootAfterIsolated.worktrees.length === rootBefore.worktrees.length + 1,
     rootAfterIsolated,
   );
   screenshots.push(await screenshot(browser, evidenceDir, "picker-occupied-branch-result"));
@@ -1162,9 +1636,18 @@ export async function verifyWorkspaceSettings({
     fastMode: false,
   });
   await waitForEventText(bridge, oldChat.id, scenarios.occupiedFollowUp.visibleText, timeoutMs);
-  check(assertions, "existing-chat-still-takes-a-follow-up", (await waitForCompleted(bridge, oldChat.id, timeoutMs, "existing chat follow-up")).state === "complete");
+  check(
+    assertions,
+    "existing-chat-still-takes-a-follow-up",
+    (await waitForCompleted(bridge, oldChat.id, timeoutMs, "existing chat follow-up")).state ===
+      "complete",
+  );
   oldEventCount = (await readAllEvents(bridge, oldChat.id)).length;
-  check(assertions, "follow-up-ran-in-the-existing-checkout", (await providerCwdFor(invocationLog, scenarios.occupiedFollowUp.prompt)) === occupiedPath);
+  check(
+    assertions,
+    "follow-up-ran-in-the-existing-checkout",
+    (await providerCwdFor(invocationLog, scenarios.occupiedFollowUp.prompt)) === occupiedPath,
+  );
 
   // A branch no worktree holds, Worktree off: nothing changes until Start,
   // then the main checkout is switched to it and the chat runs there.
@@ -1173,17 +1656,62 @@ export async function verifyWorkspaceSettings({
   // taken here, right before this pick.
   const rootBeforeCheckout = await rootState(repoPath);
   const checkoutPrompt = `${scenarios.occupiedCheckout.prompt} work in the main checkout`;
-  const checkout = await launchFromPicker({ bridge, browser, repoPath, branch: "unoccupied-feature", worktree: false, prompt: checkoutPrompt, timeoutMs });
-  check(assertions, "unoccupied-branch-pick-raises-no-error", checkout.alert === null && checkout.chipLabel === "unoccupied-feature", { alert: checkout.alert, chipLabel: checkout.chipLabel });
-  check(assertions, "unoccupied-branch-is-not-checked-out-before-start", JSON.stringify(checkout.rootAtPick) === JSON.stringify(rootBeforeCheckout), checkout.rootAtPick);
-  const checkoutChat = await waitForNewCompletedChat(bridge, checkout.sessionsBefore, timeoutMs, "chat in the main checkout");
-  check(assertions, "unoccupied-branch-launch-shows-no-error", (await visibleError(browser)) === null);
+  const checkout = await launchFromPicker({
+    bridge,
+    browser,
+    repoPath,
+    branch: "unoccupied-feature",
+    worktree: false,
+    prompt: checkoutPrompt,
+    timeoutMs,
+  });
+  check(
+    assertions,
+    "unoccupied-branch-pick-raises-no-error",
+    checkout.alert === null && checkout.chipLabel === "unoccupied-feature",
+    { alert: checkout.alert, chipLabel: checkout.chipLabel },
+  );
+  check(
+    assertions,
+    "unoccupied-branch-is-not-checked-out-before-start",
+    JSON.stringify(checkout.rootAtPick) === JSON.stringify(rootBeforeCheckout),
+    checkout.rootAtPick,
+  );
+  const checkoutChat = await waitForNewCompletedChat(
+    bridge,
+    checkout.sessionsBefore,
+    timeoutMs,
+    "chat in the main checkout",
+  );
+  check(
+    assertions,
+    "unoccupied-branch-launch-shows-no-error",
+    (await visibleError(browser)) === null,
+  );
   const rootAfterCheckout = await rootState(repoPath);
-  check(assertions, "unoccupied-branch-is-checked-out-on-start", rootAfterCheckout.branch === "unoccupied-feature", rootAfterCheckout);
-  check(assertions, "unoccupied-branch-chat-runs-in-the-main-checkout", (await providerCwdFor(invocationLog, scenarios.occupiedCheckout.prompt)) === (await realpath(repoPath)) && checkoutChat.id !== oldChat.id);
+  check(
+    assertions,
+    "unoccupied-branch-is-checked-out-on-start",
+    rootAfterCheckout.branch === "unoccupied-feature",
+    rootAfterCheckout,
+  );
+  check(
+    assertions,
+    "unoccupied-branch-chat-runs-in-the-main-checkout",
+    (await providerCwdFor(invocationLog, scenarios.occupiedCheckout.prompt)) ===
+      (await realpath(repoPath)) && checkoutChat.id !== oldChat.id,
+  );
   await stillAsItWas("unoccupied-branch");
 
-  await verifyNamedProject({ bridge, browser, repoPath, invocationLog, evidenceDir, screenshots, assertions });
+  await verifyNamedProject({
+    bridge,
+    browser,
+    repoPath,
+    invocationLog,
+    evidenceDir,
+    screenshots,
+    assertions,
+  });
 
   const events = await readAllEvents(bridge, source.id);
   const result = {
@@ -1193,12 +1721,23 @@ export async function verifyWorkspaceSettings({
     browser: phases,
     assertions,
   };
-  await writeJson(path.join(evidenceDir, "workspace-settings.json"), { branches: [first.branch, second.branch], screenshots, assertions });
+  await writeJson(path.join(evidenceDir, "workspace-settings.json"), {
+    branches: [first.branch, second.branch],
+    screenshots,
+    assertions,
+  });
   return result;
 }
 
-
-async function verifyNamedProject({ bridge, browser, repoPath, invocationLog, evidenceDir, screenshots, assertions }) {
+async function verifyNamedProject({
+  bridge,
+  browser,
+  repoPath,
+  invocationLog,
+  evidenceDir,
+  screenshots,
+  assertions,
+}) {
   const secondary = path.join(path.dirname(repoPath), "project-secondary");
   await mkdir(secondary, { recursive: true });
   await git(secondary, "init", "-q", "-b", "main");
@@ -1218,55 +1757,136 @@ async function verifyNamedProject({ bridge, browser, repoPath, invocationLog, ev
   const dialog = await browser.$('[role="dialog"][aria-labelledby="new-project-heading"]');
   await dialog.waitForDisplayed({ timeout: 10_000 });
   await setInputValue(browser, await dialog.$("input"), "Connected project");
-  await browser.execute((folders) => {
-    window.argmax.projects.pickDirectory = async () => ({ cancelled: false, path: folders.shift() });
-  }, [primaryRoot, secondaryRoot]);
+  await browser.execute(
+    (folders) => {
+      window.argmax.projects.pickDirectory = async () => ({
+        cancelled: false,
+        path: folders.shift(),
+      });
+    },
+    [primaryRoot, secondaryRoot],
+  );
   await clickByText(browser, "Add folder", 5_000);
   await clickByText(browser, "Add folder", 5_000);
   screenshots.push(await screenshot(browser, evidenceDir, "create-named-project"));
   await clickByText(browser, "Create project", 5_000);
-  await browser.waitUntil(async () => (await bridge.call("projects:list", {})).some((row) => row.name === "Connected project"), { timeout: 10_000 });
-  const named = (await bridge.call("projects:list", {})).find((row) => row.name === "Connected project");
+  await browser.waitUntil(
+    async () =>
+      (await bridge.call("projects:list", {})).some((row) => row.name === "Connected project"),
+    { timeout: 10_000 },
+  );
+  const named = (await bridge.call("projects:list", {})).find(
+    (row) => row.name === "Connected project",
+  );
   const folders = await bridge.call("projects:get-folders", { projectId: named.id });
-  check(assertions, "named-project-has-two-folders-and-one-primary", folders.length === 2 && folders.filter((folder) => folder.isPrimary).length === 1, folders);
-  check(assertions, "same-repository-can-belong-to-two-projects", (await bridge.call("projects:list", {})).filter((row) => row.repoPath === primaryRoot).length === 2);
-  const original = await bridge.call("workspaces:create-current", { projectId: named.id, taskLabel: "Pinned original" });
+  check(
+    assertions,
+    "named-project-has-two-folders-and-one-primary",
+    folders.length === 2 && folders.filter((folder) => folder.isPrimary).length === 1,
+    folders,
+  );
+  check(
+    assertions,
+    "same-repository-can-belong-to-two-projects",
+    (await bridge.call("projects:list", {})).filter((row) => row.repoPath === primaryRoot)
+      .length === 2,
+  );
+  const original = await bridge.call("workspaces:create-current", {
+    projectId: named.id,
+    taskLabel: "Pinned original",
+  });
 
   const projectActions = await browser.$('[aria-label="Actions for Connected project"]');
   await projectActions.waitForExist({ timeout: 10_000 });
   await projectActions.moveTo();
-  await browser.waitUntil(async () => {
-    await browser.execute(() => document.querySelector('[aria-label="Actions for Connected project"]')?.focus());
-    return projectActions.isClickable();
-  }, { timeout: 10_000, timeoutMsg: "Project actions did not become clickable after hover and focus" });
+  await browser.waitUntil(
+    async () => {
+      await browser.execute(() =>
+        document.querySelector('[aria-label="Actions for Connected project"]')?.focus(),
+      );
+      return projectActions.isClickable();
+    },
+    {
+      timeout: 10_000,
+      timeoutMsg: "Project actions did not become clickable after hover and focus",
+    },
+  );
   await projectActions.click();
   const projectMenu = await browser.$('[role="menu"][aria-label="Connected project actions"]');
   await projectMenu.waitForDisplayed({ timeout: 5_000 });
   const menuFits = await browser.execute(() => {
-    const rect = document.querySelector('[role="menu"][aria-label="Connected project actions"]').getBoundingClientRect();
-    return rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight;
+    const rect = document
+      .querySelector('[role="menu"][aria-label="Connected project actions"]')
+      .getBoundingClientRect();
+    return (
+      rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight
+    );
   });
   check(assertions, "project-menu-stays-in-window", menuFits);
   screenshots.push(await screenshot(browser, evidenceDir, "project-actions"));
-  await (await browser.$('//button[@role="menuitem" and normalize-space(.)="Edit Project"]')).click();
-  await verifyProjectOverview({ bridge, browser, projectId: named.id, evidenceDir, screenshots, assertions });
+  await (
+    await browser.$('//button[@role="menuitem" and normalize-space(.)="Edit Project"]')
+  ).click();
+  await verifyProjectOverview({
+    bridge,
+    browser,
+    projectId: named.id,
+    evidenceDir,
+    screenshots,
+    assertions,
+  });
   const makePrimary = await browser.$('[aria-label="Make project-secondary primary"]');
   await makePrimary.waitForDisplayed({ timeout: 10_000 });
   await makePrimary.click();
   await clickByText(browser, "Save project", 5_000);
-  await browser.waitUntil(async () => (await bridge.call("projects:list", {})).find((row) => row.id === named.id)?.repoPath === secondaryRoot, { timeout: 10_000 });
-  const next = await bridge.call("workspaces:create-current", { projectId: named.id, taskLabel: "New primary" });
+  await browser.waitUntil(
+    async () =>
+      (await bridge.call("projects:list", {})).find((row) => row.id === named.id)?.repoPath ===
+      secondaryRoot,
+    { timeout: 10_000 },
+  );
+  const next = await bridge.call("workspaces:create-current", {
+    projectId: named.id,
+    taskLabel: "New primary",
+  });
   const snapshot = await bridge.call("dashboard:list", {});
-  check(assertions, "changing-primary-pins-existing-chat", snapshot.workspaces.find((row) => row.id === original.id)?.path === primaryRoot);
-  check(assertions, "changing-primary-affects-new-chat", next.path === secondaryRoot && next.projectFolderId !== original.projectFolderId);
+  check(
+    assertions,
+    "changing-primary-pins-existing-chat",
+    snapshot.workspaces.find((row) => row.id === original.id)?.path === primaryRoot,
+  );
+  check(
+    assertions,
+    "changing-primary-affects-new-chat",
+    next.path === secondaryRoot && next.projectFolderId !== original.projectFolderId,
+  );
   screenshots.push(await screenshot(browser, evidenceDir, "project-primary-changed"));
 
   await writeFile(path.join(secondaryRoot, "README.md"), "secondary folder diff marker\n");
   const secondaryFolder = folders.find((folder) => folder.rootPath === secondaryRoot);
-  const changes = await bridge.call("review:list-changed-files", { kind: "projectFolder", id: secondaryFolder.id, comparison: "workingTree" });
-  check(assertions, "secondary-repository-changes-have-own-root", changes.some((file) => file.path === "README.md"), changes);
-  const diff = await bridge.call("review:load-diff", { kind: "projectFolder", id: secondaryFolder.id, filePath: "README.md", comparison: "workingTree", contextLines: null });
-  check(assertions, "secondary-repository-diff-reads-correct-file", JSON.stringify(diff).includes("secondary folder diff marker"));
+  const changes = await bridge.call("review:list-changed-files", {
+    kind: "projectFolder",
+    id: secondaryFolder.id,
+    comparison: "workingTree",
+  });
+  check(
+    assertions,
+    "secondary-repository-changes-have-own-root",
+    changes.some((file) => file.path === "README.md"),
+    changes,
+  );
+  const diff = await bridge.call("review:load-diff", {
+    kind: "projectFolder",
+    id: secondaryFolder.id,
+    filePath: "README.md",
+    comparison: "workingTree",
+    contextLines: null,
+  });
+  check(
+    assertions,
+    "secondary-repository-diff-reads-correct-file",
+    JSON.stringify(diff).includes("secondary folder diff marker"),
+  );
 
   const chat = await bridge.call("providers:launch", {
     workspaceId: original.id,
@@ -1274,14 +1894,28 @@ async function verifyNamedProject({ bridge, browser, repoPath, invocationLog, ev
     prompt: VERIFICATION_SCENARIOS.workspaceSettings.prompt,
     modelLabel: VERIFICATION_PROVIDER.modelLabel,
     modelId: VERIFICATION_PROVIDER.modelId,
-    reasoningEffort: null, fastMode: false, agentMode: null, permissionMode: null,
-    cols: 120, rows: 32, attachments: null,
+    reasoningEffort: null,
+    fastMode: false,
+    agentMode: null,
+    permissionMode: null,
+    cols: 120,
+    rows: 32,
+    attachments: null,
   });
   await waitForCompleted(bridge, chat.id, 30_000, "named project chat");
-  const overviewLaunch = (await readInvocations(invocationLog)).find((entry) => entry.prompt?.includes("Project overview (descriptive context"));
-  check(assertions, "saved-project-overview-reaches-agent", overviewLaunch?.prompt?.includes("Verification project overview"), overviewLaunch?.prompt);
+  const overviewLaunch = (await readInvocations(invocationLog)).find((entry) =>
+    entry.prompt?.includes("Project overview (descriptive context"),
+  );
+  check(
+    assertions,
+    "saved-project-overview-reaches-agent",
+    overviewLaunch?.prompt?.includes("Verification project overview"),
+    overviewLaunch?.prompt,
+  );
   await clickByText(browser, "Back", 5_000);
-  const chatRow = await browser.$(`[data-workspace-id="${original.id}"] button[data-status][title]`);
+  const chatRow = await browser.$(
+    `[data-workspace-id="${original.id}"] button[data-status][title]`,
+  );
   await chatRow.waitForClickable({ timeout: 10_000 });
   await chatRow.click();
   const folderChanges = await browser.$('[aria-label="Changes in project-secondary"]');
@@ -1292,104 +1926,264 @@ async function verifyNamedProject({ bridge, browser, repoPath, invocationLog, ev
   await waitForText(browser, ".review-diff-scroll", "secondary folder diff marker", 10_000);
   check(assertions, "workspace-card-opens-secondary-diff", true);
   screenshots.push(await screenshot(browser, evidenceDir, "project-secondary-diff"));
-  const cardText = await browser.execute(() => document.querySelector('.workspace-card')?.textContent ?? "");
-  check(assertions, "workspace-card-has-no-manual-git-actions", !/Chat checkout|Shared checkout|Create pull request/.test(cardText));
-  await verifyNestedChats({ bridge, browser, sessionId: chat.id, evidenceDir, screenshots, assertions });
-  await verifyLaunchFolder({ bridge, browser, named, primaryRoot, secondaryRoot, invocationLog, evidenceDir, screenshots, assertions });
+  const cardText = await browser.execute(
+    () => document.querySelector(".workspace-card")?.textContent ?? "",
+  );
+  check(
+    assertions,
+    "workspace-card-has-no-manual-git-actions",
+    !/Chat checkout|Shared checkout|Create pull request/.test(cardText),
+  );
+  await verifyNestedChats({
+    bridge,
+    browser,
+    sessionId: chat.id,
+    evidenceDir,
+    screenshots,
+    assertions,
+  });
+  await verifyLaunchFolder({
+    bridge,
+    browser,
+    named,
+    primaryRoot,
+    secondaryRoot,
+    invocationLog,
+    evidenceDir,
+    screenshots,
+    assertions,
+  });
 }
 
-async function verifyLaunchFolder({ bridge, browser, named, primaryRoot, secondaryRoot, invocationLog, evidenceDir, screenshots, assertions }) {
+async function verifyLaunchFolder({
+  bridge,
+  browser,
+  named,
+  primaryRoot,
+  secondaryRoot,
+  invocationLog,
+  evidenceDir,
+  screenshots,
+  assertions,
+}) {
   const notes = path.join(path.dirname(primaryRoot), "project-notes");
   await mkdir(notes, { recursive: true });
   await writeFile(path.join(notes, "notes.md"), "Plain folder launch evidence\n");
   const notesRoot = await realpath(notes);
-  await bridge.call("projects:configure", { projectId: named.id, name: named.name,
-    folders: [primaryRoot, secondaryRoot, notesRoot], primaryPath: secondaryRoot });
+  await bridge.call("projects:configure", {
+    projectId: named.id,
+    name: named.name,
+    folders: [primaryRoot, secondaryRoot, notesRoot],
+    primaryPath: secondaryRoot,
+  });
   await browser.refresh();
-  for (const [root, plain] of [[primaryRoot, false], [notesRoot, true]]) {
+  for (const [root, plain] of [
+    [primaryRoot, false],
+    [notesRoot, true],
+  ]) {
     const before = (await bridge.call("dashboard:list", {})).sessions.map((session) => session.id);
     const field = await openLauncher(browser, 10_000);
     await (await browser.$('[aria-label="Switch project"]')).click();
-    await (await browser.$(`//*[@aria-label="Select project"]//button[.//*[normalize-space(.)="${named.name}"]]`)).click();
+    await (
+      await browser.$(
+        `//*[@aria-label="Select project"]//button[.//*[normalize-space(.)="${named.name}"]]`,
+      )
+    ).click();
     const choose = await browser.$('[aria-label="Switch project"]');
     await choose.waitForClickable({ timeout: 10_000 });
-    await browser.waitUntil(async () => (await choose.getAttribute("title")).includes("Right-click to choose a folder"), {
-      timeout: 10_000,
-      timeoutMsg: "The selected project's folders did not become available",
-    });
-    diagnose("launch-folder-contextmenu", await openContextMenu(browser, '[aria-label="Switch project"]'));
+    await browser.waitUntil(
+      async () => (await choose.getAttribute("title")).includes("Right-click to choose a folder"),
+      {
+        timeout: 10_000,
+        timeoutMsg: "The selected project's folders did not become available",
+      },
+    );
+    diagnose(
+      "launch-folder-contextmenu",
+      await openContextMenu(browser, '[aria-label="Switch project"]'),
+    );
     const folders = await bridge.call("projects:get-folders", { projectId: named.id });
     const folder = folders.find((entry) => entry.rootPath === root);
     const option = await browser.$(`//*[@aria-label="Work in"]//button[@title="${root}"]`);
     await option.waitForClickable({ timeout: 10_000 });
-    screenshots.push(await screenshot(browser, evidenceDir, plain ? "launcher-plain-folder-menu" : "launcher-folder-menu"));
+    screenshots.push(
+      await screenshot(
+        browser,
+        evidenceDir,
+        plain ? "launcher-plain-folder-menu" : "launcher-folder-menu",
+      ),
+    );
     await option.click();
-    await browser.waitUntil(async () => (await choose.getAttribute("title")).includes(`Work in ${path.basename(folder.rootPath)}`), { timeout: 10_000 });
+    await browser.waitUntil(
+      async () =>
+        (await choose.getAttribute("title")).includes(`Work in ${path.basename(folder.rootPath)}`),
+      { timeout: 10_000 },
+    );
     if (plain) {
-      await browser.waitUntil(async () => !(await (await browser.$('[aria-label="Switch branch"]')).isExisting()), { timeout: 10_000 });
-      check(assertions, "plain-folder-hides-worktree-control", !(await (await browser.$('[aria-label="Worktree"]')).isExisting()));
+      await browser.waitUntil(
+        async () => !(await (await browser.$('[aria-label="Switch branch"]')).isExisting()),
+        {
+          timeout: 10_000,
+        },
+      );
+      check(
+        assertions,
+        "plain-folder-hides-worktree-control",
+        !(await (await browser.$('[aria-label="Worktree"]')).isExisting()),
+      );
     } else {
       const toggle = await browser.$('[aria-label="Worktree"]');
-      if (await toggle.getAttribute("aria-pressed") === "true") await toggle.click();
+      if ((await toggle.getAttribute("aria-pressed")) === "true") await toggle.click();
     }
     const prompt = `${VERIFICATION_SCENARIOS.workspaceSettings.prompt} folder-${plain ? "plain" : "git"}`;
     await typeIntoComposer(browser, field, prompt);
     const start = await browser.$('[aria-label="Start agent"]');
     await start.waitForClickable({ timeout: 10_000 });
-    screenshots.push(await screenshot(browser, evidenceDir, plain ? "launcher-plain-folder" : "launcher-selected-folder"));
+    screenshots.push(
+      await screenshot(
+        browser,
+        evidenceDir,
+        plain ? "launcher-plain-folder" : "launcher-selected-folder",
+      ),
+    );
     await start.click();
     const session = await waitForNewCompletedChat(bridge, before, 30_000, "selected folder chat");
-    const workspace = (await bridge.call("dashboard:list", {})).workspaces.find((entry) => entry.id === session.workspaceId);
-    check(assertions, `launcher-${plain ? "plain" : "git"}-folder-root`, workspace.path === root && workspace.projectFolderId === folder.id, workspace);
-    check(assertions, `launcher-${plain ? "plain" : "git"}-provider-cwd`, (await providerCwdFor(invocationLog, prompt)) === root);
-    check(assertions, "launcher-folder-selection-preserves-primary", (await bridge.call("projects:list", {})).find((project) => project.id === named.id).repoPath === secondaryRoot);
+    const workspace = (await bridge.call("dashboard:list", {})).workspaces.find(
+      (entry) => entry.id === session.workspaceId,
+    );
+    check(
+      assertions,
+      `launcher-${plain ? "plain" : "git"}-folder-root`,
+      workspace.path === root && workspace.projectFolderId === folder.id,
+      workspace,
+    );
+    check(
+      assertions,
+      `launcher-${plain ? "plain" : "git"}-provider-cwd`,
+      (await providerCwdFor(invocationLog, prompt)) === root,
+    );
+    check(
+      assertions,
+      "launcher-folder-selection-preserves-primary",
+      (await bridge.call("projects:list", {})).find((project) => project.id === named.id)
+        .repoPath === secondaryRoot,
+    );
     if (plain) {
       check(assertions, "plain-folder-workspace-kind", workspace.kind === "folder");
-      const files = await bridge.call("workspace:list-files", { kind: "workspace", id: workspace.id });
-      check(assertions, "plain-folder-files-available", files.some((file) => file.path === "notes.md"));
+      const files = await bridge.call("workspace:list-files", {
+        kind: "workspace",
+        id: workspace.id,
+      });
+      check(
+        assertions,
+        "plain-folder-files-available",
+        files.some((file) => file.path === "notes.md"),
+      );
     }
   }
 }
 
-async function verifyProjectOverview({ bridge, browser, projectId, evidenceDir, screenshots, assertions }) {
-  const readOverview = async () => (await bridge.call("projects:list", {})).find((row) => row.id === projectId)?.overview;
-  await browser.waitUntil(async () => (await readOverview())?.status !== "generating", { timeout: 30_000, timeoutMsg: "automatic project overview generation did not finish" });
+async function verifyProjectOverview({
+  bridge,
+  browser,
+  projectId,
+  evidenceDir,
+  screenshots,
+  assertions,
+}) {
+  const readOverview = async () =>
+    (await bridge.call("projects:list", {})).find((row) => row.id === projectId)?.overview;
+  await browser.waitUntil(async () => (await readOverview())?.status !== "generating", {
+    timeout: 30_000,
+    timeoutMsg: "automatic project overview generation did not finish",
+  });
   const initial = await readOverview();
-  check(assertions, "project-overview-generated-automatically", Boolean(initial?.saved?.text && initial.saved.generatedAt && initial.saved.sources.length), initial);
+  check(
+    assertions,
+    "project-overview-generated-automatically",
+    Boolean(initial?.saved?.text && initial.saved.generatedAt && initial.saved.sources.length),
+    initial,
+  );
   const editor = await browser.$('[aria-label="Project overview"]');
   await editor.waitForDisplayed({ timeout: 10_000 });
-  await browser.waitUntil(async () => (await editor.getValue()) === initial.saved.text, { timeout: 5_000 });
+  await browser.waitUntil(async () => (await editor.getValue()) === initial.saved.text, {
+    timeout: 5_000,
+  });
   screenshots.push(await screenshot(browser, evidenceDir, "project-overview-generated"));
   await setInputValue(browser, editor, "My edited project overview.");
   await clickByText(browser, "Save overview", 5_000);
-  await browser.waitUntil(async () => (await readOverview())?.saved?.text === "My edited project overview.", { timeout: 5_000 });
+  await browser.waitUntil(
+    async () => (await readOverview())?.saved?.text === "My edited project overview.",
+    {
+      timeout: 5_000,
+    },
+  );
   await clickByText(browser, "Refresh overview", 5_000);
   await browser.waitUntil(async () => Boolean((await readOverview())?.draft), { timeout: 30_000 });
   const refreshed = await readOverview();
-  check(assertions, "refresh-keeps-manual-overview-until-applied", refreshed.saved.text === "My edited project overview." && refreshed.draft.text.includes("Verification project overview"), refreshed);
-  await (await browser.$('//button[normalize-space(.)="Apply draft"]')).waitForClickable({ timeout: 10_000 });
+  check(
+    assertions,
+    "refresh-keeps-manual-overview-until-applied",
+    refreshed.saved.text === "My edited project overview." &&
+      refreshed.draft.text.includes("Verification project overview"),
+    refreshed,
+  );
+  await (
+    await browser.$('//button[normalize-space(.)="Apply draft"]')
+  ).waitForClickable({ timeout: 10_000 });
   screenshots.push(await screenshot(browser, evidenceDir, "project-overview-refresh-draft"));
   await clickByText(browser, "Discard draft", 5_000);
   await browser.waitUntil(async () => !(await readOverview())?.draft, { timeout: 5_000 });
-  check(assertions, "discard-overview-draft-retains-edits", (await readOverview()).saved.text === "My edited project overview.");
+  check(
+    assertions,
+    "discard-overview-draft-retains-edits",
+    (await readOverview()).saved.text === "My edited project overview.",
+  );
   await clickByText(browser, "Refresh overview", 5_000);
   await browser.waitUntil(async () => Boolean((await readOverview())?.draft), { timeout: 30_000 });
   await clickByText(browser, "Apply draft", 10_000);
-  await browser.waitUntil(async () => (await readOverview())?.saved?.text.includes("Verification project overview"), { timeout: 5_000 });
+  await browser.waitUntil(
+    async () => (await readOverview())?.saved?.text.includes("Verification project overview"),
+    {
+      timeout: 5_000,
+    },
+  );
   const applied = await readOverview();
-  check(assertions, "apply-overview-draft-updates-saved-context", !applied.draft && applied.saved.text.includes("Verification project overview"));
+  check(
+    assertions,
+    "apply-overview-draft-updates-saved-context",
+    !applied.draft && applied.saved.text.includes("Verification project overview"),
+  );
 }
 
-async function verifyNestedChats({ bridge, browser, sessionId, evidenceDir, screenshots, assertions }) {
+async function verifyNestedChats({
+  bridge,
+  browser,
+  sessionId,
+  evidenceDir,
+  screenshots,
+  assertions,
+}) {
   const child = await bridge.call("session:multitask", {
-    sessionId, prompt: VERIFICATION_SCENARIOS.workspaceSettings.prompt,
-    taskLabel: "Linked project check", worktree: false
+    sessionId,
+    prompt: VERIFICATION_SCENARIOS.workspaceSettings.prompt,
+    taskLabel: "Linked project check",
+    worktree: false,
   });
   await waitForCompleted(bridge, child.sessionId, 30_000, "nested multitask");
   const childRowSelector = `[data-workspace-id="${child.workspaceId}"]`;
   const childRow = await browser.$(childRowSelector);
   await childRow.waitForDisplayed({ timeout: 10_000 });
-  const isNested = () => browser.execute((selector) => Boolean(document.querySelector(selector)?.closest('[role="group"][aria-label^="Chats launched from"]')), childRowSelector);
+  const isNested = () =>
+    browser.execute(
+      (selector) =>
+        Boolean(
+          document
+            .querySelector(selector)
+            ?.closest('[role="group"][aria-label^="Chats launched from"]'),
+        ),
+      childRowSelector,
+    );
   check(assertions, "launched-chat-nested-by-default", await isNested());
   const nestingLayout = await browser.execute((selector) => {
     const child = document.querySelector(selector);
@@ -1398,63 +2192,102 @@ async function verifyNestedChats({ bridge, browser, sessionId, evidenceDir, scre
     const row = child.getBoundingClientRect();
     return { parentBottom: parent.bottom, childTop: row.top, childWidth: row.width };
   }, childRowSelector);
-  check(assertions, "nested-chats-stack-below-parent", nestingLayout.childTop >= nestingLayout.parentBottom && nestingLayout.childWidth > 150, nestingLayout);
+  check(
+    assertions,
+    "nested-chats-stack-below-parent",
+    nestingLayout.childTop >= nestingLayout.parentBottom && nestingLayout.childWidth > 150,
+    nestingLayout,
+  );
   screenshots.push(await screenshot(browser, evidenceDir, "nested-chats"));
-  const parentWorkspaceId = (await bridge.call("dashboard:list", {})).sessions.find((session) => session.id === sessionId).workspaceId;
+  const parentWorkspaceId = (await bridge.call("dashboard:list", {})).sessions.find(
+    (session) => session.id === sessionId,
+  ).workspaceId;
   const parentRowSelector = `[data-workspace-id="${parentWorkspaceId}"] button[data-status]`;
   await openContextMenu(browser, parentRowSelector);
   const collapse = await browser.$('[aria-label="Collapse chats launched from Pinned original"]');
   await collapse.waitForClickable({ timeout: 5_000 });
   await collapse.click();
-  check(assertions, "chat-disclosure-collapses-children", !await childRow.isExisting());
+  check(assertions, "chat-disclosure-collapses-children", !(await childRow.isExisting()));
   await openContextMenu(browser, parentRowSelector);
-  await (await browser.$('[aria-label="Expand chats launched from Pinned original"]')).waitForClickable({ timeout: 5_000 });
+  await (
+    await browser.$('[aria-label="Expand chats launched from Pinned original"]')
+  ).waitForClickable({ timeout: 5_000 });
   await (await browser.$('[aria-label="Expand chats launched from Pinned original"]')).click();
   await (await browser.$(childRowSelector)).waitForDisplayed({ timeout: 5_000 });
 
-  const sidebarWidth = await browser.execute(() => document.querySelector('.sidebar').getBoundingClientRect().width);
+  const sidebarWidth = await browser.execute(
+    () => document.querySelector(".sidebar").getBoundingClientRect().width,
+  );
   await (await browser.$('[aria-label="Customize"]')).click();
-  const settingsWidth = await browser.execute(() => document.querySelector('.settings-rail').getBoundingClientRect().width);
-  check(assertions, "customize-keeps-sidebar-width", Math.abs(sidebarWidth - settingsWidth) < 1, { sidebarWidth, settingsWidth });
+  const settingsWidth = await browser.execute(
+    () => document.querySelector(".settings-rail").getBoundingClientRect().width,
+  );
+  check(assertions, "customize-keeps-sidebar-width", Math.abs(sidebarWidth - settingsWidth) < 1, {
+    sidebarWidth,
+    settingsWidth,
+  });
   await clickByText(browser, "Appearance", 5_000);
-  const separate = await browser.$('//label[.//input[@name="sidebar-chat-nesting" and @value="separate"]]');
+  const separate = await browser.$(
+    '//label[.//input[@name="sidebar-chat-nesting" and @value="separate"]]',
+  );
   await separate.waitForExist({ timeout: 5_000 });
   await separate.click();
   await clickByText(browser, "Back", 5_000);
   const priorityToggle = await browser.$('[aria-label="Show Priority chats"]');
   if (await priorityToggle.isExisting()) {
-    await browser.execute(() => document.querySelector('[aria-label="Show Priority chats"]').focus());
+    await browser.execute(() =>
+      document.querySelector('[aria-label="Show Priority chats"]').focus(),
+    );
     await priorityToggle.click();
   }
   await (await browser.$(childRowSelector)).waitForDisplayed({ timeout: 5_000 });
-  check(assertions, "launched-chat-setting-flattens-sidebar", !await isNested());
+  check(assertions, "launched-chat-setting-flattens-sidebar", !(await isNested()));
   await (await browser.$('[aria-label="Customize"]')).click();
-  await (await browser.$('//label[.//input[@name="sidebar-chat-nesting" and @value="nested"]]')).click();
+  await (
+    await browser.$('//label[.//input[@name="sidebar-chat-nesting" and @value="nested"]]')
+  ).click();
   await clickByText(browser, "Back", 5_000);
   await browser.waitUntil(isNested, { timeout: 5_000 });
   await openContextMenu(browser, `${childRowSelector} button[data-status]`);
-  const detach = await browser.$('//button[@role="menuitem" and normalize-space(.)="Detach to Top Level"]');
+  const detach = await browser.$(
+    '//button[@role="menuitem" and normalize-space(.)="Detach to Top Level"]',
+  );
   await detach.waitForClickable({ timeout: 5_000 });
   screenshots.push(await screenshot(browser, evidenceDir, "nested-chat-actions"));
   await detach.click();
-  await browser.waitUntil(async () => !await isNested(), { timeout: 5_000 });
-  const detachedSession = (await bridge.call("dashboard:list", {})).sessions.find((row) => row.id === child.sessionId);
-  check(assertions, "detaching-preserves-launch-relationship", detachedSession?.launchedBySessionId === sessionId);
+  await browser.waitUntil(async () => !(await isNested()), { timeout: 5_000 });
+  const detachedSession = (await bridge.call("dashboard:list", {})).sessions.find(
+    (row) => row.id === child.sessionId,
+  );
+  check(
+    assertions,
+    "detaching-preserves-launch-relationship",
+    detachedSession?.launchedBySessionId === sessionId,
+  );
   await browser.refresh();
-  await browser.waitUntil(async () => await browser.execute((workspaceId) => {
-    const stored = JSON.parse(localStorage.getItem("argmax.sidebar.chatNesting") ?? "null");
-    return stored?.detachedIds.includes(workspaceId);
-  }, child.workspaceId), { timeout: 10_000 });
-  await (await browser.$('[aria-label="Actions for Connected project"]')).waitForExist({ timeout: 10_000 });
+  await browser.waitUntil(
+    async () =>
+      await browser.execute((workspaceId) => {
+        const stored = JSON.parse(localStorage.getItem("argmax.sidebar.chatNesting") ?? "null");
+        return stored?.detachedIds.includes(workspaceId);
+      }, child.workspaceId),
+    { timeout: 10_000 },
+  );
+  await (
+    await browser.$('[aria-label="Actions for Connected project"]')
+  ).waitForExist({ timeout: 10_000 });
   for (const label of ["Show Priority chats", "Show Connected project chats"]) {
     const toggle = await browser.$(`[aria-label="${label}"]`);
     if (await toggle.isExisting()) {
-      await browser.execute((label) => document.querySelector(`[aria-label="${label}"]`).focus(), label);
+      await browser.execute(
+        (label) => document.querySelector(`[aria-label="${label}"]`).focus(),
+        label,
+      );
       await toggle.click();
     }
   }
   await (await browser.$(childRowSelector)).waitForDisplayed({ timeout: 10_000 });
-  check(assertions, "chat-detachment-persists-after-reload", !await isNested());
+  check(assertions, "chat-detachment-persists-after-reload", !(await isNested()));
 }
 
 async function git(cwd, ...args) {
@@ -1480,7 +2313,9 @@ async function rootState(repoPath) {
 // The working directory the scripted provider ran in for the launch that
 // carried `marker`, from the invocation log.
 async function providerCwdFor(invocationLog, marker) {
-  const launch = (await readInvocations(invocationLog)).find((entry) => entry.prompt?.includes(marker));
+  const launch = (await readInvocations(invocationLog)).find((entry) =>
+    entry.prompt?.includes(marker),
+  );
   if (!launch) throw new Error(`No provider launch carried ${marker}`);
   return realpath(launch.cwd);
 }
@@ -1488,9 +2323,12 @@ async function providerCwdFor(invocationLog, marker) {
 // The error the app is showing now, as a launcher alert or an error toast.
 async function visibleError(browser) {
   return browser.execute(function readError() {
-    return document.querySelector(".launcher-error[role=\"alert\"]")?.textContent
-      ?? document.querySelector(".toast.toast-error:not([aria-hidden=\"true\"]) .toast-text")?.textContent
-      ?? null;
+    return (
+      document.querySelector('.launcher-error[role="alert"]')?.textContent ??
+      document.querySelector('.toast.toast-error:not([aria-hidden="true"]) .toast-text')
+        ?.textContent ??
+      null
+    );
   });
 }
 
@@ -1498,13 +2336,15 @@ async function waitForNewCompletedChat(bridge, knownSessionIds, timeoutMs, label
   let fresh = null;
   const deadline = Date.now() + 30_000;
   while (!fresh && Date.now() < deadline) {
-    fresh = (await bridge.call("dashboard:list", {})).sessions.find((entry) => !knownSessionIds.includes(entry.id)) ?? null;
+    fresh =
+      (await bridge.call("dashboard:list", {})).sessions.find(
+        (entry) => !knownSessionIds.includes(entry.id),
+      ) ?? null;
     if (!fresh) await delay(150);
   }
   if (!fresh) throw new Error(`${label}: the launch started no chat`);
   return waitForCompleted(bridge, fresh.id, timeoutMs, label);
 }
-
 
 // The picker lists branches and checkouts over IPC before it opens. If it does
 // not appear, the samples say whether it never opened (handler returned or an
@@ -1518,12 +2358,16 @@ async function waitForBranchPicker(browser) {
       return {
         chip: chip ? chip.getAttribute("aria-expanded") : "missing",
         list: document.querySelector('[aria-label="Select branch"]') !== null,
-        error: document.querySelector(".toast.toast-error .toast-text")?.textContent ?? document.querySelector(".launcher-error")?.textContent ?? null,
+        error:
+          document.querySelector(".toast.toast-error .toast-text")?.textContent ??
+          document.querySelector(".launcher-error")?.textContent ??
+          null,
       };
     });
     if (sample.list) return;
     const last = samples.at(-1);
-    if (!last || last.chip !== sample.chip || last.error !== sample.error) samples.push({ afterMs: Date.now() - started, ...sample });
+    if (!last || last.chip !== sample.chip || last.error !== sample.error)
+      samples.push({ afterMs: Date.now() - started, ...sample });
     await delay(100);
   }
   diagnose("branch-picker-never-opened", samples);
@@ -1536,30 +2380,52 @@ async function waitForBranchPicker(browser) {
  * the launcher showed (the branch chip and any error), the main checkout as it
  * stood after the pick and before Start, and the chats that existed before.
  */
-async function launchFromPicker({ bridge, browser, repoPath, branch, worktree, prompt, timeoutMs }) {
-  const sessionsBefore = (await bridge.call("dashboard:list", {})).sessions.map((entry) => entry.id);
+async function launchFromPicker({
+  bridge,
+  browser,
+  repoPath,
+  branch,
+  worktree,
+  prompt,
+  timeoutMs,
+}) {
+  const sessionsBefore = (await bridge.call("dashboard:list", {})).sessions.map(
+    (entry) => entry.id,
+  );
   const field = await openLauncher(browser, timeoutMs);
   await (await browser.$('[aria-label="Switch branch"]')).click();
   await waitForBranchPicker(browser);
   const list = await browser.$('[aria-label="Select branch"]');
   await list.waitForDisplayed({ timeout: 10_000, timeoutMsg: "The branch picker did not open" });
-  const option = await browser.$(`//*[@aria-label="Select branch"]//button[.//span[contains(@class, "picker-label") and normalize-space(.)="${branch}"]]`);
-  await option.waitForExist({ timeout: 10_000, timeoutMsg: `The branch picker did not list ${branch}` });
+  const option = await browser.$(
+    `//*[@aria-label="Select branch"]//button[.//span[contains(@class, "picker-label") and normalize-space(.)="${branch}"]]`,
+  );
+  await option.waitForExist({
+    timeout: 10_000,
+    timeoutMsg: `The branch picker did not list ${branch}`,
+  });
   await option.click();
   await browser.pause(750);
   const toggle = await browser.$('[aria-label="Worktree"]');
   if (((await toggle.getAttribute("aria-pressed")) === "true") !== worktree) await toggle.click();
-  await browser.waitUntil(async () => ((await toggle.getAttribute("aria-pressed")) === "true") === worktree, {
-    timeout: 5_000,
-    timeoutMsg: `The Worktree toggle did not turn ${worktree ? "on" : "off"}`,
-  });
+  await browser.waitUntil(
+    async () => ((await toggle.getAttribute("aria-pressed")) === "true") === worktree,
+    {
+      timeout: 5_000,
+      timeoutMsg: `The Worktree toggle did not turn ${worktree ? "on" : "off"}`,
+    },
+  );
   const shown = await browser.execute(function readLauncher() {
     return {
-      chipLabel: document.querySelector('[aria-label="Switch branch"] .composer-context-chip-label')?.textContent ?? null,
+      chipLabel:
+        document.querySelector('[aria-label="Switch branch"] .composer-context-chip-label')
+          ?.textContent ?? null,
       // A failed branch switch is an error toast; a failed launch can be either.
-      alert: document.querySelector(".launcher-error[role=\"alert\"]")?.textContent
-        ?? document.querySelector(".toast.toast-error:not([aria-hidden=\"true\"]) .toast-text")?.textContent
-        ?? null,
+      alert:
+        document.querySelector('.launcher-error[role="alert"]')?.textContent ??
+        document.querySelector('.toast.toast-error:not([aria-hidden="true"]) .toast-text')
+          ?.textContent ??
+        null,
     };
   });
   // The pick alone changes nothing on disk; only Start can.
@@ -1609,7 +2475,9 @@ async function copyOrCut(browser, command) {
   }, command);
   await browser.pause(300);
   if ((await clipboardEvents(browser)).length > before) return "execCommand";
-  throw new Error(`No ${command} event fired from Cmd+${command === "copy" ? "C" : "X"} or document.execCommand`);
+  throw new Error(
+    `No ${command} event fired from Cmd+${command === "copy" ? "C" : "X"} or document.execCommand`,
+  );
 }
 
 async function selectAllInEditor(browser, field) {
@@ -1665,22 +2533,34 @@ export async function verifyComposerEditor({
   const screenshots = [];
   const sourceTitle = scenarios.composerSource.taskLabel;
   const sourceLink = `argmax://chat/${source.id}`;
-  const fragments = (text) => (text.includes("argmax://") || text.includes("](")) && !text.includes(`(${sourceLink}`);
+  const fragments = (text) =>
+    (text.includes("argmax://") || text.includes("](")) && !text.includes(`(${sourceLink}`);
   const chipCount = async () => (await launcherChips(browser)).length;
 
   await pinLauncherModel(browser, timeoutMs);
   await waitForCompleted(bridge, source.id, timeoutMs, "editor source chat");
-  phases.push(await verifyUi({
-    name: "editor-source",
-    expectedTexts: [scenarios.composerSource.visibleText],
-    expectIdle: true,
-  }));
+  phases.push(
+    await verifyUi({
+      name: "editor-source",
+      expectedTexts: [scenarios.composerSource.visibleText],
+      expectIdle: true,
+    }),
+  );
   const sessionField = await waitForCodeMirror(browser, SESSION_PROMPT_LABEL, timeoutMs);
   await typeIntoComposer(browser, sessionField, "abc def");
-  check(assertions, "session-composer-takes-typing", (await readComposerText(browser, sessionField)) === "abc def");
+  check(
+    assertions,
+    "session-composer-takes-typing",
+    (await readComposerText(browser, sessionField)) === "abc def",
+  );
   screenshots.push(await screenshot(browser, evidenceDir, "editor-session-codemirror"));
   await browser.keys(["Meta", "z"]);
-  check(assertions, "session-composer-undo-changes-the-text", (await readComposerText(browser, await browser.$(`[aria-label="${SESSION_PROMPT_LABEL}"]`))) !== "abc def");
+  check(
+    assertions,
+    "session-composer-undo-changes-the-text",
+    (await readComposerText(browser, await browser.$(`[aria-label="${SESSION_PROMPT_LABEL}"]`))) !==
+      "abc def",
+  );
   await selectAllInEditor(browser, await browser.$(`[aria-label="${SESSION_PROMPT_LABEL}"]`));
   await browser.keys(["Backspace"]);
 
@@ -1695,13 +2575,25 @@ export async function verifyComposerEditor({
       role: element.getAttribute("role"),
     };
   }, LAUNCHER_PROMPT_LABEL);
-  check(assertions, "launcher-field-is-codemirror", shape.codeMirror && !shape.textareaFallback && shape.editable && shape.role === "textbox", shape);
+  check(
+    assertions,
+    "launcher-field-is-codemirror",
+    shape.codeMirror && !shape.textareaFallback && shape.editable && shape.role === "textbox",
+    shape,
+  );
   // Positive control for every "the field is empty" read below: the placeholder
   // is on screen, and the reader must still answer with the empty document.
   const placeholderText = await browser.execute(function readPlaceholder() {
-    return document.querySelector('[aria-label="Task prompt"] .cm-placeholder')?.textContent ?? null;
+    return (
+      document.querySelector('[aria-label="Task prompt"] .cm-placeholder')?.textContent ?? null
+    );
   });
-  check(assertions, "reader-returns-empty-while-the-placeholder-shows", Boolean(placeholderText) && (await readComposerText(browser, field)) === "", placeholderText);
+  check(
+    assertions,
+    "reader-returns-empty-while-the-placeholder-shows",
+    Boolean(placeholderText) && (await readComposerText(browser, field)) === "",
+    placeholderText,
+  );
   screenshots.push(await screenshot(browser, evidenceDir, "editor-launcher-empty"));
   await recordClipboardEvents(browser);
 
@@ -1709,21 +2601,41 @@ export async function verifyComposerEditor({
   await typeIntoComposer(browser, field, "look at @Reference");
   const beforePick = await readComposerText(browser, field);
   await pickChatFromMenu(browser, sourceTitle);
-  await browser.waitUntil(async () => (await chipCount()) === 1, { timeout: 5_000, interval: 100, timeoutMsg: "No chip after the @ pick" });
+  await browser.waitUntil(async () => (await chipCount()) === 1, {
+    timeout: 5_000,
+    interval: 100,
+    timeoutMsg: "No chip after the @ pick",
+  });
   field = await browser.$(`[aria-label="${LAUNCHER_PROMPT_LABEL}"]`);
   // Positive control for the fragment checks below: the reader sees the link
   // behind the chip, not just the chip's label.
-  check(assertions, "reader-sees-the-link-behind-the-chip", (await readComposerText(browser, field)).includes(sourceLink));
+  check(
+    assertions,
+    "reader-sees-the-link-behind-the-chip",
+    (await readComposerText(browser, field)).includes(sourceLink),
+  );
   screenshots.push(await screenshot(browser, evidenceDir, "editor-launcher-chip"));
   await browser.keys(["Meta", "z"]);
   await browser.pause(250);
   const undone = await readComposerText(browser, field);
-  check(assertions, "undo-after-pick-leaves-no-link-fragment", !fragments(undone) && undone.includes("look at"), { beforePick, undone });
+  check(
+    assertions,
+    "undo-after-pick-leaves-no-link-fragment",
+    !fragments(undone) && undone.includes("look at"),
+    {
+      beforePick,
+      undone,
+    },
+  );
 
   // 3. A chip deletes whole.
   if ((await chipCount()) === 0) {
     await pickChatFromMenu(browser, sourceTitle);
-    await browser.waitUntil(async () => (await chipCount()) === 1, { timeout: 5_000, interval: 100, timeoutMsg: "No chip after re-picking" });
+    await browser.waitUntil(async () => (await chipCount()) === 1, {
+      timeout: 5_000,
+      interval: 100,
+      timeoutMsg: "No chip after re-picking",
+    });
   }
   field = await browser.$(`[aria-label="${LAUNCHER_PROMPT_LABEL}"]`);
   await browser.execute(function focusField(element) {
@@ -1733,14 +2645,23 @@ export async function verifyComposerEditor({
     await browser.keys(["Backspace"]);
     await browser.pause(150);
     const now = await readComposerText(browser, field);
-    check(assertions, `backspace-${press + 1}-never-leaves-half-a-chip`, (await chipCount()) === 1 || !now.includes("argmax://"), now);
+    check(
+      assertions,
+      `backspace-${press + 1}-never-leaves-half-a-chip`,
+      (await chipCount()) === 1 || !now.includes("argmax://"),
+      now,
+    );
   }
   check(assertions, "backspace-removes-the-chip-whole", (await chipCount()) === 0);
 
   // 4. Copy and cut carry the typed payload; an empty selection takes nothing.
   await typeIntoComposer(browser, field, "@Reference");
   await pickChatFromMenu(browser, sourceTitle);
-  await browser.waitUntil(async () => (await chipCount()) === 1, { timeout: 5_000, interval: 100, timeoutMsg: "No chip before copy" });
+  await browser.waitUntil(async () => (await chipCount()) === 1, {
+    timeout: 5_000,
+    interval: 100,
+    timeoutMsg: "No chip before copy",
+  });
   field = await browser.$(`[aria-label="${LAUNCHER_PROMPT_LABEL}"]`);
   await typeIntoComposer(browser, field, "tail");
   const fullText = await readComposerText(browser, field);
@@ -1751,15 +2672,27 @@ export async function verifyComposerEditor({
   check(
     assertions,
     "copy-carries-plain-text-and-typed-payload",
-    copied.plain === fullText && typed?.v === 1 && typed.text === fullText && typed.references?.[0]?.sessionId === source.id,
+    copied.plain === fullText &&
+      typed?.v === 1 &&
+      typed.text === fullText &&
+      typed.references?.[0]?.sessionId === source.id,
     { trigger: copyTrigger, plain: copied.plain },
   );
   check(assertions, "copy-leaves-the-text", (await readComposerText(browser, field)) === fullText);
   const cutTrigger = await copyOrCut(browser, "cut");
-  check(assertions, "cut-empties-the-field-and-fills-the-payload", (await readComposerText(browser, field)) === "" && (await chipCount()) === 0, { trigger: cutTrigger });
+  check(
+    assertions,
+    "cut-empties-the-field-and-fills-the-payload",
+    (await readComposerText(browser, field)) === "" && (await chipCount()) === 0,
+    { trigger: cutTrigger },
+  );
   await browser.keys(["Meta", "z"]);
   await browser.pause(250);
-  check(assertions, "undo-restores-a-cut", (await readComposerText(browser, field)) === fullText && (await chipCount()) === 1);
+  check(
+    assertions,
+    "undo-restores-a-cut",
+    (await readComposerText(browser, field)) === fullText && (await chipCount()) === 1,
+  );
   await collapseSelectionToEnd(browser, field);
   const eventsBefore = (await clipboardEvents(browser)).length;
   await browser.keys(["Meta", "x"]).catch(() => undefined);
@@ -1767,7 +2700,12 @@ export async function verifyComposerEditor({
     document.execCommand("cut");
   });
   await browser.pause(300);
-  check(assertions, "empty-selection-cut-leaves-the-text", (await readComposerText(browser, field)) === fullText, await readComposerText(browser, field));
+  check(
+    assertions,
+    "empty-selection-cut-leaves-the-text",
+    (await readComposerText(browser, field)) === fullText,
+    await readComposerText(browser, field),
+  );
   check(
     assertions,
     "empty-selection-cut-puts-no-line-on-the-clipboard",
@@ -1780,19 +2718,31 @@ export async function verifyComposerEditor({
   await selectAllInEditor(browser, field);
   await browser.keys(["Backspace"]);
   await browser.pause(150);
-  const sessionsBefore = (await bridge.call("dashboard:list", {})).sessions.map((entry) => entry.id);
-  await typeIntoComposer(browser, field, `${scenarios.composerBackground.prompt} editor submit @Reference`);
-  await browser.waitUntil(async () => (await browser.$$('li[role="option"][data-kind="chat"]')).length > 0, {
-    timeout: 10_000,
-    interval: 100,
-    timeoutMsg: "The @ menu did not open before the keyboard pick",
-  });
+  const sessionsBefore = (await bridge.call("dashboard:list", {})).sessions.map(
+    (entry) => entry.id,
+  );
+  await typeIntoComposer(
+    browser,
+    field,
+    `${scenarios.composerBackground.prompt} editor submit @Reference`,
+  );
+  await browser.waitUntil(
+    async () => (await browser.$$('li[role="option"][data-kind="chat"]')).length > 0,
+    {
+      timeout: 10_000,
+      interval: 100,
+      timeoutMsg: "The @ menu did not open before the keyboard pick",
+    },
+  );
   await browser.keys(["Enter"]);
   await browser.keys(["Enter"]);
   let sent = null;
   await browser.waitUntil(
     async () => {
-      sent = (await bridge.call("dashboard:list", {})).sessions.find((entry) => !sessionsBefore.includes(entry.id)) ?? null;
+      sent =
+        (await bridge.call("dashboard:list", {})).sessions.find(
+          (entry) => !sessionsBefore.includes(entry.id),
+        ) ?? null;
       return sent !== null;
     },
     { timeout: 20_000, interval: 150, timeoutMsg: "Enter after the menu pick started no chat" },
@@ -1802,24 +2752,35 @@ export async function verifyComposerEditor({
   check(
     assertions,
     "enter-after-pick-sends-the-full-text",
-    userMessages.length === 1
-      && userMessages[0].message.includes("editor submit")
-      && userMessages[0].message.includes(`(${sourceLink}`)
-      && !userMessages[0].message.includes("@Reference"),
+    userMessages.length === 1 &&
+      userMessages[0].message.includes("editor submit") &&
+      userMessages[0].message.includes(`(${sourceLink}`) &&
+      !userMessages[0].message.includes("@Reference"),
     userMessages.map((entry) => entry.message),
   );
   const dashboard = await bridge.call("dashboard:list", {});
   const sentWorkspace = dashboard.workspaces.find((entry) => entry.id === done.workspaceId);
-  check(assertions, "submitted-chat-is-in-the-selected-project", sentWorkspace?.projectId === project.id);
-  phases.push(await verifyUi({
-    name: "editor-submitted-chat",
-    titleIncludes: sentWorkspace.taskLabel,
-    expectedTexts: [scenarios.composerBackground.visibleText],
-    expectIdle: true,
-  }));
+  check(
+    assertions,
+    "submitted-chat-is-in-the-selected-project",
+    sentWorkspace?.projectId === project.id,
+  );
+  phases.push(
+    await verifyUi({
+      name: "editor-submitted-chat",
+      titleIncludes: sentWorkspace.taskLabel,
+      expectedTexts: [scenarios.composerBackground.visibleText],
+      expectIdle: true,
+    }),
+  );
   screenshots.push(await screenshot(browser, evidenceDir, "editor-submitted-chat"));
 
-  await writeJson(path.join(evidenceDir, "composer-editor.json"), { sourceSessionId: source.id, submittedSessionId: done.id, screenshots, assertions });
+  await writeJson(path.join(evidenceDir, "composer-editor.json"), {
+    sourceSessionId: source.id,
+    submittedSessionId: done.id,
+    screenshots,
+    assertions,
+  });
   return {
     session: done,
     workspace: sentWorkspace,
@@ -1833,100 +2794,147 @@ export async function verifyComposerEditor({
 // focuses one of its own fields, while the page's `document.hasFocus()` still
 // reads false. What the person feels is the app document losing focus: their
 // keystrokes stop landing in the composer until they click it again.
-async function verifyMixedBrowserTabs(browser, source, workspace, baseUrl, nativeEscapePath, timeoutMs, assertions, evidenceDir) {
+async function verifyMixedBrowserTabs(
+  browser,
+  source,
+  workspace,
+  baseUrl,
+  nativeEscapePath,
+  timeoutMs,
+  assertions,
+  evidenceDir,
+) {
   await openWorkspaceRow(browser, workspace.id, timeoutMs);
   await waitForIdleControls(browser, timeoutMs);
-  await browser.execute(function driveMixedTabs(sessionId, base, escapePath) {
-    const api = window.argmax.browser;
-    const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    const wait = async (read, label, attempts = 100) => {
-      for (let n = 0; n < attempts; n += 1) {
-        const value = await read();
-        if (value) return value;
-        await pause(100);
-      }
-      throw new Error(`Timed out: ${label}`);
-    };
-    const tab = (url) => [...document.querySelectorAll('[aria-label="Workspace tabs"] [role="tab"]')].find((item) => item.getAttribute('aria-label') === url);
-    const menuItem = (text) => [...document.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent.trim() === text);
-    const evaluate = async (tabId, script) => JSON.parse((await api.evaluate({ tabId, script, timeoutMs: 5000 })).resultJson);
-    const bounds = {};
-    const originalBounds = api.setBounds;
-    const originalOpen = api.open;
-    const openCalls = [];
-    let phase = "opening pages";
-    api.open = async (input) => {
-      const call = { input, status: "pending" };
-      openCalls.push(call);
-      try {
-        const result = await originalOpen(input);
-        call.status = "resolved";
+  await browser.execute(
+    function driveMixedTabs(sessionId, base, escapePath) {
+      const api = window.argmax.browser;
+      const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const wait = async (read, label, attempts = 100) => {
+        for (let n = 0; n < attempts; n += 1) {
+          const value = await read();
+          if (value) return value;
+          await pause(100);
+        }
+        throw new Error(`Timed out: ${label}`);
+      };
+      const tab = (url) =>
+        [...document.querySelectorAll('[aria-label="Workspace tabs"] [role="tab"]')].find(
+          (item) => item.getAttribute("aria-label") === url,
+        );
+      const menuItem = (text) =>
+        [...document.querySelectorAll('[role="menuitem"]')].find(
+          (item) => item.textContent.trim() === text,
+        );
+      const evaluate = async (tabId, script) =>
+        JSON.parse((await api.evaluate({ tabId, script, timeoutMs: 5000 })).resultJson);
+      const bounds = {};
+      const originalBounds = api.setBounds;
+      const originalOpen = api.open;
+      const openCalls = [];
+      let phase = "opening pages";
+      api.open = async (input) => {
+        const call = { input, status: "pending" };
+        openCalls.push(call);
+        try {
+          const result = await originalOpen(input);
+          call.status = "resolved";
+          return result;
+        } catch (cause) {
+          call.status = "rejected";
+          call.message = String(cause?.message ?? cause);
+          throw cause;
+        }
+      };
+      api.setBounds = async (input) => {
+        const result = await originalBounds(input);
+        bounds[input.tabId] = input;
         return result;
-      } catch (cause) {
-        call.status = "rejected";
-        call.message = String(cause?.message ?? cause);
-        throw cause;
-      }
-    };
-    api.setBounds = async (input) => {
-      const result = await originalBounds(input);
-      bounds[input.tabId] = input;
-      return result;
-    };
-    window.__verifyMixedTabs = null;
-    void (async () => {
-      const opened = [];
-      try {
-        const firstUrl = `${base}first`;
-        const secondUrl = `${base}second`;
-        const first = await api.openForSession({ sessionId, url: firstUrl });
-        opened.push(first.tabId);
-        await wait(() => tab(firstUrl), 'first browser workspace tab');
-        const second = await api.openForSession({ sessionId, url: secondUrl });
-        opened.push(second.tabId);
-        await wait(() => tab(secondUrl), 'second browser workspace tab');
-        phase = 'split pages';
-        tab(firstUrl).click();
-        await wait(() => bounds[first.tabId]?.visible, 'first visible');
-        tab(secondUrl).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 100 }));
-        (await wait(() => menuItem('Show Below'), 'split menu')).click();
-        await wait(() => bounds[first.tabId]?.visible && bounds[second.tabId]?.visible, 'both browser pages visible');
-        const splitBounds = JSON.parse(JSON.stringify(bounds));
-        const persisted = JSON.parse(localStorage.getItem(`argmax.reviewPanel.layout.${sessionId}`));
-        await evaluate(first.tabId, 'window.__reviewTabMarker = 42; 42');
-        document.querySelector('[aria-label="Workspace tabs"] [aria-label="Changes"]').click();
-        await wait(() => !bounds[second.tabId]?.visible, 'second page hidden on switch');
-        tab(secondUrl).click();
-        await wait(() => bounds[second.tabId]?.visible, 'second page restored');
-        const retained = await evaluate(first.tabId, 'window.__reviewTabMarker');
-        phase = 'expand panel';
-        const panel = document.querySelector('[aria-label="Review panel"]');
-        const originalWidth = panel.getBoundingClientRect().width;
-        document.querySelector('[aria-label="Expand panel"]').click();
-        await wait(() => panel.getBoundingClientRect().width > originalWidth, 'expanded panel width');
-        const expandedWidth = panel.getBoundingClientRect().width;
-        const expandedRetained = await evaluate(first.tabId, 'window.__reviewTabMarker');
-        document.querySelector('[aria-label="Restore panel size"]').click();
-        await wait(() => Math.abs(panel.getBoundingClientRect().width - originalWidth) < 2, 'restored panel width');
+      };
+      window.__verifyMixedTabs = null;
+      void (async () => {
+        const opened = [];
+        try {
+          const firstUrl = `${base}first`;
+          const secondUrl = `${base}second`;
+          const first = await api.openForSession({ sessionId, url: firstUrl });
+          opened.push(first.tabId);
+          await wait(() => tab(firstUrl), "first browser workspace tab");
+          const second = await api.openForSession({ sessionId, url: secondUrl });
+          opened.push(second.tabId);
+          await wait(() => tab(secondUrl), "second browser workspace tab");
+          phase = "split pages";
+          tab(firstUrl).click();
+          await wait(() => bounds[first.tabId]?.visible, "first visible");
+          tab(secondUrl).dispatchEvent(
+            new MouseEvent("contextmenu", { bubbles: true, clientX: 500, clientY: 100 }),
+          );
+          (await wait(() => menuItem("Show Below"), "split menu")).click();
+          await wait(
+            () => bounds[first.tabId]?.visible && bounds[second.tabId]?.visible,
+            "both browser pages visible",
+          );
+          const splitBounds = JSON.parse(JSON.stringify(bounds));
+          const persisted = JSON.parse(
+            localStorage.getItem(`argmax.reviewPanel.layout.${sessionId}`),
+          );
+          await evaluate(first.tabId, "window.__reviewTabMarker = 42; 42");
+          document.querySelector('[aria-label="Workspace tabs"] [aria-label="Changes"]').click();
+          await wait(() => !bounds[second.tabId]?.visible, "second page hidden on switch");
+          tab(secondUrl).click();
+          await wait(() => bounds[second.tabId]?.visible, "second page restored");
+          const retained = await evaluate(first.tabId, "window.__reviewTabMarker");
+          phase = "expand panel";
+          const panel = document.querySelector('[aria-label="Review panel"]');
+          const originalWidth = panel.getBoundingClientRect().width;
+          document.querySelector('[aria-label="Expand panel"]').click();
+          await wait(
+            () => panel.getBoundingClientRect().width > originalWidth,
+            "expanded panel width",
+          );
+          const expandedWidth = panel.getBoundingClientRect().width;
+          const expandedRetained = await evaluate(first.tabId, "window.__reviewTabMarker");
+          document.querySelector('[aria-label="Restore panel size"]').click();
+          await wait(
+            () => Math.abs(panel.getBoundingClientRect().width - originalWidth) < 2,
+            "restored panel width",
+          );
 
-        phase = 'close page';
-        document.querySelector(`[aria-label="Close ${secondUrl}"]`).click();
-        await wait(() => !tab(secondUrl), 'closed browser tab removed');
-        const afterClose = await api.listTabs({ sessionId });
-        phase = 'reopen page';
-        document.querySelector('[aria-label="New workspace tab"]').dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-        (await wait(() => menuItem('Reopen Closed Tab'), 'reopen action')).click();
-        await wait(() => tab(secondUrl), 'reopened browser tab');
-        const afterReopen = await wait(async () => {
-          const registry = await api.listTabs({});
-          return registry.tabs.some((item) => item.url === secondUrl && item.tabId !== second.tabId) ? registry : null;
-        }, 'reopened native browser page', 400);
-        opened.push(...afterReopen.tabs.map((item) => item.tabId));
-        phase = 'Escape from expanded native browser';
-        document.querySelector('[aria-label="Expand panel"]').click();
-        await wait(() => document.querySelector('[aria-label="Restore panel size"]'), 'expanded again');
-        const reopened = afterReopen.tabs.find((item) => item.url === secondUrl && item.tabId !== second.tabId);
-        await evaluate(reopened.tabId, `(() => {
+          phase = "close page";
+          document.querySelector(`[aria-label="Close ${secondUrl}"]`).click();
+          await wait(() => !tab(secondUrl), "closed browser tab removed");
+          const afterClose = await api.listTabs({ sessionId });
+          phase = "reopen page";
+          document
+            .querySelector('[aria-label="New workspace tab"]')
+            .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+          (await wait(() => menuItem("Reopen Closed Tab"), "reopen action")).click();
+          await wait(() => tab(secondUrl), "reopened browser tab");
+          const afterReopen = await wait(
+            async () => {
+              const registry = await api.listTabs({});
+              return registry.tabs.some(
+                (item) => item.url === secondUrl && item.tabId !== second.tabId,
+              )
+                ? registry
+                : null;
+            },
+            "reopened native browser page",
+            400,
+          );
+          opened.push(...afterReopen.tabs.map((item) => item.tabId));
+          phase = "Escape from expanded native browser";
+          document.querySelector('[aria-label="Expand panel"]').click();
+          await wait(
+            () => document.querySelector('[aria-label="Restore panel size"]'),
+            "expanded again",
+          );
+          const reopened = afterReopen.tabs.find(
+            (item) => item.url === secondUrl && item.tabId !== second.tabId,
+          );
+          await evaluate(
+            reopened.tabId,
+            `(() => {
           window.__verifyNativeEscape = {};
           window.addEventListener('keydown', function record(event) {
             if (event.key !== 'Escape') return;
@@ -1936,49 +2944,129 @@ async function verifyMixedBrowserTabs(browser, source, workspace, baseUrl, nativ
           document.body.tabIndex = -1;
           document.body.focus();
           return true;
-        })()`);
-        await api.focus(reopened.tabId);
-        await evaluate(reopened.tabId, `fetch(${JSON.stringify(escapePath)}, { method: 'POST' })
+        })()`,
+          );
+          await api.focus(reopened.tabId);
+          await evaluate(
+            reopened.tabId,
+            `fetch(${JSON.stringify(escapePath)}, { method: 'POST' })
           .then(async (response) => {
             const result = await response.json();
             if (!response.ok) throw new Error(result.error);
             window.__verifyNativeEscape.sent = result;
-          }).catch((error) => { window.__verifyNativeEscape.error = String(error.message); }); true`);
-        const nativeEscape = await wait(async () => {
-          const state = await evaluate(reopened.tabId, 'window.__verifyNativeEscape');
-          if (state.error) throw new Error(state.error);
-          return state.sent && state.event ? state : null;
-        }, 'native Escape received by browser page', 200);
-        await wait(() => !document.querySelector('[aria-label="Review panel"]'), 'Escape closes panel');
-        window.__verifyMixedTabs = { first: first.tabId, second: second.tabId, splitBounds, persisted, retained, afterClose, afterReopen, openCalls, originalWidth, expandedWidth, expandedRetained, nativeEscape, escapeClosed: true };
-      } catch (error) {
-        window.__verifyMixedTabs = { failureMessage: String(error?.message ?? error), phase, openCalls, bounds, html: document.querySelector('[aria-label="Review panel"]')?.outerHTML?.slice(0, 12000) };
-      } finally {
-        api.setBounds = originalBounds;
-        api.open = originalOpen;
-        for (const id of new Set(opened)) await api.close(id).catch(() => undefined);
-      }
-    })();
-  }, source.id, baseUrl, nativeEscapePath);
+          }).catch((error) => { window.__verifyNativeEscape.error = String(error.message); }); true`,
+          );
+          const nativeEscape = await wait(
+            async () => {
+              const state = await evaluate(reopened.tabId, "window.__verifyNativeEscape");
+              if (state.error) throw new Error(state.error);
+              return state.sent && state.event ? state : null;
+            },
+            "native Escape received by browser page",
+            200,
+          );
+          await wait(
+            () => !document.querySelector('[aria-label="Review panel"]'),
+            "Escape closes panel",
+          );
+          window.__verifyMixedTabs = {
+            first: first.tabId,
+            second: second.tabId,
+            splitBounds,
+            persisted,
+            retained,
+            afterClose,
+            afterReopen,
+            openCalls,
+            originalWidth,
+            expandedWidth,
+            expandedRetained,
+            nativeEscape,
+            escapeClosed: true,
+          };
+        } catch (error) {
+          window.__verifyMixedTabs = {
+            failureMessage: String(error?.message ?? error),
+            phase,
+            openCalls,
+            bounds,
+            html: document.querySelector('[aria-label="Review panel"]')?.outerHTML?.slice(0, 12000),
+          };
+        } finally {
+          api.setBounds = originalBounds;
+          api.open = originalOpen;
+          for (const id of new Set(opened)) await api.close(id).catch(() => undefined);
+        }
+      })();
+    },
+    source.id,
+    baseUrl,
+    nativeEscapePath,
+  );
   const result = await browser.waitUntil(
     () => browser.execute(() => window.__verifyMixedTabs).catch(() => null),
-    { timeout: timeoutMs, interval: 250, timeoutMsg: 'Mixed browser tabs probe did not finish' },
+    {
+      timeout: timeoutMs,
+      interval: 250,
+      timeoutMsg: "Mixed browser tabs probe did not finish",
+    },
   );
-  await writeJson(path.join(evidenceDir, 'mixed-browser-tabs.json'), result);
+  await writeJson(path.join(evidenceDir, "mixed-browser-tabs.json"), result);
   if (result.failureMessage) throw new Error(`${result.phase}: ${result.failureMessage}`);
   const first = result.splitBounds[result.first];
   const second = result.splitBounds[result.second];
-  check(assertions, 'two-browser-tabs-have-independent-visible-bounds', first.visible && second.visible && first.bounds.y + first.bounds.height <= second.bounds.y + 1, { first, second });
-  check(assertions, 'mixed-tab-layout-persists-both-browser-panes', result.persisted.version === 2 && result.persisted.paneTabIds.length === 2, result.persisted);
-  check(assertions, 'switching-tabs-preserves-page-state', result.retained === 42, result.retained);
-  check(assertions, 'expansion-preserves-page-and-restores-width', result.expandedWidth > result.originalWidth && result.expandedRetained === 42, result);
-  check(assertions, 'native-page-Escape-closes-expanded-panel', result.escapeClosed === true && result.nativeEscape.event.isTrusted === true, result.nativeEscape);
+  check(
+    assertions,
+    "two-browser-tabs-have-independent-visible-bounds",
+    first.visible && second.visible && first.bounds.y + first.bounds.height <= second.bounds.y + 1,
+    { first, second },
+  );
+  check(
+    assertions,
+    "mixed-tab-layout-persists-both-browser-panes",
+    result.persisted.version === 2 && result.persisted.paneTabIds.length === 2,
+    result.persisted,
+  );
+  check(assertions, "switching-tabs-preserves-page-state", result.retained === 42, result.retained);
+  check(
+    assertions,
+    "expansion-preserves-page-and-restores-width",
+    result.expandedWidth > result.originalWidth && result.expandedRetained === 42,
+    result,
+  );
+  check(
+    assertions,
+    "native-page-Escape-closes-expanded-panel",
+    result.escapeClosed === true && result.nativeEscape.event.isTrusted === true,
+    result.nativeEscape,
+  );
 
-  check(assertions, 'closing-one-browser-keeps-the-other', result.afterClose.tabs.some((tab) => tab.tabId === result.first) && !result.afterClose.tabs.some((tab) => tab.tabId === result.second), result.afterClose);
-  check(assertions, 'reopening-creates-a-fresh-page', result.afterReopen.tabs.some((tab) => tab.url.endsWith('/second') && tab.tabId !== result.second), result.afterReopen);
+  check(
+    assertions,
+    "closing-one-browser-keeps-the-other",
+    result.afterClose.tabs.some((tab) => tab.tabId === result.first) &&
+      !result.afterClose.tabs.some((tab) => tab.tabId === result.second),
+    result.afterClose,
+  );
+  check(
+    assertions,
+    "reopening-creates-a-fresh-page",
+    result.afterReopen.tabs.some(
+      (tab) => tab.url.endsWith("/second") && tab.tabId !== result.second,
+    ),
+    result.afterReopen,
+  );
 }
 
-export async function verifyBrowserFocus({ bridge, browser, source, workspace, outputDir, timeoutMs, verifyUi }) {
+export async function verifyBrowserFocus({
+  bridge,
+  browser,
+  source,
+  workspace,
+  outputDir,
+  timeoutMs,
+  verifyUi,
+}) {
   const evidenceDir = path.join(outputDir, "native");
   await mkdir(evidenceDir, { recursive: true });
   const assertions = (progress.assertions = []);
@@ -1986,28 +3074,34 @@ export async function verifyBrowserFocus({ bridge, browser, source, workspace, o
   const screenshots = [];
 
   await waitForCompleted(bridge, source.id, timeoutMs, "browser focus source chat");
-  phases.push(await verifyUi({
-    name: "focus-source",
-    expectedTexts: [VERIFICATION_SCENARIOS.composerSource.visibleText],
-    expectIdle: true,
-  }));
+  phases.push(
+    await verifyUi({
+      name: "focus-source",
+      expectedTexts: [VERIFICATION_SCENARIOS.composerSource.visibleText],
+      expectIdle: true,
+    }),
+  );
 
   const nativeEscapePath = `/native-escape-${randomUUID()}`;
   let escapeRequested = false;
   const page = createServer((request, response) => {
     if (request.url === nativeEscapePath && request.method === "POST" && !escapeRequested) {
       escapeRequested = true;
-      void pressNativeEscape(browser).then((result) => {
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify(result));
-      }).catch((error) => {
-        response.writeHead(503, { "content-type": "application/json" });
-        response.end(JSON.stringify({ error: error.message }));
-      });
+      void pressNativeEscape(browser)
+        .then((result) => {
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(JSON.stringify(result));
+        })
+        .catch((error) => {
+          response.writeHead(503, { "content-type": "application/json" });
+          response.end(JSON.stringify({ error: error.message }));
+        });
       return;
     }
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    response.end('<!doctype html><title>Focus probe</title><input id="probe" aria-label="Probe field">');
+    response.end(
+      '<!doctype html><title>Focus probe</title><input id="probe" aria-label="Probe field">',
+    );
   });
   await new Promise((resolve) => page.listen(0, "127.0.0.1", resolve));
   let result;
@@ -2017,71 +3111,128 @@ export async function verifyBrowserFocus({ bridge, browser, source, workspace, o
     // The renderer drives the tab itself: while the window holds a child webview,
     // Tauri stops listing it as a webview window, so WebDriver cannot reach it
     // until the tab closes.
-    await browser.execute(function probeHiddenTabFocus(sessionId, url, label) {
-      const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-      const focusState = () => {
-        const composer = document.querySelector(`[aria-label="${label}"]`);
-        return {
-          documentHasFocus: document.hasFocus(),
-          composerActive: composer !== null && composer.contains(document.activeElement),
-          blurs: window.__verifyBlurs,
+    await browser.execute(
+      function probeHiddenTabFocus(sessionId, url, label) {
+        const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const focusState = () => {
+          const composer = document.querySelector(`[aria-label="${label}"]`);
+          return {
+            documentHasFocus: document.hasFocus(),
+            composerActive: composer !== null && composer.contains(document.activeElement),
+            blurs: window.__verifyBlurs,
+          };
         };
-      };
-      const evaluate = async (tabId, script) => {
-        const { resultJson } = await window.argmax.browser.evaluate({ tabId, script, timeoutMs: 5_000 });
-        const value = JSON.parse(resultJson);
-        return typeof value === "string" ? JSON.parse(value) : value;
-      };
-      window.__verifyBlurs = 0;
-      window.__verifyFocusProbe = null;
-      window.addEventListener("blur", () => { window.__verifyBlurs += 1; });
-      void (async () => {
-        const before = focusState();
-        let tabId = null;
-        try {
-          // The path an agent's browser_open takes: a hidden tab owned by the chat.
-          ({ tabId } = await window.argmax.browser.openForSession({ sessionId, url }));
-          for (let attempt = 0; ; attempt += 1) {
-            if (await evaluate(tabId, 'JSON.stringify(document.getElementById("probe") !== null)').catch(() => false)) break;
-            if (attempt === 100) throw new Error("The hidden tab never loaded its probe page");
-            await pause(200);
-          }
-          const opened = focusState();
-          const probe = await evaluate(tabId, `JSON.stringify((() => {
+        const evaluate = async (tabId, script) => {
+          const { resultJson } = await window.argmax.browser.evaluate({
+            tabId,
+            script,
+            timeoutMs: 5_000,
+          });
+          const value = JSON.parse(resultJson);
+          return typeof value === "string" ? JSON.parse(value) : value;
+        };
+        window.__verifyBlurs = 0;
+        window.__verifyFocusProbe = null;
+        window.addEventListener("blur", () => {
+          window.__verifyBlurs += 1;
+        });
+        void (async () => {
+          const before = focusState();
+          let tabId = null;
+          try {
+            // The path an agent's browser_open takes: a hidden tab owned by the chat.
+            ({ tabId } = await window.argmax.browser.openForSession({ sessionId, url }));
+            for (let attempt = 0; ; attempt += 1) {
+              if (
+                await evaluate(
+                  tabId,
+                  'JSON.stringify(document.getElementById("probe") !== null)',
+                ).catch(() => false)
+              )
+                break;
+              if (attempt === 100) throw new Error("The hidden tab never loaded its probe page");
+              await pause(200);
+            }
+            const opened = focusState();
+            const probe = await evaluate(
+              tabId,
+              `JSON.stringify((() => {
             const input = document.getElementById("probe");
             input.focus();
             return { focused: document.activeElement === input, pageHasFocus: document.hasFocus() };
-          })())`);
-          // WebKit asks the window for first responder a few milliseconds later.
-          await pause(750);
-          window.__verifyFocusProbe = { tabId, before, opened, probe, after: focusState() };
-        } catch (error) {
-          window.__verifyFocusProbe = { tabId, error: String(error?.message ?? error) };
-        } finally {
-          if (tabId) await window.argmax.browser.close(tabId).catch(() => undefined);
-        }
-      })();
-    }, source.id, `http://127.0.0.1:${page.address().port}/`, LAUNCHER_PROMPT_LABEL);
+          })())`,
+            );
+            // WebKit asks the window for first responder a few milliseconds later.
+            await pause(750);
+            window.__verifyFocusProbe = { tabId, before, opened, probe, after: focusState() };
+          } catch (error) {
+            window.__verifyFocusProbe = { tabId, error: String(error?.message ?? error) };
+          } finally {
+            if (tabId) await window.argmax.browser.close(tabId).catch(() => undefined);
+          }
+        })();
+      },
+      source.id,
+      `http://127.0.0.1:${page.address().port}/`,
+      LAUNCHER_PROMPT_LABEL,
+    );
     result = await browser.waitUntil(
-      () => browser.execute(function readFocusProbe() { return window.__verifyFocusProbe; }).catch(() => null),
-      { timeout: timeoutMs, interval: 250, timeoutMsg: "The hidden tab focus probe never finished" },
+      () =>
+        browser
+          .execute(function readFocusProbe() {
+            return window.__verifyFocusProbe;
+          })
+          .catch(() => null),
+      {
+        timeout: timeoutMs,
+        interval: 250,
+        timeoutMsg: "The hidden tab focus probe never finished",
+      },
     );
     if (result.error) throw new Error(result.error);
 
-    check(assertions, "composer-has-the-keyboard-before-the-page-moves-focus",
-      [result.before, result.opened].every((state) => state.documentHasFocus && state.composerActive), { before: result.before, opened: result.opened });
+    check(
+      assertions,
+      "composer-has-the-keyboard-before-the-page-moves-focus",
+      [result.before, result.opened].every(
+        (state) => state.documentHasFocus && state.composerActive,
+      ),
+      { before: result.before, opened: result.opened },
+    );
     // Positive control: the page did move its own focus, so the pass below is not vacuous.
     check(assertions, "hidden-page-focused-its-field", result.probe.focused === true, result.probe);
-    check(assertions, "composer-keeps-the-keyboard-after-the-page-moves-focus",
-      result.after.documentHasFocus && result.after.composerActive && result.after.blurs === 0, result.after);
-    check(assertions, "composer-text-is-untouched", (await readComposerText(browser, field)) === "keep typing");
+    check(
+      assertions,
+      "composer-keeps-the-keyboard-after-the-page-moves-focus",
+      result.after.documentHasFocus && result.after.composerActive && result.after.blurs === 0,
+      result.after,
+    );
+    check(
+      assertions,
+      "composer-text-is-untouched",
+      (await readComposerText(browser, field)) === "keep typing",
+    );
     screenshots.push(await screenshot(browser, evidenceDir, "focus-launcher-after-probe"));
-    await verifyMixedBrowserTabs(browser, source, workspace, `http://127.0.0.1:${page.address().port}/`, nativeEscapePath, timeoutMs, assertions, evidenceDir);
+    await verifyMixedBrowserTabs(
+      browser,
+      source,
+      workspace,
+      `http://127.0.0.1:${page.address().port}/`,
+      nativeEscapePath,
+      timeoutMs,
+      assertions,
+      evidenceDir,
+    );
   } finally {
     page.close();
   }
 
-  await writeJson(path.join(evidenceDir, "browser-focus.json"), { sourceSessionId: source.id, tabId: result?.tabId ?? null, screenshots, assertions });
+  await writeJson(path.join(evidenceDir, "browser-focus.json"), {
+    sourceSessionId: source.id,
+    tabId: result?.tabId ?? null,
+    screenshots,
+    assertions,
+  });
   return {
     session: await waitForCompleted(bridge, source.id, 5_000, "browser focus source chat"),
     workspace,
@@ -2126,18 +3277,28 @@ function framedDeckServers() {
   return { deck, host };
 }
 
-export async function verifyBrowserFrames({ bridge, browser, source, workspace, outputDir, timeoutMs, verifyUi }) {
+export async function verifyBrowserFrames({
+  bridge,
+  browser,
+  source,
+  workspace,
+  outputDir,
+  timeoutMs,
+  verifyUi,
+}) {
   const evidenceDir = path.join(outputDir, "native");
   await mkdir(evidenceDir, { recursive: true });
   const assertions = (progress.assertions = []);
   const phases = [];
 
   await waitForCompleted(bridge, source.id, timeoutMs, "browser frames source chat");
-  phases.push(await verifyUi({
-    name: "frames-source",
-    expectedTexts: [VERIFICATION_SCENARIOS.composerSource.visibleText],
-    expectIdle: true,
-  }));
+  phases.push(
+    await verifyUi({
+      name: "frames-source",
+      expectedTexts: [VERIFICATION_SCENARIOS.composerSource.visibleText],
+      expectIdle: true,
+    }),
+  );
 
   const { deck, host } = framedDeckServers();
   await new Promise((resolve) => deck.listen(0, "127.0.0.1", resolve));
@@ -2146,78 +3307,134 @@ export async function verifyBrowserFrames({ bridge, browser, source, workspace, 
   try {
     // The renderer drives the tab itself: while the window holds a child
     // webview, WebDriver cannot reach the main window (see browser-focus).
-    await browser.execute(function driveFramedDeck(sessionId, url) {
-      const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-      const api = window.argmax.browser;
-      const steps = {};
-      // Filled in as the drive goes, so a failure still shows every answer
-      // that came back before it.
-      window.__verifyFrames = { steps, done: false };
-      void (async () => {
-        let tabId = null;
-        try {
-          ({ tabId } = await api.openForSession({ sessionId, url }));
-          for (let attempt = 0; ; attempt += 1) {
-            const snap = await api.snapshot({ tabId }).catch(() => null);
-            if (snap && snap.tree.includes("Slide 1 of 3")) break;
-            if (attempt === 50) throw new Error("the framed deck never showed up in a snapshot: " + JSON.stringify(snap));
-            await pause(200);
+    await browser.execute(
+      function driveFramedDeck(sessionId, url) {
+        const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const api = window.argmax.browser;
+        const steps = {};
+        // Filled in as the drive goes, so a failure still shows every answer
+        // that came back before it.
+        window.__verifyFrames = { steps, done: false };
+        void (async () => {
+          let tabId = null;
+          try {
+            ({ tabId } = await api.openForSession({ sessionId, url }));
+            for (let attempt = 0; ; attempt += 1) {
+              const snap = await api.snapshot({ tabId }).catch(() => null);
+              if (snap && snap.tree.includes("Slide 1 of 3")) break;
+              if (attempt === 50)
+                throw new Error(
+                  "the framed deck never showed up in a snapshot: " + JSON.stringify(snap),
+                );
+              await pause(200);
+            }
+            steps.snapshot = await api.snapshot({ tabId });
+            steps.find = await api.find({ tabId, query: "Next slide" });
+            // No click first: the parent's focus is on the iframe, so the key
+            // has to be carried into the frame's document.
+            steps.press = await api.act({ tabId, action: { kind: "pressKey", key: "ArrowRight" } });
+            steps.afterPress = await api.getText({ tabId });
+            const nextRef = steps.find.matches[0]?.ref;
+            if (!nextRef) throw new Error("find returned no ref for the frame's button");
+            steps.click = await api.act({ tabId, action: { kind: "click", ref: nextRef } });
+            steps.afterClick = await api.snapshot({ tabId });
+            steps.wait = await api.act({
+              tabId,
+              action: { kind: "waitFor", text: "Speaker notes loaded", timeoutMs: 8000 },
+            });
+            steps.scroll = await api.act({ tabId, action: { kind: "scroll", direction: "down" } });
+            steps.crop = await api.screenshot({ tabId, ref: nextRef });
+            steps.crop = { width: steps.crop.width, height: steps.crop.height };
+            steps.full = await api.screenshot({ tabId });
+            steps.full = { width: steps.full.width, height: steps.full.height };
+            window.__verifyFrames = { tabId, steps, done: true };
+          } catch (error) {
+            window.__verifyFrames = {
+              tabId,
+              steps,
+              done: true,
+              error: String(error?.message ?? error),
+            };
+          } finally {
+            if (tabId) await api.close(tabId).catch(() => undefined);
           }
-          steps.snapshot = await api.snapshot({ tabId });
-          steps.find = await api.find({ tabId, query: "Next slide" });
-          // No click first: the parent's focus is on the iframe, so the key
-          // has to be carried into the frame's document.
-          steps.press = await api.act({ tabId, action: { kind: "pressKey", key: "ArrowRight" } });
-          steps.afterPress = await api.getText({ tabId });
-          const nextRef = steps.find.matches[0]?.ref;
-          if (!nextRef) throw new Error("find returned no ref for the frame's button");
-          steps.click = await api.act({ tabId, action: { kind: "click", ref: nextRef } });
-          steps.afterClick = await api.snapshot({ tabId });
-          steps.wait = await api.act({ tabId, action: { kind: "waitFor", text: "Speaker notes loaded", timeoutMs: 8000 } });
-          steps.scroll = await api.act({ tabId, action: { kind: "scroll", direction: "down" } });
-          steps.crop = await api.screenshot({ tabId, ref: nextRef });
-          steps.crop = { width: steps.crop.width, height: steps.crop.height };
-          steps.full = await api.screenshot({ tabId });
-          steps.full = { width: steps.full.width, height: steps.full.height };
-          window.__verifyFrames = { tabId, steps, done: true };
-        } catch (error) {
-          window.__verifyFrames = { tabId, steps, done: true, error: String(error?.message ?? error) };
-        } finally {
-          if (tabId) await api.close(tabId).catch(() => undefined);
-        }
-      })();
-    }, source.id, `http://127.0.0.1:${host.address().port}/`);
+        })();
+      },
+      source.id,
+      `http://127.0.0.1:${host.address().port}/`,
+    );
     result = await browser.waitUntil(
-      () => browser.execute(function readFramesProbe() { return window.__verifyFrames?.done ? window.__verifyFrames : null; }).catch(() => null),
+      () =>
+        browser
+          .execute(function readFramesProbe() {
+            return window.__verifyFrames?.done ? window.__verifyFrames : null;
+          })
+          .catch(() => null),
       { timeout: timeoutMs, interval: 250, timeoutMsg: "The framed deck drive never finished" },
     );
     await writeJson(path.join(evidenceDir, "browser-frames-steps.json"), result);
     if (result.error) throw new Error(result.error);
     const { steps } = result;
 
-    check(assertions, "snapshot-splices-the-frame-tree-under-its-iframe",
-      /- iframe "Slides" \[frame=f\d+\] url=http:\/\/127\.0\.0\.1:\d+\/\n(?: {2,}- .*\n)*? {2,}- heading "Slide 1 of 3"/.test(steps.snapshot.tree), steps.snapshot.tree);
-    check(assertions, "frame-refs-carry-their-frame-id",
-      /^f\d+e\d+$/.test(steps.find.matches[0]?.ref ?? ""), steps.find);
-    check(assertions, "a-key-follows-focus-into-the-iframe",
-      steps.press.detail?.includes("(in frame f") && steps.afterPress.text.includes("Slide 2 of 3") && steps.afterPress.text.includes("key ArrowRight"),
-      { press: steps.press, text: steps.afterPress.text });
-    check(assertions, "get-text-reads-the-frame-under-its-label",
-      /\[frame f\d+: http:\/\/127\.0\.0\.1:\d+\/\]/.test(steps.afterPress.text), steps.afterPress.text);
-    check(assertions, "a-click-by-frame-ref-lands-in-the-frame",
-      steps.afterClick.tree.includes("Slide 3 of 3"), steps.afterClick.tree);
+    check(
+      assertions,
+      "snapshot-splices-the-frame-tree-under-its-iframe",
+      /- iframe "Slides" \[frame=f\d+\] url=http:\/\/127\.0\.0\.1:\d+\/\n(?: {2,}- .*\n)*? {2,}- heading "Slide 1 of 3"/.test(
+        steps.snapshot.tree,
+      ),
+      steps.snapshot.tree,
+    );
+    check(
+      assertions,
+      "frame-refs-carry-their-frame-id",
+      /^f\d+e\d+$/.test(steps.find.matches[0]?.ref ?? ""),
+      steps.find,
+    );
+    check(
+      assertions,
+      "a-key-follows-focus-into-the-iframe",
+      steps.press.detail?.includes("(in frame f") &&
+        steps.afterPress.text.includes("Slide 2 of 3") &&
+        steps.afterPress.text.includes("key ArrowRight"),
+      { press: steps.press, text: steps.afterPress.text },
+    );
+    check(
+      assertions,
+      "get-text-reads-the-frame-under-its-label",
+      /\[frame f\d+: http:\/\/127\.0\.0\.1:\d+\/\]/.test(steps.afterPress.text),
+      steps.afterPress.text,
+    );
+    check(
+      assertions,
+      "a-click-by-frame-ref-lands-in-the-frame",
+      steps.afterClick.tree.includes("Slide 3 of 3"),
+      steps.afterClick.tree,
+    );
     check(assertions, "wait-for-text-sees-frame-content", steps.wait.matched === true, steps.wait);
-    check(assertions, "an-unscrollable-page-scrolls-its-frame",
-      /^scrolled frame f\d+$/.test(steps.scroll.detail ?? ""), steps.scroll);
-    check(assertions, "a-frame-ref-crops-the-screenshot-to-that-element",
-      steps.crop.width > 0 && steps.crop.width < steps.full.width / 2 && steps.crop.height < steps.full.height / 4,
-      { crop: steps.crop, full: steps.full });
+    check(
+      assertions,
+      "an-unscrollable-page-scrolls-its-frame",
+      /^scrolled frame f\d+$/.test(steps.scroll.detail ?? ""),
+      steps.scroll,
+    );
+    check(
+      assertions,
+      "a-frame-ref-crops-the-screenshot-to-that-element",
+      steps.crop.width > 0 &&
+        steps.crop.width < steps.full.width / 2 &&
+        steps.crop.height < steps.full.height / 4,
+      { crop: steps.crop, full: steps.full },
+    );
   } finally {
     host.close();
     deck.close();
   }
 
-  await writeJson(path.join(evidenceDir, "browser-frames.json"), { sourceSessionId: source.id, tabId: result?.tabId ?? null, assertions });
+  await writeJson(path.join(evidenceDir, "browser-frames.json"), {
+    sourceSessionId: source.id,
+    tabId: result?.tabId ?? null,
+    assertions,
+  });
   return {
     session: await waitForCompleted(bridge, source.id, 5_000, "browser frames source chat"),
     workspace,
@@ -2228,15 +3445,33 @@ export async function verifyBrowserFrames({ bridge, browser, source, workspace, 
 }
 
 // The production artifact service and native preview, exercised without real agents.
-export async function verifyVisualizations({ bridge, browser, source, workspace, repoPath, outputDir, databasePath, timeoutMs, verifyUi }) {
+export async function verifyVisualizations({
+  bridge,
+  browser,
+  source,
+  workspace,
+  repoPath,
+  outputDir,
+  databasePath,
+  timeoutMs,
+  verifyUi,
+}) {
   const evidenceDir = path.join(outputDir, "native");
   await mkdir(evidenceDir, { recursive: true });
   const assertions = (progress.assertions = []);
   await waitForCompleted(bridge, source.id, timeoutMs, "visualization source chat");
   const imagePath = path.join(repoPath, "visualization-image.png");
   const sourcePath = path.join(repoPath, "visualization.html");
-  await writeFile(imagePath, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64"));
-  await writeFile(sourcePath, `<div class="card" aria-label="Visualization verification"><h2>Verified visualization</h2><p>Desktop and phone share this saved source.</p><div class="viz-grid"><svg viewBox="0 0 360 160" role="img" aria-label="Animated bar chart"><rect id="bar" x="20" y="20" width="0" height="100" fill="var(--viz-series-1)"/><text x="20" y="145" fill="var(--foreground)">Verified chart</text></svg><div><img src="${imagePath}" alt="Embedded local image"><label>Selection <input id="selection" type="range" min="1" max="9" value="3"></label><output id="selected">3</output><button id="ask" class="btn">Ask in chat</button></div></div></div><script>
+  await writeFile(
+    imagePath,
+    Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+      "base64",
+    ),
+  );
+  await writeFile(
+    sourcePath,
+    `<div class="card" aria-label="Visualization verification"><h2>Verified visualization</h2><p>Desktop and phone share this saved source.</p><div class="viz-grid"><svg viewBox="0 0 360 160" role="img" aria-label="Animated bar chart"><rect id="bar" x="20" y="20" width="0" height="100" fill="var(--viz-series-1)"/><text x="20" y="145" fill="var(--foreground)">Verified chart</text></svg><div><img src="${imagePath}" alt="Embedded local image"><label>Selection <input id="selection" type="range" min="1" max="9" value="3"></label><output id="selected">3</output><button id="ask" class="btn">Ask in chat</button></div></div></div><script>
   requestAnimationFrame(() => document.getElementById('bar').setAttribute('width','300'));
   const selection = document.getElementById('selection');
   function restore() { selection.value = window.openai.widgetState?.modelContent?.selected ?? 3; document.getElementById('selected').textContent=selection.value; }
@@ -2250,104 +3485,314 @@ export async function verifyVisualizations({ bridge, browser, source, workspace,
     if(event.data?.type==='verification:ask')document.getElementById('ask').click();
   });
   console.log('visualization fixture initialized');
-  </script>`);
+  </script>`,
+  );
   // Preview is desktop-only and intentionally bypasses the paired HTTP surface.
   const previews = [];
   for (const width of [390, 900]) {
-    await browser.execute(function previewVisualization(sessionId, filePath, width) {
-      window.__verifyVisualizationPreview = null;
-      void window.argmax.visualization.preview({sessionId,path:filePath,title:'Verified visualization',summary:'Saved interactive chart',width,height:700}).then(result => {window.__verifyVisualizationPreview={result};},error => {window.__verifyVisualizationPreview={error:String(error)};});
-    }, source.id, sourcePath, width);
-    const outcome = await browser.waitUntil(() => browser.execute(() => window.__verifyVisualizationPreview).catch(() => null), {timeout:timeoutMs,interval:250,timeoutMsg:'Native visualization preview did not finish'});
-    if(outcome.error) throw new Error(outcome.error);
-    const {pngBase64: _previewBytes, ...result}=outcome.result;
-    check(assertions, `native-preview-${width}-produces-image`, !!result.screenshotPath && result.width>0 && result.height>0 && result.contentHeight>0, result);
-    check(assertions, `native-preview-${width}-runs-source`, result.diagnostics.some(line=>line.includes('visualization fixture initialized')), result.diagnostics);
-    const previewFile = path.join(evidenceDir,`visualization-preview-${width}.png`);
-    await copyFile(result.screenshotPath,previewFile);
-    previews.push({...result,screenshotPath:previewFile});
+    await browser.execute(
+      function previewVisualization(sessionId, filePath, width) {
+        window.__verifyVisualizationPreview = null;
+        void window.argmax.visualization
+          .preview({
+            sessionId,
+            path: filePath,
+            title: "Verified visualization",
+            summary: "Saved interactive chart",
+            width,
+            height: 700,
+          })
+          .then(
+            (result) => {
+              window.__verifyVisualizationPreview = { result };
+            },
+            (error) => {
+              window.__verifyVisualizationPreview = { error: String(error) };
+            },
+          );
+      },
+      source.id,
+      sourcePath,
+      width,
+    );
+    const outcome = await browser.waitUntil(
+      () => browser.execute(() => window.__verifyVisualizationPreview).catch(() => null),
+      {
+        timeout: timeoutMs,
+        interval: 250,
+        timeoutMsg: "Native visualization preview did not finish",
+      },
+    );
+    if (outcome.error) throw new Error(outcome.error);
+    const { pngBase64: _previewBytes, ...result } = outcome.result;
+    check(
+      assertions,
+      `native-preview-${width}-produces-image`,
+      !!result.screenshotPath && result.width > 0 && result.height > 0 && result.contentHeight > 0,
+      result,
+    );
+    check(
+      assertions,
+      `native-preview-${width}-runs-source`,
+      result.diagnostics.some((line) => line.includes("visualization fixture initialized")),
+      result.diagnostics,
+    );
+    const previewFile = path.join(evidenceDir, `visualization-preview-${width}.png`);
+    await copyFile(result.screenshotPath, previewFile);
+    previews.push({ ...result, screenshotPath: previewFile });
   }
-  const draftId=previews[0].draftId;
-  const artifact=await bridge.call('visualization:publish',{sessionId:source.id,draftId});
-  await bridge.call('visualization:publish',{sessionId:source.id,draftId});
-  await rm(sourcePath); await rm(imagePath);
-  const saved=await bridge.call('visualization:read',{sessionId:source.id,artifactId:artifact.id});
-  check(assertions,'saved-source-survives-original-removal',saved.source.includes('data:image/png;base64,') && saved.source.includes('Verified visualization'));
-  const events=await readAllEvents(bridge,source.id);
-  check(assertions,'publish-retry-does-not-duplicate-card',events.filter(event=>event.type==='visualization.published').length===1);
-  check(assertions,'publication-has-normalized-semantics',events.find(event=>event.type==='visualization.published')?.semantic?.event?.kind==='visualization');
-  await bridge.call('visualization:set-state',{sessionId:source.id,artifactId:artifact.id,state:{modelContent:{selected:7},privateContent:{panel:'saved'}}});
-  const standalone=await bridge.call('visualization:export',{sessionId:source.id,artifactId:artifact.id});
-  check(assertions,'standalone-export-restores-state',standalone.includes('"selected":7')&&standalone.includes('"standalone":true'));
-  await openWorkspaceRow(browser,workspace.id,timeoutMs);
-  const phases=[await verifyUi({name:'visualization-published',expectedTexts:['Verified visualization'],expectIdle:true})];
-  const frame=await browser.$('iframe[title="Verified visualization"]');
-  await frame.waitForExist({timeout:timeoutMs});
-  check(assertions,'desktop-frame-has-opaque-script-sandbox',await frame.getAttribute('sandbox')==='allow-scripts');
+  const draftId = previews[0].draftId;
+  const artifact = await bridge.call("visualization:publish", { sessionId: source.id, draftId });
+  await bridge.call("visualization:publish", { sessionId: source.id, draftId });
+  await rm(sourcePath);
+  await rm(imagePath);
+  const saved = await bridge.call("visualization:read", {
+    sessionId: source.id,
+    artifactId: artifact.id,
+  });
+  check(
+    assertions,
+    "saved-source-survives-original-removal",
+    saved.source.includes("data:image/png;base64,") &&
+      saved.source.includes("Verified visualization"),
+  );
+  const events = await readAllEvents(bridge, source.id);
+  check(
+    assertions,
+    "publish-retry-does-not-duplicate-card",
+    events.filter((event) => event.type === "visualization.published").length === 1,
+  );
+  check(
+    assertions,
+    "publication-has-normalized-semantics",
+    events.find((event) => event.type === "visualization.published")?.semantic?.event?.kind ===
+      "visualization",
+  );
+  await bridge.call("visualization:set-state", {
+    sessionId: source.id,
+    artifactId: artifact.id,
+    state: { modelContent: { selected: 7 }, privateContent: { panel: "saved" } },
+  });
+  const standalone = await bridge.call("visualization:export", {
+    sessionId: source.id,
+    artifactId: artifact.id,
+  });
+  check(
+    assertions,
+    "standalone-export-restores-state",
+    standalone.includes('"selected":7') && standalone.includes('"standalone":true'),
+  );
+  await openWorkspaceRow(browser, workspace.id, timeoutMs);
+  const phases = [
+    await verifyUi({
+      name: "visualization-published",
+      expectedTexts: ["Verified visualization"],
+      expectIdle: true,
+    }),
+  ];
+  const frame = await browser.$('iframe[title="Verified visualization"]');
+  await frame.waitForExist({ timeout: timeoutMs });
+  check(
+    assertions,
+    "desktop-frame-has-opaque-script-sandbox",
+    (await frame.getAttribute("sandbox")) === "allow-scripts",
+  );
   // The native driver's DOM queries cannot cross an opaque origin. The fixture
   // receives a command, dispatches its own input event, and uses the real runtime.
-  await browser.execute(()=>document.querySelector('iframe[title="Verified visualization"]').contentWindow.postMessage({type:'verification:select',value:8},'*'));
-  await browser.waitUntil(async()=> (await bridge.call('visualization:read',{sessionId:source.id,artifactId:artifact.id})).state.modelContent?.selected===8,{timeout:timeoutMs,timeoutMsg:'Widget state was not persisted'});
-  check(assertions,'widget-state-persists-without-a-turn',(await sessionUserMessages(databasePath,source.id)).length===1);
-  await browser.execute(()=>document.querySelector('iframe[title="Verified visualization"]').closest('figure').scrollIntoView({block:'start'}));
-  const shots=[await screenshot(browser,evidenceDir,'visualization-inline')];
+  await browser.execute(() =>
+    document
+      .querySelector('iframe[title="Verified visualization"]')
+      .contentWindow.postMessage({ type: "verification:select", value: 8 }, "*"),
+  );
+  await browser.waitUntil(
+    async () =>
+      (await bridge.call("visualization:read", { sessionId: source.id, artifactId: artifact.id }))
+        .state.modelContent?.selected === 8,
+    { timeout: timeoutMs, timeoutMsg: "Widget state was not persisted" },
+  );
+  check(
+    assertions,
+    "widget-state-persists-without-a-turn",
+    (await sessionUserMessages(databasePath, source.id)).length === 1,
+  );
+  await browser.execute(() =>
+    document
+      .querySelector('iframe[title="Verified visualization"]')
+      .closest("figure")
+      .scrollIntoView({ block: "start" }),
+  );
+  const shots = [await screenshot(browser, evidenceDir, "visualization-inline")];
   await browser.$('[aria-label="Expand visualization"]').click();
-  await browser.$('[aria-label="Collapse visualization"]').waitForExist({timeout:timeoutMs});
+  await browser.$('[aria-label="Collapse visualization"]').waitForExist({ timeout: timeoutMs });
   // The native driver's key map omits PageUp. Deliver the same DOM gesture and
   // its movement together before the scroll hook's two-frame no-movement guard.
-  diagnose('expanded-capture-position',await browser.execute(() => {
-    const transcript = document.querySelector('[aria-label="Conversation messages"]');
-    const figure = document.querySelector('iframe[title="Verified visualization"]').closest('figure');
-    const before = transcript.scrollTop;
-    transcript.dispatchEvent(new KeyboardEvent('keydown',{key:'PageUp',bubbles:true}));
-    const target = before+figure.getBoundingClientRect().top-transcript.getBoundingClientRect().top;
-    const maxTop = Math.max(0,transcript.scrollHeight-transcript.clientHeight);
-    transcript.scrollTop = Math.max(0,Math.min(target,maxTop));
-    transcript.dispatchEvent(new Event('scroll'));
-    return {before,after:transcript.scrollTop,maxTop,figureTop:figure.getBoundingClientRect().top,viewportTop:transcript.getBoundingClientRect().top};
-  }));
+  diagnose(
+    "expanded-capture-position",
+    await browser.execute(() => {
+      const transcript = document.querySelector('[aria-label="Conversation messages"]');
+      const figure = document
+        .querySelector('iframe[title="Verified visualization"]')
+        .closest("figure");
+      const before = transcript.scrollTop;
+      transcript.dispatchEvent(new KeyboardEvent("keydown", { key: "PageUp", bubbles: true }));
+      const target =
+        before + figure.getBoundingClientRect().top - transcript.getBoundingClientRect().top;
+      const maxTop = Math.max(0, transcript.scrollHeight - transcript.clientHeight);
+      transcript.scrollTop = Math.max(0, Math.min(target, maxTop));
+      transcript.dispatchEvent(new Event("scroll"));
+      return {
+        before,
+        after: transcript.scrollTop,
+        maxTop,
+        figureTop: figure.getBoundingClientRect().top,
+        viewportTop: transcript.getBoundingClientRect().top,
+      };
+    }),
+  );
   let previousTop = null;
-  await browser.waitUntil(async()=>{
-    const geometry=await browser.execute(()=>{
-      const figure=document.querySelector('iframe[title="Verified visualization"]').closest('figure').getBoundingClientRect();
-      const transcript=document.querySelector('[aria-label="Conversation messages"]').getBoundingClientRect();
-      return {top:figure.top,viewportTop:transcript.top,viewportBottom:transcript.bottom};
-    });
-    const stable=previousTop!==null&&Math.abs(geometry.top-previousTop)<1;
-    previousTop=geometry.top;
-    return stable&&geometry.top>=geometry.viewportTop-1&&geometry.top+100<geometry.viewportBottom;
-  },{timeout:timeoutMs,interval:100,timeoutMsg:'Expanded visualization header did not settle in view'});
-  shots.push(await screenshot(browser,evidenceDir,'visualization-expanded'));
+  await browser.waitUntil(
+    async () => {
+      const geometry = await browser.execute(() => {
+        const figure = document
+          .querySelector('iframe[title="Verified visualization"]')
+          .closest("figure")
+          .getBoundingClientRect();
+        const transcript = document
+          .querySelector('[aria-label="Conversation messages"]')
+          .getBoundingClientRect();
+        return { top: figure.top, viewportTop: transcript.top, viewportBottom: transcript.bottom };
+      });
+      const stable = previousTop !== null && Math.abs(geometry.top - previousTop) < 1;
+      previousTop = geometry.top;
+      return (
+        stable &&
+        geometry.top >= geometry.viewportTop - 1 &&
+        geometry.top + 100 < geometry.viewportBottom
+      );
+    },
+    {
+      timeout: timeoutMs,
+      interval: 100,
+      timeoutMsg: "Expanded visualization header did not settle in view",
+    },
+  );
+  shots.push(await screenshot(browser, evidenceDir, "visualization-expanded"));
   await browser.$('[aria-label="Design controls"]').click();
-  check(assertions,'host-design-controls-appear',await browser.$('input[aria-label="Corner radius"]').isExisting());
+  check(
+    assertions,
+    "host-design-controls-appear",
+    await browser.$('input[aria-label="Corner radius"]').isExisting(),
+  );
   await browser.execute(() => {
-    const slider=document.querySelector('input[aria-label="Corner radius"]');
-    const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
-    setter.call(slider,'22'); slider.dispatchEvent(new Event('input',{bubbles:true})); slider.dispatchEvent(new Event('change',{bubbles:true}));
+    const slider = document.querySelector('input[aria-label="Corner radius"]');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+    setter.call(slider, "22");
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
+    slider.dispatchEvent(new Event("change", { bubbles: true }));
   });
-  await browser.waitUntil(async()=>Object.values((await bridge.call('visualization:read',{sessionId:source.id,artifactId:artifact.id})).controlValues).includes(22),{timeout:timeoutMs,timeoutMsg:'Host control edit did not persist'});
-  await browser.execute(()=>document.querySelector('iframe[title="Verified visualization"]').contentWindow.postMessage({type:'verification:ask'},'*'));
-  const prepare=await browser.$('button=Prepare follow-up');
-  await prepare.waitForExist({timeout:timeoutMs});
-  const draftsBeforePrepare=await readDrafts(browser);
-  const owningDraftBeforePrepare=draftsBeforePrepare.find(draft=>draft.key===source.id)??null;
-  const messagesBeforePrepare=(await sessionUserMessages(databasePath,source.id)).length;
-  check(assertions,'widget-follow-up-awaits-host-action',messagesBeforePrepare===1&&!owningDraftBeforePrepare?.text.includes('Explain selected value'),{sessionId:source.id,owningDraft:owningDraftBeforePrepare,userMessages:messagesBeforePrepare,otherMatchingDrafts:draftsBeforePrepare.filter(draft=>draft.key!==source.id&&draft.text.includes('Explain selected value')).length});
+  await browser.waitUntil(
+    async () =>
+      Object.values(
+        (await bridge.call("visualization:read", { sessionId: source.id, artifactId: artifact.id }))
+          .controlValues,
+      ).includes(22),
+    { timeout: timeoutMs, timeoutMsg: "Host control edit did not persist" },
+  );
+  await browser.execute(() =>
+    document
+      .querySelector('iframe[title="Verified visualization"]')
+      .contentWindow.postMessage({ type: "verification:ask" }, "*"),
+  );
+  const prepare = await browser.$("button=Prepare follow-up");
+  await prepare.waitForExist({ timeout: timeoutMs });
+  const draftsBeforePrepare = await readDrafts(browser);
+  const owningDraftBeforePrepare =
+    draftsBeforePrepare.find((draft) => draft.key === source.id) ?? null;
+  const messagesBeforePrepare = (await sessionUserMessages(databasePath, source.id)).length;
+  check(
+    assertions,
+    "widget-follow-up-awaits-host-action",
+    messagesBeforePrepare === 1 &&
+      !owningDraftBeforePrepare?.text.includes("Explain selected value"),
+    {
+      sessionId: source.id,
+      owningDraft: owningDraftBeforePrepare,
+      userMessages: messagesBeforePrepare,
+      otherMatchingDrafts: draftsBeforePrepare.filter(
+        (draft) => draft.key !== source.id && draft.text.includes("Explain selected value"),
+      ).length,
+    },
+  );
   await prepare.click();
-  await browser.waitUntil(async()=>(await readDrafts(browser)).some(draft=>draft.key===source.id&&draft.text.includes('Explain selected value 8')),{timeout:timeoutMs,timeoutMsg:'Explicit host follow-up did not prepare owning composer'});
-  check(assertions,'prepared-follow-up-does-not-start-turn',(await sessionUserMessages(databasePath,source.id)).length===1,{sessionId:source.id,owningDraft:(await readDrafts(browser)).find(draft=>draft.key===source.id)});
-  const child=await bridge.call('session:multitask',{sessionId:source.id,prompt:VERIFICATION_SCENARIOS.composerSource.prompt,taskLabel:'Visualization child',worktree:false});
-  await waitForCompleted(bridge,child.sessionId,timeoutMs,'visualization child chat');
-  const childSource=path.join(repoPath,'child-visualization.html');
-  await writeFile(childSource,'<div class="card"><h2>Child visualization</h2><p>This artifact belongs to the multitask chat.</p></div>');
-  const childArtifact=await bridge.call('visualization:import',{sessionId:child.sessionId,path:childSource,title:'Child visualization',summary:'Multitask artifact',mode:null,sourceEventId:null});
-  await bridge.call('visualization:publish',{sessionId:child.sessionId,draftId:childArtifact.id});
+  await browser.waitUntil(
+    async () =>
+      (await readDrafts(browser)).some(
+        (draft) => draft.key === source.id && draft.text.includes("Explain selected value 8"),
+      ),
+    { timeout: timeoutMs, timeoutMsg: "Explicit host follow-up did not prepare owning composer" },
+  );
+  check(
+    assertions,
+    "prepared-follow-up-does-not-start-turn",
+    (await sessionUserMessages(databasePath, source.id)).length === 1,
+    {
+      sessionId: source.id,
+      owningDraft: (await readDrafts(browser)).find((draft) => draft.key === source.id),
+    },
+  );
+  const child = await bridge.call("session:multitask", {
+    sessionId: source.id,
+    prompt: VERIFICATION_SCENARIOS.composerSource.prompt,
+    taskLabel: "Visualization child",
+    worktree: false,
+  });
+  await waitForCompleted(bridge, child.sessionId, timeoutMs, "visualization child chat");
+  const childSource = path.join(repoPath, "child-visualization.html");
+  await writeFile(
+    childSource,
+    '<div class="card"><h2>Child visualization</h2><p>This artifact belongs to the multitask chat.</p></div>',
+  );
+  const childArtifact = await bridge.call("visualization:import", {
+    sessionId: child.sessionId,
+    path: childSource,
+    title: "Child visualization",
+    summary: "Multitask artifact",
+    mode: null,
+    sourceEventId: null,
+  });
+  await bridge.call("visualization:publish", {
+    sessionId: child.sessionId,
+    draftId: childArtifact.id,
+  });
   await rm(childSource);
-  const multitask=await browser.$('button[aria-label="Open multitask: Visualization child"]');
-  await multitask.waitForExist({timeout:timeoutMs}); await multitask.click();
-  await browser.$('.multitask-panel iframe[title="Child visualization"]').waitForExist({timeout:timeoutMs});
-  check(assertions,'child-artifact-renders-in-multitask',(await readAllEvents(bridge,child.sessionId)).some(event=>event.type==='visualization.published') && (await readAllEvents(bridge,source.id)).filter(event=>event.type==='visualization.published').length===1);
-  shots.push(await screenshot(browser,evidenceDir,'visualization-multitask'));
-  await writeJson(path.join(evidenceDir,'visualizations.json'),{artifact,previews,assertions,screenshots:shots});
-  return {session:await waitForCompleted(bridge,source.id,5000,'visualization finished chat'),workspace,records:(await readAllEvents(bridge,source.id)).map(event=>({kind:'event',...event})),browser:phases,assertions};
+  const multitask = await browser.$('button[aria-label="Open multitask: Visualization child"]');
+  await multitask.waitForExist({ timeout: timeoutMs });
+  await multitask.click();
+  await browser
+    .$('.multitask-panel iframe[title="Child visualization"]')
+    .waitForExist({ timeout: timeoutMs });
+  check(
+    assertions,
+    "child-artifact-renders-in-multitask",
+    (await readAllEvents(bridge, child.sessionId)).some(
+      (event) => event.type === "visualization.published",
+    ) &&
+      (await readAllEvents(bridge, source.id)).filter(
+        (event) => event.type === "visualization.published",
+      ).length === 1,
+  );
+  shots.push(await screenshot(browser, evidenceDir, "visualization-multitask"));
+  await writeJson(path.join(evidenceDir, "visualizations.json"), {
+    artifact,
+    previews,
+    assertions,
+    screenshots: shots,
+  });
+  return {
+    session: await waitForCompleted(bridge, source.id, 5000, "visualization finished chat"),
+    workspace,
+    records: (await readAllEvents(bridge, source.id)).map((event) => ({ kind: "event", ...event })),
+    browser: phases,
+    assertions,
+  };
 }

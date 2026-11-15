@@ -10,7 +10,7 @@ import { SettingGroup, SettingNote, SettingRow, SettingsListPicker } from "./set
 
 export function EngramSettings({
   provider,
-  onProviderChange
+  onProviderChange,
 }: {
   provider: ProviderId;
   onProviderChange: (provider: ProviderId) => void;
@@ -63,7 +63,7 @@ export function EngramSettings({
                 onChange={onProviderChange}
                 options={PROVIDER_SETUP_ORDER.map((value) => ({
                   value,
-                  label: PROVIDER_DISPLAY_NAMES[value]
+                  label: PROVIDER_DISPLAY_NAMES[value],
                 }))}
               />
             }
@@ -104,7 +104,9 @@ export function EngramSettings({
                   rows={setup.kind === "json" ? 10 : 3}
                   aria-describedby="settings-engram-command-help"
                 />
-                <p className="settings-note" id="settings-engram-command-help">{setup.instructions}</p>
+                <p className="settings-note" id="settings-engram-command-help">
+                  {setup.instructions}
+                </p>
                 <div className="settings-form-footer">
                   <CopySetup key={setup.content} content={setup.content} kind={setup.kind} />
                 </div>
@@ -113,8 +115,8 @@ export function EngramSettings({
           </div>
           <SettingNote>
             Engram is used when an agent calls its memory tools. Ask it to recall this project’s
-            relevant memories and verify changeable facts against current code or sources.
-            Manage or remove the connection in the agent’s own MCP settings.
+            relevant memories and verify changeable facts against current code or sources. Manage or
+            remove the connection in the agent’s own MCP settings.
           </SettingNote>
         </div>
       ) : null}
@@ -131,7 +133,11 @@ function CopySetup({ content, kind }: { content: string; kind: "command" | "json
       aria-label={`Copy Engram ${kind === "json" ? "configuration" : "command"}`}
       onClick={() => void copy(content)}
     >
-      {flash === "copied" ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+      {flash === "copied" ? (
+        <Check size={13} aria-hidden="true" />
+      ) : (
+        <Copy size={13} aria-hidden="true" />
+      )}
       {flash === "copied" ? "Copied" : flash === "failed" ? "Couldn't copy" : "Copy"}
     </button>
   );

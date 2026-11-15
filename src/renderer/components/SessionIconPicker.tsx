@@ -8,7 +8,7 @@ import {
   SESSION_ICONS,
   resolveSessionIconColor,
   sessionIconColorLabel,
-  sessionIconLabel
+  sessionIconLabel,
 } from "../lib/sessionIcons.js";
 
 type SessionIconPickerProps = {
@@ -31,7 +31,7 @@ export function SessionIconPicker({
   iconColor,
   anchorPoint,
   onApply,
-  onClose
+  onClose,
 }: SessionIconPickerProps): JSX.Element {
   const [query, setQuery] = useState("");
   const [draftColor, setDraftColor] = useState(() => resolveSessionIconColor(iconColor));
@@ -47,7 +47,7 @@ export function SessionIconPicker({
     const needle = query.trim().toLowerCase();
     if (!needle) return SESSION_ICON_NAMES;
     return SESSION_ICON_NAMES.filter((name) =>
-      sessionIconLabel(name).toLowerCase().includes(needle)
+      sessionIconLabel(name).toLowerCase().includes(needle),
     );
   }, [query]);
 

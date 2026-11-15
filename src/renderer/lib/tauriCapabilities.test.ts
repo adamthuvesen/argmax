@@ -8,10 +8,7 @@ interface TauriCapability {
 
 function readMainCapability(): TauriCapability {
   return JSON.parse(
-    readFileSync(
-      new URL("../../../src-tauri/capabilities/default.json", import.meta.url),
-      "utf8"
-    )
+    readFileSync(new URL("../../../src-tauri/capabilities/default.json", import.meta.url), "utf8"),
   ) as TauriCapability;
 }
 
@@ -22,8 +19,8 @@ describe("Tauri main capability", () => {
         "core:window:allow-inner-size",
         "core:window:allow-scale-factor",
         "core:window:allow-set-min-size",
-        "core:window:allow-set-size"
-      ])
+        "core:window:allow-set-size",
+      ]),
     );
   });
 });

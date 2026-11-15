@@ -47,15 +47,21 @@ export function RollingText({ text, roll }: { text: string; roll?: TextRoll | nu
     const box = boxRef.current;
     const leaving = outRef.current;
     const arriving = inRef.current;
-    if (!current || !box || !leaving || !arriving || typeof box.animate !== "function") return undefined;
+    if (!current || !box || !leaving || !arriving || typeof box.animate !== "function")
+      return undefined;
     // Fractional widths: offsetWidth rounds, and the box would end the roll
     // up to half a pixel off the plain text that replaces it, then snap.
     const animation = box.animate(
       [
         { width: `${leaving.getBoundingClientRect().width}px` },
-        { width: `${arriving.getBoundingClientRect().width}px` }
+        { width: `${arriving.getBoundingClientRect().width}px` },
       ],
-      { duration: current.durationMs, delay: current.delayMs, easing: ROLL_EASING, fill: "backwards" }
+      {
+        duration: current.durationMs,
+        delay: current.delayMs,
+        easing: ROLL_EASING,
+        fill: "backwards",
+      },
     );
     animation.currentTime = current.elapsedMs;
     return () => animation.cancel();
@@ -65,7 +71,7 @@ export function RollingText({ text, roll }: { text: string; roll?: TextRoll | nu
   const [prefix, fromRest, toRest] = splitAtChange(rolling.from, text);
   const timing = {
     animationDelay: `${rolling.delayMs - rolling.elapsedMs}ms`,
-    animationDuration: `${rolling.durationMs}ms`
+    animationDuration: `${rolling.durationMs}ms`,
   };
   return (
     <>
@@ -73,7 +79,13 @@ export function RollingText({ text, roll }: { text: string; roll?: TextRoll | nu
       <span ref={boxRef} className="rolling-text" data-direction={rolling.direction}>
         {/* The leaving words are painted from the attribute, not the DOM, so
             the label's text is the new label alone throughout the roll. */}
-        <span ref={outRef} className="rolling-text-out" aria-hidden="true" data-text={fromRest} style={timing} />
+        <span
+          ref={outRef}
+          className="rolling-text-out"
+          aria-hidden="true"
+          data-text={fromRest}
+          style={timing}
+        />
         <span
           ref={inRef}
           className="rolling-text-in"

@@ -8,10 +8,10 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::files::workspace_files::{read_resolved_file, SkippedReason, WorkspaceFilePreview};
-use crate::persistence::linked_repos::LinkedRepo;
 use crate::util::workspace_paths::{resolve_inside, PathError};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::linked_repos::LinkedRepo;
 
 /// Directory listings stop here, however large the page the caller asked for.
 pub const LIST_MAX_LIMIT: usize = 500;

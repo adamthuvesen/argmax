@@ -5,7 +5,7 @@ import {
   activeSnoozeUntil,
   computeSnoozeShelf,
   snoozeChoices,
-  snoozeTimerDelay
+  snoozeTimerDelay,
 } from "./snooze.js";
 
 const NOW = Date.parse("2026-10-04T12:00:00.000Z");
@@ -26,10 +26,10 @@ describe("snooze shelf", () => {
         workspace("live", { snoozedUntil: iso(60_000) }),
         workspace("expired", { snoozedUntil: iso(-1) }),
         workspace("none"),
-        workspace("garbage", { snoozedUntil: "not a date" })
+        workspace("garbage", { snoozedUntil: "not a date" }),
       ],
       [],
-      NOW
+      NOW,
     );
     expect([...shelf.shelfIds]).toEqual(["live"]);
     expect(shelf.nextExpiryAt).toBe(NOW + 60_000);
@@ -42,14 +42,14 @@ describe("snooze shelf", () => {
         workspace("question", { snoozedUntil: iso(60_000) }),
         workspace("pinned", { snoozedUntil: iso(60_000), pinned: true }),
         workspace("quiet", { snoozedUntil: iso(60_000) }),
-        workspace("failed", { snoozedUntil: iso(60_000) })
+        workspace("failed", { snoozedUntil: iso(60_000) }),
       ],
       [
         session("approval", "approval-needed"),
         session("question", "question-asked"),
-        session("failed", "failed")
+        session("failed", "failed"),
       ],
-      NOW
+      NOW,
     );
     // A failed run is not an unanswered request, so it is snoozable.
     expect([...shelf.shelfIds].sort()).toEqual(["failed", "quiet"]);
@@ -59,17 +59,20 @@ describe("snooze shelf", () => {
     const shelf = computeSnoozeShelf(
       [
         workspace("archived", { snoozedUntil: iso(60_000), state: "archived" }),
-        workspace("live", { snoozedUntil: iso(60_000) })
+        workspace("live", { snoozedUntil: iso(60_000) }),
       ],
       [],
-      NOW
+      NOW,
     );
     expect([...shelf.shelfIds]).toEqual(["live"]);
     // An archived row's snooze does not arm the timer either.
     expect(shelf.nextExpiryAt).toBe(NOW + 60_000);
     expect(
-      computeSnoozeShelf([workspace("archived", { snoozedUntil: iso(60_000), state: "archived" })], [], NOW)
-        .nextExpiryAt
+      computeSnoozeShelf(
+        [workspace("archived", { snoozedUntil: iso(60_000), state: "archived" })],
+        [],
+        NOW,
+      ).nextExpiryAt,
     ).toBeNull();
   });
 
@@ -77,10 +80,10 @@ describe("snooze shelf", () => {
     const shelf = computeSnoozeShelf(
       [
         workspace("later", { snoozedUntil: iso(3_600_000) }),
-        workspace("sooner-but-urgent", { snoozedUntil: iso(5_000) })
+        workspace("sooner-but-urgent", { snoozedUntil: iso(5_000) }),
       ],
       [session("sooner-but-urgent", "approval-needed")],
-      NOW
+      NOW,
     );
     expect(shelf.nextExpiryAt).toBe(NOW + 5_000);
     expect([...shelf.shelfIds]).toEqual(["later"]);

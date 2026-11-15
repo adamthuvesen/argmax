@@ -19,7 +19,7 @@ function pr(overrides: Partial<SessionPrSummary>): SessionPrSummary {
     isPinned: false,
     isWatched: true,
     refreshError: null,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -45,12 +45,12 @@ describe("<PrWatchPill />", () => {
         prs={[
           pr({}),
           pr({ prNumber: 1665, prState: "MERGED" }),
-          pr({ prNumber: 1370, isWatched: false })
+          pr({ prNumber: 1370, isWatched: false }),
         ]}
-      />
+      />,
     );
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "Babysitting PR #1666"
+      "Babysitting PR #1666",
     ]);
   });
 

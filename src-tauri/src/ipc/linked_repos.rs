@@ -6,20 +6,14 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, State};
 
-use super::{
-    live_database, read_off_main,
-    validation::{NonEmptyString, ProjectId},
-};
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    files::linked_roots,
-    persistence::{
-        app_settings,
-        linked_repos::{self, LinkedRepo, LinkedRepoInput},
-        projects::{self, ProjectSummary},
-    },
-    providers::one_shot,
-    state::AppState,
+use crate::state::{live_database, read_off_main};
+use crate::{files::linked_roots, providers::one_shot, state::AppState};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::{NonEmptyString, ProjectId};
+use argmax_store::{
+    app_settings,
+    linked_repos::{self, LinkedRepo, LinkedRepoInput},
+    projects::{self, ProjectSummary},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -84,7 +78,7 @@ pub struct BranchTemplateSettings {
 fn settings(template: Option<String>) -> BranchTemplateSettings {
     BranchTemplateSettings {
         template,
-        default_template: crate::workspaces::branch_names::DEFAULT_BRANCH_TEMPLATE,
+        default_template: argmax_contracts::branch_names::DEFAULT_BRANCH_TEMPLATE,
     }
 }
 
@@ -175,10 +169,13 @@ pub async fn linked_repos_summarize(
     // Discovery order is fixed, so stopping at the first failure would make
     // Retry repeat the same broken provider while another could answer.
     let mut summary = None;
-    for provider in providers {
-        summary =
-            one_shot::summarize_repository(provider, one_shot::helper_model(provider), &context)
-                .await;
+    for provider in providers.into_iter().map(|provider| provider.id()) {
+        summary = one_shot::summarize_repository(
+            provider,
+            crate::providers::model_catalogue::helper_model(provider),
+            &context,
+        )
+        .await;
         if summary.is_some() {
             break;
         }

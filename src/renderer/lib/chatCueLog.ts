@@ -35,7 +35,7 @@ export function recordChatCue(input: {
     fields: {
       sessionId: input.sessionId,
       reason: input.reason,
-      ...(input.provider === null ? {} : { provider: input.provider })
-    }
+      ...(input.provider === null ? {} : { provider: input.provider }),
+    },
   });
 }

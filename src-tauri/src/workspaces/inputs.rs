@@ -1,6 +1,6 @@
 //! Validated workspace operations shared across transports.
 
-use crate::application::validation::{
+use argmax_contracts::validation::{
     BaseRef, BranchName, NonEmptyString, ProjectId, Prompt, ProviderId, TaskLabel, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
@@ -208,4 +208,11 @@ impl<'de> Deserialize<'de> for SessionIconToken {
             ))
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum ForkWorkspaceMode {
+    Shared,
+    Isolated,
 }

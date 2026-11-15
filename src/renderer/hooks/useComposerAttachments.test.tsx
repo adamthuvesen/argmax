@@ -8,7 +8,11 @@ function pngBlob(): Blob {
   return new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" });
 }
 
-function installObjectUrl(urls: string[]): { create: ReturnType<typeof vi.fn>; revoke: ReturnType<typeof vi.fn>; restore: () => void } {
+function installObjectUrl(urls: string[]): {
+  create: ReturnType<typeof vi.fn>;
+  revoke: ReturnType<typeof vi.fn>;
+  restore: () => void;
+} {
   const createDescriptor = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
   const revokeDescriptor = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
   const create = vi.fn(() => urls.shift() ?? "blob:unused");
@@ -23,7 +27,7 @@ function installObjectUrl(urls: string[]): { create: ReturnType<typeof vi.fn>; r
       else Reflect.deleteProperty(URL, "createObjectURL");
       if (revokeDescriptor) Object.defineProperty(URL, "revokeObjectURL", revokeDescriptor);
       else Reflect.deleteProperty(URL, "revokeObjectURL");
-    }
+    },
   };
 }
 
@@ -43,16 +47,16 @@ describe("useComposerAttachments — text paste stays native", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined
-      })
+        setInput: () => undefined,
+      }),
     );
 
     const paste = {
       clipboardData: {
         items: [{ kind: "string", type: "text/plain" }],
-        getData: vi.fn(() => "")
+        getData: vi.fn(() => ""),
       },
-      preventDefault: vi.fn()
+      preventDefault: vi.fn(),
     };
 
     act(() => {
@@ -75,15 +79,15 @@ describe("useComposerAttachments — text paste stays native", () => {
       setSelectionRange: vi.fn(),
       focus: vi.fn(),
       contains: vi.fn(),
-      closest: vi.fn()
+      closest: vi.fn(),
     };
     const { result } = renderHook(() =>
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
         setInput,
-        fieldRef: { current: target }
-      })
+        fieldRef: { current: target },
+      }),
     );
 
     const html =
@@ -92,9 +96,9 @@ describe("useComposerAttachments — text paste stays native", () => {
     const paste = {
       clipboardData: {
         items: [{ kind: "string", type: "text/html" }],
-        getData: vi.fn(() => html)
+        getData: vi.fn(() => html),
       },
-      preventDefault: vi.fn()
+      preventDefault: vi.fn(),
     };
 
     act(() => {
@@ -107,7 +111,7 @@ describe("useComposerAttachments — text paste stays native", () => {
     await waitFor(() => expect(setInput).toHaveBeenCalledWith(expect.any(Function)));
     const apply = setInput.mock.calls[0][0] as (prev: string) => string;
     expect(apply("findings: ")).toBe(
-      "findings: - `1. 2. 3.` gone — selecting rendered `<ol>` text\n- **bold** and *italics* survive"
+      "findings: - `1. 2. 3.` gone — selecting rendered `<ol>` text\n- **bold** and *italics* survive",
     );
     expect(target.setSelectionRange).toHaveBeenCalledWith(93, 93);
   });
@@ -121,16 +125,16 @@ describe("useComposerAttachments — text paste stays native", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput
-      })
+        setInput,
+      }),
     );
 
     const paste = {
       clipboardData: {
         items: [{ kind: "string", type: "text/html" }],
-        getData: vi.fn(() => "<span style=\"font-weight: 390\">just a line</span>")
+        getData: vi.fn(() => '<span style="font-weight: 390">just a line</span>'),
       },
-      preventDefault: vi.fn()
+      preventDefault: vi.fn(),
     };
 
     act(() => {
@@ -152,10 +156,10 @@ describe("useComposerAttachments — save races the composer retarget", () => {
       () =>
         new Promise<{ filePath: string; sizeBytes: number }>((resolve) => {
           resolveSave = resolve;
-        })
+        }),
     );
     (window as unknown as { argmax: ArgmaxApi }).argmax = {
-      attachments: { saveImage } as unknown as ArgmaxApi["attachments"]
+      attachments: { saveImage } as unknown as ArgmaxApi["attachments"],
     } as unknown as ArgmaxApi;
 
     const { result, rerender } = renderHook(
@@ -163,14 +167,14 @@ describe("useComposerAttachments — save races the composer retarget", () => {
         useComposerAttachments({
           draftKey,
           workspacePath: null,
-          setInput: () => undefined
+          setInput: () => undefined,
         }),
-      { initialProps: { draftKey: "launch-a" } }
+      { initialProps: { draftKey: "launch-a" } },
     );
 
     const paste = {
       clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => pngBlob() }] },
-      preventDefault: vi.fn()
+      preventDefault: vi.fn(),
     };
     act(() => {
       result.current.onComposerPaste(paste as never);
@@ -196,10 +200,10 @@ describe("useComposerAttachments — save races the composer retarget", () => {
       () =>
         new Promise<{ filePath: string; sizeBytes: number }>((resolve) => {
           resolveSave = resolve;
-        })
+        }),
     );
     (window as unknown as { argmax: ArgmaxApi }).argmax = {
-      attachments: { saveImage } as unknown as ArgmaxApi["attachments"]
+      attachments: { saveImage } as unknown as ArgmaxApi["attachments"],
     } as unknown as ArgmaxApi;
 
     const { result, rerender } = renderHook(
@@ -208,14 +212,14 @@ describe("useComposerAttachments — save races the composer retarget", () => {
           draftKey,
           workspacePath: null,
           setInput: () => undefined,
-          carriedOnRetarget
+          carriedOnRetarget,
         }),
-      { initialProps: { draftKey: "launch-a", carriedOnRetarget: false } }
+      { initialProps: { draftKey: "launch-a", carriedOnRetarget: false } },
     );
 
     const paste = {
       clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => pngBlob() }] },
-      preventDefault: vi.fn()
+      preventDefault: vi.fn(),
     };
     act(() => {
       result.current.onComposerPaste(paste as never);
@@ -230,7 +234,7 @@ describe("useComposerAttachments — save races the composer retarget", () => {
     });
 
     expect(result.current.pendingAttachments).toEqual([
-      { filePath: "/attachments/launch-a/shot.png", mimeType: "image/png", sizeBytes: 3 }
+      { filePath: "/attachments/launch-a/shot.png", mimeType: "image/png", sizeBytes: 3 },
     ]);
   });
 });
@@ -253,9 +257,9 @@ function dragEvent(dataTransfer: {
       types: dataTransfer.types ?? [],
       files: dataTransfer.files ?? [],
       items: dataTransfer.items ?? [],
-      dropEffect: "none"
+      dropEffect: "none",
     },
-    preventDefault: vi.fn()
+    preventDefault: vi.fn(),
   };
 }
 
@@ -265,8 +269,8 @@ describe("useComposerAttachments — screenshot drag", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined
-      })
+        setInput: () => undefined,
+      }),
     );
     const event = dragEvent({ types: ["image/png"] });
     act(() => {
@@ -281,8 +285,8 @@ describe("useComposerAttachments — screenshot drag", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined
-      })
+        setInput: () => undefined,
+      }),
     );
     const event = dragEvent({ types: ["public.png"] });
     act(() => {
@@ -297,12 +301,12 @@ describe("useComposerAttachments — screenshot drag", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined
-      })
+        setInput: () => undefined,
+      }),
     );
     const event = dragEvent({
       types: [],
-      items: [{ kind: "string", type: "text/plain", getAsFile: () => null }]
+      items: [{ kind: "string", type: "text/plain", getAsFile: () => null }],
     });
     act(() => {
       result.current.onComposerDragOver(event as never);
@@ -316,8 +320,8 @@ describe("useComposerAttachments — screenshot drag", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined
-      })
+        setInput: () => undefined,
+      }),
     );
     const event = dragEvent({ types: ["text/plain"] });
     act(() => {
@@ -330,55 +334,55 @@ describe("useComposerAttachments — screenshot drag", () => {
   it("attaches a path-less PNG when drop files is empty but items holds the image", async () => {
     const saveImage = vi.fn().mockResolvedValue({
       filePath: "/attachments/launch-a/shot.png",
-      sizeBytes: 3
+      sizeBytes: 3,
     });
     (window as unknown as { argmax: ArgmaxApi }).argmax = {
-      attachments: { saveImage } as unknown as ArgmaxApi["attachments"]
+      attachments: { saveImage } as unknown as ArgmaxApi["attachments"],
     } as unknown as ArgmaxApi;
 
     const { result } = renderHook(() =>
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined
-      })
+        setInput: () => undefined,
+      }),
     );
     const file = new File([new Uint8Array([1, 2, 3])], "shot.png", { type: "image/png" });
     const event = dragEvent({
       types: ["image/png"],
       files: [],
-      items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
     });
     act(() => {
       result.current.onComposerDrop(event as never);
     });
     expect(event.preventDefault).toHaveBeenCalled();
-    await waitFor(() => expect(result.current.pendingAttachments).toEqual([
-      { filePath: "/attachments/launch-a/shot.png", mimeType: "image/png", sizeBytes: 3 }
-    ]));
+    await waitFor(() =>
+      expect(result.current.pendingAttachments).toEqual([
+        { filePath: "/attachments/launch-a/shot.png", mimeType: "image/png", sizeBytes: 3 },
+      ]),
+    );
   });
 
   it("attaches a typeless screenshot named .png", async () => {
     const saveImage = vi.fn().mockResolvedValue({
       filePath: "/attachments/launch-a/shot.png",
-      sizeBytes: 3
+      sizeBytes: 3,
     });
     (window as unknown as { argmax: ArgmaxApi }).argmax = {
-      attachments: { saveImage } as unknown as ArgmaxApi["attachments"]
+      attachments: { saveImage } as unknown as ArgmaxApi["attachments"],
     } as unknown as ArgmaxApi;
 
     const { result } = renderHook(() =>
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined
-      })
+        setInput: () => undefined,
+      }),
     );
-    const file = new File(
-      [new Uint8Array([1, 2, 3])],
-      "Screenshot 2026-09-05 at 10.30.00.png",
-      { type: "" }
-    );
+    const file = new File([new Uint8Array([1, 2, 3])], "Screenshot 2026-09-05 at 10.30.00.png", {
+      type: "",
+    });
     const event = dragEvent({ types: ["Files"], files: [file] });
     act(() => {
       result.current.onComposerDrop(event as never);
@@ -390,24 +394,24 @@ describe("useComposerAttachments — screenshot drag", () => {
   it("attaches a typeless PNG once when files and items both list it", async () => {
     const saveImage = vi.fn().mockResolvedValue({
       filePath: "/attachments/launch-a/shot.png",
-      sizeBytes: 3
+      sizeBytes: 3,
     });
     (window as unknown as { argmax: ArgmaxApi }).argmax = {
-      attachments: { saveImage } as unknown as ArgmaxApi["attachments"]
+      attachments: { saveImage } as unknown as ArgmaxApi["attachments"],
     } as unknown as ArgmaxApi;
 
     const { result } = renderHook(() =>
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined
-      })
+        setInput: () => undefined,
+      }),
     );
     const file = new File([new Uint8Array([1, 2, 3])], "shot.png", { type: "" });
     const event = dragEvent({
       types: ["Files", "image/png"],
       files: [file],
-      items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
     });
     act(() => {
       result.current.onComposerDrop(event as never);
@@ -420,15 +424,15 @@ describe("useComposerAttachments — screenshot drag", () => {
     const saveImage = vi.fn();
     const setInput = vi.fn();
     (window as unknown as { argmax: ArgmaxApi }).argmax = {
-      attachments: { saveImage } as unknown as ArgmaxApi["attachments"]
+      attachments: { saveImage } as unknown as ArgmaxApi["attachments"],
     } as unknown as ArgmaxApi;
 
     const { result } = renderHook(() =>
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput
-      })
+        setInput,
+      }),
     );
     const file = new File([new Uint8Array([1, 2, 3])], "shot.png", { type: "" });
     Object.defineProperty(file, "path", { value: "/tmp/shot.png" });
@@ -437,8 +441,8 @@ describe("useComposerAttachments — screenshot drag", () => {
         dragEvent({
           types: ["Files"],
           files: [file],
-          items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
-        }) as never
+          items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
+        }) as never,
       );
     });
     expect(saveImage).not.toHaveBeenCalled();
@@ -451,28 +455,26 @@ describe("useComposerAttachments — screenshot drag", () => {
   it("persists a screenshot-thumbnail temp path as image bytes, not an @-mention", async () => {
     const saveImage = vi.fn().mockResolvedValue({
       filePath: "/attachments/launch-a/shot.png",
-      sizeBytes: 3
+      sizeBytes: 3,
     });
     const setInput = vi.fn();
     (window as unknown as { argmax: ArgmaxApi }).argmax = {
-      attachments: { saveImage } as unknown as ArgmaxApi["attachments"]
+      attachments: { saveImage } as unknown as ArgmaxApi["attachments"],
     } as unknown as ArgmaxApi;
 
     const { result } = renderHook(() =>
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput
-      })
+        setInput,
+      }),
     );
-    const file = new File(
-      [new Uint8Array([1, 2, 3])],
-      "Screenshot 2026-09-06 at 10.30.00.png",
-      { type: "" }
-    );
+    const file = new File([new Uint8Array([1, 2, 3])], "Screenshot 2026-09-06 at 10.30.00.png", {
+      type: "",
+    });
     Object.defineProperty(file, "path", {
       value:
-        "/var/folders/xx/T/TemporaryItems/NSIRD_screencaptureui_abc/Screenshot 2026-09-06 at 10.30.00.png"
+        "/var/folders/xx/T/TemporaryItems/NSIRD_screencaptureui_abc/Screenshot 2026-09-06 at 10.30.00.png",
     });
     act(() => {
       result.current.onComposerDrop(dragEvent({ types: ["Files"], files: [file] }) as never);
@@ -480,7 +482,7 @@ describe("useComposerAttachments — screenshot drag", () => {
     await waitFor(() => expect(saveImage).toHaveBeenCalledTimes(1));
     expect(setInput).not.toHaveBeenCalled();
     expect(result.current.pendingAttachments).toEqual([
-      { filePath: "/attachments/launch-a/shot.png", mimeType: "image/png", sizeBytes: 3 }
+      { filePath: "/attachments/launch-a/shot.png", mimeType: "image/png", sizeBytes: 3 },
     ]);
   });
 });
@@ -490,29 +492,31 @@ describe("useComposerAttachments — transient previews", () => {
     const objectUrl = installObjectUrl(["blob:removed", "blob:cleared", "blob:unmounted"]);
     const saveImage = vi.fn().mockResolvedValue({
       filePath: "/attachments/launch-a/shot.png",
-      sizeBytes: 3
+      sizeBytes: 3,
     });
     (window as unknown as { argmax: ArgmaxApi }).argmax = {
-      attachments: { saveImage } as unknown as ArgmaxApi["attachments"]
+      attachments: { saveImage } as unknown as ArgmaxApi["attachments"],
     } as unknown as ArgmaxApi;
 
     const { result, unmount } = renderHook(() =>
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined
-      })
+        setInput: () => undefined,
+      }),
     );
     const paste = () => ({
       clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => pngBlob() }] },
-      preventDefault: vi.fn()
+      preventDefault: vi.fn(),
     });
 
     try {
       act(() => result.current.onComposerPaste(paste() as never));
-      await waitFor(() => expect(result.current.pendingAttachmentPreviews).toEqual({
-        "/attachments/launch-a/shot.png": "blob:removed"
-      }));
+      await waitFor(() =>
+        expect(result.current.pendingAttachmentPreviews).toEqual({
+          "/attachments/launch-a/shot.png": "blob:removed",
+        }),
+      );
       expect(result.current.pendingAttachments).toHaveLength(1);
 
       act(() => result.current.removePendingAttachment("/attachments/launch-a/shot.png"));
@@ -520,16 +524,20 @@ describe("useComposerAttachments — transient previews", () => {
       expect(objectUrl.revoke).toHaveBeenCalledWith("blob:removed");
 
       act(() => result.current.onComposerPaste(paste() as never));
-      await waitFor(() => expect(result.current.pendingAttachmentPreviews).toEqual({
-        "/attachments/launch-a/shot.png": "blob:cleared"
-      }));
+      await waitFor(() =>
+        expect(result.current.pendingAttachmentPreviews).toEqual({
+          "/attachments/launch-a/shot.png": "blob:cleared",
+        }),
+      );
       act(() => result.current.clearAttachments());
       expect(objectUrl.revoke).toHaveBeenCalledWith("blob:cleared");
 
       act(() => result.current.onComposerPaste(paste() as never));
-      await waitFor(() => expect(result.current.pendingAttachmentPreviews).toEqual({
-        "/attachments/launch-a/shot.png": "blob:unmounted"
-      }));
+      await waitFor(() =>
+        expect(result.current.pendingAttachmentPreviews).toEqual({
+          "/attachments/launch-a/shot.png": "blob:unmounted",
+        }),
+      );
       unmount();
       expect(objectUrl.revoke).toHaveBeenCalledWith("blob:unmounted");
     } finally {

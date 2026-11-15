@@ -19,7 +19,7 @@ function Harness({
   onChange,
   disabled = false,
   documentKey = null,
-  chats = NO_CHATS
+  chats = NO_CHATS,
 }: {
   initial?: string;
   fieldRef: React.RefObject<ComposerField | null>;
@@ -81,7 +81,9 @@ describe("ComposerEditorView", () => {
     const onChange = vi.fn();
     render(<Harness fieldRef={createRef()} onChange={onChange} />);
 
-    act(() => viewOf().dispatch({ changes: { from: 0, insert: "hello" }, userEvent: "input.type" }));
+    act(() =>
+      viewOf().dispatch({ changes: { from: 0, insert: "hello" }, userEvent: "input.type" }),
+    );
     expect(onChange).toHaveBeenCalledWith("hello");
 
     onChange.mockClear();
@@ -126,7 +128,7 @@ describe("ComposerEditorView", () => {
     expect(field.current?.contains(box)).toBe(true);
     expect(field.current?.contains(document.body)).toBe(false);
     field.current?.focus();
-    expect(document.activeElement).toBe(box);
+    expect(box).toHaveFocus();
   });
 
   it("stops accepting edits when disabled", () => {
@@ -142,15 +144,15 @@ describe("ComposerEditorView", () => {
     render(<Harness initial={text} fieldRef={createRef()} />);
 
     expect(viewOf().state.doc.toString()).toBe(text);
-    expect(document.querySelectorAll(".composer-chat-chip")).toHaveLength(1);
+    expect(screen.getAllByRole("img", { name: /^Chat reference:/ })).toHaveLength(1);
   });
 
   it("announces its placeholder to assistive technology", () => {
     render(<Harness fieldRef={createRef()} />);
 
-    expect(screen.getByRole("textbox", { name: "Chat prompt" }).getAttribute("aria-placeholder")).toBe(
-      "Reply"
-    );
+    expect(
+      screen.getByRole("textbox", { name: "Chat prompt" }).getAttribute("aria-placeholder"),
+    ).toBe("Reply");
   });
 
   it("reports the text now through the handle, ahead of React", () => {
@@ -166,14 +168,16 @@ describe("ComposerEditorView", () => {
   it("starts a new undo history when the document key changes", () => {
     const field = createRef<ComposerField>();
     const { rerender } = render(<Harness fieldRef={field} documentKey="a" initial="" />);
-    act(() => viewOf().dispatch({ changes: { from: 0, insert: "first draft" }, userEvent: "input.type" }));
+    act(() =>
+      viewOf().dispatch({ changes: { from: 0, insert: "first draft" }, userEvent: "input.type" }),
+    );
 
     // The same text under another key is another document: the typing that
     // made it belongs to the draft before, and undo must not take it back.
     rerender(<Harness fieldRef={field} documentKey="b" initial="" />);
     act(() => {
       viewOf().contentDOM.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true })
+        new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true }),
       );
     });
 
@@ -184,7 +188,7 @@ describe("ComposerEditorView", () => {
     expect(viewOf().state.doc.toString()).toBe("another draft");
     act(() => {
       viewOf().contentDOM.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true })
+        new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true }),
       );
     });
     expect(viewOf().state.doc.toString()).toBe("first draft");
@@ -229,7 +233,7 @@ describe("ComposerEditorView", () => {
       getData: (mime: string) => (mime === "text/plain" ? "pasted" : ""),
       types: [],
       items: [],
-      files: []
+      files: [],
     };
     const cut = new Event("cut", { bubbles: true, cancelable: true });
     Object.defineProperty(cut, "clipboardData", { value: clipboardData });
@@ -253,12 +257,18 @@ describe("ComposerEditorView", () => {
         fieldRef={createRef()}
         initial={`see ${link} now`}
         chats={{ resolve: () => ({ title: "Billing" }), open }}
-      />
+      />,
     );
     const view = viewOf();
     const press = (): void => {
       view.contentDOM.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "o", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true })
+        new KeyboardEvent("keydown", {
+          key: "o",
+          ctrlKey: true,
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
       );
     };
 
@@ -272,9 +282,11 @@ describe("ComposerEditorView", () => {
 
     // The chip itself is reachable by Tab and answers Enter.
     open.mockClear();
-    const chip = document.querySelector<HTMLElement>(".composer-chat-chip");
-    expect(chip?.tabIndex).toBe(0);
-    chip?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    const chip = screen.getByRole("button", { name: "Chat reference: Billing. Open chat" });
+    expect(chip.tabIndex).toBe(0);
+    chip.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+    );
     expect(open).toHaveBeenCalledWith("s1");
   });
 });

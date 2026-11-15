@@ -2,7 +2,7 @@ import {
   FONT_HEAVINESS_HINTS,
   FONT_HEAVINESS_MIN,
   FONT_HEAVINESS_MAX,
-  type FontHeaviness
+  type FontHeaviness,
 } from "./fontHeaviness.js";
 import {
   AArrowDown,
@@ -24,7 +24,7 @@ import {
   Sun,
   Type,
   Zap,
-  ZapOff
+  ZapOff,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { PaletteItem } from "./paletteSearch.js";
@@ -35,39 +35,43 @@ import {
   FONT_SIZE_MIN,
   fontSizeBasePx,
   type FontFamilyId,
-  type FontSize
+  type FontSize,
 } from "./fonts.js";
 import {
   INK_STRENGTH_HINTS,
   INK_STRENGTH_MAX,
   INK_STRENGTH_MIN,
-  type InkStrength
+  type InkStrength,
 } from "./inkStrength.js";
 import {
   BACKGROUND_INTENSITY_MAX,
   BACKGROUND_INTENSITY_MIN,
   BACKGROUND_INTENSITY_PRESETS,
   backgroundIntensityHint,
-  type BackgroundIntensity
+  type BackgroundIntensity,
 } from "./backgroundIntensity.js";
 import {
   SIDEBAR_INTENSITY_MAX,
   SIDEBAR_INTENSITY_MIN,
   SIDEBAR_INTENSITY_PRESETS,
   sidebarIntensityHint,
-  type SidebarIntensity
+  type SidebarIntensity,
 } from "./sidebarIntensity.js";
 import {
   CONTRAST_MAX,
   CONTRAST_MIN,
   CONTRAST_PRESETS,
   contrastHint,
-  type Contrast as ContrastLevel
+  type Contrast as ContrastLevel,
 } from "./contrast.js";
 import { THEME_OPTIONS, type ThemeMode } from "./theme.js";
 import { CHAT_WIDTH_HINTS, CHAT_WIDTH_MIN, CHAT_WIDTH_MAX, type ChatWidth } from "./chatWidth.js";
 import type { ReviewPanelSide } from "./reviewPanelSide.js";
-import { CHAT_VERBOSITY_HINTS, CHAT_VERBOSITY_LABELS, type ChatVerbosity } from "./uiPreferences.js";
+import {
+  CHAT_VERBOSITY_HINTS,
+  CHAT_VERBOSITY_LABELS,
+  type ChatVerbosity,
+} from "./uiPreferences.js";
 
 /**
  * The settings a user flips often enough to deserve a palette row of their own.
@@ -121,24 +125,24 @@ const THEME_ICON: Record<ThemeMode, LucideIcon> = { light: Sun, dark: Moon, syst
 
 const FONT_SIZE_LEVELS: FontSize[] = Array.from(
   { length: FONT_SIZE_MAX - FONT_SIZE_MIN + 1 },
-  (_, index) => (FONT_SIZE_MIN + index) as FontSize
+  (_, index) => (FONT_SIZE_MIN + index) as FontSize,
 );
 
 const CHAT_VERBOSITY_LEVELS: ChatVerbosity[] = [1, 2, 3, 4];
 
 const CHAT_WIDTH_LEVELS: ChatWidth[] = Array.from(
   { length: CHAT_WIDTH_MAX - CHAT_WIDTH_MIN + 1 },
-  (_, index) => (CHAT_WIDTH_MIN + index) as ChatWidth
+  (_, index) => (CHAT_WIDTH_MIN + index) as ChatWidth,
 );
 
 const FONT_HEAVINESS_LEVELS: FontHeaviness[] = Array.from(
   { length: FONT_HEAVINESS_MAX - FONT_HEAVINESS_MIN + 1 },
-  (_, index) => (FONT_HEAVINESS_MIN + index) as FontHeaviness
+  (_, index) => (FONT_HEAVINESS_MIN + index) as FontHeaviness,
 );
 
 const INK_STRENGTH_LEVELS: InkStrength[] = Array.from(
   { length: INK_STRENGTH_MAX - INK_STRENGTH_MIN + 1 },
-  (_, index) => (INK_STRENGTH_MIN + index) as InkStrength
+  (_, index) => (INK_STRENGTH_MIN + index) as InkStrength,
 );
 
 const BACKGROUND_INTENSITY_STEP = 10;
@@ -155,7 +159,7 @@ function fontSizeCommands(
   label: string,
   scope: string,
   current: FontSize,
-  onChange: (size: FontSize) => void
+  onChange: (size: FontSize) => void,
 ): PaletteItem[] {
   const stepRow = (direction: "larger" | "smaller"): PaletteItem => {
     const next = direction === "larger" ? current + 1 : current - 1;
@@ -171,7 +175,7 @@ function fontSizeCommands(
       keepOpen: true,
       run: () => {
         if (inRange) onChange(next as FontSize);
-      }
+      },
     };
   };
   const levels: PaletteItem[] = FONT_SIZE_LEVELS.map((level) => ({
@@ -180,7 +184,7 @@ function fontSizeCommands(
     subtitle: `${scope} · ${fontSizeBasePx(level)}px body text`,
     group: "Actions",
     icon: level === current ? Check : Type,
-    run: () => onChange(level)
+    run: () => onChange(level),
   }));
   return [stepRow("larger"), stepRow("smaller"), ...levels];
 }
@@ -192,7 +196,7 @@ function fontSizeCommands(
  */
 function inkStrengthCommands(
   current: InkStrength,
-  onChange: (strength: InkStrength) => void
+  onChange: (strength: InkStrength) => void,
 ): PaletteItem[] {
   const stepRow = (direction: "stronger" | "softer"): PaletteItem => {
     const next = direction === "stronger" ? current + 1 : current - 1;
@@ -208,7 +212,7 @@ function inkStrengthCommands(
       keepOpen: true,
       run: () => {
         if (inRange) onChange(next as InkStrength);
-      }
+      },
     };
   };
   const levels: PaletteItem[] = INK_STRENGTH_LEVELS.map((level) => ({
@@ -217,14 +221,14 @@ function inkStrengthCommands(
     subtitle: `Text contrast · ${INK_STRENGTH_HINTS[level]}`,
     group: "Actions",
     icon: level === current ? Check : Contrast,
-    run: () => onChange(level)
+    run: () => onChange(level),
   }));
   return [stepRow("stronger"), stepRow("softer"), ...levels];
 }
 
 function fontHeavinessCommands(
   current: FontHeaviness,
-  onChange: (strength: FontHeaviness) => void
+  onChange: (strength: FontHeaviness) => void,
 ): PaletteItem[] {
   const stepRow = (direction: "heavier" | "lighter"): PaletteItem => {
     const next = direction === "heavier" ? current + 1 : current - 1;
@@ -240,7 +244,7 @@ function fontHeavinessCommands(
       keepOpen: true,
       run: () => {
         if (inRange) onChange(next as FontHeaviness);
-      }
+      },
     };
   };
   const levels: PaletteItem[] = FONT_HEAVINESS_LEVELS.map((level) => ({
@@ -249,17 +253,20 @@ function fontHeavinessCommands(
     subtitle: `Font weight · ${FONT_HEAVINESS_HINTS[level]}`,
     group: "Actions",
     icon: level === current ? Check : Type,
-    run: () => onChange(level)
+    run: () => onChange(level),
   }));
   return [stepRow("heavier"), stepRow("lighter"), ...levels];
 }
 
 function backgroundIntensityCommands(
   current: BackgroundIntensity,
-  onChange: (intensity: BackgroundIntensity) => void
+  onChange: (intensity: BackgroundIntensity) => void,
 ): PaletteItem[] {
   const stepRow = (direction: "stronger" | "softer"): PaletteItem => {
-    const target = direction === "stronger" ? current + BACKGROUND_INTENSITY_STEP : current - BACKGROUND_INTENSITY_STEP;
+    const target =
+      direction === "stronger"
+        ? current + BACKGROUND_INTENSITY_STEP
+        : current - BACKGROUND_INTENSITY_STEP;
     const next = Math.min(BACKGROUND_INTENSITY_MAX, Math.max(BACKGROUND_INTENSITY_MIN, target));
     const inRange = next !== current;
     return {
@@ -273,7 +280,7 @@ function backgroundIntensityCommands(
       keepOpen: true,
       run: () => {
         if (inRange) onChange(next);
-      }
+      },
     };
   };
   const levels: PaletteItem[] = BACKGROUND_INTENSITY_PRESETS.map((level) => ({
@@ -282,14 +289,14 @@ function backgroundIntensityCommands(
     subtitle: `Page color · ${backgroundIntensityHint(level)}`,
     group: "Actions",
     icon: level === current ? Check : Contrast,
-    run: () => onChange(level)
+    run: () => onChange(level),
   }));
   return [stepRow("stronger"), stepRow("softer"), ...levels];
 }
 
 function sidebarIntensityCommands(
   current: SidebarIntensity,
-  onChange: (intensity: SidebarIntensity) => void
+  onChange: (intensity: SidebarIntensity) => void,
 ): PaletteItem[] {
   const stepRow = (direction: "stronger" | "softer"): PaletteItem => {
     const target = direction === "stronger" ? current + 10 : current - 10;
@@ -306,7 +313,7 @@ function sidebarIntensityCommands(
       keepOpen: true,
       run: () => {
         if (inRange) onChange(next);
-      }
+      },
     };
   };
   const levels: PaletteItem[] = SIDEBAR_INTENSITY_PRESETS.map((level) => ({
@@ -315,14 +322,14 @@ function sidebarIntensityCommands(
     subtitle: `Side panel color · ${sidebarIntensityHint(level)}`,
     group: "Actions",
     icon: level === current ? Check : PanelLeft,
-    run: () => onChange(level)
+    run: () => onChange(level),
   }));
   return [stepRow("stronger"), stepRow("softer"), ...levels];
 }
 
 function contrastCommands(
   current: ContrastLevel,
-  onChange: (contrast: ContrastLevel) => void
+  onChange: (contrast: ContrastLevel) => void,
 ): PaletteItem[] {
   const stepRow = (direction: "firmer" | "softer"): PaletteItem => {
     const target = direction === "firmer" ? current + CONTRAST_STEP : current - CONTRAST_STEP;
@@ -339,7 +346,7 @@ function contrastCommands(
       keepOpen: true,
       run: () => {
         if (inRange) onChange(next);
-      }
+      },
     };
   };
   const levels: PaletteItem[] = CONTRAST_PRESETS.map((level) => ({
@@ -348,7 +355,7 @@ function contrastCommands(
     subtitle: `Borders · ${contrastHint(level)}`,
     group: "Actions",
     icon: level === current ? Check : Contrast,
-    run: () => onChange(level)
+    run: () => onChange(level),
   }));
   return [stepRow("firmer"), stepRow("softer"), ...levels];
 }
@@ -360,7 +367,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
     subtitle: option.hint,
     group: "Actions",
     icon: option.id === input.themeMode ? Check : THEME_ICON[option.id],
-    run: () => input.onThemeModeChange(option.id)
+    run: () => input.onThemeModeChange(option.id),
   }));
 
   const accents: PaletteItem[] = ACCENT_OPTIONS.map((option) => ({
@@ -369,7 +376,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
     subtitle: "Accent color for selection, focus, and chrome",
     group: "Actions",
     icon: option.id === input.accentId ? Check : Palette,
-    run: () => input.onAccentChange(option.id)
+    run: () => input.onAccentChange(option.id),
   }));
 
   const verbosity: PaletteItem[] = CHAT_VERBOSITY_LEVELS.map((level) => ({
@@ -380,7 +387,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
     subtitle: `Verbosity ${level} of 4 · ${CHAT_VERBOSITY_HINTS[level]}`,
     group: "Actions",
     icon: level === input.chatVerbosity ? Check : ListTree,
-    run: () => input.onChatVerbosityChange(level)
+    run: () => input.onChatVerbosityChange(level),
   }));
 
   const fonts: PaletteItem[] = FONT_OPTIONS.map((option) => ({
@@ -389,18 +396,19 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
     subtitle: `Interface and code · ${option.hint}`,
     group: "Actions",
     icon: option.id === input.fontFamily ? Check : Type,
-    run: () => input.onFontFamilyChange(option.id)
+    run: () => input.onFontFamilyChange(option.id),
   }));
 
   const reviewPanelSides: PaletteItem[] = (["left", "right"] as const).map((side) => ({
     id: `setting:files-panel-side:${side}`,
     label: `Files panel: ${side}`,
-    subtitle: side === "left"
-      ? "Changes and files dock to the left of the conversation"
-      : "Changes and files dock to the right of the conversation",
+    subtitle:
+      side === "left"
+        ? "Changes and files dock to the left of the conversation"
+        : "Changes and files dock to the right of the conversation",
     group: "Actions",
     icon: side === input.reviewPanelSide ? Check : side === "left" ? PanelLeft : PanelRight,
-    run: () => input.onReviewPanelSideChange(side)
+    run: () => input.onReviewPanelSideChange(side),
   }));
 
   const toggleCommands: PaletteItem[] = [
@@ -410,7 +418,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       subtitle: "Show a desktop notice when an agent finishes or fails in the background",
       group: "Actions",
       icon: input.desktopNotificationsEnabled ? BellOff : Bell,
-      run: () => input.onDesktopNotificationsEnabledChange(!input.desktopNotificationsEnabled)
+      run: () => input.onDesktopNotificationsEnabledChange(!input.desktopNotificationsEnabled),
     },
     {
       id: `setting:keep-awake:${input.keepAwakeEnabled ? "disable" : "enable"}`,
@@ -418,7 +426,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       subtitle: "Prevent the Mac from sleeping while any chat has a working agent",
       group: "Actions",
       icon: input.keepAwakeEnabled ? Moon : MoonStar,
-      run: () => input.onKeepAwakeEnabledChange(!input.keepAwakeEnabled)
+      run: () => input.onKeepAwakeEnabledChange(!input.keepAwakeEnabled),
     },
     {
       id: `setting:fast-mode:${input.fastModeEnabled ? "disable" : "enable"}`,
@@ -426,7 +434,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       subtitle: "Request faster responses for supported models, with increased usage",
       group: "Actions",
       icon: input.fastModeEnabled ? ZapOff : Zap,
-      run: () => input.onFastModeEnabledChange(!input.fastModeEnabled)
+      run: () => input.onFastModeEnabledChange(!input.fastModeEnabled),
     },
     {
       id: `setting:changed-files:${input.turnChangesExpanded ? "collapse" : "expand"}`,
@@ -434,7 +442,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       subtitle: "Show or hide the file list under each finished turn",
       group: "Actions",
       icon: Files,
-      run: () => input.onTurnChangesExpandedChange(!input.turnChangesExpanded)
+      run: () => input.onTurnChangesExpandedChange(!input.turnChangesExpanded),
     },
     {
       id: `setting:context-indicator:${input.contextIndicatorEnabled ? "hide" : "show"}`,
@@ -442,7 +450,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       subtitle: "Show or hide context-window usage beside the model in active chats",
       group: "Actions",
       icon: input.contextIndicatorEnabled ? Moon : MoonStar,
-      run: () => input.onContextIndicatorEnabledChange(!input.contextIndicatorEnabled)
+      run: () => input.onContextIndicatorEnabledChange(!input.contextIndicatorEnabled),
     },
     {
       id: `setting:translucent-window:${input.windowTranslucent ? "disable" : "enable"}`,
@@ -450,8 +458,8 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       subtitle: "Let the desktop show through the app, blurred by macOS",
       group: "Actions",
       icon: Layers,
-      run: () => input.onWindowTranslucentChange(!input.windowTranslucent)
-    }
+      run: () => input.onWindowTranslucentChange(!input.windowTranslucent),
+    },
   ];
 
   return [
@@ -466,14 +474,14 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       subtitle: `Agent window content width · ${CHAT_WIDTH_HINTS[level]}`,
       group: "Actions",
       icon: level === input.chatWidth ? Check : Columns2,
-      run: () => input.onChatWidthChange(level)
+      run: () => input.onChatWidthChange(level),
     })),
     ...fontSizeCommands(
       "setting:font-size",
       "App font size",
       "Sidebar, titlebar, settings",
       input.fontSize,
-      input.onFontSizeChange
+      input.onFontSizeChange,
     ),
     // The panel says "Agent window font size"; the label says chat, the
     // display name for a session, and the subtitle keeps the panel's words.
@@ -482,16 +490,13 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       "Chat font size",
       "Agent windows, composers, activity",
       input.chatFontSize,
-      input.onChatFontSizeChange
+      input.onChatFontSizeChange,
     ),
     ...fontHeavinessCommands(input.fontHeaviness, input.onFontHeavinessChange),
     ...inkStrengthCommands(input.inkStrength, input.onInkStrengthChange),
-    ...backgroundIntensityCommands(
-      input.backgroundIntensity,
-      input.onBackgroundIntensityChange
-    ),
+    ...backgroundIntensityCommands(input.backgroundIntensity, input.onBackgroundIntensityChange),
     ...sidebarIntensityCommands(input.sidebarIntensity, input.onSidebarIntensityChange),
     ...contrastCommands(input.contrast, input.onContrastChange),
-    ...toggleCommands
+    ...toggleCommands,
   ];
 }

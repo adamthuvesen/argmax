@@ -11,14 +11,15 @@ use tauri::{AppHandle, Runtime, State};
 use tauri_plugin_shell::ShellExt;
 
 use super::inputs::*;
-use super::validation::ThemeMode;
-use super::{live_database, read_off_main};
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ide::detection::{detect_installed_ides, DetectedIde};
-use crate::persistence::database::{vacuum_database, ReaderPoolStats};
 use crate::state::AppState;
+use crate::state::{live_database, read_off_main};
 use crate::util::log_buffer::LogEntry;
 use crate::util::performance::{PerformanceCapture, PerformanceStatus};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ThemeMode;
+use argmax_store::database::{vacuum_database, ReaderPoolStats};
+use argmax_store::diagnostics::{count_rows, pragma_i64, pragma_string, sqlite_version};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -32,16 +33,6 @@ pub struct StartupPhaseRecord {
     pub phase: String,
     pub elapsed_ms: f64,
     pub delta_ms: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct IpcChannelStats {
-    pub channel: String,
-    pub count: usize,
-    pub total_recorded: usize,
-    pub p50: f64,
-    pub p99: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -111,7 +102,6 @@ pub struct DiagnosticsReport {
     pub generated_at: String,
     pub startup_phases: Vec<StartupPhaseRecord>,
     pub database_stats: DatabaseStats,
-    pub ipc_stats: Vec<IpcChannelStats>,
     pub recent_logs: Vec<LogEntry>,
     pub sqlite_pragmas: SqlitePragmas,
     pub runtime: RuntimeDiagnostics,
@@ -192,9 +182,7 @@ pub async fn system_diagnostics(
 
     read_off_main(move || {
         let connection = database.read_connection();
-        let sqlite_version = connection
-            .query_row("SELECT sqlite_version()", [], |row| row.get::<_, String>(0))
-            .unwrap_or_else(|_| "unknown".to_string());
+        let sqlite_version = sqlite_version(&connection);
         let database_stats =
             collect_database_stats(&connection, &database_path, database.reader_pool_stats());
         let sqlite_pragmas = collect_sqlite_pragmas(&connection);
@@ -210,7 +198,6 @@ pub async fn system_diagnostics(
             generated_at: Utc::now().to_rfc3339(),
             startup_phases,
             database_stats,
-            ipc_stats: ipc_stats(),
             recent_logs: crate::util::tracing_init::recent_logs(),
             sqlite_pragmas,
             runtime: RuntimeDiagnostics {
@@ -230,7 +217,6 @@ pub async fn system_diagnostics(
 #[serde(rename_all = "camelCase")]
 pub struct DebugSnapshot {
     pub generated_at: String,
-    pub ipc_stats: Vec<IpcChannelStats>,
     pub logs: Vec<LogEntry>,
 }
 
@@ -239,7 +225,6 @@ pub struct DebugSnapshot {
 pub fn system_debug_snapshot(input: SystemDebugSnapshotInput) -> DebugSnapshot {
     DebugSnapshot {
         generated_at: Utc::now().to_rfc3339(),
-        ipc_stats: ipc_stats(),
         logs: crate::util::tracing_init::recent_logs_since(input.after_log_seq),
     }
 }
@@ -596,27 +581,6 @@ fn collect_sqlite_pragmas(connection: &rusqlite::Connection) -> SqlitePragmas {
     }
 }
 
-fn count_rows(connection: &rusqlite::Connection, table: &str) -> i64 {
-    let sql = format!("SELECT COUNT(*) FROM {table}");
-    connection
-        .query_row(&sql, [], |row| row.get::<_, i64>(0))
-        .unwrap_or(0)
-}
-
-fn pragma_i64(connection: &rusqlite::Connection, name: &str) -> i64 {
-    let sql = format!("PRAGMA {name}");
-    connection
-        .query_row(&sql, [], |row| row.get::<_, i64>(0))
-        .unwrap_or(0)
-}
-
-fn pragma_string(connection: &rusqlite::Connection, name: &str) -> String {
-    let sql = format!("PRAGMA {name}");
-    connection
-        .query_row(&sql, [], |row| row.get::<_, String>(0))
-        .unwrap_or_else(|_| "unknown".to_string())
-}
-
 fn startup_phases(state: &State<'_, AppState>) -> Vec<StartupPhaseRecord> {
     let mut marks: Vec<(String, f64)> = state
         .startup_timer
@@ -642,31 +606,6 @@ fn startup_phases(state: &State<'_, AppState>) -> Vec<StartupPhaseRecord> {
                 elapsed_ms,
                 delta_ms,
             }
-        })
-        .collect()
-}
-
-fn ipc_stats() -> Vec<IpcChannelStats> {
-    let registry = match std::panic::catch_unwind(crate::util::tracing_init::ipc_latency) {
-        Ok(registry) => registry,
-        Err(_) => return Vec::new(),
-    };
-    let mut channels = registry.known_channels();
-    channels.sort();
-    channels
-        .into_iter()
-        .map(|channel| IpcChannelStats {
-            p50: registry
-                .p50(&channel)
-                .map(|duration| duration.as_secs_f64() * 1000.0)
-                .unwrap_or(0.0),
-            p99: registry
-                .p99(&channel)
-                .map(|duration| duration.as_secs_f64() * 1000.0)
-                .unwrap_or(0.0),
-            count: registry.count(&channel),
-            total_recorded: registry.total_recorded(&channel),
-            channel,
         })
         .collect()
 }

@@ -30,7 +30,7 @@ export function toScaleLevel(raw: string | number | null | undefined): ScaleLeve
  */
 export function readStoredScaleLevel(
   key: string,
-  legacy: Readonly<Record<string, ScaleLevel>>
+  legacy: Readonly<Record<string, ScaleLevel>>,
 ): ScaleLevel | null {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(key);

@@ -6,19 +6,26 @@ import { SessionSyncSettings } from "./SessionSyncSettings.js";
 
 function status(overrides: Partial<SyncStatus> = {}): SyncStatus {
   return {
-    config: { claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
+    config: {
+      claude: false,
+      codex: false,
+      cursor: false,
+      opencode: false,
+      grok: false,
+      windowHours: 24,
+    },
     supportedProviders: ["claude"],
     lastRunAt: null,
     importedCount: 0,
     lastError: null,
-    ...overrides
+    ...overrides,
   };
 }
 
 const syncStub = {
   getStatus: vi.fn(() => Promise.resolve(status())),
   setConfig: vi.fn(() => Promise.resolve(status())),
-  runNow: vi.fn(() => Promise.resolve(status()))
+  runNow: vi.fn(() => Promise.resolve(status())),
 };
 
 beforeEach(() => {
@@ -39,9 +46,16 @@ describe("SessionSyncSettings", () => {
   it("turning a provider on saves it and reports what was imported", async () => {
     syncStub.setConfig.mockResolvedValue(
       status({
-        config: { claude: true, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
-        importedCount: 3
-      })
+        config: {
+          claude: true,
+          codex: false,
+          cursor: false,
+          opencode: false,
+          grok: false,
+          windowHours: 24,
+        },
+        importedCount: 3,
+      }),
     );
     render(<SessionSyncSettings />);
 
@@ -49,8 +63,8 @@ describe("SessionSyncSettings", () => {
 
     await waitFor(() =>
       expect(syncStub.setConfig).toHaveBeenCalledWith(
-        expect.objectContaining({ claude: true, windowHours: 24 })
-      )
+        expect.objectContaining({ claude: true, windowHours: 24 }),
+      ),
     );
     expect(await screen.findByRole("status")).toHaveTextContent("Imported 3 chats");
   });
@@ -60,30 +74,37 @@ describe("SessionSyncSettings", () => {
     fireEvent.click(await screen.findByRole("radio", { name: /Last 7 days/ }));
     await waitFor(() =>
       expect(syncStub.setConfig).toHaveBeenCalledWith(
-        expect.objectContaining({ windowHours: 168 })
-      )
+        expect.objectContaining({ windowHours: 168 }),
+      ),
     );
   });
 
   it("says what turning sync off removes, and confirms it afterwards", async () => {
     syncStub.getStatus.mockResolvedValue(
       status({
-        config: { claude: true, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 }
-      })
+        config: {
+          claude: true,
+          codex: false,
+          cursor: false,
+          opencode: false,
+          grok: false,
+          windowHours: 24,
+        },
+      }),
     );
     render(<SessionSyncSettings />);
 
     // The warning is visible before the user acts, not only after.
     expect(
-      await screen.findByText(/removes the synced chats you haven't continued/i)
+      await screen.findByText(/removes the synced chats you haven't continued/i),
     ).toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "Claude Code" }));
     await waitFor(() =>
-      expect(syncStub.setConfig).toHaveBeenCalledWith(expect.objectContaining({ claude: false }))
+      expect(syncStub.setConfig).toHaveBeenCalledWith(expect.objectContaining({ claude: false })),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Synced chats you never continued were removed"
+      "Synced chats you never continued were removed",
     );
   });
 
@@ -92,9 +113,9 @@ describe("SessionSyncSettings", () => {
     const codex = await screen.findByRole("checkbox", { name: "Codex" });
     fireEvent.click(codex);
     expect(syncStub.setConfig).not.toHaveBeenCalled();
-    expect(screen.getAllByText(/can't read this agent's transcript format/i).length).toBeGreaterThan(
-      0
-    );
+    expect(
+      screen.getAllByText(/can't read this agent's transcript format/i).length,
+    ).toBeGreaterThan(0);
   });
 
   it("surfaces a failed sweep instead of claiming success", async () => {

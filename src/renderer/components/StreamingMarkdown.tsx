@@ -1,4 +1,19 @@
-import { createContext, useContext, lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type JSX, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  lazy,
+  memo,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type JSX,
+  type ReactNode,
+} from "react";
+import { systemActions } from "../data/bridgeActions.js";
 import { VisualizationSessionContext } from "../lib/visualizationSession.js";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -11,7 +26,10 @@ import type * as MarkdownBlocks from "../lib/markdownBlocks.js";
 import type { MarkdownBlock, MarkdownBlockSplit } from "../lib/markdownBlocks.js";
 import { revealBoundary } from "../lib/streamingText.js";
 import { needsMath } from "../lib/needsMath.js";
-import { remarkVisualizationReferences, VISUALIZATION_START } from "../lib/visualizationReference.js";
+import {
+  remarkVisualizationReferences,
+  VISUALIZATION_START,
+} from "../lib/visualizationReference.js";
 import { importChunk } from "../lib/importChunk.js";
 import {
   FRESH_RUN_FADE_MS,
@@ -19,7 +37,7 @@ import {
   paintFreshRuns,
   rehypeFreshRuns,
   trackFreshRuns,
-  type FreshRun
+  type FreshRun,
 } from "../lib/streamFreshRuns.js";
 import { ChatSourceChip } from "./ChatSourceChip.js";
 import { CodeBlock } from "./CodeBlock.js";
@@ -36,13 +54,17 @@ import { showToast } from "../state/toast.js";
 // renderer rebuilds: the hashed chunk it asks for is gone, and a rejected
 // lazy load inside the transcript takes the whole app to the error boundary.
 const MermaidDiagram = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./MermaidDiagram.js")).MermaidDiagram
-  }))
+  importChunk(
+    async () => ({ default: (await import("./MermaidDiagram.js")).MermaidDiagram }),
+    "mermaid",
+  ),
 );
 
 const HtmlVisualization = lazy(() =>
-  importChunk(async () => ({ default: (await import("./HtmlVisualization.js")).HtmlVisualization }))
+  importChunk(
+    async () => ({ default: (await import("./HtmlVisualization.js")).HtmlVisualization }),
+    "html-visualization",
+  ),
 );
 
 function VisualizationBlock({ properties }: { properties: Record<string, unknown> }): JSX.Element {
@@ -52,9 +74,15 @@ function VisualizationBlock({ properties }: { properties: Record<string, unknown
   const state = properties["data-visualization"];
   if (state !== "ready") {
     const pending = state === "pending" && streaming;
-    return <p role={pending ? "status" : "alert"}>{pending
-      ? "Loading visualization reference"
-      : typeof properties["data-error"] === "string" ? properties["data-error"] : "Incomplete visualization reference."}</p>;
+    return (
+      <p role={pending ? "status" : "alert"}>
+        {pending
+          ? "Loading visualization reference"
+          : typeof properties["data-error"] === "string"
+            ? properties["data-error"]
+            : "Incomplete visualization reference."}
+      </p>
+    );
   }
   if (!sessionId) return <p role="alert">Visualization requires an owning chat.</p>;
   return (
@@ -71,9 +99,10 @@ function VisualizationBlock({ properties }: { properties: Record<string, unknown
 }
 
 const ChatMathMarkdown = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./MathMarkdown.js")).ChatMathMarkdown
-  }))
+  importChunk(
+    async () => ({ default: (await import("./MathMarkdown.js")).ChatMathMarkdown }),
+    "math",
+  ),
 );
 
 /** Seconds of arrived text the reveal keeps in hand. Enough to ride out the
@@ -156,9 +185,10 @@ function loadBlockTools(): Promise<BlockTools> {
 // be here before the first answer of a fresh chat streams, when no earlier
 // Markdown has mounted to fetch them. Fetch them once the chat code is idle.
 if (typeof window !== "undefined") {
-  const whenIdle = typeof window.requestIdleCallback === "function"
-    ? (run: () => void) => window.requestIdleCallback(run)
-    : (run: () => void) => window.setTimeout(run, 0);
+  const whenIdle =
+    typeof window.requestIdleCallback === "function"
+      ? (run: () => void) => window.requestIdleCallback(run)
+      : (run: () => void) => window.setTimeout(run, 0);
   whenIdle(() => {
     loadBlockTools().then(
       (loaded) => {
@@ -166,7 +196,7 @@ if (typeof window !== "undefined") {
       },
       () => {
         blockToolsLoad = null;
-      }
+      },
     );
   });
 }
@@ -185,7 +215,7 @@ function useBlockTools(): BlockTools | null {
       },
       () => {
         blockToolsLoad = null;
-      }
+      },
     );
     return () => {
       cancelled = true;
@@ -213,9 +243,11 @@ function rememberRevealed(key: string, length: number): void {
 }
 
 function readPrefersReducedMotion(): boolean {
-  return typeof window !== "undefined" &&
+  return (
+    typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 function usePrefersReducedMotion(): boolean {
@@ -238,7 +270,7 @@ function usePrefersReducedMotion(): boolean {
 function initialVisibleLength(
   length: number,
   streaming: boolean,
-  revealKey: string | null | undefined
+  revealKey: string | null | undefined,
 ): number {
   if (!streaming || length <= SMOOTH_STREAM_MIN_CHARS) return length;
   // Text already revealed once is history, so resume there instead of retyping it.
@@ -270,18 +302,22 @@ function useSmoothStreamingText(
   text: string,
   streaming: boolean,
   revealKey: string | null | undefined,
-  restoring = false
+  restoring = false,
 ): { text: string; revealing: boolean } {
   const prefersReducedMotion = usePrefersReducedMotion();
   const paced = streaming && !prefersReducedMotion && !restoring;
   const [reveal, setReveal] = useState<RevealState>(() => ({
     visible: initialVisibleLength(text.length, paced, revealKey),
-    finishing: false
+    finishing: false,
   }));
   const revealing = paced || reveal.finishing;
   const textRef = useRef(text);
   const streamingRef = useRef(streaming);
-  const motionRef = useRef({ position: reveal.visible, speed: 0, lastFrame: null as number | null });
+  const motionRef = useRef({
+    position: reveal.visible,
+    speed: 0,
+    lastFrame: null as number | null,
+  });
 
   useEffect(() => {
     if (revealKey && streaming) rememberRevealed(revealKey, reveal.visible);
@@ -299,7 +335,7 @@ function useSmoothStreamingText(
       setReveal((current) =>
         current.visible === text.length && !current.finishing
           ? current
-          : { visible: text.length, finishing: false }
+          : { visible: text.length, finishing: false },
       );
       return;
     }
@@ -344,7 +380,9 @@ function useSmoothStreamingText(
       motion.position = target;
       motion.speed = 0;
       setReveal((state) =>
-        state.visible === target && !state.finishing ? state : { visible: target, finishing: false }
+        state.visible === target && !state.finishing
+          ? state
+          : { visible: target, finishing: false },
       );
     }, REVEAL_RESYNC_GAP_MS);
     const unsubscribe = subscribeToRevealFrames((now) => {
@@ -363,10 +401,13 @@ function useSmoothStreamingText(
         const backlog = target - motion.position;
         const wanted = Math.min(
           Math.max(backlog / REVEAL_LAG_S, REVEAL_MIN_CHARS_PER_S),
-          Math.max(REVEAL_MAX_CHARS_PER_S, backlog / REVEAL_BURST_S)
+          Math.max(REVEAL_MAX_CHARS_PER_S, backlog / REVEAL_BURST_S),
         );
         motion.speed += (wanted - motion.speed) * (1 - Math.exp(-dt / REVEAL_SPEED_SMOOTHING_S));
-        motion.position = Math.min(target, motion.position + Math.max(motion.speed, REVEAL_MIN_CHARS_PER_S) * dt);
+        motion.position = Math.min(
+          target,
+          motion.position + Math.max(motion.speed, REVEAL_MIN_CHARS_PER_S) * dt,
+        );
       }
       const boundary = revealBoundary(current, motion.position, streamingRef.current);
       setReveal((state) => {
@@ -374,7 +415,9 @@ function useSmoothStreamingText(
         // The frame that lands the last character also ends the finishing
         // pass, so the block settles into its history rendering at once.
         const finishing = state.finishing && visible < target;
-        return visible === state.visible && finishing === state.finishing ? state : { visible, finishing };
+        return visible === state.visible && finishing === state.finishing
+          ? state
+          : { visible, finishing };
       });
     });
     return () => {
@@ -400,10 +443,10 @@ function useFreshRuns(end: number, active: boolean): readonly FreshRun[] {
   const [, settle] = useReducer((count: number) => count + 1, 0);
   const runs = active
     ? trackFreshRuns(runsRef.current, lastEndRef.current, end, performance.now())
-    // A block whose reveal just ended keeps its last runs until they have
-    // finished; dropping them with the reveal would snap the final words to
-    // full ink.
-    : runsRef.current;
+    : // A block whose reveal just ended keeps its last runs until they have
+      // finished; dropping them with the reveal would snap the final words to
+      // full ink.
+      runsRef.current;
   runsRef.current = runs;
   lastEndRef.current = active ? end : null;
 
@@ -413,10 +456,13 @@ function useFreshRuns(end: number, active: boolean): readonly FreshRun[] {
   const newest = runs.at(-1)?.at ?? null;
   useEffect(() => {
     if (newest === null) return;
-    const timer = window.setTimeout(() => {
-      runsRef.current = NO_FRESH_RUNS;
-      settle();
-    }, Math.max(newest + FRESH_RUN_FADE_MS - performance.now(), 0) + 16);
+    const timer = window.setTimeout(
+      () => {
+        runsRef.current = NO_FRESH_RUNS;
+        settle();
+      },
+      Math.max(newest + FRESH_RUN_FADE_MS - performance.now(), 0) + 16,
+    );
     return () => window.clearTimeout(timer);
   }, [newest]);
 
@@ -460,7 +506,7 @@ function inlineText(node: InlineNode): string {
    whole paragraph, not a heading. */
 function isBoldOnlyLine(node: InlineNode): boolean {
   const inline = (node.children ?? []).filter(
-    (child) => !(child.type === "text" && (child.value ?? "").trim() === "")
+    (child) => !(child.type === "text" && (child.value ?? "").trim() === ""),
   );
   if (inline.length !== 1) return false;
   const [only] = inline;
@@ -471,7 +517,8 @@ function isBoldOnlyLine(node: InlineNode): boolean {
 
 const markdownComponents: Components = {
   div: function MarkdownDivision({ node, children, ...rest }) {
-    if (node?.properties["data-visualization"]) return <VisualizationBlock properties={node.properties} />;
+    if (node?.properties["data-visualization"])
+      return <VisualizationBlock properties={node.properties} />;
     return <div {...rest}>{children}</div>;
   },
   p: function MarkdownParagraph({ node, children, ...rest }) {
@@ -514,7 +561,7 @@ const markdownComponents: Components = {
       line: match.line,
       workspaceId: workspace?.id ?? null,
       workspaceCwd: workspace?.path ?? null,
-      onOpen: onOpenFile
+      onOpen: onOpenFile,
     };
     return match.needsExistenceCheck ? (
       <CheckedFileChip {...chipProps} fallback={code} />
@@ -560,16 +607,17 @@ const markdownComponents: Components = {
         onClick={(event) => {
           // Directory and extensionless links must never navigate the app webview.
           event.preventDefault();
-          const api = window.argmax;
-          if (!api) return;
+          const system = systemActions();
+          if (!system) return;
           const path = normalizeFileChipPath(href, null);
           void withToast(
-            () => api.system.openPath({
-              path,
-              cwd: path.startsWith("/") ? undefined : workspace?.path
-            }),
+            () =>
+              system.openPath({
+                path,
+                cwd: path.startsWith("/") ? undefined : workspace?.path,
+              }),
             showToast,
-            "Could not open this path."
+            "Could not open this path.",
           );
         }}
       >
@@ -582,7 +630,7 @@ const markdownComponents: Components = {
       line: match.line,
       workspaceId: workspace?.id ?? null,
       workspaceCwd: workspace?.path ?? null,
-      onOpen: onOpenFile
+      onOpen: onOpenFile,
     };
     // An extensionless link to a directory keeps opening in the system.
     return match.needsExistenceCheck ? (
@@ -593,17 +641,10 @@ const markdownComponents: Components = {
   },
   img: function MarkdownImg({ src, alt }) {
     const { workspace, onOpenFile } = useContext(MarkdownContext);
-    return (
-      <MarkdownImage
-        src={src}
-        alt={alt}
-        workspace={workspace}
-        onOpenFile={onOpenFile}
-      />
-    );
+    return <MarkdownImage src={src} alt={alt} workspace={workspace} onOpenFile={onOpenFile} />;
   },
   table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
-  pre: ({ children }) => <>{children}</>
+  pre: ({ children }) => <>{children}</>,
 };
 
 /**
@@ -628,7 +669,7 @@ function parsedMarkdownTree(text: string): JSX.Element {
     children: text,
     remarkPlugins: [remarkGfm, remarkVisualizationReferences],
     urlTransform: chatUrlTransform,
-    components: markdownComponents
+    components: markdownComponents,
   });
   parsedMarkdown.set(text, tree);
   parsedMarkdownChars += text.length;
@@ -647,7 +688,7 @@ const MarkdownBody = memo(function MarkdownBody({
   settled = false,
   sourceEventId,
   workspace,
-  onOpenFile
+  onOpenFile,
 }: MarkdownContextValue & {
   text: string;
   freshRuns?: readonly FreshRun[];
@@ -655,13 +696,17 @@ const MarkdownBody = memo(function MarkdownBody({
       live one. Only settled text is worth keeping parsed. */
   settled?: boolean;
 }): JSX.Element {
-  const context = useMemo(() => ({ workspace, onOpenFile, sourceEventId }), [workspace, onOpenFile, sourceEventId]);
+  const context = useMemo(
+    () => ({ workspace, onOpenFile, sourceEventId }),
+    [workspace, onOpenFile, sourceEventId],
+  );
   const withMath = needsMath(text);
   // Math renders through its own pipeline, where a span cut into a formula's
   // source would be a rendering bug rather than a fade.
   const rehypePlugins = useMemo(
-    () => (freshRuns && freshRuns.length > 0 && !withMath ? [rehypeFreshRuns(freshRuns)] : undefined),
-    [freshRuns, withMath]
+    () =>
+      freshRuns && freshRuns.length > 0 && !withMath ? [rehypeFreshRuns(freshRuns)] : undefined,
+    [freshRuns, withMath],
   );
   // Settled text renders from the parse cache. Live text changes every frame,
   // and a fading block's tree changes with its runs, so those parse as they go.
@@ -670,25 +715,37 @@ const MarkdownBody = memo(function MarkdownBody({
   // block settling keeps its DOM (and a code block its scroll position).
   const plain = withMath ? (
     // Only the fallback while the math chunk loads, so it stays lazy.
-    <ReactMarkdown remarkPlugins={[remarkGfm, remarkVisualizationReferences]} urlTransform={chatUrlTransform} components={markdownComponents}>
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkVisualizationReferences]}
+      urlTransform={chatUrlTransform}
+      components={markdownComponents}
+    >
       {text}
     </ReactMarkdown>
-  ) : !settled || rehypePlugins
-      ? ReactMarkdown({
-          children: text,
-          remarkPlugins: [remarkGfm, remarkVisualizationReferences],
-          rehypePlugins,
-          urlTransform: chatUrlTransform,
-          components: markdownComponents
-        })
-      : parsedMarkdownTree(text);
+  ) : !settled || rehypePlugins ? (
+    ReactMarkdown({
+      children: text,
+      remarkPlugins: [remarkGfm, remarkVisualizationReferences],
+      rehypePlugins,
+      urlTransform: chatUrlTransform,
+      components: markdownComponents,
+    })
+  ) : (
+    parsedMarkdownTree(text)
+  );
   return (
     <MarkdownContext.Provider value={context}>
       {withMath ? (
         <Suspense fallback={plain}>
-          <ChatMathMarkdown text={text} components={markdownComponents} urlTransform={chatUrlTransform} />
+          <ChatMathMarkdown
+            text={text}
+            components={markdownComponents}
+            urlTransform={chatUrlTransform}
+          />
         </Suspense>
-      ) : plain}
+      ) : (
+        plain
+      )}
     </MarkdownContext.Provider>
   );
 });
@@ -699,7 +756,7 @@ const MarkdownBody = memo(function MarkdownBody({
 function blockFreshRuns(
   runs: readonly FreshRun[],
   block: MarkdownBlock,
-  cache: Map<number, readonly FreshRun[]>
+  cache: Map<number, readonly FreshRun[]>,
 ): readonly FreshRun[] {
   const end = block.start + block.text.length;
   const inside: FreshRun[] = [];
@@ -708,7 +765,7 @@ function blockFreshRuns(
     inside.push({
       start: Math.max(0, run.start - block.start),
       end: Math.min(block.text.length, run.end - block.start),
-      at: run.at
+      at: run.at,
     });
   }
   const previous = cache.get(block.start) ?? NO_FRESH_RUNS;
@@ -716,7 +773,9 @@ function blockFreshRuns(
     previous.length === inside.length &&
     inside.every(
       (run, index) =>
-        run.start === previous[index].start && run.end === previous[index].end && run.at === previous[index].at
+        run.start === previous[index].start &&
+        run.end === previous[index].end &&
+        run.at === previous[index].at,
     );
   const next = same ? previous : inside.length === 0 ? NO_FRESH_RUNS : inside;
   cache.set(block.start, next);
@@ -731,7 +790,7 @@ export function StreamingMarkdown({
   revealKey,
   sourceEventId,
   workspace,
-  onOpenFile
+  onOpenFile,
 }: {
   text: string;
   streaming: boolean;
@@ -753,7 +812,7 @@ export function StreamingMarkdown({
     text,
     streaming && paced,
     revealKey,
-    restoring
+    restoring,
   );
   // A block still typing out its remainder after the stream ended keeps the
   // live rendering path until the last character lands.
@@ -771,8 +830,11 @@ export function StreamingMarkdown({
   const markdownText = hasLogs ? visibleText : segments.map((segment) => segment.text).join("");
   const splitMode = splitModeRef.current === true;
   const split = useMemo(
-    () => (tools && splitMode && !hasLogs ? tools.splitMarkdownBlocks(markdownText, splitRef.current) : null),
-    [tools, splitMode, hasLogs, markdownText]
+    () =>
+      tools && splitMode && !hasLogs
+        ? tools.splitMarkdownBlocks(markdownText, splitRef.current)
+        : null,
+    [tools, splitMode, hasLogs, markdownText],
   );
   useLayoutEffect(() => {
     splitRef.current = split;
@@ -786,7 +848,7 @@ export function StreamingMarkdown({
     // Only the typewriter's own output fades. An unpaced block — a live thought
     // — still drains its remainder through `revealing`, and its words are not
     // the answer being written.
-    revealing && paced && markdownText.length === visibleText.length
+    revealing && paced && markdownText.length === visibleText.length,
   );
   const bodyRef = useRef<HTMLDivElement | null>(null);
   // After the paint that adds a run, never before it: the fade has to be on the
@@ -803,9 +865,15 @@ export function StreamingMarkdown({
         <LogBlock key={`log-${index}`} text={segment.text} />
       ) : (
         <div key={`md-${index}`} className="markdown">
-          <MarkdownBody text={segment.text} sourceEventId={sourceEventId} settled={!live} workspace={workspace} onOpenFile={onOpenFile} />
+          <MarkdownBody
+            text={segment.text}
+            sourceEventId={sourceEventId}
+            settled={!live}
+            workspace={workspace}
+            onOpenFile={onOpenFile}
+          />
         </div>
-      )
+      ),
     );
   } else if (split) {
     // Only the last block is still being written, so only it re-parses as the
@@ -816,8 +884,11 @@ export function StreamingMarkdown({
       return (
         <StreamingCodeContext.Provider key={block.start} value={open}>
           <MarkdownBody
-            text={open && tools && !block.text.trimStart().startsWith(VISUALIZATION_START)
-              ? tools.healStreamingTail(block.text) : block.text}
+            text={
+              open && tools && !block.text.trimStart().startsWith(VISUALIZATION_START)
+                ? tools.healStreamingTail(block.text)
+                : block.text
+            }
             freshRuns={blockFreshRuns(freshRuns, block, blockRunsRef.current)}
             sourceEventId={sourceEventId}
             settled={index < split.blocks.length - 2 || !live}
@@ -843,13 +914,18 @@ export function StreamingMarkdown({
   return (
     <div
       ref={bodyRef}
+      data-testid="streaming-markdown"
       className={
         hasLogs
           ? `markdown-with-logs${live ? " markdown-streaming" : ""}`
           : `markdown${live ? " markdown-streaming" : ""}`
       }
     >
-      {split ? body : <StreamingCodeContext.Provider value={live}>{body}</StreamingCodeContext.Provider>}
+      {split ? (
+        body
+      ) : (
+        <StreamingCodeContext.Provider value={live}>{body}</StreamingCodeContext.Provider>
+      )}
     </div>
   );
 }

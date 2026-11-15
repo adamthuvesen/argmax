@@ -19,28 +19,26 @@ use super::super::{
 };
 use super::resolve_project;
 use crate::{
-    ipc::{
-        inputs::{ProvidersSendInput, ProvidersTerminateInput},
-        validation::{Prompt, SessionId},
+    providers::inputs::{ProvidersSendInput, ProvidersTerminateInput},
+    providers::session_service::ProviderSessionService,
+};
+use argmax_contracts::messages::MessageOrigin;
+use argmax_contracts::validation::{Prompt, SessionId};
+use argmax_store::{
+    dashboard::DASHBOARD_ROW_LIMIT,
+    database::Database,
+    events::{
+        find_event_by_id, human_referenced_session_ids, latest_agent_message,
+        latest_user_message_at, list_session_events_since, TimelineEvent, SESSION_EVENT_PAGE_LIMIT,
     },
-    persistence::{
-        dashboard::DASHBOARD_ROW_LIMIT,
-        database::Database,
-        events::{
-            find_event_by_id, human_referenced_session_ids, latest_agent_message,
-            latest_user_message_at, list_session_events_since, TimelineEvent,
-            SESSION_EVENT_PAGE_LIMIT,
-        },
-        learnings::search_session_conversations,
-        projects::list_projects,
-        session_messages::{
-            count_undelivered_messages, insert_session_message, take_undelivered_messages,
-            NewSessionMessage, SessionMessage, MESSAGE_KIND,
-        },
-        sessions::{find_session_by_id, list_sessions_for_dashboard, session_launch_lineage},
-        workspaces::{find_workspace_by_id, list_workspaces, WorkspaceSummary},
+    learnings::search_session_conversations,
+    projects::list_projects,
+    session_messages::{
+        count_undelivered_messages, insert_session_message, take_undelivered_messages,
+        NewSessionMessage, SessionMessage, MESSAGE_KIND,
     },
-    providers::session_service::{MessageOrigin, ProviderSessionService},
+    sessions::{find_session_by_id, list_sessions_for_dashboard, session_launch_lineage},
+    workspaces::{find_workspace_by_id, list_workspaces, WorkspaceSummary},
 };
 
 pub(super) async fn list_sessions_action(
@@ -66,7 +64,7 @@ pub(super) async fn list_sessions_action(
     let scoped_projects = if action.all {
         all_projects
             .into_iter()
-            .filter(|project| project.id != crate::workspaces::SCRATCH_PROJECT_ID)
+            .filter(|project| project.id != crate::workspaces::orchestration::SCRATCH_PROJECT_ID)
             .collect::<Vec<_>>()
     } else {
         vec![resolve_project(
@@ -235,6 +233,7 @@ pub(super) async fn message_session(
     let result = providers
         .send_agent_message(
             ProvidersSendInput {
+                submitted_at_ms: None,
                 agent_references: None,
                 session_id: target,
                 input: message,
@@ -261,7 +260,7 @@ pub(super) async fn message_session(
     if !result.queued {
         let connection = database.connection();
         if let Err(error) =
-            crate::persistence::session_messages::mark_message_delivered(&connection, &message_id)
+            argmax_store::session_messages::mark_message_delivered(&connection, &message_id)
         {
             tracing::warn!(?error, "failed to mark a session message delivered");
         }
@@ -370,7 +369,7 @@ impl ReadCaller {
             return true;
         }
         if self.project_id == target_project_id
-            && self.project_id != crate::workspaces::SCRATCH_PROJECT_ID
+            && self.project_id != crate::workspaces::orchestration::SCRATCH_PROJECT_ID
         {
             return true;
         }

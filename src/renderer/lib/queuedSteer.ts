@@ -1,5 +1,5 @@
 import type { PendingMessage, SessionSummary } from "../../shared/types.js";
-import { successorModelId } from "../../shared/providerModels.js";
+import { resolveModelId } from "../../shared/providerModels.js";
 
 /**
  * Leave enough room for the steered continuation and its first tool result.
@@ -10,7 +10,7 @@ import { successorModelId } from "../../shared/providerModels.js";
 const CODEX_STEER_MAX_CONTEXT_RATIO = 0.85;
 
 export function hasSteeringContextHeadroom(
-  session: Pick<SessionSummary, "provider" | "contextTokens" | "contextWindow">
+  session: Pick<SessionSummary, "provider" | "contextTokens" | "contextWindow">,
 ): boolean {
   if (session.provider !== "codex") return true;
   if (!session.contextWindow || session.contextWindow <= 0) return true;
@@ -30,14 +30,9 @@ export function hasSteeringContextHeadroom(
 export function canSteerQueuedMessage(
   session: Pick<
     SessionSummary,
-    | "state"
-    | "provider"
-    | "modelId"
-    | "reasoningEffort"
-    | "contextTokens"
-    | "contextWindow"
+    "state" | "provider" | "modelId" | "reasoningEffort" | "contextTokens" | "contextWindow"
   >,
-  entry: Pick<PendingMessage, "modelId" | "reasoningEffort" | "provider">
+  entry: Pick<PendingMessage, "modelId" | "reasoningEffort" | "provider">,
 ): boolean {
   return (
     session.state === "running" &&
@@ -47,7 +42,8 @@ export function canSteerQueuedMessage(
       session.provider === "claude" ||
       session.provider === "opencode") &&
     hasSteeringContextHeadroom(session) &&
-    (entry.modelId === undefined || entry.modelId === successorModelId(session.provider, session.modelId)) &&
+    (entry.modelId === undefined ||
+      entry.modelId === resolveModelId(session.provider, session.modelId)) &&
     (entry.reasoningEffort === undefined || entry.reasoningEffort === session.reasoningEffort)
   );
 }

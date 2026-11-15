@@ -50,7 +50,7 @@ type TurnBoundary =
 /** Fold one event (scanning right-to-left) into the session's next-boundary state. */
 function advanceTurnBoundary(
   previous: TurnBoundary | undefined,
-  event: TimelineEvent
+  event: TimelineEvent,
 ): TurnBoundary | undefined {
   const canonical = decodeTimelineEvent(event);
   if (
@@ -66,11 +66,7 @@ function advanceTurnBoundary(
       ? { kind: "tool", completedText: previous.completedText }
       : previous;
   }
-  if (
-    canonical.kind === "message" &&
-    canonical.role === "user" &&
-    canonical.delivery !== "steer"
-  ) {
+  if (canonical.kind === "message" && canonical.role === "user" && canonical.delivery !== "steer") {
     return { kind: "user" };
   }
   return previous;
@@ -93,7 +89,7 @@ function isCompletedPrefixDuplicate(runText: string, completedText: string): boo
  */
 export function supersededAnswerDeltaIds(
   ascending: readonly TimelineEvent[],
-  skip: (event: TimelineEvent) => boolean = () => false
+  skip: (event: TimelineEvent) => boolean = () => false,
 ): Set<string> {
   const nextBoundary = new Map<string, TurnBoundary>();
   const runs = new Map<string, { completedText: string; ids: string[]; fragments: string[] }>();
@@ -117,7 +113,11 @@ export function supersededAnswerDeltaIds(
       if (boundary?.kind === "completed") {
         superseded.add(event.id);
       } else if (boundary?.kind === "tool" && boundary.completedText !== null) {
-        const run = runs.get(event.sessionId) ?? { completedText: boundary.completedText, ids: [], fragments: [] };
+        const run = runs.get(event.sessionId) ?? {
+          completedText: boundary.completedText,
+          ids: [],
+          fragments: [],
+        };
         run.ids.push(event.id);
         run.fragments.push(event.message);
         runs.set(event.sessionId, run);

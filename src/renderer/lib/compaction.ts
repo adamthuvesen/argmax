@@ -19,8 +19,10 @@ export interface CompactionNotice {
 
 function isCompactionEvent(event: TimelineEvent): boolean {
   const canonical = decodeTimelineEvent(event);
-  return canonical.kind === "lifecycle" &&
-    (canonical.name === "compacting" || canonical.name === "compacted");
+  return (
+    canonical.kind === "lifecycle" &&
+    (canonical.name === "compacting" || canonical.name === "compacted")
+  );
 }
 
 export function compactionNoticeFor(event: TimelineEvent): CompactionNotice {
@@ -34,7 +36,7 @@ export function compactionNoticeFor(event: TimelineEvent): CompactionNotice {
   return {
     running: canonical.name === "compacting",
     preTokens: canonical.preTokens,
-    postTokens: canonical.postTokens
+    postTokens: canonical.postTokens,
   };
 }
 
@@ -48,9 +50,11 @@ export function compactionNoticeFor(event: TimelineEvent): CompactionNotice {
 function landsDuringCompaction(event: TimelineEvent): boolean {
   if (event.type === "command.completed") return true;
   const canonical = decodeTimelineEvent(event);
-  return canonical.parentToolUseId !== null ||
+  return (
+    canonical.parentToolUseId !== null ||
     canonical.providerThreadId !== null ||
-    canonical.providerChildSessionId !== null;
+    canonical.providerChildSessionId !== null
+  );
 }
 
 /**

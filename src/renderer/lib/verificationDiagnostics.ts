@@ -40,7 +40,7 @@ export function installVerificationDiagnostics(): void {
     entries.push({
       timestamp: new Date().toISOString(),
       level,
-      message: values.map(describe).join(" ")
+      message: values.map(describe).join(" "),
     });
     if (entries.length > MAX_ENTRIES) entries.splice(0, entries.length - MAX_ENTRIES);
   };
@@ -63,6 +63,6 @@ export function installVerificationDiagnostics(): void {
   });
 
   window.__ARGMAX_VERIFICATION__ = {
-    snapshot: () => ({ entries: entries.slice(), breadcrumbs: rendererLogSnapshot() })
+    snapshot: () => ({ entries: entries.slice(), breadcrumbs: rendererLogSnapshot() }),
   };
 }

@@ -7,7 +7,7 @@ import type {
   ProjectSummary,
   SessionSummary,
   TimelineEvent,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../shared/types.js";
 import { SessionConversation } from "../renderer/components/SessionConversation.js";
 import type { ReviewState } from "../renderer/hooks/useReviewState.js";
@@ -41,7 +41,7 @@ export function baseSession(overrides: Partial<SessionSummary> = {}): SessionSum
     contextTokens: 0,
     imported: false,
     launchKind: "agent",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -68,7 +68,7 @@ export const workspace: WorkspaceSummary = {
   prCreatedAt: null,
   prMergedAt: null,
   prCheckState: null,
-  prActivityAt: null
+  prActivityAt: null,
 };
 
 export const project: ProjectSummary = {
@@ -81,10 +81,10 @@ export const project: ProjectSummary = {
     mergeCleanup: "off",
     worktreeLocation: "/tmp/worktrees",
     setupCommand: "",
-    checkCommands: []
+    checkCommands: [],
   },
   counts: { active: 1, blocked: 0, failed: 0, reviewReady: 0 },
-  latestActivityAt: "2026-05-12T15:54:00.000Z"
+  latestActivityAt: "2026-05-12T15:54:00.000Z",
 };
 
 export function event(
@@ -92,7 +92,7 @@ export function event(
   type: TimelineEvent["type"],
   message: string,
   createdAt: string,
-  payload: Record<string, unknown> = {}
+  payload: Record<string, unknown> = {},
 ): TimelineEvent {
   return {
     id,
@@ -100,7 +100,7 @@ export function event(
     type,
     message,
     payload,
-    createdAt
+    createdAt,
   };
 }
 
@@ -109,7 +109,7 @@ export function cursorAssistantPayload(text: string): Record<string, unknown> {
     type: "assistant",
     message: { role: "assistant", content: [{ type: "text", text }] },
     session_id: "cursor-uuid-1",
-    timestamp_ms: 1778771186474
+    timestamp_ms: 1778771186474,
   };
 }
 
@@ -124,7 +124,6 @@ type ConversationOptions = {
   pendingMessages?: PendingMessage[];
   goalEnabled?: boolean;
   /** Stands in for the phone shell drawing the composer card itself. */
-  nativeComposerFloor?: boolean;
   // The conversation's own prop types, not `ReturnType<typeof vi.fn>`:
   // Vitest 4 types a bare `vi.fn()` as `Mock<Procedure | Constructable>`,
   // which no longer widens to a call signature, so a loose option type here
@@ -137,8 +136,6 @@ type ConversationOptions = {
   onClearSession?: ConversationProps["onClearSession"];
   onNewSession?: ConversationProps["onNewSession"];
   onOpenFile?: (path: string, opts?: { line?: number | null; preferIde?: boolean }) => void;
-  onOpenDiff?: (path: string) => void;
-  onOpenChanges?: () => void;
   onOpenAgent?: (tool: ToolCall) => void;
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
   onOpenDetails?: (seedPrompt: string) => Promise<void>;
@@ -156,13 +153,12 @@ type ConversationOptions = {
 export function conversationElement(
   session: SessionSummary,
   events: TimelineEvent[],
-  options: ConversationOptions
+  options: ConversationOptions,
 ): JSX.Element {
   return (
     <SessionConversation
       isFocused={options.isFocused ?? true}
       goalEnabled={options.goalEnabled ?? true}
-      nativeComposerFloor={options.nativeComposerFloor ?? false}
       events={events}
       eventsBackfilled={options.eventsBackfilled ?? true}
       historyLoadFailed={options.historyLoadFailed ?? false}
@@ -174,15 +170,21 @@ export function conversationElement(
       onSendQueuedMessageNow={options.onSendQueuedMessageNow ?? vi.fn(() => Promise.resolve())}
       pendingMessages={options.pendingMessages ?? []}
       onToggleLog={vi.fn()}
-      {...(options.thinkingDisplay !== undefined ? { thinkingDisplay: options.thinkingDisplay } : {})}
-      {...(options.defaultToolCallsDisplay !== undefined ? { defaultToolCallsDisplay: options.defaultToolCallsDisplay } : {})}
-      {...(options.defaultToolCallGroupsExpanded !== undefined ? { defaultToolCallGroupsExpanded: options.defaultToolCallGroupsExpanded } : {})}
-      {...(options.defaultFollowUpDelivery !== undefined ? { defaultFollowUpDelivery: options.defaultFollowUpDelivery } : {})}
+      {...(options.thinkingDisplay !== undefined
+        ? { thinkingDisplay: options.thinkingDisplay }
+        : {})}
+      {...(options.defaultToolCallsDisplay !== undefined
+        ? { defaultToolCallsDisplay: options.defaultToolCallsDisplay }
+        : {})}
+      {...(options.defaultToolCallGroupsExpanded !== undefined
+        ? { defaultToolCallGroupsExpanded: options.defaultToolCallGroupsExpanded }
+        : {})}
+      {...(options.defaultFollowUpDelivery !== undefined
+        ? { defaultFollowUpDelivery: options.defaultFollowUpDelivery }
+        : {})}
       {...(options.onMultitask ? { onMultitask: options.onMultitask } : {})}
       {...(options.onNewSession ? { onNewSession: options.onNewSession } : {})}
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}
-      {...(options.onOpenDiff ? { onOpenDiff: options.onOpenDiff } : {})}
-      {...(options.onOpenChanges ? { onOpenChanges: options.onOpenChanges } : {})}
       onOpenAgent={options.onOpenAgent ?? vi.fn()}
       {...(options.onOpenSideChat ? { onOpenSideChat: options.onOpenSideChat } : {})}
       {...(options.onOpenDetails ? { onOpenDetails: options.onOpenDetails } : {})}
@@ -202,7 +204,7 @@ export function conversationElement(
 export function renderConversation(
   session: SessionSummary,
   events: TimelineEvent[] = [],
-  options: ConversationOptions = {}
+  options: ConversationOptions = {},
 ) {
   return render(conversationElement(session, events, options));
 }
@@ -213,7 +215,7 @@ export function rerenderConversation(
   rerender: RenderResult["rerender"],
   session: SessionSummary,
   events: TimelineEvent[] = [],
-  options: ConversationOptions = {}
+  options: ConversationOptions = {},
 ): void {
   rerender(conversationElement(session, events, options));
 }

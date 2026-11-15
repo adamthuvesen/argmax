@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type JSX, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type {
   AgentMode,
   ApprovalRequest,
@@ -9,7 +16,7 @@ import type {
   RawProviderOutput,
   SessionSummary,
   TimelineEvent,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../../shared/types.js";
 import type { SendInputResult } from "../../shared/bindings.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
@@ -18,7 +25,7 @@ import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import {
   readBoundedNumberPreference,
   type ThinkingDisplay,
-  type ToolCallsDisplay
+  type ToolCallsDisplay,
 } from "../lib/uiPreferences.js";
 import { useReviewState } from "../hooks/useReviewState.js";
 import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
@@ -65,7 +72,7 @@ export function DetailsPopup({
   project,
   rawOutputs = [],
   session,
-  workspace
+  workspace,
 }: {
   approvals?: ApprovalRequest[];
   /** Settings → Appearance: keep the floating composer on the agent-window scale. */
@@ -83,13 +90,13 @@ export function DetailsPopup({
   onSendQueuedMessageNow: (
     sessionId: string,
     messageId: string,
-    delivery?: QueuedMessageDelivery
+    delivery?: QueuedMessageDelivery,
   ) => Promise<void>;
   onMultitask?: (
     sessionId: string,
     prompt: string,
     provider: ProviderId,
-    pendingMessageId?: string
+    pendingMessageId?: string,
   ) => Promise<void>;
   /** The popup has no dock, so a multitask dispatched from it opens as a full
    *  chat — the same fallback the phone uses. Without it the row is a button
@@ -100,7 +107,7 @@ export function DetailsPopup({
     input: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
-    attachments?: ComposerAttachment[]
+    attachments?: ComposerAttachment[],
   ) => Promise<SendInputResult>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
@@ -114,7 +121,7 @@ export function DetailsPopup({
   const { events: sessionEvents, rawOutputs: visibleRawOutputs } = useSessionTimeline(
     sessionId,
     events,
-    rawOutputs
+    rawOutputs,
   );
   // The seed prompt restates the excerpt the user just selected, so it only
   // eats panel space. Hide it (the oldest user message — events run newest
@@ -140,13 +147,13 @@ export function DetailsPopup({
     width: readBoundedNumberPreference(WIDTH_KEY, {
       min: MIN_WIDTH,
       max: MAX_WIDTH,
-      fallback: DEFAULT_WIDTH
+      fallback: DEFAULT_WIDTH,
     }),
     height: readBoundedNumberPreference(HEIGHT_KEY, {
       min: MIN_HEIGHT,
       max: MAX_HEIGHT,
-      fallback: DEFAULT_HEIGHT
-    })
+      fallback: DEFAULT_HEIGHT,
+    }),
   }));
   useEffect(() => {
     try {
@@ -166,7 +173,7 @@ export function DetailsPopup({
       dragCleanupRef.current?.();
       dragCleanupRef.current = null;
     },
-    []
+    [],
   );
   const startResize = (event: ReactPointerEvent<HTMLDivElement>): void => {
     event.preventDefault();
@@ -177,7 +184,7 @@ export function DetailsPopup({
     const onMove = (move: globalThis.PointerEvent): void => {
       setSize({
         width: Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth + (startX - move.clientX))),
-        height: Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, startHeight + (startY - move.clientY)))
+        height: Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, startHeight + (startY - move.clientY))),
       });
     };
     const stop = (): void => {
@@ -196,7 +203,7 @@ export function DetailsPopup({
 
   const sessionPendingMessages = useMemo(
     () => pendingMessages?.[sessionId] ?? [],
-    [pendingMessages, sessionId]
+    [pendingMessages, sessionId],
   );
 
   // Blank the prompt as well: foldConversation synthesizes a user bubble from
@@ -245,10 +252,15 @@ export function DetailsPopup({
         workspaceCardEnabled={false}
         workspace={workspace}
       />
-      {onResolveApproval && approvals.some((approval) => approval.sessionId === sessionId && approval.status === "pending") ? (
+      {onResolveApproval &&
+      approvals.some(
+        (approval) => approval.sessionId === sessionId && approval.status === "pending",
+      ) ? (
         <div className="details-popup-approvals">
           <ApprovalSurface
-            approvals={approvals.filter((approval) => approval.sessionId === sessionId && approval.status === "pending")}
+            approvals={approvals.filter(
+              (approval) => approval.sessionId === sessionId && approval.status === "pending",
+            )}
             events={sessionEvents}
             onResolveApproval={onResolveApproval}
           />

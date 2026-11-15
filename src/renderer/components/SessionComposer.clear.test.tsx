@@ -12,7 +12,10 @@ describe("SessionComposer /clear", () => {
   it("runs Clear from the slash menu without sending a prompt", () => {
     const onClearSession = vi.fn().mockResolvedValue(undefined);
     const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
-    renderConversation(baseSession({ state: "complete" }), [], { onClearSession, onSendSessionInput });
+    renderConversation(baseSession({ state: "complete" }), [], {
+      onClearSession,
+      onSendSessionInput,
+    });
 
     fireEvent.change(prompt(), { target: { value: "/clear" } });
     fireEvent.mouseDown(screen.getByRole("option", { name: /Clear/ }));
@@ -25,7 +28,10 @@ describe("SessionComposer /clear", () => {
   it("treats a sent /clear as the command, not a user message", async () => {
     const onClearSession = vi.fn().mockResolvedValue(undefined);
     const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
-    renderConversation(baseSession({ state: "complete" }), [], { onClearSession, onSendSessionInput });
+    renderConversation(baseSession({ state: "complete" }), [], {
+      onClearSession,
+      onSendSessionInput,
+    });
 
     fireEvent.change(prompt(), { target: { value: "/clear" } });
     fireEvent.mouseDown(document.body);

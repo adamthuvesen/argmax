@@ -26,50 +26,50 @@ export const ACCENT_OPTIONS: AccentOption[] = [
     id: "green",
     label: "Green",
     hint: "The original Argmax tint. Code additions and status greens stay semantic either way.",
-    swatch: { color: "#446c56", soft: "#e7efe7" }
+    swatch: { color: "#446c56", soft: "#e7efe7" },
   },
   {
     id: "teal",
     label: "Teal",
     hint: "Deep water between the sage and the blue. Cool, quiet, and never a status colour.",
-    swatch: { color: "#207070", soft: "#e3f0f0" }
+    swatch: { color: "#207070", soft: "#e3f0f0" },
   },
   {
     id: "purple",
     label: "Purple",
     hint: "A vivid purple accent for chrome.",
-    swatch: { color: "#8650d4", soft: "#f1e9fc" }
+    swatch: { color: "#8650d4", soft: "#f1e9fc" },
   },
   {
     id: "neutral",
     label: "Neutral",
     hint: "A quiet black/gray tint for the lowest-key interface.",
-    swatch: { color: "#6c6960", soft: "#ecebea" }
+    swatch: { color: "#6c6960", soft: "#ecebea" },
   },
   {
     id: "black",
     label: "Black",
     hint: "High-contrast ink. Black on paper, cream on charcoal.",
-    swatch: { color: "#1c1b18", soft: "#ecebea" }
+    swatch: { color: "#1c1b18", soft: "#ecebea" },
   },
   {
     id: "orange",
     label: "Orange",
     hint: "A warm orange accent for chrome without changing warnings or diffs.",
-    swatch: { color: "#ff8308", soft: "#fff0e1" }
+    swatch: { color: "#ff8308", soft: "#fff0e1" },
   },
   {
     id: "blue",
     label: "Blue",
     hint: "A cool blue accent for selection, focus, and transcript chrome.",
-    swatch: { color: "#396696", soft: "#e8eef5" }
+    swatch: { color: "#396696", soft: "#e8eef5" },
   },
   {
     id: "coral",
     label: "Coral",
     hint: "A warm red accent for chrome. Error states keep their own rose tint.",
-    swatch: { color: "#944b3e", soft: "#f8eae6" }
-  }
+    swatch: { color: "#944b3e", soft: "#f8eae6" },
+  },
 ];
 
 const ACCENT_IDS = new Set<AccentId>(ACCENT_OPTIONS.map((option) => option.id));

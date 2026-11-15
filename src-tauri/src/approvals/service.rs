@@ -1,7 +1,7 @@
 //! Persists native approval requests and resolves their live provider responders.
 //! Request and resolution writes are transactional with session state and events.
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -12,19 +12,19 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::approvals::dangerous_action_policy::{classify_command_risk, CommandRiskLevel};
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::approvals::{
+use crate::providers::flush_queue::DashboardDelta;
+use crate::providers::runtime::DeltaPublisher;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::approvals::{
+    cancel_pending_approval, cancel_pending_session_approvals, cancel_pending_workspace_approvals,
     find_approval_by_id, list_approvals_for_session, list_approvals_for_workspace,
     list_pending_approvals, persist_approval, resolve_approval, ApprovalRequest,
     PersistApprovalInput,
 };
-use crate::persistence::database::Database;
-use crate::persistence::events::{persist_timeline_event, PersistTimelineEventInput};
-use crate::persistence::sessions::{find_session_by_id, update_session_state, SessionStateInput};
-use crate::persistence::time::now_iso;
-use crate::providers::flush_queue::DashboardDelta;
-use crate::providers::runtime::DeltaPublisher;
-use crate::sessions::state::SessionState;
+use argmax_store::database::Database;
+use argmax_store::events::{persist_timeline_event, PersistTimelineEventInput};
+use argmax_store::sessions::{find_session_by_id, update_session_state, SessionStateInput};
 
 /// Soft cap on how many pending approvals we return in one IPC roundtrip.
 /// Matches the dashboard's `DASHBOARD_ROW_LIMIT` so a single user can't
@@ -116,7 +116,7 @@ impl ApprovalService {
                 "The provider turn has ended",
             ));
         }
-        if crate::persistence::approvals::find_approval_by_provider_request(
+        if argmax_store::approvals::find_approval_by_provider_request(
             &tx,
             session_id,
             provider,
@@ -194,8 +194,7 @@ impl ApprovalService {
                 && approval.provider_request_id.as_deref() == Some(request_id)
         }) {
             native.remove(&approval.id);
-            tx.execute("UPDATE approvals SET status = 'cancelled', resolved_at = ? WHERE id = ? AND status = 'pending'", (now_iso(), &approval.id))
-                .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+            cancel_pending_approval(&tx, &approval.id)?;
             cancelled.push(find_approval_by_id(&tx, &approval.id)?);
         }
         let session = find_session_by_id(&tx, session_id)?;
@@ -340,15 +339,7 @@ impl ApprovalService {
         let tx = conn
             .unchecked_transaction()
             .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-        let mut statement = tx
-            .prepare_cached(
-                "UPDATE approvals SET status = 'cancelled', resolved_at = ? WHERE status = 'pending' AND session_id IN (SELECT id FROM sessions WHERE workspace_id = ?)",
-            )
-            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-        statement
-            .execute((crate::persistence::time::now_iso(), workspace_id))
-            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-        drop(statement);
+        cancel_pending_workspace_approvals(&tx, workspace_id)?;
         tx.commit()
             .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
         native.retain(|id, _| !pending.iter().any(|approval| &approval.id == id));
@@ -379,11 +370,7 @@ impl ApprovalService {
         let tx = conn
             .unchecked_transaction()
             .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-        tx.execute(
-            "UPDATE approvals SET status = 'cancelled', resolved_at = ? WHERE session_id = ? AND status = 'pending'",
-            (now_iso(), session_id),
-        )
-        .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        cancel_pending_session_approvals(&tx, session_id)?;
         tx.commit()
             .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
         native.retain(|id, _| !pending.iter().any(|approval| &approval.id == id));
@@ -418,9 +405,10 @@ fn risk_level_str(level: CommandRiskLevel) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
-    use crate::persistence::sessions::{persist_session, PersistSessionInput};
-    use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
+    use crate::providers::model_catalogue::ModelId;
+    use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
+    use argmax_store::sessions::{persist_session, PersistSessionInput};
+    use argmax_store::workspaces::{persist_workspace, PersistWorkspaceInput};
     use tempfile::TempDir;
 
     fn setup() -> (Arc<Database>, String, TempDir) {
@@ -486,7 +474,8 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn claude_control_round_trip_waits_for_real_resolution() {
-        use crate::providers::{AgentMode, PermissionMode, ProviderId, ProviderLaunchInput};
+        use crate::providers::ProviderLaunchInput;
+        use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId};
         use std::os::unix::fs::PermissionsExt;
         let (database, session_id, dir) = setup();
         let svc = ApprovalService::new(database);
@@ -508,7 +497,7 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"d
             workspace_path: dir.path().to_path_buf(),
             prompt: "test".into(),
             model_label: "test".into(),
-            model_id: "test".into(),
+            model_id: ModelId::resolve(ProviderId::Claude, "test"),
             reasoning_effort: None,
             fast_mode: false,
             resume_conversation_id: None,
@@ -525,6 +514,7 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"d
             None,
             svc.clone(),
             Arc::new(|_| {}),
+            &crate::providers::prompt_gate::PromptGate::open(),
         )
         .await
         .unwrap();

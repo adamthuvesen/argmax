@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type RefObject,
+} from "react";
 import { attachSmoothWheel } from "../lib/smoothWheel.js";
 
 const BOTTOM_EPSILON_PX = 1;
@@ -36,7 +44,7 @@ export interface TranscriptFollow {
 export const ALWAYS_FOLLOWING: TranscriptFollow = {
   isDetached: () => false,
   newBelowCount: () => 0,
-  subscribe: () => () => undefined
+  subscribe: () => () => undefined,
 };
 
 export function useTranscriptFollow(follow: TranscriptFollow): {
@@ -54,6 +62,8 @@ export interface ConversationScroll {
   follow: TranscriptFollow;
   scrollToBottom: () => void;
   scrollToElement: (node: HTMLElement) => void;
+  /** Milliseconds since the reader last moved the transcript: wheel, key, touch, or scrollbar. */
+  msSinceScrollInput: () => number;
 }
 
 function contentTop(content: HTMLDivElement, node: Element): number {
@@ -67,7 +77,7 @@ function physicalScrollTop(scroll: HTMLDivElement, maxTop: number): number {
 function scrollableAncestor(
   scroll: HTMLDivElement,
   target: EventTarget | null,
-  direction: -1 | 1
+  direction: -1 | 1,
 ): HTMLElement | null {
   let node = target instanceof Element ? target : null;
   while (node && node !== scroll) {
@@ -88,7 +98,7 @@ function scrollableAncestor(
 function stableNestedScroller(
   content: HTMLDivElement,
   directChild: Element,
-  hit: Element
+  hit: Element,
 ): Element | null {
   let stable: Element | null = null;
   let node: Element | null = hit;
@@ -127,12 +137,15 @@ function stableBlock(directChild: Element, hit: Element): Element {
  */
 function readViewportAnchor(
   scroll: HTMLDivElement,
-  content: HTMLDivElement
+  content: HTMLDivElement,
 ): ViewportAnchor | null {
   const scrollRect = scroll.getBoundingClientRect();
   if (scrollRect.width < 2 || scrollRect.height < 2) return null;
   const y = scrollRect.top + Math.min(ANCHOR_INSET_PX, scrollRect.height / 3);
+  // A control such as Show earlier stays put while rows mount below it, so it
+  // cannot hold the reader's place.
   const directChild = Array.from(content.children).find((child) => {
+    if (child.hasAttribute("data-scroll-anchor-skip")) return false;
     const rect = child.getBoundingClientRect();
     return rect.bottom >= y;
   });
@@ -145,14 +158,16 @@ function readViewportAnchor(
   const hit = document.elementFromPoint(scrollRect.left + paddingLeft + width / 2, y);
   const node =
     hit instanceof Element && directChild.contains(hit)
-      ? stableNestedScroller(content, directChild, hit) ?? stableBlock(directChild, hit)
+      ? (stableNestedScroller(content, directChild, hit) ?? stableBlock(directChild, hit))
       : directChild;
   return { node, contentTop: contentTop(content, node) };
 }
 
 function isEditable(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
-  return Boolean(target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])"));
+  return Boolean(
+    target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])"),
+  );
 }
 
 function upwardKey(event: KeyboardEvent): boolean {
@@ -175,7 +190,7 @@ export function useConversationScroll({
   sessionId,
   items,
   resetKey = null,
-  enabled = true
+  enabled = true,
 }: ConversationScrollOptions): ConversationScroll {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -189,6 +204,7 @@ export function useConversationScroll({
   const touchYRef = useRef<number | null>(null);
   const touchTargetRef = useRef<EventTarget | null>(null);
   const pointerScrollRef = useRef(false);
+  const lastScrollInputAtRef = useRef(Number.NEGATIVE_INFINITY);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const observedElementsRef = useRef<Set<Element>>(new Set());
   const newBelowCountRef = useRef(0);
@@ -199,7 +215,7 @@ export function useConversationScroll({
     subscribe: (listener) => {
       followListenersRef.current.add(listener);
       return () => followListenersRef.current.delete(listener);
-    }
+    },
   }));
   const notifyFollow = useCallback((): void => {
     for (const listener of followListenersRef.current) listener();
@@ -294,7 +310,8 @@ export function useConversationScroll({
         const nextContentTop = contentTop(content, anchor.node);
         const delta = nextContentTop - anchor.contentTop;
         const baseTop = clampedToNewBottom ? lastScrollTopRef.current : currentTop;
-        if (clampedToNewBottom || Math.abs(delta) > BOTTOM_EPSILON_PX) detachedTop = baseTop + delta;
+        if (clampedToNewBottom || Math.abs(delta) > BOTTOM_EPSILON_PX)
+          detachedTop = baseTop + delta;
         anchor.contentTop = nextContentTop;
       } else {
         anchorRemoved = Boolean(content && anchor && !content.contains(anchor.node));
@@ -303,8 +320,9 @@ export function useConversationScroll({
     }
 
     if (content) {
-      const latestAnchor = Array.from(content.querySelectorAll<HTMLElement>("[data-turn-anchor]"))
-        .at(-1);
+      const latestAnchor = Array.from(
+        content.querySelectorAll<HTMLElement>("[data-turn-anchor]"),
+      ).at(-1);
       let followHeight = 0;
       if (latestAnchor) {
         const paddingTop = Number.parseFloat(getComputedStyle(content).paddingTop) || 0;
@@ -328,9 +346,7 @@ export function useConversationScroll({
       const minHeight = Math.max(
         0,
         followHeight,
-        modeRef.current === "detached"
-          ? (detachedTop ?? currentTop) + scroll.clientHeight
-          : 0
+        modeRef.current === "detached" ? (detachedTop ?? currentTop) + scroll.clientHeight : 0,
       );
       const nextMinHeight = minHeight > 0 ? `${minHeight}px` : "";
       if (content.style.minHeight !== nextMinHeight) content.style.minHeight = nextMinHeight;
@@ -360,21 +376,29 @@ export function useConversationScroll({
     lastMaxScrollTopRef.current = settledMaxTop;
   }, [detach, enabled, rememberAnchor, resetNewBelowCount, startFollowing]);
 
+  const msSinceScrollInput = useCallback(
+    (): number => performance.now() - lastScrollInputAtRef.current,
+    [],
+  );
+
   const scrollToBottom = useCallback((): void => {
     startFollowing();
     lastItemCountRef.current = items.length;
     reconcile();
   }, [items.length, reconcile, startFollowing]);
 
-  const scrollToElement = useCallback((node: HTMLElement): void => {
-    const scroll = scrollRef.current;
-    const content = contentRef.current;
-    if (!scroll || !content || !content.contains(node)) return;
-    detach();
-    requestedScrollTopRef.current =
-      scroll.scrollTop + node.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
-    reconcile();
-  }, [detach, reconcile]);
+  const scrollToElement = useCallback(
+    (node: HTMLElement): void => {
+      const scroll = scrollRef.current;
+      const content = contentRef.current;
+      if (!scroll || !content || !content.contains(node)) return;
+      detach();
+      requestedScrollTopRef.current =
+        scroll.scrollTop + node.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+      reconcile();
+    },
+    [detach, reconcile],
+  );
 
   // Reconcile before every paint. This covers child replacement and prepend
   // commits; ResizeObserver handles size changes that happen without React.
@@ -436,15 +460,25 @@ export function useConversationScroll({
       detach();
       reconcile();
       if (topBeforeGesture < bottomBeforeGesture - BOTTOM_EPSILON_PX) return;
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        if (modeRef.current !== "detached") return;
-        if (Math.abs(physicalScrollTop(scroll, bottomBeforeGesture) - topBeforeGesture) > BOTTOM_EPSILON_PX) return;
-        startFollowing();
-        reconcile();
-      }));
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          if (modeRef.current !== "detached") return;
+          if (
+            Math.abs(physicalScrollTop(scroll, bottomBeforeGesture) - topBeforeGesture) >
+            BOTTOM_EPSILON_PX
+          )
+            return;
+          startFollowing();
+          reconcile();
+        }),
+      );
     };
 
+    const markScrollInput = (): void => {
+      lastScrollInputAtRef.current = performance.now();
+    };
     const onWheel = (event: WheelEvent): void => {
+      markScrollInput();
       if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
       if (event.deltaY > 0) {
         // A collapse below can leave a detached reader at the physical
@@ -462,6 +496,7 @@ export function useConversationScroll({
       releaseFollowing();
     };
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (!isEditable(event.target)) markScrollInput();
       if (!upwardKey(event) || isEditable(event.target)) return;
       if (scrollableAncestor(scroll, event.target, -1)) return;
       releaseFollowing();
@@ -474,8 +509,10 @@ export function useConversationScroll({
       }
       touchYRef.current = event.touches[0]?.clientY ?? null;
       touchTargetRef.current = event.target;
+      markScrollInput();
     };
     const onTouchMove = (event: TouchEvent): void => {
+      markScrollInput();
       const previousY = touchYRef.current;
       const touch = event.touches.length === 1 ? event.touches[0] : undefined;
       if (previousY === null || !touch) return;
@@ -496,6 +533,9 @@ export function useConversationScroll({
       pointerScrollRef.current = false;
     };
     const onScroll = (): void => {
+      // Programmatic writes scroll too; only a held pointer (the scrollbar)
+      // marks reader input here.
+      if (pointerScrollRef.current) markScrollInput();
       const previousTop = lastScrollTopRef.current;
       const height = scroll.scrollHeight;
       const maxTop = Math.max(0, height - scroll.clientHeight);
@@ -518,7 +558,12 @@ export function useConversationScroll({
         !clampedToNewBottom
       ) {
         detach();
-      } else if (modeRef.current === "detached" && movedDown && reachedPreviousBottom && !rangeShrank) {
+      } else if (
+        modeRef.current === "detached" &&
+        movedDown &&
+        reachedPreviousBottom &&
+        !rangeShrank
+      ) {
         startFollowing();
       }
 
@@ -593,6 +638,7 @@ export function useConversationScroll({
     contentRef,
     follow,
     scrollToBottom,
-    scrollToElement
+    scrollToElement,
+    msSinceScrollInput,
   };
 }

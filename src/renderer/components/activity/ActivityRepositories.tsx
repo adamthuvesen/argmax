@@ -5,13 +5,13 @@ import {
   formatCount,
   formatPercent,
   formatRemoved,
-  formatSince
+  formatSince,
 } from "./activityFormat.js";
 import {
   barWidth,
   metricValue,
   repositorySlots,
-  type ActivityMetric
+  type ActivityMetric,
 } from "./activityPresentation.js";
 
 /**
@@ -39,7 +39,9 @@ const SPARK_INSET = 3;
 const SPARK_POINTS = 12;
 
 /** A repository's own curve over the window, as a polyline in the spark's box. */
-function sparkPath(values: readonly number[]): { line: string; area: string; lastX: number; lastY: number } | null {
+function sparkPath(
+  values: readonly number[],
+): { line: string; area: string; lastX: number; lastY: number } | null {
   if (values.length < 2) return null;
   const max = Math.max(...values);
   const span = SPARK_WIDTH - SPARK_INSET * 2;
@@ -55,7 +57,7 @@ function sparkPath(values: readonly number[]): { line: string; area: string; las
     line,
     area: `${line} L${last[0]} ${SPARK_HEIGHT} L${points[0][0]} ${SPARK_HEIGHT} Z`,
     lastX: last[0],
-    lastY: last[1]
+    lastY: last[1],
   };
 }
 
@@ -75,7 +77,7 @@ function pool(values: readonly number[]): number[] {
 /** Per-repository values per bucket, in the series' own bucket order. */
 function seriesByRepository(
   summary: ActivitySummary,
-  metric: ActivityMetric
+  metric: ActivityMetric,
 ): Map<string, number[]> {
   const byRepository = new Map<string, number[]>();
   summary.series.forEach((point, index) => {
@@ -93,7 +95,7 @@ export function ActivityRepositories({
   summary,
   metric,
   selected,
-  onSelect
+  onSelect,
 }: {
   summary: ActivitySummary;
   metric: ActivityMetric;
@@ -103,7 +105,7 @@ export function ActivityRepositories({
   const slots = repositorySlots(summary.repositories);
   const withCommits = summary.repositories.filter((repo) => repo.commits > 0);
   const ranked = [...withCommits].sort(
-    (left, right) => metricValue(right, metric) - metricValue(left, metric)
+    (left, right) => metricValue(right, metric) - metricValue(left, metric),
   );
   const rows = ranked.slice(0, VISIBLE_ROWS);
   const leader = rows.length > 0 ? metricValue(rows[0], metric) : 0;
@@ -178,7 +180,7 @@ function RepositoryRow({
   spark,
   timeZone,
   now,
-  onSelect
+  onSelect,
 }: {
   repo: ActivityRepository;
   metric: ActivityMetric;

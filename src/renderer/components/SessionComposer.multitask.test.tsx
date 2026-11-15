@@ -13,8 +13,8 @@ const queued: PendingMessage[] = [
     sessionId: "session-a",
     content: "Fix the README typo",
     agentMode: "auto",
-    queuedAt: "2026-09-02T10:00:00.000Z"
-  }
+    queuedAt: "2026-09-02T10:00:00.000Z",
+  },
 ];
 
 describe("SessionComposer multitask", () => {
@@ -30,7 +30,7 @@ describe("SessionComposer multitask", () => {
     fireEvent.keyDown(prompt(), { key: "Enter" });
 
     await waitFor(() =>
-      expect(onMultitask).toHaveBeenCalledWith("session-a", "fix the README typo", "codex")
+      expect(onMultitask).toHaveBeenCalledWith("session-a", "fix the README typo", "codex"),
     );
     // The running turn is left alone: nothing was sent or queued behind it.
     expect(onSendSessionInput).not.toHaveBeenCalled();
@@ -45,11 +45,11 @@ describe("SessionComposer multitask", () => {
       pendingMessages: queued,
       onMultitask,
       onCancelQueuedMessage,
-      onSendQueuedMessageNow
+      onSendQueuedMessageNow,
     });
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Multitask queued follow-up: Fix the README typo" })
+      screen.getByRole("button", { name: "Multitask queued follow-up: Fix the README typo" }),
     );
 
     await waitFor(() =>
@@ -57,8 +57,8 @@ describe("SessionComposer multitask", () => {
         "session-a",
         "Fix the README typo",
         "codex",
-        "pending-1"
-      )
+        "pending-1",
+      ),
     );
     // The backend claims the queue row as part of the launch, so the renderer
     // never issues a second request that could fail after the child starts.
@@ -70,7 +70,7 @@ describe("SessionComposer multitask", () => {
   it("offers no multitask action when the surface cannot dispatch one", () => {
     renderConversation(baseSession({ state: "running" }), [], { pendingMessages: queued });
     expect(
-      screen.queryByRole("button", { name: /^Multitask queued follow-up/ })
+      screen.queryByRole("button", { name: /^Multitask queued follow-up/ }),
     ).not.toBeInTheDocument();
   });
 });

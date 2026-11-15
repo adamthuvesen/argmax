@@ -38,19 +38,19 @@ describe("ComposerEditor (lazy)", () => {
     fireEvent.change(textarea, { target: { value: "half a thought" } });
 
     await waitFor(() =>
-      expect(screen.getByRole("textbox", { name: "Chat prompt" }).tagName).toBe("DIV")
+      expect(screen.getByRole("textbox", { name: "Chat prompt" }).tagName).toBe("DIV"),
     );
     const editor = screen.getByRole("textbox", { name: "Chat prompt" });
     expect(editor.textContent).toBe("half a thought");
     expect(field.current?.selectionStart).toBe("half a thought".length);
-    expect(document.activeElement).toBe(editor);
+    expect(editor).toHaveFocus();
   });
 
   it("mounts the editor at once, without calling the view as an initializer, when the chunk is already loaded", async () => {
     // A first composer warms the chunk, as the idle preload does before most mounts.
     const warm = render(<Harness fieldRef={createRef<ComposerField>()} />);
     await waitFor(() =>
-      expect(screen.getByRole("textbox", { name: "Chat prompt" }).tagName).toBe("DIV")
+      expect(screen.getByRole("textbox", { name: "Chat prompt" }).tagName).toBe("DIV"),
     );
     warm.unmount();
 

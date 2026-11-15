@@ -2,272 +2,58 @@
 
 A local desktop app that runs coding agents in parallel against your own repositories. One user, one machine, no cloud. The domain is about *where an agent works*, *what it did*, and *what still needs a human*.
 
-## Language
+### Where work happens
 
-### Repositories and working locations
+**Project**: A named collection of local folders that agents use together. One folder (the primary) is the default Git repository for new chats. A project has a stable id independent of its name and paths. _Avoid_: Repo, folder, directory
 
-**Project**:
-A named collection of local folders that agents use together. One folder is primary. A folder can belong to several projects. Each project has a stable id independent of its name and paths.
-_Avoid_: Repo, folder, directory
+**Linked repository**: The API name for an additional project folder. Agents may consult and edit it, subject to their provider's permissions. _Avoid_: Linked project, extra root, additional directory
 
-**Project folder**:
-A canonical local directory included in a project. It carries its name, optional summary, and repository settings. A workspace retains its folder identity when the project's primary changes.
+**Workspace**: One unit of assigned work, owned by one project: the thing a sidebar row represents. It is not a place on disk. Many workspaces routinely point at the same checkout. It carries the task label, branch, base ref, dirty state, and lifecycle state. _Avoid_: Worktree, directory, folder, branch, project
 
-**Primary folder**:
-The project's default Git repository for new chats and coordinators. Changing it affects future launches. Existing chats keep their checkout and repository settings.
+**Checkout**: The directory on disk a workspace's `path` points at. Every workspace that names it shares it, so concurrent agents see each other's uncommitted edits and can collide. Stage deliberately; never assume the tree holds only your work. _Avoid_: Workspace, worktree, repo
 
-**Workspace**:
-One unit of assigned work, owned by one project — the thing a sidebar row represents. It is *not* a place on disk: many workspaces routinely point at the same checkout, and nothing constrains them to be distinct. Carries the task label, branch, base ref, dirty state, and lifecycle state.
-_Avoid_: Worktree, directory, folder, branch, project
+**Isolated workspace**: A workspace backed by its own `git worktree`, forked onto a branch named by the branch template. Archiving one moves its checkout into recoverable storage, keeping its files for 48 to 72 hours and its branch for good. _Avoid_: Worktree workspace, forked workspace
 
-Say "one session per workspace" only about row identity, never about capacity — the word sounds like a location, so as a capacity claim it reads as "one agent per directory," which is false. State the capability directly instead: any number of agents run at once, each in its own workspace, several of which may share one checkout.
+**Shared checkout**: A workspace pointing at a checkout Argmax did not create (`shared_workspace = 1`), usually the project's main checkout. Archiving one never moves its checkout. The `argmax.workspaceMode` value `current` and the launcher's "Worktree" toggle still use the old wording; they are wire and label values, so leave them alone. _Avoid_: Current workspace, main workspace, non-isolated workspace
 
-**Checkout**:
-The directory on disk a workspace's `path` points at. Shared by every workspace that names it, so it is a mutable resource with no owner in the model — concurrent agents see each other's uncommitted edits and can collide. Stage deliberately; never assume the tree holds only your work.
-_Avoid_: Workspace, worktree, repo
-
-**Isolated workspace**:
-A workspace backed by its own `git worktree`, forked onto a branch named by the **branch template** (`argmax/{word}-{id}` unless the project or the app sets another). Archiving one moves its checkout into recoverable storage, retaining its files for 48 to 72 hours and its branch for good.
-_Avoid_: Worktree workspace, forked workspace
-
-**Shared checkout**:
-A workspace pointing at a checkout Argmax did not create, shared with every other session doing the same. `shared_workspace = 1`. Usually the project's main checkout, or a worktree a session was moved into with `session move --path`. Archiving one flips state and drains processes but never moves its checkout.
-_Avoid_: Current workspace, main workspace, non-isolated workspace
-
-Two surfaces still say `current` for this: the `argmax.workspaceMode` value stored in `localStorage` (`worktree` | `current`) and the launcher's "Worktree" toggle. Those are wire and label values, not the domain term — leave them alone and say "shared checkout" everywhere else.
-
-**Scratch workspace**:
-A repo-less workspace backed by an app-owned directory under `local-state/side-chats/`, initialized as a minimal git repo so provider CLIs that demand a checkout still run. Surfaced to the user as a chat labelled **Chat**; older code and comments call it a side chat.
-_Avoid_: Chat workspace, temp workspace
-
-**Popup workspace**:
-An ephemeral scratch workspace behind the "More details" explainer. One at a time, never in the sidebar, discarded on close.
-
-**Scratch project**:
-The hidden singleton project (`scratch-side-chats`) that owns every scratch and popup workspace. It exists to satisfy the foreign key, not to represent a repository — exclude it from repo pickers and per-project grouping.
-
-**Project check**:
-Jev's read, before a launch, of whether the prompt belongs in the project it is aimed at. From the launcher it suggests another project, or on overwhelming evidence switches to it with an Undo. An agent launch is checked the same way and switches only at that bar, without a dialog.
-_Avoid_: Repo check, repo detection
-
-**Branch template**:
-The pattern that names the branch of a new isolated workspace, such as `adam/{type}-{slug}`. A project's template overrides the app's, which overrides the built-in one. It applies to new branches only.
-_Avoid_: Branch naming rule, branch format
-
-**Linked repository**:
-The compatibility API name for an additional project folder. Agents may consult and edit it, subject to their provider's permissions. Argmax reads it on demand. A project source remains a project-relative file or URL.
-_Avoid_: Linked project, extra root, additional directory
-
-**Snooze shelf**:
-The collapsed sidebar section holding chats the user snoozed until a chosen time. A snooze hides a row and changes nothing else about the chat.
-_Avoid_: Snoozed state, deferred, hidden chats
-
-**Base ref**:
-The git ref an isolated workspace forked from, and the merge-base used for a branch-comparison review. Falls back to the project's default branch.
-
-**Task label**:
-The human-readable name of a workspace, shown on its sidebar row. Auto-titled from the opening prompt, renameable.
-_Avoid_: Title, name, description
-
-**Merge cleanup**:
-The project setting for what a merged PR does to an isolated workspace: nothing, archive it, or remove its checkout and keep the chat listed. Shared checkouts are never touched. `projects.merge_cleanup`.
-_Avoid_: Archive on merge (the old boolean it replaced)
-
-**Keep**:
-Declining to archive a workspace, leaving its checkout live. The resting state after a dirty archive is refused.
-
-**Archive**:
-Ending a workspace: close admission, drain providers, checks, terminals, and pending approvals, then preserve an isolated checkout in the archive location. A shared checkout stays in place. An archive after a merge can delete the isolated checkout instead; that chat stays in its sidebar section, read-only ([ADR 0014](docs/adr/0014-merged-chats-stay-listed-without-a-checkout.md)).
-_Avoid_: Delete, close, clean up
+**Scratch workspace**: A repo-less workspace in an app-owned directory under `local-state/side-chats/`, initialized as a minimal git repo. The user sees it as a chat labelled **Chat**; older code calls it a side chat. It belongs to the hidden scratch project (`scratch-side-chats`), which exists to satisfy the foreign key: exclude it from repo pickers and per-project grouping. _Avoid_: Chat workspace, temp workspace
 
 ### Agents at work
 
-**Provider**:
-A coding-agent CLI Argmax drives — Claude Code, Codex, Cursor, OpenCode, or Grok Build. A provider is the program, not the model it runs.
-_Avoid_: Agent, CLI, tool, backend
+**Provider**: A coding-agent CLI Argmax drives: Claude Code, Codex, Cursor, OpenCode, or Grok Build. A provider is the program, not the model it runs. _Avoid_: Agent, CLI, tool, backend
 
-**OpenCode gateway**:
-The service OpenCode's models run through: OpenRouter or Vercel AI Gateway, chosen in Settings → Agents, each with an optional key Argmax keeps in the Keychain. Model ids stay OpenRouter's in the catalog and are mapped to the gateway at launch. A gateway is not a provider: the provider is still OpenCode.
-_Avoid_: Backend, OpenCode provider, proxy
+**OpenCode gateway**: The service OpenCode's models run through (OpenRouter or Vercel AI Gateway). A gateway is not a provider: the provider is still OpenCode. _Avoid_: Backend, OpenCode provider, proxy
 
-**Session**:
-One agent run inside one workspace: its provider, model, prompt, lifecycle state, token usage, and cost. The unit users think of as "a chat". A workspace holds exactly one — forking, importing, and agent-launched sessions all create a fresh workspace rather than a second session. The schema permits more, and peers launched into the same checkout do produce them, but nothing may rely on that: a workspace's chat is its most recently active session (`chatSessionByWorkspace`), and every surface must name the same one. This bounds identity, not parallelism: any number of sessions may run at once, each in its own workspace, including many against the same checkout and branch.
-_Avoid_: Conversation, chat, run, thread, agent
+**Session**: One agent run inside one workspace: its provider, model, prompt, lifecycle state, token usage, and cost. A workspace holds exactly one by design: forking, importing, and agent-launched sessions each create a fresh workspace. A workspace's chat is its most recently active session (`chatSessionByWorkspace`). This bounds identity, not parallelism: any number of sessions run at once, each in its own workspace, including many against one checkout. The display name is **chat**: the UI says chat, code and docs say session. _Avoid_: Conversation, run, thread, agent
 
-The display name for a session is **chat**: the sidebar, menus, and mobile say chat; code and docs say session.
+**Provider conversation id**: The provider CLI's own identifier for the underlying conversation, kept so a session can be resumed. Not the Argmax session id. _Avoid_: Session id
 
-**Provider conversation id**:
-The provider CLI's own identifier for the underlying conversation, kept so a session can be resumed. Distinct from the Argmax session id.
-_Avoid_: Session id
+**Launched by**: The session whose agent started this one with the `argmax` MCP tools (`launched_by_session_id`, depth in `launch_depth`). It names lineage, not hierarchy: a launched session is a top-level session that outlives its launcher. _Avoid_: Parent session, child session, spawned session, subagent
 
-**Clear**:
-Reset a session's provider conversation in place. Drops the native resume id, hides the existing transcript from the chat surface and from the next prompt, and keeps the same workspace (checkout, branch, task label). The next message starts a fresh provider conversation.
-_Avoid_: Reset, new session, wipe
+**Multitask**: A chat dispatched from inside another chat while its agent is mid-turn. It is a sibling session with a fresh context, by default in the same checkout, never a second turn in the chat that started it. It has no sidebar row. _Avoid_: Side task, background task, parallel turn, subagent
 
-**Turn**:
-One user prompt and everything the agent produces in response, grouped together on the chat surface until the next prompt starts new work. Steering messages add guidance within the active turn without ending it or starting another.
+**Attention**: Whether a session needs a human, computed from session state, pending approvals, and unanswered questions. Never set directly. Session state says what the agent is doing; attention says whether you have to care (`SessionState`, `AttentionState` in `src-tauri/crates/argmax-contracts/src/sessions/`). _Avoid_: Status, state, urgency
 
-**Launched by**:
-The session whose agent started this one with the `argmax` MCP tools, held on the row as `launched_by_session_id` with the chain's depth in `launch_depth`. It names lineage, not hierarchy: a launched session is a top-level sidebar session that outlives its launcher, not a subagent, and it is what the launch caps (two levels deep, twenty per session) are counted over.
-_Avoid_: Parent session, child session, spawned session, subagent
+**Inbox**: A session's undelivered mail: the `session_messages` rows addressed to it that no one has collected. A message is recorded here and delivered as a turn; reading with `inbox_read` collects it. _Avoid_: Queue, mailbox, notifications
 
-**Emblem**:
-The shape-and-hue mark a subagent's codename owns: one of twelve radially symmetric silhouettes in one of the nine session-icon hues, shaded like a soft gem. Bound to the codename, not to the spawn, so Gauss looks like Gauss in every session and across projects. Decorative — the codename beside it is the accessible name — and never a status: a failed agent keeps its shape, greys, and takes a corner dot. Multitasks have none.
-_Avoid_: Avatar, icon, badge
+**Routine**: A stored prompt that Argmax launches on a schedule, against a registered project. The UI and docs say **scheduled task**; code, IPC channels (`routines:*`), and the `routines` table say routine. _Avoid_: Cron job, automation, trigger
 
-**Multitask**:
-A chat dispatched from inside another chat while its agent is mid-turn — the small, often unrelated fix you think of halfway through something else. It is a sibling session with a fresh context, running by default in the same checkout, and never a second turn in the chat that started it. It has no sidebar row: it reads as a launch row in the chat that dispatched it and opens in that chat's subagent dock. The result reaches that chat's agent only on the next thing the person types.
-_Avoid_: Side task, background task, parallel turn, subagent
+### Arcs
 
-**Session state**:
-Where a session is in its lifecycle: `created`, `running`, `waiting`, `blocked`, `complete`, `failed`, `cancelled`.
+**Arc**: A long-lived body of work that outlives any one chat and may span several projects. It is a thin container: the coordinator plans, and Argmax only launches, limits, and wakes it. _Avoid_: Project, mission, workstream, epic, initiative
 
-**Attention**:
-Whether a session needs a human, derived from session state, pending approvals, and whether the agent left a question unanswered: `normal`, `approval-needed`, `question-asked`, `blocked`, `failed`, `review-ready`. Never set directly — it is computed. State says what the agent is doing; attention says whether you have to care. Both are enums in `src-tauri/src/sessions/` (`SessionState`, `AttentionState`), exported to the renderer through the generated bindings; a state write goes through `SessionStateInput::transition`, which derives the attention.
-_Avoid_: Status, state, urgency
+**Coordinator**: The arc's current planning chat (`arcs.coordinator_session_id`). It is disposable: starting a new one repoints the arc, and the old chat stays as history. _Avoid_: Orchestrator, manager, lead agent, parent
 
-**Priority**:
-The sidebar section holding workspaces that need attention, plus any the user pinned there manually. Membership is a set of **reasons** (see [docs/workspaces.md](docs/workspaces.md)), each with its own resolution: a session's attention is only one of them, and an open pull request or a red check is another. A dismissal is spent as soon as a reason newer than it appears.
+**Member**: A session that belongs to an arc (`sessions.arc_id`). Members read the arc folder but never write to it. A fork leaves the arc. _Avoid_: Child, worker, subagent
 
-**Unread response**:
-A sidebar mark that a chat has produced a response the user has not opened yet. An accent-colored dot replaces the row's leading icon until the chat is viewed.
-_Avoid_: Badge, notification, unseen
+### Checks, reviews, PRs, and sync
 
-**Pending message**:
-A follow-up the user composed while the agent was mid-turn. Saved durably and normally sent after the current turn. It may be bound for a different provider than the chat's, which takes over when the turn ends. Messages recovered after a restart wait for an explicit send, with uncertain delivery called out.
-_Avoid_: Queued message, draft
+**Check**: A project-configured command (tests, lint, typecheck) run locally against a workspace. _Avoid_: Test, CI, job
 
-**Chat reference**:
-Another chat a person attached to a prompt, written into the prompt as `[title](argmax://chat/<session id>)` and drawn as a chip. The link is the only copy, so it survives drafts, queued messages and the clipboard. Naming a chat this way is the one thing that lets an agent read a chat outside its project and launch lineage, and only that chat.
-_Avoid_: Mention, attachment, link, citation
+**PR check**: A GitHub CI check on a pull request, polled through `gh`. It runs on GitHub's machines, unlike a check. _Avoid_: Check, CI check
 
-**Background send**:
-Starting the New chat draft without leaving it: the chat launches and takes its sidebar row, the draft empties for the next one, and a failed start puts the draft back.
-_Avoid_: Quick send, silent launch, detached launch
+**PR watch**: A persisted request from one session to be woken about one pull request until it merges, closes, or is unwatched. Argmax reports and never merges. _Avoid_: PR subscription, PR monitor, babysitter
 
-**Permission mode**:
-Whether the agent's commands run unattended (`auto-approve`, the default) or stop for the user (`ask-each-time`).
-_Avoid_: Approval mode, safety mode
+**Diff note**: A note the user wrote on a line or range of a diff in the review panel, serialized into the prompt as an `<argmax-diff-note>` block. It is local to this machine and is not a GitHub review comment. _Avoid_: Review comment, line comment, inline comment
 
-**Approval support**:
-How far a provider can participate in approvals: `respondable` (Argmax can answer the gate), `observable-only` (the request is visible but unanswerable, so the session blocks), or `unsupported` (no detector). Argmax never fakes the answer.
-
-**Inbox**:
-A session's undelivered mail — the `session_messages` rows addressed to it that no one has collected yet. A message is recorded here *and* delivered as a turn; the row is what a session that was mid-turn can still read afterwards with `inbox_read`. Reading collects it.
-_Avoid_: Queue, mailbox, notifications
-
-**Completion notice**:
-The message Argmax writes to a launching session when a session it launched ends a turn: that session's id, label, final state, and last answer. Delivered like any other message, so an idle launcher wakes on a new turn. One per turn end, and only for a session that has a launcher.
-_Avoid_: Completion event, done message, callback
-
-**Arc**:
-A long-lived body of work — a feature, a migration, an app — that outlives any one chat and may span several projects. It holds a name, a brief, a state (`active`, `paused`, `done`), a home project, an arc folder, one coordinator, and its members. It is a thin container: the coordinator does the planning, and Argmax only launches, limits, and wakes it.
-_Avoid_: Project, mission, workstream, epic, initiative
-
-**Coordinator**:
-The arc's current planning chat, named by `arcs.coordinator_session_id`. It plans, launches members, reviews what comes back, keeps `NOTES.md` current and short, and appends history to `LOG.md`; that it does not write code itself is an instruction in its prompt, not a permission. It is disposable: starting a new one repoints the arc, and the old chat stays as history.
-_Avoid_: Orchestrator, manager, lead agent, parent
-
-**Member**:
-A session that belongs to an arc (`sessions.arc_id`), usually one a coordinator or another member launched. Membership is inherited on launch and multitask and survives `session_move`; a fork leaves the arc. Members read the arc folder but never write to it, and report durable learnings in their final answer.
-_Avoid_: Child, worker, subagent
-
-**Arc folder**:
-The directory holding an arc's shared context: `BRIEF.md`, `NOTES.md` (the current state, read by every member) and `LOG.md` (append-only history, read only when pointed at), plus the report files the coordinator adds. Argmax creates one under its data directory unless the user points the arc at an existing folder. The coordinator is its only writer.
-_Avoid_: Arc memory, workspace, context files
-
-### What a session produced
-
-**Timeline event**:
-A normalized, provider-independent record of something that happened in a session — a message, a command, an approval, a file change. Visible chat is built from these.
-_Avoid_: Message, log line, output
-
-**Raw provider output**:
-The provider's unnormalized stdout, stderr, or PTY bytes, kept as a human-readable fallback. Protocol output is not chat and must never be rendered as it.
-_Avoid_: Transcript, log, stream
-
-**Session note**:
-A line Argmax wrote into a chat about the chat itself: the move or archive it resumed after a quit, or the one it dropped because the turn never finished. A `session.note` timeline event, rendered as a quiet notice. It reports; a row that says something failed is an error instead.
-_Avoid_: System message, error, warning
-
-**Interactive card**:
-A chat element the user can answer rather than just read — currently the question card, mapped from provider tool calls.
-_Avoid_: Widget, prompt, dialog
-
-**Check**:
-A project-configured command (tests, lint, typecheck) run locally against a workspace, persisted with its exit code and summary. Setup commands run through the same machinery.
-_Avoid_: Test, CI, job
-
-**PR check**:
-A GitHub CI check on a pull request, polled through `gh`. A different thing from a check — this one runs on GitHub's machines and can trigger an automatic follow-up session when it fails.
-_Avoid_: Check, CI check
-
-**Session PR association**:
-Evidence connecting a session to a pull request. A session can work on several PRs, and several sessions can work on one PR. Work, references, and unverified discoveries are distinct relationships. Sharing a checkout or opening a browser link does not establish work on a PR.
-_Avoid_: PR ownership, branch ownership
-
-**Primary PR**:
-The pull request foregrounded for a session. The user can pin it, or automatic selection can choose it from the session's meaningful PR activity. Refresh order never changes its identity. Other associated PRs remain visible in the workspace card.
-_Avoid_: Latest PR, current branch PR
-
-**PR watch**:
-A persisted request from one session to be woken about one pull request until it merges, closes, or is unwatched. The agent calls `pr_watch` once and ends its turn; the gh poller reads the PR on its own tick. Argmax reports and never merges.
-_Avoid_: PR subscription, PR monitor, babysitter
-
-**Watch notice**:
-The message a PR watch sends to its session through the inbox: every new event since the last one (merged or closed, checks failing, a merge conflict starting or resolving, new feedback, checks green) in one plain-text body. Delivered like any other system notice, so an idle session wakes on it.
-_Avoid_: PR event, PR alert, PR notification
-
-**PR cleanup**:
-The deterministic git cleanup after a PR merges: delete the remote branch while it still points at the merged head, fast-forward the base where it is checked out, delete an unowned local branch, and prune. Argmax runs it with no model turn. It never archives or hides the chat and keeps its checkout. Merge cleanup set to remove the worktree deletes the checkout first, so PR cleanup can delete the branch.
-_Avoid_: post-merge archive, tidy-up
-
-**Approval**:
-A single command a provider asked permission to run, with its risk classification and resolution. Compare-and-set from `pending`, so a replayed request cannot create a second row.
-
-**Review comparison**:
-The baseline a diff is taken against: `workingTree` (uncommitted changes vs `HEAD`) or `branch` (the whole delta from the base ref, committed and not).
-_Avoid_: Diff mode, comparison
-
-**Diff note**:
-A note the user wrote on a line or range of a diff in the review panel. It attaches to the composer as an annotation and is serialized into the prompt as an `<argmax-diff-note>` block naming the file, line or range, side, and review comparison. Local to this machine, an agent addresses it by editing the worktree. GitHub's review comments are a different thing entirely, and calling this one a review comment is what sends an agent looking for a pull request.
-_Avoid_: Review comment, line comment, inline comment
-
-**Goal**:
-One free-text condition a chat keeps working toward. After each turn a separate cheap evaluator judges the transcript and returns met, not yet met, or impossible; "not yet met" starts another turn. Set with `/goal <condition>` or the `goal_set` agent tool. It is a condition and a verdict, not a configured workflow — there are no steps, no reviewer to pick, and no form.
-_Avoid_: Objective, acceptance criteria, task, mission
-
-**Checkpoint**:
-A saved marker of a workspace's tree at a moment — a git ref, a patch file, or both — so work can be recovered.
-
-**Learning**:
-A durable fact extracted from a session and stored against its project: a `pitfall`, a `convention`, or a `command`. Carries the session and event it came from, plus whether the user verified it.
-_Avoid_: Memory, note, insight
-
-**Connection**:
-An external capability a provider can make available to a session. Its kind is an MCP server, plugin, or provider connector. Availability and authentication are separate claims: **connected** means the provider health-check succeeded, **needs authentication** means the provider asked for login, and **unknown** means the provider does not report login validity.
-_Avoid_: Integration, tool
-
-### The app's own plumbing
-
-**Dashboard snapshot**:
-The full set of rows the renderer needs to draw the app: projects, workspaces, sessions, events, raw outputs, approvals, checks.
-
-**Dashboard delta**:
-An incremental push after a commit to SQLite. Merging is whole-object replacement per row, so a partial object erases fields; removals travel separately as explicit id lists because replacement cannot express "gone".
-_Avoid_: Patch, update, diff
-
-**Bridge**:
-`window.argmax`, the single surface through which the renderer reaches Rust. Every request channel is a named Rust command, and channel parity is enforced by a check script.
-_Avoid_: API, IPC layer
-
-**Session sync**:
-Importing sessions that were started in a provider CLI directly, by reading that CLI's own transcript store. An **imported session** is one that arrived this way rather than being launched here.
-
-**Cell**:
-One pane in the session grid. A **session cell** shows a session and a **launcher cell** composes a new one and owns its own project selection. Subagents are not cells: they open as tabs in the session's review panel (its **Agents view**).
-_Avoid_: Pane, tile, window
-
-**Chat window**:
-A second desktop window a session was torn off into with **Open in new window**. It runs the whole shell (sidebar and grid), booted on that chat; the main window is the one the app opens. A window is an OS-level thing and never a cell.
-_Avoid_: Popup, detached pane, split window
+**Dashboard delta**: An incremental push after a commit to SQLite. Merging is whole-object replacement per row, so a partial object erases fields. Removals travel as explicit id lists. _Avoid_: Patch, update, diff

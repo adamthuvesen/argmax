@@ -6,7 +6,7 @@ import {
   PERMISSION_MODE_KEY,
   PROVIDER_PERMISSION_MODES_KEY,
   readStoredPermissionMode,
-  readStoredProviderPermissionModes
+  readStoredProviderPermissionModes,
 } from "./permissionMode.js";
 
 describe("permission mode preferences", () => {
@@ -28,7 +28,7 @@ describe("permission mode preferences", () => {
 
       expect(isPermissionMode(mode)).toBe(true);
       expect(readStoredPermissionMode()).toBe(mode);
-    }
+    },
   );
 });
 
@@ -48,7 +48,7 @@ describe("provider permission mode preferences", () => {
       for (const mode of Object.values(modes)) {
         expect(mode).toBe(legacyMode);
       }
-    }
+    },
   );
 
   it("uses persisted per-provider modes and legacy for unconfigured providers", () => {
@@ -57,8 +57,8 @@ describe("provider permission mode preferences", () => {
       PROVIDER_PERMISSION_MODES_KEY,
       JSON.stringify({
         codex: "provider-defaults",
-        claude: "auto-approve"
-      })
+        claude: "auto-approve",
+      }),
     );
 
     const modes = readStoredProviderPermissionModes();
@@ -93,8 +93,8 @@ describe("provider permission mode preferences", () => {
       PROVIDER_PERMISSION_MODES_KEY,
       JSON.stringify({
         codex: "provider-defaults",
-        claude: "not-a-mode"
-      })
+        claude: "not-a-mode",
+      }),
     );
 
     const modes = readStoredProviderPermissionModes();

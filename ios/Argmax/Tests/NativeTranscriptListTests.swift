@@ -131,7 +131,7 @@ final class NativeTranscriptListTests: XCTestCase {
         state.following = false
         await settle(host)
         state.rowFrames.removeAll()
-        scrollView.setContentOffset(CGPoint(x: 0, y: 500), animated: false)
+        drag(scrollView, to: 500)
 
         guard await waitForScrollView(in: host, where: {
             !$0.isDragging && abs($0.contentOffset.y - 500) < 1
@@ -386,7 +386,7 @@ final class NativeTranscriptListTests: XCTestCase {
         state.following = false
         await settle(host)
         state.rowFrames.removeAll()
-        scrollView.setContentOffset(CGPoint(x: 0, y: 500), animated: false)
+        drag(scrollView, to: 500)
         await settle(host)
 
         let viewport = scrollView.convert(scrollView.bounds, to: host.window)
@@ -659,6 +659,19 @@ private func waitForScrollView(
         try? await Task.sleep(nanoseconds: 5_000_000)
     }
     return nil
+}
+
+/// Moves the offset the way a reader does, through the scroll view's delegate.
+/// SwiftUI's `ScrollPosition` keeps a bottom-edge request until a gesture ends
+/// it. A bare `setContentOffset` leaves that request standing, and on iOS 27
+/// the next content size change re-applies it and jumps to the tail.
+@MainActor
+private func drag(_ scrollView: UIScrollView, to offset: CGFloat) {
+    scrollView.delegate?.scrollViewWillBeginDragging?(scrollView)
+    scrollView.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+    var target = CGPoint(x: 0, y: offset)
+    scrollView.delegate?.scrollViewWillEndDragging?(scrollView, withVelocity: .zero, targetContentOffset: &target)
+    scrollView.delegate?.scrollViewDidEndDragging?(scrollView, willDecelerate: false)
 }
 
 @MainActor

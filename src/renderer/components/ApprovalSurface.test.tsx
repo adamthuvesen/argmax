@@ -15,7 +15,7 @@ const approval: ApprovalRequest = {
   riskLevel: "high",
   status: "pending",
   createdAt: "2026-09-07T10:00:00.000Z",
-  resolvedAt: null
+  resolvedAt: null,
 };
 
 const event: TimelineEvent = {
@@ -27,9 +27,9 @@ const event: TimelineEvent = {
     command: approval.command,
     cwd: approval.cwd,
     providerRequestId: approval.providerRequestId,
-    reason: "Removing a worktree can discard local files."
+    reason: "Removing a worktree can discard local files.",
   },
-  createdAt: approval.createdAt
+  createdAt: approval.createdAt,
 };
 
 describe("ApprovalSurface", () => {
@@ -41,7 +41,11 @@ describe("ApprovalSurface", () => {
     const onResolveApproval = vi.fn(() => pending);
 
     render(
-      <ApprovalSurface approvals={[approval]} events={[event]} onResolveApproval={onResolveApproval} />
+      <ApprovalSurface
+        approvals={[approval]}
+        events={[event]}
+        onResolveApproval={onResolveApproval}
+      />,
     );
 
     expect(screen.getByText(approval.command)).toBeInTheDocument();
@@ -65,13 +69,19 @@ describe("ApprovalSurface", () => {
     resetToastForTests();
     const onResolveApproval = vi.fn().mockRejectedValue(new Error("Request expired"));
     render(
-      <ApprovalSurface approvals={[approval]} events={[event]} onResolveApproval={onResolveApproval} />
+      <ApprovalSurface
+        approvals={[approval]}
+        events={[event]}
+        onResolveApproval={onResolveApproval}
+      />,
     );
 
     const approve = screen.getByRole("button", { name: `Approve action: ${approval.command}` });
     fireEvent.click(approve);
 
-    await waitFor(() => expect(toastSnapshot()?.message).toBe("Could not send your response. Request expired"));
+    await waitFor(() =>
+      expect(toastSnapshot()?.message).toBe("Could not send your response. Request expired"),
+    );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(approve).not.toBeDisabled();
   });
@@ -83,11 +93,13 @@ describe("ApprovalSurface", () => {
         approvals={[{ ...approval, command: `AskUserQuestion\n${JSON.stringify(input)}` }]}
         events={[]}
         onResolveApproval={vi.fn()}
-      />
+      />,
     );
 
     expect(screen.getByText("AskUserQuestion")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Approve action: AskUserQuestion" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Approve action: AskUserQuestion" }),
+    ).toBeInTheDocument();
     // Scalars are arguments you decide on; the question set is payload.
     expect(screen.getByText("limit")).toBeInTheDocument();
     expect(screen.queryByText(/"header"/)).not.toBeInTheDocument();
@@ -99,7 +111,7 @@ describe("ApprovalSurface", () => {
         approvals={[{ ...approval, status: "cancelled" }]}
         events={[event]}
         onResolveApproval={vi.fn()}
-      />
+      />,
     );
 
     expect(screen.getByText("No longer active")).toBeInTheDocument();

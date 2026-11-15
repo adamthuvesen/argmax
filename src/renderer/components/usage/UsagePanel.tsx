@@ -1,6 +1,11 @@
 import { CalendarDays } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type JSX } from "react";
-import type { ProviderId, UsageRemaining, UsageSummary, UsageWindow } from "../../../shared/types.js";
+import type {
+  ProviderId,
+  UsageRemaining,
+  UsageSummary,
+  UsageWindow,
+} from "../../../shared/types.js";
 import {
   getCachedUsageRemaining,
   getCachedUsageRemainingError,
@@ -11,7 +16,7 @@ import {
   requestUsageRemaining,
   requestUsageSummary,
   recordUsageRemainingFailure,
-  usageRemainingHasSettled
+  usageRemainingHasSettled,
 } from "../../lib/ledgerPageState.js";
 import { SegmentedControl, SettingsListPicker } from "../settings/settingsPrimitives.js";
 import { LedgerSwitch } from "./LedgerSwitch.js";
@@ -30,8 +35,9 @@ import {
   processedTokens,
   providerLabel,
   USAGE_PROVIDER_ORDER,
-  type UsageMetric
+  type UsageMetric,
 } from "./usagePresentation.js";
+import { useInteractionShown } from "../../lib/interactionTimings.js";
 
 /** Warm refresh while the page is open. */
 const REFRESH_MS = 60_000;
@@ -48,7 +54,7 @@ const REMAINING_HOLD_MS = 2_000;
 const WINDOW_OPTIONS: ReadonlyArray<{ value: UsageWindow; label: string }> = [
   { value: "24h", label: "Last 24 hours" },
   { value: "7d", label: "Last 7 days" },
-  { value: "30d", label: "Last 30 days" }
+  { value: "30d", label: "Last 30 days" },
 ];
 
 /** The picker's value for "every provider"; the backend takes `null`. */
@@ -57,14 +63,14 @@ type ProviderChoice = ProviderId | typeof ALL_PROVIDERS;
 
 const METRIC_OPTIONS = [
   { value: "cost", label: "Cost" },
-  { value: "tokens", label: "Tokens" }
+  { value: "tokens", label: "Tokens" },
 ];
 
 /** What the delta chip compares this window against, said in words. */
 const PREVIOUS_LABEL: Record<UsageWindow, string> = {
   "24h": "the previous 24 hours",
   "7d": "the previous 7 days",
-  "30d": "the previous 30 days"
+  "30d": "the previous 30 days",
 };
 
 /**
@@ -97,7 +103,7 @@ function hostTimeZone(): string {
 async function fetchSummary(
   window: UsageWindow,
   provider: ProviderId | null,
-  timeZone: string
+  timeZone: string,
 ): Promise<UsageSummary> {
   const api = globalThis.window?.argmax;
   if (api) return api.usage.summary({ window, provider, timeZone });
@@ -124,14 +130,16 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
   const providerRef = useRef(provider);
   providerRef.current = provider;
   const [summary, setSummary] = useState<UsageSummary | null>(() =>
-    getCachedUsageSummary(cachedUi.usageWindow, cachedUi.provider, timeZoneRef.current)
+    getCachedUsageSummary(cachedUi.usageWindow, cachedUi.provider, timeZoneRef.current),
   );
   /** Boot prefetch or a revisit — paint the ledger without waiting on remaining. */
   const openedFromCache = useRef(summary !== null);
   const [error, setError] = useState<string | null>(null);
-  const [remaining, setRemaining] = useState<UsageRemaining | null>(() => getCachedUsageRemaining());
+  const [remaining, setRemaining] = useState<UsageRemaining | null>(() =>
+    getCachedUsageRemaining(),
+  );
   const [remainingError, setRemainingError] = useState<string | null>(() =>
-    getCachedUsageRemainingError()
+    getCachedUsageRemainingError(),
   );
   const [remainingHoldOver, setRemainingHoldOver] = useState(() => usageRemainingHasSettled());
   // Only the newest request may write state: a slow 30-day scan must not
@@ -139,24 +147,21 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
   const requestRef = useRef(0);
   const remainingRequestRef = useRef(0);
 
-  const load = useCallback(
-    async (target: UsageWindow, scope: ProviderId | null): Promise<void> => {
-      const request = requestRef.current + 1;
-      requestRef.current = request;
-      try {
-        const next = await requestUsageSummary(target, scope, timeZoneRef.current, () =>
-          fetchSummary(target, scope, timeZoneRef.current)
-        );
-        if (requestRef.current !== request) return;
-        setSummary(next);
-        setError(null);
-      } catch (cause) {
-        if (requestRef.current !== request) return;
-        setError(cause instanceof Error ? cause.message : "Could not read usage.");
-      }
-    },
-    []
-  );
+  const load = useCallback(async (target: UsageWindow, scope: ProviderId | null): Promise<void> => {
+    const request = requestRef.current + 1;
+    requestRef.current = request;
+    try {
+      const next = await requestUsageSummary(target, scope, timeZoneRef.current, () =>
+        fetchSummary(target, scope, timeZoneRef.current),
+      );
+      if (requestRef.current !== request) return;
+      setSummary(next);
+      setError(null);
+    } catch (cause) {
+      if (requestRef.current !== request) return;
+      setError(cause instanceof Error ? cause.message : "Could not read usage.");
+    }
+  }, []);
 
   const loadRemaining = useCallback(async (): Promise<void> => {
     const request = remainingRequestRef.current + 1;
@@ -168,8 +173,7 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
       setRemainingError(null);
     } catch (cause) {
       if (remainingRequestRef.current !== request) return;
-      const message =
-        cause instanceof Error ? cause.message : "Could not read remaining usage.";
+      const message = cause instanceof Error ? cause.message : "Could not read remaining usage.";
       recordUsageRemainingFailure(message, Date.now());
       setRemainingError(message);
     }
@@ -215,6 +219,8 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
   const remainingSettled = remaining !== null || remainingError !== null || remainingHoldOver;
   const canPaint = openedFromCache.current || remainingSettled;
 
+  useInteractionShown("page.usage", visible && canPaint && summary !== null);
+
   const scanning = summary?.scan.phase === "scanning";
   useEffect(() => {
     if (!visible) return;
@@ -230,10 +236,12 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
     : "";
   const chartTitle = summary?.resolution === "hour" ? "Hourly" : "Daily";
   const chartHeading = `${chartTitle} ${metric === "cost" ? "cost" : "tokens"}`;
-  const scanStamp = summary ? formatScanStamp(summary.scan.lastCompletedAt, summary.timeZone) : null;
+  const scanStamp = summary
+    ? formatScanStamp(summary.scan.lastCompletedAt, summary.timeZone)
+    : null;
 
   return (
-    <div className="settings-page usage-page">
+    <div className="settings-page usage-page" data-testid="usage-page">
       <div className="settings-topbar" data-window-drag />
       <div className="usage-main">
         <header className="usage-topbar">
@@ -258,11 +266,7 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
             ) : null}
           </div>
           <div className="usage-controls">
-            <UsageProviderPicker
-              summary={summary}
-              value={provider}
-              onChange={setProvider}
-            />
+            <UsageProviderPicker summary={summary} value={provider} onChange={setProvider} />
             <SettingsListPicker<UsageWindow>
               ariaLabel="Time range"
               icon={<CalendarDays size={13} aria-hidden="true" />}
@@ -285,7 +289,11 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
             {error ? (
               <div className="usage-notice" data-tone="error" role="alert">
                 <span>{error}</span>
-                <button type="button" className="sched-button" onClick={() => void load(usageWindow, provider)}>
+                <button
+                  type="button"
+                  className="sched-button"
+                  onClick={() => void load(usageWindow, provider)}
+                >
                   Try again
                 </button>
               </div>
@@ -326,14 +334,14 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
 function UsageProviderPicker({
   summary,
   value,
-  onChange
+  onChange,
 }: {
   summary: UsageSummary | null;
   value: ProviderId | null;
   onChange: (provider: ProviderId | null) => void;
 }): JSX.Element {
   const unavailable = new Set(
-    (summary?.providers ?? []).filter((row) => !row.available).map((row) => row.provider)
+    (summary?.providers ?? []).filter((row) => !row.available).map((row) => row.provider),
   );
   const options: Array<{
     value: ProviderChoice;
@@ -348,8 +356,10 @@ function UsageProviderPicker({
       label: providerLabel(id),
       disabled: unavailable.has(id),
       title: unavailable.has(id) ? "No local usage data" : undefined,
-      icon: <span className="usage-series usage-series-dot" data-provider={id} aria-hidden="true" />
-    }))
+      icon: (
+        <span className="usage-series usage-series-dot" data-provider={id} aria-hidden="true" />
+      ),
+    })),
   ];
   return (
     <SettingsListPicker<ProviderChoice>
@@ -366,7 +376,7 @@ function UsageBody({
   metric,
   chartHeading,
   provider,
-  onSelectProvider
+  onSelectProvider,
 }: {
   summary: UsageSummary;
   metric: UsageMetric;

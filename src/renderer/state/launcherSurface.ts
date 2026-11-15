@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { beginInteraction } from "../lib/interactionTimings.js";
 
 // The standalone launcher: the full-screen new-chat surface, whether the next
 // launch composes a repo-less side chat, and the signal that clears a composed
@@ -21,7 +22,7 @@ interface LauncherSurfaceSnapshot {
 const INITIAL: LauncherSurfaceSnapshot = {
   fullLauncherOpen: false,
   sideChatMode: false,
-  resetSignal: 0
+  resetSignal: 0,
 };
 
 let state: LauncherSurfaceSnapshot = INITIAL;
@@ -40,6 +41,7 @@ function publish(next: LauncherSurfaceSnapshot): void {
 }
 
 export function showFullLauncher(): void {
+  if (!state.fullLauncherOpen) beginInteraction("launcher.open", { mode: "full" });
   publish({ ...state, fullLauncherOpen: true });
 }
 
@@ -68,7 +70,11 @@ function launcherSurfaceSnapshot(): LauncherSurfaceSnapshot {
 }
 
 export function useLauncherSurface(): LauncherSurfaceSnapshot {
-  return useSyncExternalStore(subscribeLauncherSurface, launcherSurfaceSnapshot, launcherSurfaceSnapshot);
+  return useSyncExternalStore(
+    subscribeLauncherSurface,
+    launcherSurfaceSnapshot,
+    launcherSurfaceSnapshot,
+  );
 }
 
 export function resetLauncherSurfaceForTests(): void {

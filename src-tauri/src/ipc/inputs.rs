@@ -3,16 +3,15 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::{
-    persistence::routines::RoutineRunTarget, review::git_review::ReviewComparison,
-    workspaces::WorkspaceTargetKind,
-};
+use crate::{review::git_review::ReviewComparison, workspaces::WorkspaceTargetKind};
+use argmax_store::routines::RoutineRunTarget;
 
-pub use crate::application::validation::{TerminalCols, TerminalRows};
+pub use crate::browser::tabs::{BrowserBounds, BrowserOpenInput};
 pub use crate::providers::inputs::*;
 pub use crate::workspaces::inputs::*;
+pub use argmax_contracts::validation::{TerminalCols, TerminalRows};
 
-use super::validation::{
+use argmax_contracts::validation::{
     AttachmentMimeType, Base64ImageData, BranchName, CommandText, DiffContextLines, FileContent,
     NonEmptyString, OpenPath, PermissionMode, ProjectId, Prompt, ProviderId, QuestionRequestId,
     ReasoningEffort, RelativePath, RepoPath, SearchQuery, SessionId, StreamChunk, TerminalId,
@@ -61,6 +60,14 @@ pub struct SetBrowserToolsInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetClaudeMcpInput {
+    pub preset: argmax_store::app_settings::ClaudeMcpPreset,
+    /// Server names for the Custom preset, kept while another preset is chosen.
+    pub custom_servers: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SetRoutingKeyInput {
     pub api_key: String,
 }
@@ -87,7 +94,7 @@ pub struct ClearOpencodeGatewayKeyInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SetProjectCheckInput {
-    pub mode: crate::persistence::app_settings::ProjectCheckMode,
+    pub mode: argmax_store::app_settings::ProjectCheckMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -182,7 +189,7 @@ pub struct ProjectSettingsInput {
     /// What a merged PR does to the workspace on its branch. Required rather
     /// than defaulted: a caller that omitted it would silently turn the
     /// setting off on every other save.
-    pub merge_cleanup: crate::persistence::projects::MergeCleanup,
+    pub merge_cleanup: argmax_store::projects::MergeCleanup,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -249,19 +256,6 @@ browser_tab_input!(BrowserFillCredentialsInput);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BrowserOpenInput {
-    pub url: String,
-    pub bounds: BrowserBounds,
-    pub tab_id: String,
-    /// Session that owns the tab. `None` for a tab the user opened, and for
-    /// the renderer re-materializing a tab it restored from a previous run —
-    /// the registry keeps the owner it already has in that case.
-    #[serde(default)]
-    pub owner_session_id: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserNavigateInput {
     pub url: String,
     pub tab_id: String,
@@ -271,18 +265,6 @@ pub struct BrowserNavigateInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserSetThemeInput {
     pub mode: ThemeMode,
-}
-
-/// Logical (CSS-pixel) rect of the renderer placeholder the browser webview
-/// is glued to. The main webview fills the whole window, so viewport
-/// coordinates map 1:1 onto window coordinates.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BrowserBounds {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -576,7 +558,7 @@ pub struct TerminalTerminateInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ApprovalsResolveInput {
-    pub approval_id: super::validation::ApprovalId,
+    pub approval_id: argmax_contracts::validation::ApprovalId,
     pub status: ApprovalResolution,
 }
 
@@ -659,13 +641,6 @@ pub struct SessionForkMergeInput {
     pub session_id: SessionId,
     /// The fork position the preview showed.
     pub through_event_id: NonEmptyString,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "kebab-case")]
-pub enum ForkWorkspaceMode {
-    Shared,
-    Isolated,
 }
 
 /// Dispatch a multitask from a chat: a sibling session that runs alongside the
@@ -1035,7 +1010,7 @@ mod tests {
         let too_large = serde_json::json!({
             "workspaceId": "w1",
             "filePath": "src/main.rs",
-            "content": "x".repeat(super::super::validation::MAX_FILE_CONTENT_BYTES + 1),
+            "content": "x".repeat(argmax_contracts::validation::MAX_FILE_CONTENT_BYTES + 1),
             "expectedMtimeMs": null
         });
         assert!(serde_json::from_value::<WorkspaceWriteFileInput>(too_large).is_err());
@@ -1178,7 +1153,7 @@ pub struct UsageSummaryInput {
     /// per-provider rows always cover every provider, so the page can still
     /// offer the others.
     #[serde(default)]
-    pub provider: Option<crate::ipc::validation::ProviderId>,
+    pub provider: Option<argmax_contracts::validation::ProviderId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

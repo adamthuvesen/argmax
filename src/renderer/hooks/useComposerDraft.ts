@@ -22,7 +22,10 @@ import { clearDraft, readDraft, writeDraftText } from "../lib/composerDrafts.js"
  */
 export function useComposerDraft(
   key: string | null,
-  { carryTextOnRetarget = false, persist = true }: { carryTextOnRetarget?: boolean; persist?: boolean } = {}
+  {
+    carryTextOnRetarget = false,
+    persist = true,
+  }: { carryTextOnRetarget?: boolean; persist?: boolean } = {},
 ): [string, Dispatch<SetStateAction<string>>, boolean] {
   const [draft, setDraft] = useState(() => readDraft(key).text);
 

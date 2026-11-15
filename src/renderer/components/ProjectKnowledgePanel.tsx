@@ -1,34 +1,27 @@
 import { Check, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState, type JSX } from "react";
+import { learningActions } from "../data/bridgeActions.js";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
+import { useEffect, useState, type JSX } from "react";
 import type { Learning, ProjectSummary } from "../../shared/types.js";
 import { showErrorToast } from "../state/toast.js";
 import { SettingRow, SettingsListPicker } from "./settings/settingsPrimitives.js";
 
 export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[] }): JSX.Element {
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => projects[0]?.id ?? "");
-  const [learnings, setLearnings] = useState<Learning[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [draftSummaries, setDraftSummaries] = useState<Record<string, string>>({});
-  const projectGeneration = useRef(0);
+  const query = useBridgeQuery({
+    key: ["learnings.list", selectedProjectId],
+    enabled: selectedProjectId !== "",
+    read: (api) => api.learnings.list({ projectId: selectedProjectId }),
+  });
+  const learnings = query.data ?? [];
+  const loadError = query.error;
+  const setLearnings = (update: (current: Learning[]) => Learning[]): void => {
+    query.setData((current) => update(current ?? []));
+  };
 
   useEffect(() => {
-    const generation = ++projectGeneration.current;
-    setLearnings([]);
     setDraftSummaries({});
-    setLoadError(null);
-    if (window.argmax && selectedProjectId) {
-      void window.argmax.learnings.list({ projectId: selectedProjectId }).then(
-        (result) => {
-          if (projectGeneration.current === generation) setLearnings(result);
-        },
-        (error: unknown) => {
-          if (projectGeneration.current === generation) {
-            setLoadError(error instanceof Error ? error.message : "Could not load project knowledge.");
-          }
-        }
-      );
-    }
-    return () => { projectGeneration.current += 1; };
   }, [selectedProjectId]);
 
   // Keep the project picker pointed at something valid when the prop changes.
@@ -48,11 +41,11 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
       });
       return;
     }
-    if (!window.argmax) return;
-    const generation = projectGeneration.current;
+    const actions = learningActions();
+    if (!actions) return;
     try {
-      const updated = await window.argmax.learnings.update({ id: learning.id, summary: trimmed });
-      if (projectGeneration.current !== generation) return;
+      const updated = await actions.update({ id: learning.id, summary: trimmed });
+      if (!query.isCurrent()) return;
       setLearnings((current) => current.map((item) => (item.id === learning.id ? updated : item)));
       setDraftSummaries((current) => {
         const next = { ...current };
@@ -60,42 +53,42 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
         return next;
       });
     } catch (error) {
-      if (projectGeneration.current !== generation) return;
+      if (!query.isCurrent()) return;
       showErrorToast(error instanceof Error ? error.message : "Could not update learning.");
     }
   };
 
   const handleVerifiedToggle = async (learning: Learning): Promise<void> => {
-    if (!window.argmax) return;
-    const generation = projectGeneration.current;
+    const actions = learningActions();
+    if (!actions) return;
     const nextVerified = !learning.verified;
     setLearnings((current) =>
-      current.map((item) => (item.id === learning.id ? { ...item, verified: nextVerified } : item))
+      current.map((item) => (item.id === learning.id ? { ...item, verified: nextVerified } : item)),
     );
     try {
-      const updated = await window.argmax.learnings.update({ id: learning.id, verified: nextVerified });
-      if (projectGeneration.current !== generation) return;
+      const updated = await actions.update({ id: learning.id, verified: nextVerified });
+      if (!query.isCurrent()) return;
       setLearnings((current) => current.map((item) => (item.id === learning.id ? updated : item)));
     } catch (error) {
-      if (projectGeneration.current !== generation) return;
-      // Roll back on failure.
+      if (!query.isCurrent()) return;
       setLearnings((current) =>
-        current.map((item) => (item.id === learning.id ? { ...item, verified: learning.verified } : item))
+        current.map((item) =>
+          item.id === learning.id ? { ...item, verified: learning.verified } : item,
+        ),
       );
       showErrorToast(error instanceof Error ? error.message : "Could not toggle verified.");
     }
   };
 
   const handleDelete = async (learning: Learning): Promise<void> => {
-    if (!window.argmax) return;
-    const generation = projectGeneration.current;
+    const actions = learningActions();
+    if (!actions) return;
     // Optimistic remove so the row disappears immediately.
     setLearnings((current) => current.filter((item) => item.id !== learning.id));
     try {
-      await window.argmax.learnings.delete(learning.id);
+      await actions.delete(learning.id);
     } catch (error) {
-      if (projectGeneration.current !== generation) return;
-      // Restore on failure.
+      if (!query.isCurrent()) return;
       setLearnings((current) => [...current, learning]);
       showErrorToast(error instanceof Error ? error.message : "Could not delete learning.");
     }
@@ -130,14 +123,20 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
       ) : null}
 
       {learnings.length === 0 ? (
-        <p className="settings-note">No learnings captured yet. Complete a chat to start filling this list.</p>
+        <p className="settings-note">
+          No learnings captured yet. Complete a chat to start filling this list.
+        </p>
       ) : (
         <ul className="project-knowledge-list" aria-label="Project learnings">
           {learnings.map((learning) => {
             const draft = draftSummaries[learning.id];
             const draftActive = draft !== undefined;
             return (
-              <li key={learning.id} className="project-knowledge-row" data-verified={learning.verified ? "true" : "false"}>
+              <li
+                key={learning.id}
+                className="project-knowledge-row"
+                data-verified={learning.verified ? "true" : "false"}
+              >
                 <span className="project-knowledge-kind">{learning.kind}</span>
                 <textarea
                   className="project-knowledge-summary"
@@ -145,7 +144,10 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
                   rows={2}
                   value={draftActive ? draft : learning.summary}
                   onChange={(event) =>
-                    setDraftSummaries((current) => ({ ...current, [learning.id]: event.target.value }))
+                    setDraftSummaries((current) => ({
+                      ...current,
+                      [learning.id]: event.target.value,
+                    }))
                   }
                   onBlur={() => {
                     void handleSummaryBlur(learning);

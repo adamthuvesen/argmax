@@ -17,13 +17,13 @@ function splitEntryPath(entry: FileAutocompleteEntry): { name: string; folder: s
   const slash = entry.path.lastIndexOf("/");
   return {
     name: entry.path.slice(slash + 1),
-    folder: slash < 0 ? "" : entry.path.slice(0, slash)
+    folder: slash < 0 ? "" : entry.path.slice(0, slash),
   };
 }
 
 export function FilePopover({
   state,
-  inputRef
+  inputRef,
 }: {
   state: FileAutocompleteState;
   inputRef: RefObject<ComposerField | null>;
@@ -52,7 +52,9 @@ export function FilePopover({
       aria-label="File suggestions"
       onWheel={(event) => event.stopPropagation()}
     >
-      {state.filteredEntries.length === 0 ? <li className="file-popover-empty">No files match</li> : null}
+      {state.filteredEntries.length === 0 ? (
+        <li className="file-popover-empty">No files match</li>
+      ) : null}
       {state.filteredEntries.map((entry, index) => {
         const { name, folder } = splitEntryPath(entry);
         const label = entry.kind === "dir" ? `${name}/` : name;
@@ -61,66 +63,66 @@ export function FilePopover({
           entry.kind === "chat" && state.filteredEntries[index - 1]?.kind !== "chat";
         return (
           <Fragment key={key}>
-          {startsChats ? (
-            <li className="file-popover-heading" role="presentation">
-              Chats
-            </li>
-          ) : null}
-          <li
-            ref={index === state.selectionIndex ? selectedOptionRef : undefined}
-            role="option"
-            aria-selected={index === state.selectionIndex}
-            // The folder is aria-hidden so the row's visible name stays short;
-            // the full path is the accessible name so two `mod.rs` rows differ.
-            aria-label={
-              entry.kind === "chat"
-                ? `Chat: ${name}${entry.projectName ? ` in ${entry.projectName}` : ""}`
-                : folder
-                  ? `${folder}/${label}`
-                  : label
-            }
-            data-kind={entry.kind}
-            className={`file-popover-item${index === state.selectionIndex ? " is-selected" : ""}`}
-            // Hover highlights the row by moving the shared selection index, so
-            // pointer and arrow-key navigation light up the same row. Use
-            // mouseMove, not mouseEnter: arrow-key navigation scrolls the list,
-            // and a scroll that slides a new row under a resting pointer fires
-            // mouseEnter — which would snatch selection back from the keyboard.
-            // mouseMove only fires on real pointer movement.
-            onMouseMove={() => {
-              if (index !== state.selectionIndex) {
-                state.setSelectionIndex(index);
-              }
-            }}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              state.setSelectionIndex(index);
-              state.selectEntry(entry);
-              inputRef.current?.focus();
-            }}
-          >
-            <PickerLead>
-              {entry.kind === "chat" ? (
-                <MessageSquare size={14} aria-hidden="true" />
-              ) : entry.kind === "dir" ? (
-                <FolderIcon folderName={name} width={14} height={14} />
-              ) : (
-                <FileIcon
-                  fileName={name}
-                  autoAssign
-                  editFileNameData={SPECIAL_FILE_ICONS}
-                  width={14}
-                  height={14}
-                />
-              )}
-            </PickerLead>
-            <span className="file-popover-name">{label}</span>
-            {folder ? (
-              <span className="file-popover-dir" aria-hidden="true">
-                {folder}
-              </span>
+            {startsChats ? (
+              <li className="file-popover-heading" role="presentation">
+                Chats
+              </li>
             ) : null}
-          </li>
+            <li
+              ref={index === state.selectionIndex ? selectedOptionRef : undefined}
+              role="option"
+              aria-selected={index === state.selectionIndex}
+              // The folder is aria-hidden so the row's visible name stays short;
+              // the full path is the accessible name so two `mod.rs` rows differ.
+              aria-label={
+                entry.kind === "chat"
+                  ? `Chat: ${name}${entry.projectName ? ` in ${entry.projectName}` : ""}`
+                  : folder
+                    ? `${folder}/${label}`
+                    : label
+              }
+              data-kind={entry.kind}
+              className={`file-popover-item${index === state.selectionIndex ? " is-selected" : ""}`}
+              // Hover highlights the row by moving the shared selection index, so
+              // pointer and arrow-key navigation light up the same row. Use
+              // mouseMove, not mouseEnter: arrow-key navigation scrolls the list,
+              // and a scroll that slides a new row under a resting pointer fires
+              // mouseEnter — which would snatch selection back from the keyboard.
+              // mouseMove only fires on real pointer movement.
+              onMouseMove={() => {
+                if (index !== state.selectionIndex) {
+                  state.setSelectionIndex(index);
+                }
+              }}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                state.setSelectionIndex(index);
+                state.selectEntry(entry);
+                inputRef.current?.focus();
+              }}
+            >
+              <PickerLead>
+                {entry.kind === "chat" ? (
+                  <MessageSquare size={14} aria-hidden="true" />
+                ) : entry.kind === "dir" ? (
+                  <FolderIcon folderName={name} width={14} height={14} />
+                ) : (
+                  <FileIcon
+                    fileName={name}
+                    autoAssign
+                    editFileNameData={SPECIAL_FILE_ICONS}
+                    width={14}
+                    height={14}
+                  />
+                )}
+              </PickerLead>
+              <span className="file-popover-name">{label}</span>
+              {folder ? (
+                <span className="file-popover-dir" aria-hidden="true">
+                  {folder}
+                </span>
+              ) : null}
+            </li>
           </Fragment>
         );
       })}

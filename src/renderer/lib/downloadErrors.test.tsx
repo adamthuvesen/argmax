@@ -9,11 +9,20 @@ afterEach(() => {
 
 describe("diagnostic downloads", () => {
   it("reports a failed log download without claiming it was saved", () => {
-    vi.stubGlobal("URL", { createObjectURL: () => { throw new Error("Download unavailable"); } });
+    vi.stubGlobal("URL", {
+      createObjectURL: () => {
+        throw new Error("Download unavailable");
+      },
+    });
     const setStatus = vi.fn();
     const onError = vi.fn();
     const entry: BackendLogEntry = {
-      seq: 1, timestamp: "2026-09-26T00:00:00Z", level: "info", scope: "test", message: "hello", fields: {}
+      seq: 1,
+      timestamp: "2026-09-26T00:00:00Z",
+      level: "info",
+      scope: "test",
+      message: "hello",
+      fields: {},
     };
 
     saveLogsFile([entry], setStatus, onError);

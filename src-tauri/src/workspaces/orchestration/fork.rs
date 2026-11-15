@@ -13,10 +13,11 @@
 
 use super::*;
 use crate::application::session_launch::MAX_TASK_LABEL_BYTES;
-use crate::ipc::inputs::ForkWorkspaceMode;
-use crate::persistence::continuity::{insert_fork, ForkRecord, NativeMode};
-use crate::persistence::events::persist_copied_event;
-use crate::providers::continuity::{latest_turn_starter, recorded_codex_turn};
+use crate::providers::continuity::recorded_codex_turn;
+use crate::workspaces::inputs::ForkWorkspaceMode;
+use argmax_store::continuity::{insert_fork, ForkRecord, NativeMode};
+use argmax_store::events::latest_turn_starter;
+use argmax_store::events::persist_copied_event;
 
 const FORK_SUFFIX: &str = " (fork)";
 
@@ -92,7 +93,7 @@ pub fn select_fork_range(
     source: &SessionSummary,
     boundary_event_id: Option<&str>,
 ) -> ArgmaxResult<ForkSelection> {
-    use crate::persistence::sqlite_error;
+    use argmax_store::sqlite_error;
     use rusqlite::OptionalExtension;
 
     let source_active = ACTIVE_STATES.contains(&source.state.as_str());
@@ -210,7 +211,7 @@ fn native_plan(
     // A source that has not launched yet holds an id it only borrowed from the
     // chat it was forked or moved from. That conversation is not the source's
     // to fork: its newest state belongs to someone else's turns.
-    if crate::persistence::sessions::session_resume_fork(connection, &source.id)? {
+    if argmax_store::sessions::session_resume_fork(connection, &source.id)? {
         return Ok((NativeMode::None, None));
     }
     if ACTIVE_STATES.contains(&source.state.as_str()) {
@@ -227,10 +228,10 @@ fn native_plan(
             return Ok((NativeMode::CodexLastTurn, Some(turn)));
         }
     }
-    let provider = crate::providers::runtime::parse_provider(&source.provider).ok();
+    let provider = argmax_contracts::validation::parse_provider(&source.provider).ok();
     let carries = provider.is_some_and(|provider| {
         let definition = crate::providers::adapters::get_provider_definition(provider);
-        provider != crate::providers::ProviderId::Cursor
+        provider != argmax_contracts::validation::ProviderId::Cursor
             // An isolated checkout needs a provider whose resume follows the
             // new directory.
             && (workspace == ForkWorkspaceMode::Shared || definition.move_carries_conversation)
@@ -244,7 +245,7 @@ fn native_plan(
 /// The source's current uncommitted state as a patch, so an isolated fork
 /// starts from the files the person sees now.
 async fn current_files_patch(source_path: &Path) -> ArgmaxResult<Option<PathBuf>> {
-    use crate::git::exec::{run_git_text_with_options, GitExecOptions};
+    use argmax_process::git_exec::{run_git_text_with_options, GitExecOptions};
     let scratch = tempfile::tempdir().map_err(|error| {
         ArgmaxError::service(
             "FORK_SCRATCH",
@@ -290,7 +291,7 @@ pub(crate) fn carry_lineage_on_move(
     destination_session_id: &str,
     copied: &[(String, String)],
 ) -> ArgmaxResult<()> {
-    use crate::persistence::continuity::{fork_for_child, insert_merge, list_merges};
+    use argmax_store::continuity::{fork_for_child, insert_merge, list_merges};
     let Some(fork) = fork_for_child(connection, moved_session_id)? else {
         return Ok(());
     };
@@ -315,7 +316,7 @@ pub(crate) fn carry_lineage_on_move(
         };
         insert_merge(
             connection,
-            &crate::persistence::continuity::ForkMerge {
+            &argmax_store::continuity::ForkMerge {
                 id: Uuid::new_v4().to_string(),
                 fork_id: carried.id.clone(),
                 from_event_id: remap(&merge.from_event_id),
@@ -478,10 +479,10 @@ impl WorkspaceService {
         // halfway must not leave a workspace with a truncated history.
         let transaction = connection
             .unchecked_transaction()
-            .map_err(crate::persistence::sqlite_error)?;
+            .map_err(argmax_store::sqlite_error)?;
         let workspace = match isolated {
             Some(created) => created,
-            None => crate::persistence::workspaces::persist_workspace_in_folder(
+            None => argmax_store::workspaces::persist_workspace_in_folder(
                 &transaction,
                 &PersistWorkspaceInput {
                     id: Uuid::new_v4().to_string(),
@@ -578,12 +579,10 @@ impl WorkspaceService {
                 .then(|| source_now.provider_conversation_id.clone())
                 .flatten(),
             native_turn_id: native_turn,
-            created_at: crate::persistence::time::now_iso(),
+            created_at: argmax_store::time::now_iso(),
         };
         insert_fork(&transaction, &fork)?;
-        transaction
-            .commit()
-            .map_err(crate::persistence::sqlite_error)?;
+        transaction.commit().map_err(argmax_store::sqlite_error)?;
         self.publish(DashboardDelta {
             projects: list_projects(&connection)?,
             workspaces: vec![workspace.clone()],
@@ -616,12 +615,12 @@ impl WorkspaceService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::continuity::{binding_turn, fork_for_child, record_binding_turn};
-    use crate::persistence::database::Database;
-    use crate::persistence::sessions::{session_resume_fork, SessionProviderInput};
     use crate::providers::continuity::plan_launch;
     use crate::providers::continuity_tests::{event, event_with, seed_session};
-    use crate::providers::ProviderId;
+    use argmax_contracts::validation::ProviderId;
+    use argmax_store::continuity::{binding_turn, fork_for_child, record_binding_turn};
+    use argmax_store::database::Database;
+    use argmax_store::sessions::{session_resume_fork, SessionProviderInput};
     use serde_json::json;
 
     fn service() -> (Arc<Database>, Arc<WorkspaceService>) {
@@ -868,7 +867,7 @@ mod tests {
         }
         let forked = service.fork_session_at(request(Some("u1"))).await.unwrap();
         let connection = database.connection();
-        crate::persistence::sessions::update_session_provider(
+        argmax_store::sessions::update_session_provider(
             &connection,
             &forked.session.id,
             &SessionProviderInput {
@@ -1166,7 +1165,7 @@ mod tests {
             assert!(label.ends_with(FORK_SUFFIX), "{label:?}");
             assert!(label.len() <= MAX_TASK_LABEL_BYTES, "{} bytes", label.len());
             assert!(
-                crate::application::validation::TaskLabel::try_from(label.clone()).is_ok(),
+                argmax_contracts::validation::TaskLabel::try_from(label.clone()).is_ok(),
                 "{label:?} is not a valid task label"
             );
             if title.len() + FORK_SUFFIX.len() <= MAX_TASK_LABEL_BYTES {

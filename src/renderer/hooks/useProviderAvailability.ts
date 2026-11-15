@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { DiscoveredProvider } from "../../shared/types.js";
 import type { ProviderAvailability } from "../components/ModelSelector.js";
-import { useAsyncLoad } from "./useAsyncLoad.js";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 
 /**
  * Install/auth state per provider, for the model pickers that annotate an
@@ -13,8 +13,12 @@ export function useProviderAvailability(): {
   availability: ProviderAvailability | undefined;
   discovered: DiscoveredProvider[] | null;
 } {
-  const { data: discovered } = useAsyncLoad<DiscoveredProvider[]>(() => window.argmax!.providers.discover(), {
-    fallbackMessage: "Could not check which agents are installed."
+  const { data: discovered } = useBridgeQuery<DiscoveredProvider[]>({
+    key: ["providers.discover"],
+    read: (api) => api.providers.discover(),
+    // Rust caches discovery until a forced refresh, and Settings and the
+    // welcome pane store their forced refreshes under this same key.
+    retain: true,
   });
   const availability = useMemo<ProviderAvailability | undefined>(() => {
     if (!discovered) return undefined;

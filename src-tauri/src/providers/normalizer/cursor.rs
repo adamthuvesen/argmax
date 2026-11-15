@@ -5,7 +5,8 @@ use super::{
     number_value, object_value, string_value, timeline_event, NormalizedUsage,
     NormalizerSessionContext, ProviderOutputEvent, UsageCounts,
 };
-use crate::{persistence::events::PersistTimelineEventInput, providers::pricing::cost_of};
+use crate::providers::pricing::cost_of;
+use argmax_store::events::PersistTimelineEventInput;
 
 pub fn event_type(provider_type: &str) -> Option<&'static str> {
     (provider_type == "error").then_some("error")
@@ -382,7 +383,7 @@ mod tests {
     use crate::providers::normalizer::{
         normalize_provider_event, tests::output_event, NormalizerSessionContext,
     };
-    use crate::providers::ProviderId;
+    use argmax_contracts::validation::ProviderId;
 
     // Captured from a live Cursor ACP session: a subagent launch arrives under
     // the generic `other` wrapper with its real name inside the args.

@@ -41,7 +41,10 @@ describe("useMotionPresence", () => {
   });
 
   it("removes closing motion immediately when reduced motion is requested", () => {
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true })),
+    );
     const { rerender } = render(<Surface open />);
     rerender(<Surface open={false} />);
 

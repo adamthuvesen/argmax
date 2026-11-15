@@ -16,11 +16,11 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 use crate::activity::{ActivityGithubState, LEDGER_MONTHS};
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::activity::{self as storage, PullRequestRow, ReviewRow};
-use crate::persistence::time::now_iso;
-use crate::persistence::Database;
 use crate::util::gh_runner::GhRunner;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::activity::{self as storage, PullRequestRow, ReviewRow};
+use argmax_store::time::now_iso;
+use argmax_store::Database;
 
 /// A refresh runs at most this often. GitHub's search API is the rate-limited
 /// one (30 requests a minute), and the page is opened far more often than a

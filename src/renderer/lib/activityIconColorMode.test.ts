@@ -6,7 +6,7 @@ import {
   activityIconColorModeSnapshot,
   initActivityIconColorMode,
   resetActivityIconColorModeForTests,
-  setActivityIconColorMode
+  setActivityIconColorMode,
 } from "./activityIconColorMode.js";
 
 afterEach(() => {
@@ -24,9 +24,7 @@ describe("activity icon color mode", () => {
     setActivityIconColorMode("monochrome");
 
     expect(document.documentElement.dataset.activityIconColor).toBe("monochrome");
-    expect(window.localStorage.getItem(ACTIVITY_ICON_COLOR_MODE_STORAGE_KEY)).toBe(
-      "monochrome"
-    );
+    expect(window.localStorage.getItem(ACTIVITY_ICON_COLOR_MODE_STORAGE_KEY)).toBe("monochrome");
   });
 
   it("restores the persisted mode at boot", () => {

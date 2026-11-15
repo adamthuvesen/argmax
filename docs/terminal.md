@@ -51,7 +51,7 @@ Without it `op` fails here where Ghostty works: `op` first reads 1Password's
 settings file in the app's group container, macOS app-data protection denies
 that read to processes Argmax spawns, and `op` reports "No accounts configured"
 instead of the error. Provider CLIs get the same default through
-[environment.rs](../src-tauri/src/providers/environment.rs).
+[environment.rs](../src-tauri/crates/argmax-process/src/environment.rs).
 
 The `terminal_spawn` agent tool uses the same service and can type a command
 into the new shell. The PTY belongs to Argmax, so it survives the provider turn

@@ -38,7 +38,12 @@ async function waitForUrl(url, child) {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error(`Vite exited with code ${child.exitCode}`);
-    if (await fetch(url).then((response) => response.ok).catch(() => false)) return;
+    if (
+      await fetch(url)
+        .then((response) => response.ok)
+        .catch(() => false)
+    )
+      return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error("timed out waiting for the chat-scroll fixture");
@@ -49,12 +54,16 @@ function run(command, args, options = {}) {
     const child = spawn(command, args, {
       cwd: repoRoot,
       stdio: ["ignore", "pipe", "pipe"],
-      ...options
+      ...options,
     });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += String(chunk); });
-    child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
     child.once("error", reject);
     child.once("exit", (code, signal) => resolve({ code, signal, stdout, stderr }));
   });
@@ -103,7 +112,7 @@ function FixtureFab({ follow, onClick }) {
   return detached ? h("button", { className: "scroll-to-bottom-fab", onClick }, "Scroll to latest") : null;
 }
 
-function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, initialAboveHeight = 300, initialViewportHeight = 480 }) {
+function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, initialAboveHeight = 300, initialViewportHeight = 480, showEarlierControl = false }) {
   const [liveHeight, setLiveHeight] = useState(initialLiveHeight ?? (surface === "main" ? 260 : 380));
   const [insertedHeight, setInsertedHeight] = useState(0);
   const [itemVersion, setItemVersion] = useState(0);
@@ -357,6 +366,7 @@ function ScrollFixture({ surface, initialLiveHeight, sameTurnScenario = false, i
   });
 
   const ordinaryContent = [
+    showEarlierControl ? block("show-earlier", 80, { "data-scroll-anchor-skip": "", key: "show-earlier" }) : null,
     insertedHeight > 0 ? block("inserted", insertedHeight) : null,
     block("history-a", 360),
     block("history-b", 300),
@@ -500,6 +510,28 @@ async function runChecks() {
     await active.nestedScrollThenGrow(80, 140);
     const nestedAfter = active.measureAnchor(nestedBefore.anchorId);
     results.push({ name: surface + ": nested scrolling does not move the outer reader", surface, before: nestedBefore, after: nestedAfter, movement: movement(nestedBefore, nestedAfter), tolerance: 2 });
+
+    // The fill mounts rows between Show earlier and the reader. The control
+    // stays put, so it must not be the anchor.
+    await mount(surface, { showEarlierControl: true });
+    await active.scrollUp(5000);
+    const controlBefore = active.measureAnchor("history-a");
+    await active.insertAbove(240);
+    const controlAfter = active.measureAnchor("history-a");
+    results.push({ name: surface + ": insertion below Show earlier preserves the reader at the top", surface, before: controlBefore, after: controlAfter, movement: movement(controlBefore, controlAfter), tolerance: 2 });
+
+    // An opened chat mounts its tail first and fills the window above it.
+    await mount(surface);
+    await active.insertAbove(240);
+    const followingInsert = active.measure();
+    results.push({
+      name: surface + ": earlier insertion keeps a following reader at the bottom",
+      surface,
+      before: null,
+      after: followingInsert,
+      movement: Math.round(followingInsert.distanceFromBottom * 100) / 100,
+      tolerance: 1
+    });
 
     await mount(surface);
     await active.resizeViewport(-120);
@@ -942,12 +974,18 @@ async function main() {
   try {
     const port = await freePort();
     const fixtureUrl = `http://127.0.0.1:${port}/${path.basename(fixtureDir)}/index.html`;
-    vite = spawn(process.execPath, [viteEntry, "--host", "127.0.0.1", "--port", String(port), "--strictPort"], {
-      cwd: repoRoot,
-      stdio: ["ignore", "ignore", "pipe"]
-    });
+    vite = spawn(
+      process.execPath,
+      [viteEntry, "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
+      {
+        cwd: repoRoot,
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    );
     let viteErrors = "";
-    vite.stderr.on("data", (chunk) => { viteErrors += String(chunk); });
+    vite.stderr.on("data", (chunk) => {
+      viteErrors += String(chunk);
+    });
     await waitForUrl(fixtureUrl, vite);
 
     if (process.argv.includes("--serve")) {
@@ -960,37 +998,49 @@ async function main() {
     }
 
     const expression = getBrowserCheckSource();
-  const shot = await run(process.execPath, [
-    "scripts/ui-screenshot.mjs",
-    "--url", fixtureUrl,
-    "--out", screenshotPath,
-    "--width", "900",
-    "--height", "650",
-    "--settle", "0",
-    "--eval", expression
-  ]);
-  if (shot.code !== 0) {
-    fail(`browser check could not run:\n${shot.stderr || shot.stdout || viteErrors}`);
-  } else {
-    const payloadLine = shot.stdout.trim().split("\n").filter(Boolean).at(-1);
-    const payload = JSON.parse(payloadLine);
-    const results = payload.eval ?? [];
-    const failures = results.filter((result) => !result.ok);
-    console.log(JSON.stringify({
-      ok: failures.length === 0,
-      checks: results.length,
-      failures: failures.map((failure) => ({
-        name: failure.name,
-        movement: failure.movement,
-        scrollTopBefore: failure.before?.scrollTop ?? null,
-        scrollTopAfter: failure.after?.scrollTop ?? null,
-        scrollHeightBefore: failure.before?.scrollHeight ?? null,
-        scrollHeightAfter: failure.after?.scrollHeight ?? null
-      })),
-      results
-    }, null, 2));
-    if (failures.length > 0) process.exitCode = 1;
-  }
+    const shot = await run(process.execPath, [
+      "scripts/ui-screenshot.mjs",
+      "--url",
+      fixtureUrl,
+      "--out",
+      screenshotPath,
+      "--width",
+      "900",
+      "--height",
+      "650",
+      "--settle",
+      "0",
+      "--eval",
+      expression,
+    ]);
+    if (shot.code !== 0) {
+      fail(`browser check could not run:\n${shot.stderr || shot.stdout || viteErrors}`);
+    } else {
+      const payloadLine = shot.stdout.trim().split("\n").filter(Boolean).at(-1);
+      const payload = JSON.parse(payloadLine);
+      const results = payload.eval ?? [];
+      const failures = results.filter((result) => !result.ok);
+      console.log(
+        JSON.stringify(
+          {
+            ok: failures.length === 0,
+            checks: results.length,
+            failures: failures.map((failure) => ({
+              name: failure.name,
+              movement: failure.movement,
+              scrollTopBefore: failure.before?.scrollTop ?? null,
+              scrollTopAfter: failure.after?.scrollTop ?? null,
+              scrollHeightBefore: failure.before?.scrollHeight ?? null,
+              scrollHeightAfter: failure.after?.scrollHeight ?? null,
+            })),
+            results,
+          },
+          null,
+          2,
+        ),
+      );
+      if (failures.length > 0) process.exitCode = 1;
+    }
   } catch (error) {
     fail(error instanceof Error ? error.message : String(error));
   } finally {

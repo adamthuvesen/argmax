@@ -25,7 +25,7 @@ export interface ToastMessage {
 export async function withToast(
   fn: () => Promise<unknown>,
   setToast: (toast: ToastMessage) => void,
-  fallback: string
+  fallback: string,
 ): Promise<boolean> {
   try {
     await fn();
@@ -35,7 +35,7 @@ export async function withToast(
     setToast({
       kind: "error",
       message: fallback,
-      ...(detail && detail !== fallback ? { detail } : {})
+      ...(detail && detail !== fallback ? { detail } : {}),
     });
     return false;
   }

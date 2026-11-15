@@ -19,19 +19,19 @@ use std::{
     time::Duration,
 };
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use rusqlite::OptionalExtension;
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
 use tokio::sync::{broadcast, watch};
 use uuid::Uuid;
 
+use super::model_catalogue::ModelId;
 use super::{
     adapters::get_provider_definition,
     completion_notices::{CompletionNotice, CompletionNoticePolicy, COMPLETION_BATCH_WINDOW},
     continuity,
-    flush_queue::{DashboardDelta, PendingMessage, ProviderEventFlushQueue},
+    flush_queue::{DashboardDelta, ProviderEventFlushQueue},
     follow_up::{
         agent_reference_prompt, compose_follow_up_prompt, compose_follow_up_prompt_since,
         ensure_agent_references_supported,
@@ -43,62 +43,65 @@ use super::{
     normalizer::{CodexCumulativeUsage, NormalizerSessionContext, ProviderOutputEvent},
     orphan_cleanup::{terminate_orphaned_provider_processes, RecoveredProviderSession},
     runtime::{
-        composer_payload, parse_agent_mode, parse_permission_mode, parse_provider,
-        parse_reasoning_effort, sqlite_error, DeltaPublisher, ProviderProcessLauncher,
-        ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
-        RealProviderProcessLauncher,
+        composer_payload, parse_agent_mode, parse_permission_mode, parse_reasoning_effort,
+        sqlite_error, DeltaPublisher, ProviderProcessLauncher, ProviderRuntimeEvent,
+        ProviderRuntimeEventType, ProviderRuntimeHandle, RealProviderProcessLauncher,
     },
     subagent_trace::reconcile_session_subagent_traces,
-    AgentMode, ApprovalSupport, LaunchContinuity, PermissionMode, ProviderId, ProviderLaunchInput,
+    ApprovalSupport, LaunchContinuity, ProviderLaunchInput,
 };
-use crate::sessions::state::SessionState;
 use crate::{
-    application::validation::{NonEmptyString, Prompt, SessionId},
     approvals::service::ApprovalService,
     checkpoints::service::{CheckpointService, CreateCheckpointInput},
-    error::{ArgmaxError, ArgmaxResult},
     gh::service::{pr_numbers_from_command_event, GhService},
     git::ops::checkout_write_lock,
     goals::service::GoalService,
-    ipc::PersonAttestation,
-    persistence::{
-        arc_events::{record_arc_event, ArcEventKind, NewArcEvent},
-        arcs,
-        authorship::PromptAuthor,
-        database::Database,
-        events::{
-            find_event_by_id, latest_agent_message, list_session_events_since, persist_raw_output,
-            persist_timeline_event, persist_user_prompt, update_event_payload,
-            PersistRawOutputInput, PersistTimelineEventInput, TimelineEvent,
-        },
-        pending_messages::{
-            clear_session_queue, delete_message as delete_pending_message,
-            delete_messages_for_collected_origins, list_session_pending_messages,
-            mark_message_launching, recover_pending_messages, replace_session_queue,
-            restore_launching_message,
-        },
-        projects::list_projects,
-        session_messages::{
-            delete_undelivered_session_message, insert_session_message, is_message_delivered,
-            mark_message_delivered, NewSessionMessage, MESSAGE_KIND,
-        },
-        sessions::{
-            clear_session_conversation, find_session_by_id, persist_session, record_session_arc,
-            session_launch_kind, update_session_agent_mode, update_session_model,
-            update_session_provider, update_session_provider_conversation_id, update_session_state,
-            PersistSessionInput, SessionAgentModeInput, SessionModelInput, SessionProviderInput,
-            SessionStateInput, SessionSummary, LAUNCH_KIND_MULTITASK,
-        },
-        time::now_iso,
-        workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
-    },
     providers::inputs::{
-        ComposerAttachmentInput, ProvidersCancelQueuedMessageInput, ProvidersLaunchInput,
-        ProvidersResizeInput, ProvidersSendInput, ProvidersSendQueuedMessageNowInput,
-        ProvidersTerminateInput, QueuedMessageDelivery, SessionClearInput,
+        ProvidersCancelQueuedMessageInput, ProvidersLaunchInput, ProvidersResizeInput,
+        ProvidersSendInput, ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput,
+        QueuedMessageDelivery, SessionClearInput,
     },
     session_control::{AfterTurn, SessionLaunchRegistry},
     workspaces::lifecycle::{WorkspaceAdmission, WorkspaceLifecycle},
+};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::messages::ComposerAttachmentInput;
+use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::parse_provider;
+use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId};
+use argmax_contracts::validation::{NonEmptyString, Prompt, SessionId};
+use argmax_store::authorship::PersonAttestation;
+use argmax_store::pending_messages::PendingMessage;
+use argmax_store::{
+    arc_events::{record_arc_event, ArcEventKind, NewArcEvent},
+    arcs,
+    authorship::PromptAuthor,
+    database::Database,
+    events::{
+        find_event_by_id, latest_agent_message, list_session_events_since, persist_raw_output,
+        persist_timeline_event, persist_user_prompt, update_event_payload, PersistRawOutputInput,
+        PersistTimelineEventInput, TimelineEvent,
+    },
+    pending_messages::{
+        clear_session_queue, delete_message as delete_pending_message,
+        delete_messages_for_collected_origins, list_session_pending_messages,
+        mark_message_launching, recover_pending_messages, replace_session_queue,
+        restore_launching_message,
+    },
+    projects::list_projects,
+    session_messages::{
+        delete_undelivered_session_message, insert_session_message, is_message_delivered,
+        mark_message_delivered, NewSessionMessage, MESSAGE_KIND,
+    },
+    sessions::{
+        clear_session_conversation, find_session_by_id, persist_session, record_session_arc,
+        session_launch_kind, update_session_agent_mode, update_session_model,
+        update_session_provider, update_session_provider_conversation_id, update_session_state,
+        PersistSessionInput, SessionAgentModeInput, SessionModelInput, SessionProviderInput,
+        SessionStateInput, SessionSummary, LAUNCH_KIND_MULTITASK,
+    },
+    time::now_iso,
+    workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
 };
 
 const MAX_PENDING_QUEUE: usize = 64;
@@ -234,27 +237,7 @@ fn ensure_goal_turn_admitted(
     }
 }
 
-/// Where a user turn came from, when it was not the person at the keyboard.
-/// Written onto the `user.message` payload as `origin`, which is what the chat
-/// renders as a "From <label>" bubble instead of an ordinary prompt.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct MessageOrigin {
-    /// The session that wrote it.
-    pub session_id: String,
-    /// That session's sidebar task label, resolved once at send time so the
-    /// bubble still names it after the sender is archived.
-    pub label: String,
-    /// `message` when another agent wrote here, `completion` when a session
-    /// this one launched has finished.
-    pub kind: String,
-    /// The `session_messages` row this turn delivers, when there is one. The
-    /// follow-up queue consults it at drain time so a message the recipient
-    /// already collected mid-turn — through `inbox_read`, while the queue held
-    /// it — is not also sent as a turn.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
-}
+use argmax_contracts::messages::MessageOrigin;
 
 /// Who started a turn that carries no [`MessageOrigin`]: the person at the
 /// composer, a Goal's evaluator, the scheduler, or a session move. The
@@ -355,11 +338,11 @@ pub struct ProviderSessionService {
     termination_jobs: Arc<Mutex<HashMap<String, TerminationJob>>>,
     lifecycle: Arc<WorkspaceLifecycle>,
     approvals: Option<Arc<ApprovalService>>,
-    questions: OnceLock<Arc<crate::questions::service::QuestionService>>,
+    questions: Option<Arc<crate::questions::service::QuestionService>>,
     /// The boot-warmed discovery cache, so a follow-up route never lands on a
     /// CLI that is not installed. Unset in tests, which means "unknown".
-    provider_discovery: OnceLock<Arc<super::discovery::ProviderDiscovery>>,
-    session_control: OnceLock<Arc<SessionLaunchRegistry>>,
+    provider_discovery: Option<Arc<super::discovery::ProviderDiscovery>>,
+    session_control: Option<Arc<SessionLaunchRegistry>>,
     /// Installed after database startup. A provider turn must capture code
     /// state before the first possible write, while scratch chats skip it.
     checkpoints: OnceLock<Arc<CheckpointService>>,
@@ -374,6 +357,9 @@ pub struct ProviderSessionService {
     session_states: broadcast::Sender<SessionStateChange>,
     #[cfg(test)]
     send_input_test_gate: Arc<Mutex<Option<Arc<SendInputTestGate>>>>,
+    /// Holds the pre-turn checkpoint so a test can act inside the overlap.
+    #[cfg(test)]
+    capture_test_gate: Arc<Mutex<Option<Arc<SendInputTestGate>>>>,
     #[cfg(test)]
     after_lifecycle_marker_check: Arc<Mutex<Option<LifecycleMarkerHook>>>,
 }
@@ -391,10 +377,32 @@ struct SendInputTestGate {
 /// The result slot a termination job publishes to; `None` while the job runs.
 type TerminationJob = watch::Receiver<Option<ArgmaxResult<()>>>;
 
+mod events;
+mod flush;
+mod input;
+mod launch;
+mod post_turn;
+mod queue;
+mod termination;
+#[path = "session_service_turn_end.rs"]
+mod turn_end;
+mod turn_observations;
+use turn_end::{TurnEnd, TurnFollowUp, TurnRows};
+
 #[derive(Clone)]
 enum HandleEntry {
-    Pending(Vec<PendingOp>),
+    Pending(PendingLaunch),
     Resolved(Arc<dyn ProviderRuntimeHandle>),
+}
+
+/// A launch between admission and its resolved handle.
+#[derive(Clone, Default)]
+struct PendingLaunch {
+    /// Resize and similar input that arrived before the handle.
+    ops: Vec<PendingOp>,
+    /// Refuses the prompt gate, so a Stop ends the launch at once instead of
+    /// when the pre-turn checkpoint returns. Set by the spawn task.
+    stop: Option<crate::providers::prompt_gate::PromptGateStop>,
 }
 
 #[derive(Clone)]
@@ -418,6 +426,54 @@ async fn wait_for_termination(
     }
 }
 
+/// What a [`ProviderSessionService`] is built from. The checkpoint and Goal
+/// services are installed later: checkpoints after boot recovery settles
+/// rewinds, and Goals because the Goal service owns this one.
+pub struct ProviderSessionDeps {
+    pub database: Arc<Database>,
+    pub launcher: Arc<dyn ProviderProcessLauncher>,
+    pub publish_delta: DeltaPublisher,
+    pub lifecycle: Arc<WorkspaceLifecycle>,
+    pub approvals: Option<Arc<ApprovalService>>,
+    pub questions: Option<Arc<crate::questions::service::QuestionService>>,
+    pub provider_discovery: Option<Arc<super::discovery::ProviderDiscovery>>,
+    pub session_control: Option<Arc<SessionLaunchRegistry>>,
+}
+
+impl ProviderSessionDeps {
+    pub fn launcher(mut self, launcher: Arc<dyn ProviderProcessLauncher>) -> Self {
+        self.launcher = launcher;
+        self
+    }
+
+    pub fn publish_delta(
+        mut self,
+        publish_delta: impl Fn(DashboardDelta) + Send + Sync + 'static,
+    ) -> Self {
+        self.publish_delta = Arc::new(publish_delta);
+        self
+    }
+
+    pub fn lifecycle(mut self, lifecycle: Arc<WorkspaceLifecycle>) -> Self {
+        self.lifecycle = lifecycle;
+        self
+    }
+
+    pub fn approvals(mut self, approvals: Arc<ApprovalService>) -> Self {
+        self.approvals = Some(approvals);
+        self
+    }
+
+    pub fn session_control(mut self, registry: Arc<SessionLaunchRegistry>) -> Self {
+        self.session_control = Some(registry);
+        self
+    }
+
+    pub fn build(self) -> Arc<ProviderSessionService> {
+        ProviderSessionService::new(self)
+    }
+}
+
 impl ProviderSessionService {
     pub fn performance_stats(&self) -> ProviderPerformanceStats {
         let (running_chats_by_provider, pending_items) = self
@@ -432,49 +488,33 @@ impl ProviderSessionService {
         }
     }
 
-    pub fn new(database: Arc<Database>) -> Arc<Self> {
-        Self::with_launcher(
+    /// Defaults for everything but the database: the real launcher, no
+    /// publisher, a fresh lifecycle, and no optional services. Tests chain the
+    /// setters they need; the app passes a full [`ProviderSessionDeps`].
+    pub fn builder(database: Arc<Database>) -> ProviderSessionDeps {
+        ProviderSessionDeps {
             database,
-            Arc::new(RealProviderProcessLauncher::new()),
-            |_| {},
-        )
+            launcher: Arc::new(RealProviderProcessLauncher::new()),
+            publish_delta: Arc::new(|_| {}),
+            lifecycle: WorkspaceLifecycle::new(),
+            approvals: None,
+            questions: None,
+            provider_discovery: None,
+            session_control: None,
+        }
     }
 
-    pub fn with_launcher(
-        database: Arc<Database>,
-        launcher: Arc<dyn ProviderProcessLauncher>,
-        publish_delta: impl Fn(DashboardDelta) + Send + Sync + 'static,
-    ) -> Arc<Self> {
-        Self::with_launcher_and_lifecycle(
-            database,
-            launcher,
-            publish_delta,
-            WorkspaceLifecycle::new(),
-        )
-    }
-
-    pub fn with_launcher_and_lifecycle(
-        database: Arc<Database>,
-        launcher: Arc<dyn ProviderProcessLauncher>,
-        publish_delta: impl Fn(DashboardDelta) + Send + Sync + 'static,
-        lifecycle: Arc<WorkspaceLifecycle>,
-    ) -> Arc<Self> {
-        Self::with_launcher_and_lifecycle_and_approvals(
+    pub fn new(deps: ProviderSessionDeps) -> Arc<Self> {
+        let ProviderSessionDeps {
             database,
             launcher,
             publish_delta,
             lifecycle,
-            None,
-        )
-    }
-
-    pub fn with_launcher_and_lifecycle_and_approvals(
-        database: Arc<Database>,
-        launcher: Arc<dyn ProviderProcessLauncher>,
-        publish_delta: impl Fn(DashboardDelta) + Send + Sync + 'static,
-        lifecycle: Arc<WorkspaceLifecycle>,
-        approvals: Option<Arc<ApprovalService>>,
-    ) -> Arc<Self> {
+            approvals,
+            questions,
+            provider_discovery,
+            session_control,
+        } = deps;
         let recovered_queues = {
             let mut connection = database.connection();
             recover_pending_messages(&mut connection)
@@ -489,7 +529,7 @@ impl ProviderSessionService {
                     let weak_service = weak_service.clone();
                     move |launcher_id| {
                         if let Some(service) = weak_service.upgrade() {
-                            if let Some(registry) = service.session_control.get() {
+                            if let Some(registry) = service.session_control.as_ref() {
                                 registry.notify_inbox(launcher_id);
                             }
                         }
@@ -508,7 +548,7 @@ impl ProviderSessionService {
                 completion_notices,
                 database,
                 launcher,
-                publish_delta: Arc::new(publish_delta),
+                publish_delta,
                 handles: Arc::new(Mutex::new(HashMap::new())),
                 queues: Arc::new(Mutex::new(recovered_queues)),
                 queue_promotions: Arc::new(Mutex::new(HashSet::new())),
@@ -524,9 +564,9 @@ impl ProviderSessionService {
                 termination_jobs: Arc::new(Mutex::new(HashMap::new())),
                 lifecycle,
                 approvals,
-                questions: OnceLock::new(),
-                provider_discovery: OnceLock::new(),
-                session_control: OnceLock::new(),
+                questions,
+                provider_discovery,
+                session_control,
                 checkpoints: OnceLock::new(),
                 goals: OnceLock::new(),
                 measured_diffs: Arc::new(MeasuredDiffs::default()),
@@ -534,34 +574,18 @@ impl ProviderSessionService {
                 #[cfg(test)]
                 send_input_test_gate: Arc::new(Mutex::new(None)),
                 #[cfg(test)]
+                capture_test_gate: Arc::new(Mutex::new(None)),
+                #[cfg(test)]
                 after_lifecycle_marker_check: Arc::new(Mutex::new(None)),
             }
         })
     }
 
-    pub fn set_session_control(&self, registry: Arc<SessionLaunchRegistry>) {
-        if self.session_control.set(registry).is_err() {
-            tracing::warn!("session control registry was already installed");
-        }
-    }
-
-    pub fn set_provider_discovery(&self, discovery: Arc<super::discovery::ProviderDiscovery>) {
-        if self.provider_discovery.set(discovery).is_err() {
-            tracing::warn!("provider discovery was already installed");
-        }
-    }
-
     /// Installed providers, or empty when discovery is not wired in.
-    pub(crate) async fn available_providers(&self) -> Vec<ProviderId> {
-        match self.provider_discovery.get() {
+    pub(crate) async fn available_providers(&self) -> Vec<super::discovery::AvailableProvider> {
+        match self.provider_discovery.as_ref() {
             Some(discovery) => discovery.available_providers().await,
             None => Vec::new(),
-        }
-    }
-
-    pub fn set_question_service(&self, questions: Arc<crate::questions::service::QuestionService>) {
-        if self.questions.set(questions).is_err() {
-            tracing::warn!("question service was already installed");
         }
     }
 
@@ -577,7 +601,13 @@ impl ProviderSessionService {
         }
     }
 
-    async fn capture_before_provider_turn(&self, session_id: &str) -> ArgmaxResult<()> {
+    /// `abandon` ends a capture still waiting for the checkout lock: the turn
+    /// was stopped, so there is nothing to protect.
+    async fn capture_before_provider_turn(
+        &self,
+        session_id: &str,
+        abandon: impl std::future::Future<Output = ()>,
+    ) -> ArgmaxResult<()> {
         let Some(checkpoints) = self.checkpoints.get() else {
             return Ok(());
         };
@@ -592,23 +622,26 @@ impl ProviderSessionService {
             // the time a launch reaches here, and it is what lets the turn in
             // the transcript find its own checkpoint to revert to.
             let turn_boundary =
-                crate::persistence::events::latest_user_message_id(&connection, session_id)?;
+                argmax_store::events::latest_user_message_id(&connection, session_id)?;
             (workspace.id, turn_boundary)
         };
         // A checkpoint is a safety net, never a gate: a turn that cannot be
         // captured still runs, and says so on the turn instead of refusing it.
         if let Err(error) = checkpoints
-            .create_checkpoint(CreateCheckpointInput {
-                workspace_id,
-                session_id: Some(session_id.to_string()),
-                label: "Before turn".to_string(),
-                turn_boundary: turn_boundary.clone(),
-                // Argmax's invocation UUID is not a native conversation
-                // boundary, and no provider can resume from an earlier message
-                // anyway — a revert restores files, not the conversation.
-                provider_conversation_id: None,
-                recovery_of: None,
-            })
+            .create_checkpoint_unless(
+                CreateCheckpointInput {
+                    workspace_id,
+                    session_id: Some(session_id.to_string()),
+                    label: "Before turn".to_string(),
+                    turn_boundary: turn_boundary.clone(),
+                    // Argmax's invocation UUID is not a native conversation
+                    // boundary, and no provider can resume from an earlier message
+                    // anyway — a revert restores files, not the conversation.
+                    provider_conversation_id: None,
+                    recovery_of: None,
+                },
+                abandon,
+            )
             .await
         {
             if let Some(turn_boundary) = turn_boundary {
@@ -649,158 +682,10 @@ impl ProviderSessionService {
             Value::String(reason.to_string()),
         );
         event.payload = Value::Object(payload);
-        event.semantic = crate::persistence::timeline_semantics::derive(
-            &event.r#type,
-            &event.id,
-            &event.payload,
-        );
+        event.semantic =
+            argmax_store::timeline_semantics::derive(&event.r#type, &event.id, &event.payload);
         update_event_payload(&connection, turn_boundary, &event.payload)?;
         Ok(Some(event))
-    }
-
-    /// A queued follow-up and a scheduled disposal contradict each other: the
-    /// follow-up expects the chat to still be here after this turn.
-    pub fn ensure_after_turn_schedulable(
-        &self,
-        session_id: &str,
-        action: AfterTurn,
-    ) -> ArgmaxResult<()> {
-        if self
-            .queues
-            .lock_or_recover("queues")
-            .get(session_id)
-            .is_some_and(|queue| !queue.is_empty())
-        {
-            return Err(match action {
-                AfterTurn::Move => ArgmaxError::service(
-                    "MOVE_HAS_QUEUED_MESSAGES",
-                    "Send or cancel queued follow-ups before moving this chat.",
-                ),
-                AfterTurn::Archive => ArgmaxError::service(
-                    "ARCHIVE_HAS_QUEUED_MESSAGES",
-                    "Send or cancel queued follow-ups before archiving this chat.",
-                ),
-                AfterTurn::RemoveCheckout => ArgmaxError::service(
-                    "ARCHIVE_HAS_QUEUED_MESSAGES",
-                    "Send or cancel queued follow-ups before removing this chat's checkout.",
-                ),
-            });
-        }
-        Ok(())
-    }
-
-    fn ensure_no_pending_after_turn(&self, session_id: &str) -> ArgmaxResult<()> {
-        let Some(pending) = self
-            .session_control
-            .get()
-            .and_then(|registry| registry.pending_after_turn(session_id))
-        else {
-            return Ok(());
-        };
-        Err(match pending {
-            AfterTurn::Move => ArgmaxError::service(
-                "MOVE_ALREADY_PENDING",
-                "This chat is moving after the current turn. New follow-ups are disabled.",
-            ),
-            AfterTurn::Archive => ArgmaxError::service(
-                "ARCHIVE_ALREADY_PENDING",
-                "This chat is archiving after the current turn. New follow-ups are disabled.",
-            ),
-            // Same code as an archive: the scheduler treats both as "the chat
-            // is going away".
-            AfterTurn::RemoveCheckout => ArgmaxError::service(
-                "ARCHIVE_ALREADY_PENDING",
-                "This chat's checkout is removed after the current turn. The chat stays listed, read-only. New follow-ups are disabled.",
-            ),
-        })
-    }
-
-    fn settle_session_after_turn(&self, session_id: &str) {
-        if let Some(registry) = self.session_control.get() {
-            registry.signal_turn_settled(session_id);
-        }
-    }
-
-    /// Says on the chat that the turn ended before its message reached the
-    /// model, so the bubble above it is not a question anyone is answering.
-    ///
-    /// Codex runs a context compaction ahead of ingesting the turn's input and
-    /// emits nothing while it runs; a Stop in that window leaves the thread
-    /// with no user message for the turn at all. Without this line the chat
-    /// shows a sent message, a stop, and no reason the next turn acts as
-    /// though it was never asked.
-    fn note_undelivered_turn_input(&self, session_id: &str) {
-        let written = {
-            let connection = self.database.connection();
-            find_session_by_id(&connection, session_id).and_then(|session| {
-                let event = persist_timeline_event(
-                    &connection,
-                    &PersistTimelineEventInput {
-                        id: Uuid::new_v4().to_string(),
-                        session_id: session_id.to_string(),
-                        r#type: "session.note".to_string(),
-                        message:
-                            "Stopped before the agent read this message — it was compacting its \
-                             context. Send it again."
-                                .to_string(),
-                        payload: json!({ "operation": "turn.input-undelivered" }),
-                        created_at: None,
-                    },
-                )?;
-                Ok((session, event))
-            })
-        };
-        match written {
-            Ok((session, event)) => self.publish(DashboardDelta {
-                sessions: vec![session],
-                events: vec![event],
-                ..DashboardDelta::default()
-            }),
-            Err(error) => tracing::warn!(
-                session_id,
-                ?error,
-                "could not record that a stopped turn never delivered its input"
-            ),
-        }
-    }
-
-    /// Says on the chat that the disposal it was promised is off. The turn's
-    /// own failure is already an error row, so this line is a notice about the
-    /// promise rather than a second failure to act on.
-    fn abort_session_after_turn(&self, session_id: &str, message: &str) -> ArgmaxResult<()> {
-        let Some(registry) = self.session_control.get() else {
-            return Ok(());
-        };
-        let Some(pending) = registry.pending_after_turn(session_id) else {
-            return Ok(());
-        };
-        registry.cancel_after_turn(session_id);
-        let (session, event) = {
-            let connection = self.database.connection();
-            let session = find_session_by_id(&connection, session_id)?;
-            let event = persist_timeline_event(
-                &connection,
-                &PersistTimelineEventInput {
-                    id: Uuid::new_v4().to_string(),
-                    session_id: session_id.to_string(),
-                    r#type: "session.note".to_string(),
-                    message: message.to_string(),
-                    payload: json!({ "operation": match pending {
-                        AfterTurn::Move => "session.move",
-                        AfterTurn::Archive => "workspace.archive",
-                        AfterTurn::RemoveCheckout => "pr.cleanup",
-                    } }),
-                    created_at: None,
-                },
-            )?;
-            (session, event)
-        };
-        self.publish(DashboardDelta {
-            sessions: vec![session],
-            events: vec![event],
-            ..DashboardDelta::default()
-        });
-        Ok(())
     }
 
     pub fn open_handle_count(&self) -> usize {
@@ -820,2171 +705,6 @@ impl ProviderSessionService {
         )
     }
 
-    /// A launch whose prompt no person typed (check-failure follow-ups, tests).
-    /// Its chat references grant nothing.
-    pub async fn launch(
-        self: &Arc<Self>,
-        input: ProvidersLaunchInput,
-    ) -> ArgmaxResult<SessionSummary> {
-        self.launch_with_session_id(input, None, PromptAuthor::unattested())
-            .await
-    }
-
-    /// The composer's launch: the opening prompt is the person's own.
-    pub async fn launch_as_person(
-        self: &Arc<Self>,
-        input: ProvidersLaunchInput,
-        attestation: PersonAttestation,
-    ) -> ArgmaxResult<SessionSummary> {
-        self.launch_with_session_id(input, None, PromptAuthor::person(attestation))
-            .await
-    }
-
-    /// `session_id` is for a caller that recorded the id before launching (a
-    /// launch receipt), so a crash leaves a record that names the session.
-    pub async fn launch_with_session_id(
-        self: &Arc<Self>,
-        input: ProvidersLaunchInput,
-        session_id: Option<String>,
-        author: PromptAuthor,
-    ) -> ArgmaxResult<SessionSummary> {
-        let initial_goal = match input.goal_condition.as_deref() {
-            Some(condition) => {
-                let goals = self.goals.get().and_then(Weak::upgrade).ok_or_else(|| {
-                    ArgmaxError::service(
-                        "GOAL_SERVICE_NOT_READY",
-                        "Goal service is not initialized",
-                    )
-                })?;
-                let config = GoalService::validate_config(condition, input.goal_max_turns)?;
-                Some((goals, config))
-            }
-            None if input.goal_max_turns.is_some() => {
-                return Err(ArgmaxError::service(
-                    "GOAL_INVALID_CONDITION",
-                    "goalMaxTurns requires goalCondition.",
-                ));
-            }
-            None => None,
-        };
-        let session_id = session_id.unwrap_or_else(|| Uuid::new_v4().to_string());
-        let agent_mode = input.agent_mode.unwrap_or(AgentMode::Auto);
-        let permission_mode = input
-            .permission_mode
-            .unwrap_or(PermissionMode::ProviderDefaults);
-        let provider = input.provider;
-        ensure_permission_mode_supported(provider, permission_mode)?;
-        let admission = self.lifecycle.admit(input.workspace_id.as_str())?;
-        let checkout_path = {
-            let connection = self.database.read_connection();
-            find_workspace_by_id(&connection, input.workspace_id.as_str())?.path
-        };
-        let checkout_lock = checkout_write_lock(std::path::Path::new(&checkout_path)).await?;
-        let checkout_guard = checkout_lock.lock().await;
-
-        let (session, workspace_path, goal, delta) = {
-            let mut connection = self.database.connection();
-            let transaction = connection.transaction().map_err(sqlite_error)?;
-            let workspace = find_workspace_by_id(&transaction, input.workspace_id.as_str())?;
-            if matches!(
-                workspace.state.as_str(),
-                "archiving" | "archive-failed" | "archived"
-            ) {
-                return Err(ArgmaxError::service(
-                    "WORKSPACE_ARCHIVING",
-                    "Workspace archive is in progress; no new provider can be started.",
-                ));
-            }
-            // Checked here, inside the same write transaction the session
-            // insert below runs in, rather than by a caller that queried the
-            // caps before this transaction opened: SQLite's single writer
-            // serialises two concurrent launches racing the cap, since only
-            // one of them can hold the write lock when the count is taken,
-            // and the other sees this session already counted against it.
-            if let Some(arc_id) = input.arc_id.as_deref() {
-                arcs::check_launch_caps(&transaction, arc_id, input.arc_is_coordinator_launch)?;
-            }
-            let mut session = persist_session(
-                &transaction,
-                &PersistSessionInput {
-                    id: session_id.clone(),
-                    workspace_id: workspace.id.clone(),
-                    provider: provider.as_str().to_string(),
-                    model_label: input.model_label.as_str().to_string(),
-                    model_id: input.model_id.as_str().to_string(),
-                    reasoning_effort: input
-                        .reasoning_effort
-                        .map(|effort| effort.as_str().to_string()),
-                    permission_mode: Some(permission_mode.as_wire().to_string()),
-                    agent_mode: Some(agent_mode.as_str().to_string()),
-                    prompt: input.prompt.as_str().to_string(),
-                    state: SessionState::Running,
-                },
-            )?;
-            if let Some(arc_id) = input.arc_id.as_deref() {
-                record_session_arc(&transaction, &session_id, arc_id)?;
-                session.arc_id = Some(arc_id.to_string());
-                // The coordinator's own launch is recorded as
-                // `coordinator_started` by whoever points the Arc at it.
-                if !input.arc_is_coordinator_launch {
-                    let label = workspace.task_label.trim();
-                    let mut event = NewArcEvent::new(
-                        format!("launched:{session_id}"),
-                        arc_id,
-                        ArcEventKind::MemberLaunched,
-                        if label.is_empty() {
-                            "Member chat"
-                        } else {
-                            label
-                        },
-                    );
-                    event.occurred_at = Some(session.started_at.clone());
-                    event.session_id = Some(&session_id);
-                    event.project_id = Some(&workspace.project_id);
-                    record_arc_event(&transaction, &event)?;
-                }
-            }
-            // Claude and Grok are both handed `--session-id <our id>`, so the
-            // CLI conversation is known before a single event arrives. Seeding
-            // it here is what lets the very next turn resume: without it the
-            // follow-up launches fresh and loses the history.
-            if matches!(provider, ProviderId::Claude | ProviderId::Grok) {
-                session = update_session_provider_conversation_id(
-                    &transaction,
-                    &session_id,
-                    &session_id,
-                )?;
-            }
-            let workspace = update_workspace_state_for_session_state_within_transaction(
-                &transaction,
-                &workspace.id,
-                SessionState::Running,
-            )?;
-            let user_message = persist_user_prompt(
-                &transaction,
-                &PersistTimelineEventInput {
-                    id: Uuid::new_v4().to_string(),
-                    session_id: session_id.clone(),
-                    r#type: "user.message".to_string(),
-                    message: input.prompt.as_str().to_string(),
-                    payload: composer_payload(agent_mode, input.attachments.as_deref()),
-                    created_at: None,
-                },
-                author,
-            )?;
-            let session_started = persist_timeline_event(
-                &transaction,
-                &PersistTimelineEventInput {
-                    id: Uuid::new_v4().to_string(),
-                    session_id: session_id.clone(),
-                    r#type: "session.started".to_string(),
-                    message: format!("{} session started.", provider.as_str()),
-                    payload: json!({
-                        "provider": provider.as_str(),
-                        "workspacePath": workspace.path,
-                        "modelLabel": input.model_label.as_str(),
-                        "agentMode": agent_mode.as_str(),
-                        "providerConversationId": session.provider_conversation_id,
-                    }),
-                    created_at: None,
-                },
-            )?;
-            let goal = initial_goal
-                .as_ref()
-                .map(|(goals, config)| {
-                    goals.insert_initial_goal(&transaction, &workspace.id, &session.id, config)
-                })
-                .transpose()?;
-            let delta = DashboardDelta {
-                projects: list_projects(&transaction)?,
-                workspaces: vec![workspace.clone()],
-                sessions: vec![session.clone()],
-                events: vec![user_message, session_started],
-                ..DashboardDelta::default()
-            };
-            transaction.commit().map_err(sqlite_error)?;
-            (session, PathBuf::from(workspace.path), goal, delta)
-        };
-        self.publish(delta);
-
-        if let (Some((goals, _)), Some(goal)) = (initial_goal.as_ref(), goal.as_ref()) {
-            goals.start_initial_goal(goal);
-        }
-
-        let provider_invocation_id = Uuid::new_v4().to_string();
-        self.flush_queue
-            .lock_or_recover("flush queue")
-            .initialize_session(
-                session_id.clone(),
-                provider,
-                provider_invocation_id.clone(),
-                NormalizerSessionContext::for_provider(
-                    provider,
-                    usage_model_id(provider, input.model_id.as_str()),
-                ),
-            );
-        self.mark_turn_start(&session_id, workspace_path.clone());
-        self.handles
-            .lock_or_recover("handles")
-            .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
-        drop(checkout_guard);
-
-        let launch_input = ProviderLaunchInput {
-            provider,
-            session_id: session_id.clone(),
-            workspace_path,
-            prompt: input.prompt.as_str().to_string(),
-            model_label: input.model_label.as_str().to_string(),
-            model_id: input.model_id.as_str().to_string(),
-            reasoning_effort: input.reasoning_effort,
-            fast_mode: input.fast_mode,
-            resume_conversation_id: None,
-            resume_fork: false,
-            continuity: None,
-            permission_mode,
-            agent_mode,
-            cols: input.cols.get(),
-            rows: input.rows.get(),
-        };
-        // Spawn the provider process in the background instead of awaiting it
-        // here. The session row, user.message, and session.started are already
-        // persisted and broadcast above, so returning now lets the renderer
-        // switch to the chat view instantly — the PTY/CLI spawn (hundreds of ms
-        // on a cold launch) no longer blocks the IPC response. The Pending
-        // handle inserted above keeps send_input queueing (not relaunching) and
-        // resize buffering until the handle resolves; a terminate during the
-        // window removes the Pending entry, which the spawn task treats as
-        // cancellation and disposes the child.
-        self.spawn_provider_in_background(
-            session_id,
-            provider,
-            launch_input,
-            provider_invocation_id,
-            admission,
-            |_| {},
-        );
-        Ok(session)
-    }
-
-    /// Drive the PTY/CLI spawn off the IPC caller. `launch` and idle follow-up
-    /// `send_input` both persist the turn first, then return while this task
-    /// finishes spawning. Hundreds of ms of process start must not hold the
-    /// composer open. The Pending handle inserted by the caller queues later
-    /// input and resize until this resolves; terminate removes that entry,
-    /// which this task treats as cancellation and disposes the child.
-    fn spawn_provider_in_background(
-        self: &Arc<Self>,
-        session_id: String,
-        provider: ProviderId,
-        launch_input: ProviderLaunchInput,
-        provider_invocation_id: String,
-        admission: WorkspaceAdmission,
-        on_launched: impl FnOnce(&Arc<Self>) + Send + 'static,
-    ) {
-        let service = Arc::clone(self);
-        tokio::spawn(async move {
-            // Keep the workspace admission through the real provider spawn
-            // and handle registration. Archive must not remove the worktree
-            // while a cold launcher still owns its current directory.
-            let _admission = admission;
-            let event_service = Arc::clone(&service);
-            let callback_invocation_id = provider_invocation_id.clone();
-            // One fresh retry exists only for a native resume or fork the
-            // provider definitely refused before it admitted the turn.
-            let fresh_retry = continuity::fresh_retry_input(&launch_input);
-            let rejected_conversation = launch_input.resume_conversation_id.clone();
-            let launch_result = async {
-                service.capture_before_provider_turn(&session_id).await?;
-                if !matches!(
-                    service.handles.lock_or_recover("handles").get(&session_id),
-                    Some(HandleEntry::Pending(_))
-                ) {
-                    return Err(ArgmaxError::service(
-                        "PROVIDER_LAUNCH_CANCELLED",
-                        "The turn was cancelled before launch.",
-                    ));
-                }
-                let on_event: crate::providers::runtime::EventCallback = Arc::new(move |event| {
-                    let event_service = Arc::clone(&event_service);
-                    event_service.handle_provider_event(event, callback_invocation_id.clone());
-                });
-                match service
-                    .launcher
-                    .launch(launch_input, Arc::clone(&on_event))
-                    .await
-                {
-                    Err(error) if continuity::is_definite_rejection(&error) => {
-                        let (Some(retry), Some(rejected)) = (fresh_retry, rejected_conversation)
-                        else {
-                            return Err(error);
-                        };
-                        tracing::warn!(
-                            session_id = %session_id,
-                            "provider rejected the native resume; retrying once fresh"
-                        );
-                        continuity::record_resume_rejected(
-                            &service.database.connection(),
-                            &retry,
-                            &rejected,
-                        )?;
-                        service.launcher.launch(retry, on_event).await
-                    }
-                    other => other,
-                }
-            }
-            .await;
-            let handle = match launch_result {
-                Ok(handle) => handle,
-                Err(error) => {
-                    let prior = service
-                        .handles
-                        .lock_or_recover("handles")
-                        .remove(&session_id);
-                    // Only flip to `failed` if the session was still pending; if
-                    // terminate already removed the entry, it's cancelled and
-                    // must not be overwritten with a failure.
-                    if matches!(prior, Some(HandleEntry::Pending(_))) {
-                        if let Err(persist_error) =
-                            service.record_launch_failure(&session_id, provider, error)
-                        {
-                            tracing::error!(
-                                ?persist_error,
-                                "failed to record provider launch failure"
-                            );
-                        }
-                    }
-                    return;
-                }
-            };
-            on_launched(&service);
-            // Swap the Pending entry for the resolved handle. Keep the lock
-            // scoped to this block so it's released before any await below.
-            let pending_ops = {
-                let mut handles = service.handles.lock_or_recover("handles");
-                match handles.insert(
-                    session_id.clone(),
-                    HandleEntry::Resolved(Arc::clone(&handle)),
-                ) {
-                    Some(HandleEntry::Pending(ops)) => Some(ops),
-                    // The Pending entry is gone — terminate() removed it while
-                    // the process was spawning. Drop our Resolved insertion so
-                    // the handle can be disposed below (outside the lock).
-                    _ => {
-                        handles.remove(&session_id);
-                        None
-                    }
-                }
-            };
-            let Some(pending_ops) = pending_ops else {
-                // Cancelled during spawn: dispose the freshly spawned handle so
-                // the provider process doesn't run orphaned.
-                if let Err(error) = handle.terminate().await {
-                    tracing::error!(?error, "failed to dispose handle cancelled during spawn");
-                }
-                return;
-            };
-            for op in pending_ops {
-                match op {
-                    PendingOp::Resize { cols, rows } => handle.resize(cols, rows),
-                }
-            }
-            if provider == ProviderId::Codex {
-                service.watch_codex_subagent_traces(session_id, provider_invocation_id, handle);
-            }
-        });
-    }
-
-    fn watch_codex_subagent_traces(
-        self: &Arc<Self>,
-        session_id: String,
-        provider_invocation_id: String,
-        handle: Arc<dyn ProviderRuntimeHandle>,
-    ) {
-        let service = Arc::downgrade(self);
-        tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(Duration::from_secs(2)).await;
-                let Some(service) = service.upgrade() else {
-                    break;
-                };
-                if handle.disposed()
-                    || !service.is_current_provider_invocation(&session_id, &provider_invocation_id)
-                    || !service
-                        .handles
-                        .lock_or_recover("handles")
-                        .contains_key(&session_id)
-                {
-                    break;
-                }
-                // Codex can omit every spawn and wait notification. Discover
-                // disk-backed children even while the parent emits no output.
-                service.schedule_subagent_trace_reconciliation(&session_id);
-            }
-        });
-    }
-
-    /// A follow-up no person typed into the composer (internal callers, tests).
-    /// Its chat references grant nothing.
-    pub async fn send_input(
-        self: &Arc<Self>,
-        input: ProvidersSendInput,
-    ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_authored(input, None, PromptAuthor::unattested())
-            .await
-    }
-
-    /// The composer's follow-up: fresh text the person wrote.
-    pub async fn send_input_as_person(
-        self: &Arc<Self>,
-        input: ProvidersSendInput,
-        attestation: PersonAttestation,
-    ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_authored(input, None, PromptAuthor::person(attestation))
-            .await
-    }
-
-    /// Deliver a composer follow-up as guidance inside an active turn. This
-    /// uses the durable pending-message machinery first, then promotes that
-    /// exact row to a steer, so a failed native delivery remains visible for
-    /// retry rather than silently losing the user's text.
-    pub async fn steer_input(
-        self: &Arc<Self>,
-        input: ProvidersSendInput,
-    ) -> ArgmaxResult<SendInputResult> {
-        self.steer_input_authored(input, PromptAuthor::unattested())
-            .await
-    }
-
-    pub async fn steer_input_as_person(
-        self: &Arc<Self>,
-        input: ProvidersSendInput,
-        attestation: PersonAttestation,
-    ) -> ArgmaxResult<SendInputResult> {
-        self.steer_input_authored(input, PromptAuthor::person(attestation))
-            .await
-    }
-
-    async fn steer_input_authored(
-        self: &Arc<Self>,
-        input: ProvidersSendInput,
-        author: PromptAuthor,
-    ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(
-            input,
-            None,
-            None,
-            TurnStarter::Person,
-            Queueing::Allowed,
-            MidTurnDelivery::Steer,
-            author,
-        )
-        .await
-    }
-
-    /// The same turn, tagged with the session that wrote it. Everything the
-    /// user's composer does goes through `send_input` with no origin; the
-    /// agent tools and the completion notice pass one, and it rides all the
-    /// way to the persisted `user.message` payload — including through the
-    /// queue, when the recipient turns out to be mid-turn.
-    pub async fn send_input_with_origin(
-        self: &Arc<Self>,
-        input: ProvidersSendInput,
-        origin: Option<MessageOrigin>,
-    ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_authored(input, origin, PromptAuthor::unattested())
-            .await
-    }
-
-    /// Deliver a queued row (drain, Send now): it keeps the origin and the
-    /// author the sender had when it was queued, so none of those actions can
-    /// make an agent's text a person's or the reverse.
-    async fn send_input_authored(
-        self: &Arc<Self>,
-        input: ProvidersSendInput,
-        origin: Option<MessageOrigin>,
-        author: PromptAuthor,
-    ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(
-            input,
-            origin,
-            None,
-            TurnStarter::Person,
-            Queueing::Allowed,
-            MidTurnDelivery::Queue,
-            author,
-        )
-        .await
-    }
-
-    /// A message addressed to this session by another session, or a notice
-    /// Argmax writes on one's behalf. A running Claude, Codex or OpenCode turn takes it
-    /// as steering; every other provider, and a turn that cannot be steered
-    /// right now, gets it when the turn ends. `queued` is false once the
-    /// message reached the model either way.
-    pub async fn send_agent_message(
-        self: &Arc<Self>,
-        input: ProvidersSendInput,
-        origin: MessageOrigin,
-    ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(
-            input,
-            Some(origin),
-            None,
-            TurnStarter::Person,
-            Queueing::Allowed,
-            MidTurnDelivery::SteerOrQueue,
-            PromptAuthor::unattested(),
-        )
-        .await
-    }
-
-    pub async fn send_goal_input(
-        self: &Arc<Self>,
-        input: ProvidersSendInput,
-        identity: GoalTurnIdentity,
-    ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(
-            input,
-            None,
-            Some(identity),
-            TurnStarter::Goal,
-            Queueing::Refused,
-            MidTurnDelivery::Queue,
-            PromptAuthor::unattested(),
-        )
-        .await
-    }
-
-    /// The turn a session move starts in its destination: the prompt the moving
-    /// agent wrote, queued like any follow-up. Tagged so it is not mistaken for
-    /// something the person typed.
-    pub async fn send_moved_input(
-        self: &Arc<Self>,
-        input: ProvidersSendInput,
-    ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(
-            input,
-            None,
-            None,
-            TurnStarter::Move,
-            Queueing::Allowed,
-            MidTurnDelivery::Queue,
-            PromptAuthor::unattested(),
-        )
-        .await
-    }
-
-    /// A scheduled task's turn in a chat it shares. Like a goal turn it is
-    /// refused rather than queued while the chat is mid-turn; the scheduler
-    /// leaves the row due and takes the next tick.
-    pub async fn send_scheduled_input(
-        self: &Arc<Self>,
-        input: ProvidersSendInput,
-    ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(
-            input,
-            None,
-            None,
-            TurnStarter::Schedule,
-            Queueing::Refused,
-            MidTurnDelivery::Queue,
-            PromptAuthor::unattested(),
-        )
-        .await
-    }
-
-    /// Decides Auto routing for an idle follow-up; `apply_auto_follow_up`
-    /// applies it once the send is admitted. `None` for a chat the router does
-    /// not drive. A chat the user pinned by picking another model stops being
-    /// routed. Otherwise Jev classifies the message (only when `classify`) and
-    /// the break-even rule decides (routing/reroute.rs). A classifier failure
-    /// or a missing key leaves the follow-up on its model.
-    async fn route_follow_up(
-        &self,
-        input: &ProvidersSendInput,
-        message: &str,
-        classify: bool,
-    ) -> ArgmaxResult<Option<AutoFollowUp>> {
-        let session_id = input.session_id.as_str();
-        let session = find_session_by_id(&self.database.read_connection(), session_id)?;
-        let Some(tier) = session
-            .auto_tier
-            .as_deref()
-            .and_then(crate::routing::parse_tier)
-        else {
-            return Ok(None);
-        };
-        let current_provider = parse_provider(&session.provider)?;
-        let current_effort = session
-            .reasoning_effort
-            .as_deref()
-            .and_then(parse_reasoning_effort);
-        // A follow-up with no model (an agent's message, a script) carries no
-        // override, so the router may still act on it.
-        let pinned = input
-            .model_id
-            .as_ref()
-            .is_some_and(|model_id| model_id.as_str() != session.model_id)
-            || input
-                .provider
-                .is_some_and(|provider| provider != current_provider)
-            || input
-                .reasoning_effort
-                .is_some_and(|effort| Some(effort) != current_effort);
-        if pinned {
-            // Not a turn and not a switch: the row only closes the last
-            // route's window for the Router cost card.
-            return Ok(Some(AutoFollowUp::Pinned(crate::routing::RouteDecision {
-                tier,
-                provider: input.provider.unwrap_or(current_provider),
-                model_id: input
-                    .model_id
-                    .as_ref()
-                    .map_or_else(|| session.model_id.clone(), |id| id.as_str().to_string()),
-                model_label: input.model_label.as_ref().map_or_else(
-                    || session.model_label.clone(),
-                    |label| label.as_str().to_string(),
-                ),
-                effort: input.reasoning_effort.or(current_effort),
-                kind: None,
-                difficulty: None,
-                kind_confidence: None,
-                difficulty_confidence: None,
-                decision: crate::routing::RouteDecisionKind::Pinned,
-                reason: "user picked a model".to_string(),
-                signals: None,
-            })));
-        }
-        if !classify {
-            return Ok(Some(AutoFollowUp::Routed(None, Box::new(session))));
-        }
-        let retained = |reason: &str| {
-            Some(AutoFollowUp::Routed(
-                Some(crate::routing::RouteDecision {
-                    tier,
-                    provider: current_provider,
-                    model_id: session.model_id.clone(),
-                    model_label: session.model_label.clone(),
-                    effort: current_effort,
-                    kind: None,
-                    difficulty: None,
-                    kind_confidence: None,
-                    difficulty_confidence: None,
-                    decision: crate::routing::RouteDecisionKind::Kept,
-                    reason: reason.to_string(),
-                    signals: None,
-                }),
-                Box::new(session.clone()),
-            ))
-        };
-        let Some(api_key) = crate::routing::api_key::stored_key() else {
-            return Ok(retained(
-                "Routing key unavailable, retaining the current model and effort",
-            ));
-        };
-        // Discovery and bounded transcript reads must not block the async
-        // runtime. A context failure is a retained route, never a failed send.
-        let database = self.database.clone();
-        let context_session_id = session_id.to_string();
-        let context_message = message.to_string();
-        let context_workspace_id = session.workspace_id.clone();
-        let context = tauri::async_runtime::spawn_blocking(move || {
-            let connection = database.read_connection();
-            let workspace = find_workspace_by_id(&connection, &context_workspace_id)?;
-            crate::routing::context::build_follow_up_context(
-                &connection,
-                &context_session_id,
-                &context_message,
-                current_provider,
-                Some(std::path::Path::new(&workspace.path)),
-            )
-        })
-        .await;
-        let context = match context {
-            Ok(Ok(context)) => context,
-            _ => {
-                return Ok(retained(
-                    "Follow-up context unavailable, retaining the current model and effort",
-                ))
-            }
-        };
-        let classification = match crate::routing::jev::classify_follow_up(&context, &api_key).await
-        {
-            Ok(classification) => classification,
-            Err(error) => {
-                tracing::warn!(target: "argmax::routing", session_id, "follow-up not routed: {error}");
-                return Ok(retained(
-                    "Follow-up classifier unavailable, retaining the current model and effort",
-                ));
-            }
-        };
-        let last_turn = crate::persistence::turn_routes::last_turn_usage(
-            &self.database.read_connection(),
-            session_id,
-        )?;
-        let available = self.available_providers().await;
-        let state = crate::routing::reroute::FollowUpState {
-            tier,
-            provider: current_provider,
-            available,
-            model_id: session.model_id.clone(),
-            effort: current_effort,
-            context_tokens: session.context_tokens.max(0) as u64,
-            last_turn,
-            // Jev sees text only. Referenced agents and attachments can carry
-            // material task scope that the bounded text does not describe.
-            downgrade_safe: context.downgrade_safe
-                && input.attachments.as_ref().is_none_or(Vec::is_empty)
-                && input.agent_references.as_ref().is_none_or(Vec::is_empty),
-            resume_target: context
-                .routes
-                .iter()
-                .find(|route| {
-                    Some(route.id.as_str()) == classification.resume_route.as_deref()
-                        && route.provider == current_provider
-                        && route.user_task.is_some()
-                })
-                .and_then(|route| {
-                    crate::routing::table::route_model(&route.model_id).map(|model| {
-                        crate::routing::table::RoutedModel {
-                            model,
-                            effort: route.effort.and_then(|effort| {
-                                crate::routing::table::clamp_effort(effort, model)
-                            }),
-                        }
-                    })
-                }),
-            idle: Some(elapsed_since(&session.last_activity_at)),
-        };
-        Ok(Some(AutoFollowUp::Routed(
-            Some(crate::routing::reroute::follow_up_route(
-                &state,
-                &classification,
-            )),
-            Box::new(session),
-        )))
-    }
-
-    // The send's whole shape is one call; grouping the knobs would only move them.
-    #[allow(clippy::too_many_arguments)]
-    async fn send_input_scoped(
-        self: &Arc<Self>,
-        input: ProvidersSendInput,
-        origin: Option<MessageOrigin>,
-        goal_turn: Option<GoalTurnIdentity>,
-        starter: TurnStarter,
-        queueing: Queueing,
-        mid_turn_delivery: MidTurnDelivery,
-        author: PromptAuthor,
-    ) -> ArgmaxResult<SendInputResult> {
-        // A message another session sent is never the person's own text, so a
-        // send that claims both is a bug in the caller, not something to
-        // quietly downgrade.
-        if author.is_person() && (origin.is_some() || !matches!(starter, TurnStarter::Person)) {
-            return Err(ArgmaxError::service(
-                "PROMPT_AUTHOR_CONFLICT",
-                "A person's prompt cannot carry another session's origin or a system starter.",
-            ));
-        }
-        let session_id = input.session_id.as_str().to_string();
-        let message = input.input.as_str().trim().to_string();
-        if message.is_empty() {
-            return Ok(SendInputResult {
-                ok: true,
-                queued: false,
-            });
-        }
-        let send_generation = self
-            .send_generations
-            .lock_or_recover("send generations")
-            .get(&session_id)
-            .copied()
-            .unwrap_or(0);
-        self.ensure_no_pending_after_turn(&session_id)?;
-
-        let (
-            workspace_id,
-            session_provider,
-            session_permission_mode,
-            session_agent_mode,
-            steering_context_headroom,
-        ) = {
-            let _send_generation = self.lock_send_generation(&session_id, send_generation)?;
-            let connection = self.database.connection();
-            let session = find_session_by_id(&connection, &session_id)?;
-            if let Some(goal_turn) = goal_turn.as_ref() {
-                ensure_goal_turn_admitted(&connection, &session_id, goal_turn)?;
-            }
-            let target_provider = input.provider.unwrap_or(parse_provider(&session.provider)?);
-            let target_model_id = input
-                .model_id
-                .as_ref()
-                .map(|model_id| model_id.as_str())
-                .unwrap_or(&session.model_id);
-            ensure_agent_references_supported(
-                target_provider.as_str(),
-                target_model_id,
-                input.agent_references.as_deref().unwrap_or_default(),
-            )?;
-            if session.imported {
-                // Continuing an imported session is what adopts it: from here
-                // it is an ordinary session and the sync pruner leaves it
-                // alone, however the sync settings change.
-                if crate::persistence::synced::mark_synced_session_adopted(
-                    &connection,
-                    &session_id,
-                )? {
-                    tracing::info!(session_id = %session_id, "imported session adopted");
-                }
-            }
-            let steering_context_headroom = has_steering_context_headroom(&session);
-            (
-                session.workspace_id,
-                parse_provider(&session.provider)?,
-                parse_permission_mode(&session.permission_mode)?,
-                session.agent_mode.as_deref().and_then(parse_agent_mode),
-                steering_context_headroom,
-            )
-        };
-        // A queued row without a mode of its own (an agent's message, a
-        // notice) keeps the chat's mode, the same fallback a relaunch uses.
-        // Queued as `auto`, it could never steer a plan-mode turn.
-        let queued_agent_mode = input
-            .agent_mode
-            .or(session_agent_mode)
-            .unwrap_or(AgentMode::Auto);
-        if self
-            .termination_jobs
-            .lock_or_recover("termination jobs")
-            .contains_key(&session_id)
-            || self
-                .terminating
-                .lock_or_recover("terminating")
-                .contains(&session_id)
-        {
-            return Err(ArgmaxError::service(
-                "PROVIDER_TERMINATING",
-                "Provider chat is being terminated; wait for cancellation to finish.",
-            ));
-        }
-        #[cfg(test)]
-        let test_gate = self
-            .send_input_test_gate
-            .lock_or_recover("send input test gate")
-            .clone();
-        #[cfg(test)]
-        if let Some(gate) = test_gate {
-            gate.reached.notify_one();
-            gate.release.notified().await;
-        }
-        // Auto chats may move to another model or effort for this turn. Jev is
-        // a network call, so it runs before the checkout lock, and only for a
-        // send headed for a relaunch: one with a live or starting provider is
-        // steered or queued, and a queued row is routed when it drains.
-        let auto_follow_up = if goal_turn.is_none()
-            && !self
-                .handles
-                .lock_or_recover("handles")
-                .contains_key(&session_id)
-        {
-            Some(self.route_follow_up(&input, &message, true).await?)
-        } else {
-            None
-        };
-        let mut input = input;
-        if matches!(&auto_follow_up, Some(Some(AutoFollowUp::Routed(_, _)))) {
-            // These fields were echoes, not user pins. Another admitted send
-            // may change the route while Jev runs or this send waits for the
-            // checkout. A queued copy must classify using the dispatch state.
-            input.provider = None;
-            input.model_id = None;
-            input.model_label = None;
-            input.reasoning_effort = None;
-        }
-        // Stop may have completed while this send was between its initial
-        // session read and checkout admission. Reject that generation before
-        // touching a checkout that the cancelled send no longer owns.
-        drop(self.lock_send_generation(&session_id, send_generation)?);
-        ensure_permission_mode_supported(session_provider, session_permission_mode)?;
-        let admission = self.lifecycle.admit(&workspace_id)?;
-        let workspace_path = {
-            let connection = self.database.connection();
-            let workspace = find_workspace_by_id(&connection, &workspace_id)?;
-            if matches!(
-                workspace.state.as_str(),
-                "archiving" | "archive-failed" | "archived"
-            ) {
-                return Err(ArgmaxError::service(
-                    "WORKSPACE_ARCHIVING",
-                    "Workspace archive is in progress; no new provider input can be sent.",
-                ));
-            }
-            PathBuf::from(workspace.path)
-        };
-        let checkout_lock = checkout_write_lock(&workspace_path).await?;
-        let checkout_guard = checkout_lock.lock().await;
-        if let Some(goal_turn) = goal_turn.as_ref() {
-            let connection = self.database.read_connection();
-            ensure_goal_turn_admitted(&connection, &session_id, goal_turn)?;
-        }
-
-        let send_generation_guard = self.lock_send_generation(&session_id, send_generation)?;
-        if let Some(handle) = self.live_handle(&session_id) {
-            if !handle.accepts_input() {
-                if queueing == Queueing::Refused {
-                    return Err(turn_in_flight_error());
-                }
-                let Some(pending) = self.enqueue_pending_message(
-                    &session_id,
-                    &message,
-                    queued_agent_mode,
-                    &input,
-                    origin,
-                    author,
-                )?
-                else {
-                    return Ok(SendInputResult {
-                        ok: true,
-                        queued: false,
-                    });
-                };
-                drop(send_generation_guard);
-                drop(admission);
-                let steer = match mid_turn_delivery {
-                    MidTurnDelivery::Queue => false,
-                    MidTurnDelivery::Steer => steering_context_headroom,
-                    MidTurnDelivery::SteerOrQueue => {
-                        steering_context_headroom
-                            && handle.supports_steering()
-                            && !self.is_waiting_on_inbox(&session_id)
-                    }
-                };
-                if steer {
-                    return Box::pin(self.steer_queued_row(
-                        session_id,
-                        pending.id,
-                        mid_turn_delivery,
-                    ))
-                    .await;
-                }
-                self.drain_queue_if_turn_ended(&session_id);
-                return Ok(SendInputResult {
-                    ok: true,
-                    queued: true,
-                });
-            }
-            let prompt = {
-                let connection = self.database.connection();
-                agent_reference_prompt(
-                    &connection,
-                    &session_id,
-                    &message,
-                    input.agent_references.as_deref().unwrap_or_default(),
-                )?
-            };
-            self.mark_turn_start(&session_id, workspace_path);
-            handle.send_input(&format!("{}\r", prompt));
-            self.persist_user_message(
-                &session_id,
-                &message,
-                input.agent_mode.unwrap_or(AgentMode::Auto),
-                input.attachments.as_deref(),
-                origin.as_ref(),
-                author,
-            )?;
-            drop(send_generation_guard);
-            drop(admission);
-            return Ok(SendInputResult {
-                ok: true,
-                queued: false,
-            });
-        }
-
-        // The session still owns an entry we cannot route through: the process
-        // is either not up yet (Pending) or already gone — the runtime marks a
-        // handle disposed before it emits Exit, so the whole exit teardown runs
-        // with a Resolved-but-dead handle in the map. Either way we must NOT
-        // fall through to the relaunch path below: it would double-spawn, and
-        // in the exit window the teardown then removes that fresh entry and its
-        // flush queue, dropping every event of the new turn. Queue the message;
-        // it drains after the in-flight turn completes, exactly like a follow-up
-        // sent while the agent is working.
-        if matches!(
-            self.handles.lock_or_recover("handles").get(&session_id),
-            Some(HandleEntry::Pending(_)) | Some(HandleEntry::Resolved(_))
-        ) {
-            let Some(pending) = self.enqueue_pending_message(
-                &session_id,
-                &message,
-                queued_agent_mode,
-                &input,
-                origin,
-                author,
-            )?
-            else {
-                return Ok(SendInputResult {
-                    ok: true,
-                    queued: false,
-                });
-            };
-            drop(send_generation_guard);
-            drop(admission);
-            // No live provider to steer into: an automatic message just waits.
-            if mid_turn_delivery == MidTurnDelivery::Steer && steering_context_headroom {
-                return Box::pin(self.steer_queued_row(session_id, pending.id, mid_turn_delivery))
-                    .await;
-            }
-            self.drain_queue_if_turn_ended(&session_id);
-            return Ok(SendInputResult {
-                ok: true,
-                queued: true,
-            });
-        }
-        drop(send_generation_guard);
-
-        // The provider went away after routing was skipped for it: settle the
-        // pin without classifying, so the user's pick still ends Auto.
-        let auto_follow_up = match auto_follow_up {
-            Some(auto_follow_up) => auto_follow_up,
-            None if goal_turn.is_none() => self.route_follow_up(&input, &message, false).await?,
-            None => None,
-        };
-        let admitted_session = find_session_by_id(&self.database.read_connection(), &session_id)?;
-        let auto_route = apply_auto_follow_up(&mut input, auto_follow_up, &admitted_session)?;
-        let send_generation_guard = self.lock_send_generation(&session_id, send_generation)?;
-        let (provider, launch_input, pending_results) = {
-            let connection = self.database.connection();
-            let mut session = find_session_by_id(&connection, &session_id)?;
-            let workspace = find_workspace_by_id(&connection, &session.workspace_id)?;
-            let agent_mode = input
-                .agent_mode
-                .or_else(|| session.agent_mode.as_deref().and_then(parse_agent_mode))
-                .unwrap_or(AgentMode::Auto);
-            // A provider override that differs from the session's current
-            // provider switches the agent for this turn: persist the new provider
-            // + model, drop the (provider-specific) native resume id, and relaunch
-            // fresh — context survives via the visible transcript in the prompt.
-            let current_provider = parse_provider(&session.provider)?;
-            let switched_provider = input
-                .provider
-                .filter(|requested| *requested != current_provider);
-            let mut switch_event = None;
-            if let Some(requested_provider) = switched_provider {
-                let (Some(model_label), Some(model_id)) =
-                    (input.model_label.as_ref(), input.model_id.as_ref())
-                else {
-                    return Err(ArgmaxError::service(
-                        "SWITCH_PROVIDER_REQUIRES_MODEL",
-                        "Switching provider requires a model for the new provider.",
-                    ));
-                };
-                session = update_session_provider(
-                    &connection,
-                    &session_id,
-                    &SessionProviderInput {
-                        provider: requested_provider.as_str().to_string(),
-                        model_label: model_label.as_str().to_string(),
-                        model_id: model_id.as_str().to_string(),
-                        reasoning_effort: input
-                            .reasoning_effort
-                            .map(|effort| effort.as_str().to_string()),
-                    },
-                )?;
-                switch_event = Some(persist_timeline_event(
-                    &connection,
-                    &PersistTimelineEventInput {
-                        id: Uuid::new_v4().to_string(),
-                        session_id: session_id.clone(),
-                        r#type: "session.provider-changed".to_string(),
-                        message: format!(
-                            "Switched provider to {}.",
-                            get_provider_definition(requested_provider).display_name
-                        ),
-                        // The chat surface renders this seam from the payload:
-                        // it names both ends of the handoff and the model the
-                        // new provider is picking up with.
-                        payload: json!({
-                            "from": current_provider.as_str(),
-                            "provider": requested_provider.as_str(),
-                            "modelLabel": model_label.as_str(),
-                        }),
-                        created_at: None,
-                    },
-                )?);
-            } else if let (Some(model_label), Some(model_id)) =
-                (&input.model_label, &input.model_id)
-            {
-                session = update_session_model(
-                    &connection,
-                    &session_id,
-                    &SessionModelInput {
-                        model_label: model_label.as_str().to_string(),
-                        model_id: model_id.as_str().to_string(),
-                        reasoning_effort: input
-                            .reasoning_effort
-                            .map(|effort| effort.as_str().to_string()),
-                    },
-                )?;
-            }
-            // Recorded only now that the send is admitted, so a send Stop
-            // cancelled leaves no route behind for the chip or the hysteresis.
-            if let Some(route) = &auto_route {
-                crate::persistence::turn_routes::record_route(&connection, &session_id, route)?;
-                if route.decision == crate::routing::RouteDecisionKind::Pinned {
-                    crate::persistence::turn_routes::clear_auto_tier(&connection, &session_id)?;
-                }
-            }
-            if session.agent_mode.as_deref() != Some(agent_mode.as_str()) {
-                session = update_session_agent_mode(
-                    &connection,
-                    &session_id,
-                    &SessionAgentModeInput {
-                        agent_mode: agent_mode.as_str().to_string(),
-                    },
-                )?;
-            }
-            let provider = parse_provider(&session.provider)?;
-            let permission_mode = parse_permission_mode(&session.permission_mode)?;
-            ensure_permission_mode_supported(provider, permission_mode)?;
-            // A just-switched session starts the new provider fresh, or rejoins
-            // the conversation it parked there; never resurrect a stale Cursor
-            // resume id from an earlier Cursor segment.
-            if switch_event.is_none()
-                && provider == ProviderId::Cursor
-                && session.provider_conversation_id.is_none()
-                && continuity::may_infer_cursor_conversation(&connection, &session_id)?
-            {
-                if let Some(provider_conversation_id) =
-                    infer_cursor_provider_conversation_id(&connection, &session_id)?
-                {
-                    session = update_session_provider_conversation_id(
-                        &connection,
-                        &session_id,
-                        &provider_conversation_id,
-                    )?;
-                }
-            }
-            let mut plan = continuity::plan_launch(
-                &connection,
-                &mut session,
-                provider,
-                std::path::Path::new(&workspace.path),
-                switch_event.is_some(),
-            )?;
-            // A switch NULLs the resume id, so a missing id also carries the
-            // switched-agent case: no rollout on the other side, rebuild the
-            // context from the visible transcript. A binding rejoined after a
-            // switch sends only what it missed.
-            let launch_prompt = compose_follow_up_prompt_since(
-                &connection,
-                &session_id,
-                &message,
-                plan.resume_conversation_id.is_some(),
-                plan.since_event_id.as_deref(),
-            )?;
-            let agent_references = input.agent_references.as_deref().unwrap_or_default();
-            let launch_prompt =
-                agent_reference_prompt(&connection, &session_id, &launch_prompt, agent_references)?;
-            // Composed before the current message is persisted, so the retry
-            // prompt cannot carry it twice. Native agent references only make
-            // sense inside the native conversation, so they get no retry.
-            let fallback_prompt = (plan.needs_fallback_prompt && agent_references.is_empty())
-                .then(|| compose_follow_up_prompt(&connection, &session_id, &message, false))
-                .transpose()?;
-            // A multitask that finished while this session was busy is told to
-            // the agent here, on the front of the prompt — never as a turn of
-            // its own. The person's own message is persisted unchanged: the
-            // timeline already carries the finish marker.
-            let pending_results = crate::multitask::results_preamble(&connection, &session_id)?;
-            let (launch_prompt, fallback_prompt) = match &pending_results {
-                Some(results) => (
-                    format!("{}\n\n{launch_prompt}", results.block),
-                    fallback_prompt.map(|prompt| format!("{}\n\n{prompt}", results.block)),
-                ),
-                None => (launch_prompt, fallback_prompt),
-            };
-            plan.continuity.fresh_fallback_prompt = fallback_prompt;
-            let user_message = self.persist_user_message_locked(
-                &connection,
-                &session_id,
-                &message,
-                agent_mode,
-                input.attachments.as_deref(),
-                TurnAuthorship {
-                    origin: origin.as_ref(),
-                    starter,
-                    author,
-                },
-            )?;
-            let running_session = update_session_state(
-                &connection,
-                &session_id,
-                &SessionStateInput::transition(SessionState::Running),
-            )?;
-            let running_workspace = update_workspace_state_for_session_state(
-                &connection,
-                &workspace.id,
-                SessionState::Running,
-            )?;
-            self.publish(DashboardDelta {
-                projects: list_projects(&connection)?,
-                workspaces: vec![running_workspace],
-                sessions: vec![running_session.clone()],
-                events: switch_event.into_iter().chain([user_message]).collect(),
-                ..DashboardDelta::default()
-            });
-            let launch_input = ProviderLaunchInput {
-                provider,
-                session_id: session_id.clone(),
-                workspace_path: PathBuf::from(workspace.path),
-                prompt: launch_prompt,
-                model_label: session.model_label.clone(),
-                model_id: session.model_id.clone(),
-                reasoning_effort: session
-                    .reasoning_effort
-                    .as_deref()
-                    .and_then(parse_reasoning_effort),
-                fast_mode: input.fast_mode,
-                // A forked session's first resume must diverge into a new
-                // provider conversation; the flag is cleared once the new
-                // conversation id lands.
-                resume_fork: plan.resume_fork,
-                resume_conversation_id: plan.resume_conversation_id,
-                permission_mode,
-                agent_mode,
-                cols: STRUCTURED_LAUNCH_COLS,
-                rows: STRUCTURED_LAUNCH_ROWS,
-                continuity: (plan.continuity != LaunchContinuity::default())
-                    .then_some(plan.continuity),
-            };
-            (provider, launch_input, pending_results)
-        };
-
-        let provider_invocation_id = Uuid::new_v4().to_string();
-        self.flush_queue
-            .lock_or_recover("flush queue")
-            .initialize_session(
-                session_id.clone(),
-                provider,
-                provider_invocation_id.clone(),
-                {
-                    let context = NormalizerSessionContext::for_provider(
-                        provider,
-                        usage_model_id(provider, launch_input.model_id.as_str()),
-                    );
-                    if provider == ProviderId::Codex
-                        && launch_input.resume_conversation_id.is_some()
-                    {
-                        // A resumed thread gets a fresh app-server, whose token
-                        // counters start at zero like any other turn's, so the
-                        // baseline is zero too. Seeding it from what the session
-                        // has already spent — which the old CLI transport needed,
-                        // because there the totals really were thread-cumulative —
-                        // subtracts the whole conversation from one follow-up and
-                        // bills it as nothing.
-                        context.resuming_codex(
-                            launch_input.resume_conversation_id.clone(),
-                            Some(CodexCumulativeUsage::default()),
-                        )
-                    } else if launch_input.resume_conversation_id.is_some() {
-                        context.resuming()
-                    } else {
-                        context
-                    }
-                },
-            );
-        self.mark_turn_start(&session_id, workspace_path);
-        // Claim the entry before releasing this send's generation. Stop either
-        // invalidates the generation before the database writes above, or waits
-        // and then finds this Pending entry so the spawn disposes its child.
-        {
-            let jobs = self.termination_jobs.lock_or_recover("termination jobs");
-            let terminating = self.terminating.lock_or_recover("terminating");
-            if jobs.contains_key(&session_id) || terminating.contains(&session_id) {
-                return Err(ArgmaxError::service(
-                    "PROVIDER_TERMINATING",
-                    "Provider chat is being terminated; wait for cancellation to finish.",
-                ));
-            }
-            self.handles
-                .lock_or_recover("handles")
-                .insert(session_id.clone(), HandleEntry::Pending(Vec::new()));
-        }
-        drop(checkout_guard);
-        drop(send_generation_guard);
-        // Same background spawn as `launch`: the user.message and running
-        // state are already persisted and broadcast, so the composer can
-        // clear as soon as this returns. Waiting on the PTY/CLI here is
-        // what made follow-up Enter feel lagged.
-        let results_session_id = session_id.clone();
-        self.spawn_provider_in_background(
-            session_id,
-            provider,
-            launch_input,
-            provider_invocation_id,
-            admission,
-            move |service| {
-                // The prompt carrying them reached the provider, so the
-                // results are spent. Marking them while the preamble was
-                // built would have lost them to a launch that then failed.
-                if let Some(results) = &pending_results {
-                    let connection = service.database.connection();
-                    if let Err(error) =
-                        crate::multitask::mark_results_delivered(&connection, &results.ids)
-                    {
-                        tracing::warn!(
-                            session_id = %results_session_id,
-                            ?error,
-                            "failed to mark multitask results delivered"
-                        );
-                    }
-                }
-            },
-        );
-        Ok(SendInputResult {
-            ok: true,
-            queued: false,
-        })
-    }
-
-    pub fn resize(&self, input: ProvidersResizeInput) {
-        let session_id = input.session_id.as_str();
-        let entry = self
-            .handles
-            .lock_or_recover("handles")
-            .get_mut(session_id)
-            .cloned();
-        match entry {
-            Some(HandleEntry::Resolved(handle)) if !handle.disposed() => {
-                handle.resize(input.cols.get(), input.rows.get())
-            }
-            Some(HandleEntry::Pending(_)) => {
-                let mut handles = self.handles.lock_or_recover("handles");
-                if let Some(HandleEntry::Pending(ops)) = handles.get_mut(session_id) {
-                    ops.retain(|op| !matches!(op, PendingOp::Resize { .. }));
-                    ops.push(PendingOp::Resize {
-                        cols: input.cols.get(),
-                        rows: input.rows.get(),
-                    });
-                }
-            }
-            _ => {}
-        }
-    }
-
-    pub async fn terminate(self: &Arc<Self>, input: ProvidersTerminateInput) -> ArgmaxResult<()> {
-        let session_id = input.session_id.as_str().to_string();
-        self.queue_promotions
-            .lock_or_recover("queue promotions")
-            .remove(&session_id);
-        let done = self.start_termination(session_id, false)?;
-        wait_for_termination(done).await
-    }
-
-    /// Drop the provider conversation in place: same workspace, same session
-    /// row, no resume id, and a `session.cleared` watermark so the next turn
-    /// and the chat surface both start empty. A live provider is stopped first.
-    pub async fn clear(self: &Arc<Self>, input: SessionClearInput) -> ArgmaxResult<SessionSummary> {
-        let session_id = input.session_id.as_str().to_string();
-        let live = {
-            let connection = self.database.connection();
-            let session = find_session_by_id(&connection, &session_id)?;
-            session.state.is_active()
-        };
-        if live {
-            self.terminate(ProvidersTerminateInput {
-                session_id: input.session_id.clone(),
-            })
-            .await?;
-        } else {
-            self.clear_queue(&session_id)?;
-        }
-
-        let (session, event) = {
-            let connection = self.database.connection();
-            let session = clear_session_conversation(&connection, &session_id)?;
-            let event = persist_timeline_event(
-                &connection,
-                &PersistTimelineEventInput {
-                    id: Uuid::new_v4().to_string(),
-                    session_id: session_id.clone(),
-                    r#type: "session.cleared".to_string(),
-                    message: "Cleared conversation.".to_string(),
-                    payload: json!({}),
-                    created_at: None,
-                },
-            )?;
-            (session, event)
-        };
-        // The writer connection is dropped before publishing: the delta's
-        // push body reads through `read_connection`, whose fallback would
-        // re-lock the writer this thread may still be holding.
-        self.publish(DashboardDelta {
-            sessions: vec![session.clone()],
-            events: vec![event],
-            ..DashboardDelta::default()
-        });
-        Ok(session)
-    }
-
-    pub async fn terminate_workspace(self: &Arc<Self>, workspace_id: &str) -> ArgmaxResult<()> {
-        let sessions = {
-            let connection = self.database.connection();
-            let mut statement = connection
-                .prepare_cached("SELECT id, state FROM sessions WHERE workspace_id = ?")
-                .map_err(sqlite_error)?;
-            let sessions = statement
-                .query_map([workspace_id], |row| {
-                    Ok((row.get::<_, String>("id")?, row.get::<_, String>("state")?))
-                })
-                .map_err(sqlite_error)?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(sqlite_error)?;
-            sessions
-        };
-        // The workspace is being archived, so no session in it takes another
-        // turn. Drop their launch credentials — a background process the agent
-        // left behind would otherwise keep a working token indefinitely.
-        if let Some(registry) = self.session_control.get() {
-            for (session_id, _) in &sessions {
-                registry.revoke(session_id);
-            }
-        }
-        // Transfer every live handle into an owned job before waiting for any
-        // of them. Archive timeouts may cancel these waiters, but the jobs
-        // continue disposing their provider processes and persisting state.
-        let mut done = Vec::new();
-        for (session_id, state) in sessions {
-            if !matches!(state.as_str(), "running" | "waiting" | "blocked") {
-                continue;
-            }
-            done.push(self.start_termination(session_id, false)?);
-        }
-        for ticket in done {
-            wait_for_termination(ticket).await?;
-        }
-        Ok(())
-    }
-
-    fn start_termination(
-        self: &Arc<Self>,
-        session_id: String,
-        preserve_queue: bool,
-    ) -> ArgmaxResult<watch::Receiver<Option<ArgmaxResult<()>>>> {
-        let mut jobs = {
-            let mut generations = self.send_generations.lock_or_recover("send generations");
-            let generation = generations.entry(session_id.clone()).or_default();
-            *generation = generation.wrapping_add(1);
-            let jobs = self.termination_jobs.lock_or_recover("termination jobs");
-            if let Some(done) = jobs.get(&session_id) {
-                return Ok(done.clone());
-            }
-            // Publish the transient marker before releasing the generation.
-            // A send that starts during Stop then sees either this marker or a
-            // later generation mismatch, including after the marker clears.
-            self.terminating
-                .lock_or_recover("terminating")
-                .insert(session_id.clone());
-            jobs
-        };
-        self.cancel_stream_flushes(&session_id);
-        if !preserve_queue {
-            if let Err(error) = self.clear_queue(&session_id) {
-                self.terminating
-                    .lock_or_recover("terminating")
-                    .remove(&session_id);
-                return Err(error);
-            }
-        }
-        // The marker was set with the generation before any teardown work, so
-        // a wait-thread exit event cannot clobber the cancellation state.
-        let entry = self.handles.lock_or_recover("handles").remove(&session_id);
-        let (done_tx, done_rx) = watch::channel::<Option<ArgmaxResult<()>>>(None);
-        jobs.insert(session_id.clone(), done_rx.clone());
-        drop(jobs);
-
-        let service = Arc::clone(self);
-        tauri::async_runtime::spawn(async move {
-            let result = service.finish_termination(&session_id, entry).await;
-            // Retire the job before waking the waiters. Woken on another
-            // worker, a waiter that then starts its own turn would otherwise
-            // still find this finished job and be rejected as
-            // PROVIDER_TERMINATING.
-            service
-                .termination_jobs
-                .lock_or_recover("termination jobs")
-                .remove(&session_id);
-            let _ = done_tx.send(Some(result));
-        });
-        Ok(done_rx)
-    }
-
-    async fn finish_termination(
-        self: &Arc<Self>,
-        session_id: &str,
-        entry: Option<HandleEntry>,
-    ) -> ArgmaxResult<()> {
-        let mut first_error = None;
-        // Release native permission waiters before waiting for provider cancel.
-        // ACP cannot finish session/cancel until pending requests are answered.
-        if let Err(error) = self.cancel_pending_interactions(session_id) {
-            first_error = Some(error);
-        }
-
-        // Read before disposal: the handle owns the answer and is dropped below.
-        let mut input_undelivered = false;
-        match entry {
-            Some(HandleEntry::Resolved(handle)) => {
-                // User-initiated cancel: flush buffered text but don't
-                // synthesize a Cursor turn completion — the turn didn't
-                // finish, it was cancelled.
-                if let Err(error) = self.flush_trailing(session_id, false) {
-                    first_error = Some(error);
-                }
-                input_undelivered = !handle.input_delivered();
-                if let Err(error) = handle.terminate().await {
-                    first_error.get_or_insert(error);
-                }
-            }
-            Some(HandleEntry::Pending(_)) | None => {}
-        }
-
-        // Persist cancellation even when provider disposal reports an error.
-        // The process exit callback observes the terminating marker and cannot
-        // clobber this state, while archive can report a teardown failure.
-        if let Err(error) = self.cancel_session(session_id) {
-            first_error.get_or_insert(error);
-        }
-        if let Err(error) = self.cancel_pending_interactions(session_id) {
-            first_error.get_or_insert(error);
-        }
-        if input_undelivered {
-            // After the cancellation row, so the transcript reads in the order
-            // it happened: the message, the stop, then why the message went
-            // unanswered.
-            self.note_undelivered_turn_input(session_id);
-        }
-        self.terminating
-            .lock_or_recover("terminating")
-            .remove(session_id);
-        if let Some(error) = first_error {
-            let _ = self.abort_session_after_turn(
-                session_id,
-                "Could not move this chat because the agent process did not stop safely.",
-            );
-            Err(error)
-        } else {
-            self.settle_session_after_turn(session_id);
-            Ok(())
-        }
-    }
-
-    pub fn cancel_queued_message(
-        &self,
-        input: ProvidersCancelQueuedMessageInput,
-    ) -> ArgmaxResult<()> {
-        let session_id = input.session_id.as_str();
-        let mut connection = self.database.connection();
-        let mut queues = self.queues.lock_or_recover("queues");
-        let Some(current) = queues.get(session_id) else {
-            return Err(ArgmaxError::service("QUEUED_MESSAGE_NOT_CANCELLABLE", "This follow-up has already left the queue. Check the chat before sending another copy."));
-        };
-        let mut updated = current.clone();
-        updated.retain(|message| message.id != input.message_id.as_str());
-        if updated.len() == current.len() {
-            return Err(ArgmaxError::service("QUEUED_MESSAGE_NOT_CANCELLABLE", "This follow-up has already left the queue. Check the chat before sending another copy."));
-        }
-        replace_session_queue(&mut connection, session_id, &updated)?;
-        if updated.is_empty() {
-            queues.remove(session_id);
-        } else {
-            queues.insert(session_id.to_string(), updated);
-        }
-        drop(queues);
-        self.publish_pending_messages(session_id);
-        Ok(())
-    }
-
-    /// Claim a queued follow-up before dispatching it as a multitask. The
-    /// promotion guard stays active across the sibling launch so the ordinary
-    /// turn-end drain cannot race the prompt into the parent session.
-    pub(crate) fn claim_queued_message_for_multitask(
-        &self,
-        session_id: &str,
-        message_id: &str,
-    ) -> ArgmaxResult<PendingMessage> {
-        if !self
-            .queue_promotions
-            .lock_or_recover("queue promotions")
-            .insert(session_id.to_string())
-        {
-            return Err(ArgmaxError::service(
-                "QUEUED_MESSAGE_SEND_IN_PROGRESS",
-                "Another queued follow-up is already being sent. Wait for it to finish.",
-            ));
-        }
-        let claimed = (|| {
-            let connection = self.database.connection();
-            let mut queues = self.queues.lock_or_recover("queues");
-            let queue = queues.get_mut(session_id).ok_or_else(|| {
-                ArgmaxError::service(
-                    "QUEUED_MESSAGE_NOT_FOUND",
-                    "Queued follow-up no longer exists.",
-                )
-            })?;
-            let index = queue
-                .iter()
-                .position(|message| message.id == message_id)
-                .ok_or_else(|| {
-                    ArgmaxError::service(
-                        "QUEUED_MESSAGE_NOT_FOUND",
-                        "Queued follow-up no longer exists.",
-                    )
-                })?;
-            mark_message_launching(&connection, session_id, message_id)?;
-            let message = queue
-                .remove(index)
-                .expect("queued message index must exist");
-            if queue.is_empty() {
-                queues.remove(session_id);
-            }
-            Ok(message)
-        })();
-        let message = match claimed {
-            Ok(message) => message,
-            Err(error) => {
-                self.queue_promotions
-                    .lock_or_recover("queue promotions")
-                    .remove(session_id);
-                return Err(error);
-            }
-        };
-        if origin_row_is_delivered(self, &message) {
-            let delete_result = {
-                let connection = self.database.connection();
-                delete_pending_message(&connection, session_id, message_id)
-            };
-            self.queue_promotions
-                .lock_or_recover("queue promotions")
-                .remove(session_id);
-            delete_result?;
-            self.publish_pending_messages(session_id);
-            return Err(ArgmaxError::service(
-                "QUEUED_MESSAGE_ALREADY_DELIVERED",
-                "This follow-up was already collected from the chat inbox.",
-            ));
-        }
-        self.publish_pending_messages(session_id);
-        Ok(message)
-    }
-
-    /// Return a cleanly failed multitask dispatch to its durable queue slot.
-    /// Reload from SQLite before releasing the promotion guard so concurrent
-    /// edits are retained and the turn-end drain cannot claim the row early.
-    pub(crate) fn restore_queued_message_multitask(
-        &self,
-        session_id: &str,
-        message: PendingMessage,
-    ) -> ArgmaxResult<()> {
-        let result = (|| {
-            let connection = self.database.connection();
-            restore_launching_message(
-                &connection,
-                session_id,
-                &message.id,
-                message.recovery_status.as_deref(),
-            )?;
-            let queue = list_session_pending_messages(&connection, session_id)?;
-            self.queues
-                .lock_or_recover("queues")
-                .insert(session_id.to_string(), queue);
-            Ok(())
-        })();
-        self.queue_promotions
-            .lock_or_recover("queue promotions")
-            .remove(session_id);
-        if result.is_ok() {
-            self.publish_pending_messages(session_id);
-        }
-        result
-    }
-
-    /// Finish a successful queued-message multitask promotion. Even if SQLite
-    /// cleanup fails, the in-memory row stays absent and the guard is released;
-    /// the durable `launching` row then recovers as delivery-uncertain after a
-    /// restart instead of becoming runnable again in this process.
-    pub(crate) fn finish_queued_message_multitask(
-        &self,
-        session_id: &str,
-        message_id: &str,
-    ) -> ArgmaxResult<()> {
-        let result = {
-            let connection = self.database.connection();
-            delete_pending_message(&connection, session_id, message_id)
-        };
-        self.queue_promotions
-            .lock_or_recover("queue promotions")
-            .remove(session_id);
-        if result.is_ok() {
-            self.publish_pending_messages(session_id);
-        }
-        result
-    }
-
-    pub async fn send_queued_message_now(
-        self: &Arc<Self>,
-        input: ProvidersSendQueuedMessageNowInput,
-    ) -> ArgmaxResult<SendInputResult> {
-        self.promote_queued_message(input, false).await
-    }
-
-    fn is_waiting_on_inbox(&self, session_id: &str) -> bool {
-        self.session_control
-            .get()
-            .is_some_and(|registry| registry.is_waiting_on_inbox(session_id))
-    }
-
-    async fn steer_queued_row(
-        self: &Arc<Self>,
-        session_id: String,
-        message_id: String,
-        mid_turn_delivery: MidTurnDelivery,
-    ) -> ArgmaxResult<SendInputResult> {
-        let input = ProvidersSendQueuedMessageNowInput {
-            session_id: SessionId::try_from(session_id).map_err(ArgmaxError::invalid)?,
-            message_id: NonEmptyString::try_from(message_id).map_err(ArgmaxError::invalid)?,
-            delivery: Some(QueuedMessageDelivery::Steer),
-        };
-        if mid_turn_delivery != MidTurnDelivery::SteerOrQueue {
-            return self.promote_queued_message(input, false).await;
-        }
-        match self.promote_queued_message(input, true).await {
-            Ok(result) => Ok(result),
-            // Collected from the inbox, or the ack was lost after the write:
-            // either way the model has it, and resending would duplicate it.
-            Err(ArgmaxError::ServiceError { sub_code, .. })
-                if sub_code == "QUEUED_MESSAGE_ALREADY_DELIVERED"
-                    || sub_code == "STEER_DELIVERY_UNKNOWN" =>
-            {
-                Ok(SendInputResult {
-                    ok: true,
-                    queued: false,
-                })
-            }
-            // Any other refusal left the row in the ordinary queue (or a
-            // drain already took it), so it arrives when the turn ends.
-            Err(error) => {
-                tracing::debug!(?error, "agent message not steered; queued for turn end");
-                Ok(SendInputResult {
-                    ok: true,
-                    queued: true,
-                })
-            }
-        }
-    }
-
-    /// `requeue_on_steer_failure` is for messages no person is watching: a
-    /// definite steering failure returns the row to the ordinary queue so it
-    /// drains at turn end, instead of parking it unsent for a manual retry.
-    async fn promote_queued_message(
-        self: &Arc<Self>,
-        input: ProvidersSendQueuedMessageNowInput,
-        requeue_on_steer_failure: bool,
-    ) -> ArgmaxResult<SendInputResult> {
-        let session_id = input.session_id.as_str().to_string();
-        if !self
-            .queue_promotions
-            .lock_or_recover("queue promotions")
-            .insert(session_id.clone())
-        {
-            return Err(ArgmaxError::service(
-                "QUEUED_MESSAGE_SEND_IN_PROGRESS",
-                "Another queued follow-up is already being sent. Wait for it to finish.",
-            ));
-        }
-        let queued_message = {
-            let connection = self.database.connection();
-            let mut queues = self.queues.lock_or_recover("queues");
-            if let Some(queue) = queues.get_mut(&session_id) {
-                if let Some(index) = queue
-                    .iter()
-                    .position(|message| message.id == input.message_id.as_str())
-                {
-                    if let Err(error) =
-                        mark_message_launching(&connection, &session_id, input.message_id.as_str())
-                    {
-                        drop(queues);
-                        drop(connection);
-                        self.queue_promotions
-                            .lock_or_recover("queue promotions")
-                            .remove(&session_id);
-                        return Err(error);
-                    }
-                    let message = queue
-                        .remove(index)
-                        .expect("queued message index must exist");
-                    if queue.is_empty() {
-                        queues.remove(&session_id);
-                    }
-                    Some(message)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        };
-        let Some(message) = queued_message else {
-            self.queue_promotions
-                .lock_or_recover("queue promotions")
-                .remove(&session_id);
-            return Err(ArgmaxError::service(
-                "QUEUED_MESSAGE_NOT_FOUND",
-                "Queued follow-up no longer exists.",
-            ));
-        };
-        let message_id = message.id.clone();
-
-        if origin_row_is_delivered(self, &message) {
-            let delete_result = {
-                let connection = self.database.connection();
-                delete_pending_message(&connection, &session_id, &message_id)
-            };
-            self.queue_promotions
-                .lock_or_recover("queue promotions")
-                .remove(&session_id);
-            delete_result?;
-            self.publish_pending_messages(&session_id);
-            return Err(ArgmaxError::service(
-                "QUEUED_MESSAGE_ALREADY_DELIVERED",
-                "This follow-up was already collected from the chat inbox.",
-            ));
-        }
-
-        let restore = |service: &Self, message: PendingMessage| -> ArgmaxResult<()> {
-            let connection = service.database.connection();
-            restore_launching_message(
-                &connection,
-                &session_id,
-                &message.id,
-                message.recovery_status.as_deref(),
-            )?;
-            let queue = list_session_pending_messages(&connection, &session_id)?;
-            let mut queues = service.queues.lock_or_recover("queues");
-            queues.insert(session_id.clone(), queue);
-            drop(queues);
-            service.publish_pending_messages(&session_id);
-            Ok(())
-        };
-
-        if input.delivery == Some(QueuedMessageDelivery::Steer) {
-            let mut result = self.steer_queued_message(&session_id, &message).await;
-            if let Err(error) = &result {
-                let mut message = message;
-                if matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "QUEUED_MESSAGE_ALREADY_DELIVERED")
-                {
-                    let connection = self.database.connection();
-                    if let Err(error) =
-                        delete_pending_message(&connection, &session_id, &message.id)
-                    {
-                        result = Err(error);
-                    }
-                } else {
-                    let delivery_unknown = matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "STEER_DELIVERY_UNKNOWN");
-                    message.recovery_status = if delivery_unknown {
-                        Some("delivery-unknown".to_string())
-                    } else if requeue_on_steer_failure {
-                        None
-                    } else {
-                        Some("unsent".to_string())
-                    };
-                    // A person's unsuccessful steer must never auto-drain as a
-                    // new turn; they chose to interrupt, not to wait. An
-                    // automatic message only ever wanted to arrive, so it
-                    // drains. Stop may have explicitly discarded this row
-                    // during delivery.
-                    if let Err(restore_error) = restore(self, message) {
-                        tracing::warn!(session_id, error = %restore_error, "could not restore steered follow-up");
-                    }
-                }
-            }
-            self.queue_promotions
-                .lock_or_recover("queue promotions")
-                .remove(&session_id);
-            self.publish_pending_messages(&session_id);
-            self.drain_queue_if_turn_ended(&session_id);
-            return result;
-        }
-
-        let done = match self.start_termination(session_id.clone(), true) {
-            Ok(done) => done,
-            Err(error) => {
-                self.queue_promotions
-                    .lock_or_recover("queue promotions")
-                    .remove(&session_id);
-                restore(self, message)?;
-                return Err(error);
-            }
-        };
-        self.publish_pending_messages(&session_id);
-        if let Err(error) = wait_for_termination(done).await {
-            self.queue_promotions
-                .lock_or_recover("queue promotions")
-                .remove(&session_id);
-            restore(self, message)?;
-            return Err(error);
-        }
-        if !self
-            .queue_promotions
-            .lock_or_recover("queue promotions")
-            .contains(&session_id)
-        {
-            // Stop took the promotion away while this send waited for the
-            // provider to stop. The row is still marked `launching`, which the
-            // composer hides, so put it back like every other failure here.
-            // Stop discards the queue as it goes, so the row may already be
-            // gone — that is not a failure worth reporting over the cancel.
-            if let Err(error) = restore(self, message) {
-                tracing::debug!(
-                    session_id,
-                    error = %error,
-                    "queued follow-up was already discarded by Stop"
-                );
-            }
-            return Err(ArgmaxError::service(
-                "QUEUED_SEND_CANCELLED",
-                "Queued follow-up was cancelled by Stop.",
-            ));
-        }
-
-        let send_input = match pending_message_to_send_input(session_id.clone(), message.clone()) {
-            Ok(send_input) => send_input,
-            Err(error) => {
-                self.queue_promotions
-                    .lock_or_recover("queue promotions")
-                    .remove(&session_id);
-                restore(self, message)?;
-                return Err(error);
-            }
-        };
-        // The row keeps the origin it was queued with: an agent's message sent
-        // now must still read "From <agent>" and must not become a person's
-        // prompt, which would let it grant chat references.
-        let result = match self
-            .send_input_authored(send_input, message.origin.clone(), message.author)
-            .await
-        {
-            Ok(result) => result,
-            Err(error) => {
-                // send_input can reject before the message is persisted as a
-                // user.message — an archiving workspace, a refused lifecycle
-                // admission, a pending move, a terminating provider. Put the
-                // follow-up back instead of losing what the user typed.
-                tracing::warn!(
-                    session_id,
-                    error = %error,
-                    "restoring queued follow-up after a failed send"
-                );
-                self.queue_promotions
-                    .lock_or_recover("queue promotions")
-                    .remove(&session_id);
-                restore(self, message)?;
-                return Err(error);
-            }
-        };
-        let promotion_active = self
-            .queue_promotions
-            .lock_or_recover("queue promotions")
-            .remove(&session_id);
-        {
-            let connection = self.database.connection();
-            delete_pending_message(&connection, &session_id, &message_id)?;
-        }
-        if !promotion_active {
-            let done = self.start_termination(session_id.clone(), false)?;
-            wait_for_termination(done).await?;
-            return Err(ArgmaxError::service(
-                "QUEUED_SEND_CANCELLED",
-                "Queued follow-up was cancelled by Stop.",
-            ));
-        }
-        Ok(result)
-    }
-
-    async fn steer_queued_message(
-        &self,
-        session_id: &str,
-        message: &PendingMessage,
-    ) -> ArgmaxResult<SendInputResult> {
-        let send_generation = self
-            .send_generations
-            .lock_or_recover("send generations")
-            .get(session_id)
-            .copied()
-            .unwrap_or(0);
-        self.ensure_no_pending_after_turn(session_id)?;
-        let (handle, prompt, agent_mode, _admission) = {
-            let connection = self.database.connection();
-            let session = find_session_by_id(&connection, session_id)?;
-            if session.state != SessionState::Running {
-                return Err(ArgmaxError::service(
-                    "STEER_NOT_RUNNING",
-                    "The turn has finished. This follow-up is still queued.",
-                ));
-            }
-            if !has_steering_context_headroom(&session) {
-                return Err(ArgmaxError::service(
-                    "STEER_CONTEXT_COMPACTION",
-                    "Codex is close to compacting its context. This follow-up is still queued for the next turn.",
-                ));
-            }
-            let handle = self.live_handle(session_id).ok_or_else(|| {
-                ArgmaxError::service("STEER_NOT_RUNNING", "The agent is not ready for steering.")
-            })?;
-            if !handle.supports_steering() {
-                return Err(ArgmaxError::service(
-                    "STEER_UNSUPPORTED",
-                    "This provider does not support steering the running turn.",
-                ));
-            }
-            if message
-                .provider
-                .is_some_and(|provider| provider.as_str() != session.provider)
-                || message
-                    .model_id
-                    .as_deref()
-                    .is_some_and(|id| id != session.model_id)
-                || message
-                    .reasoning_effort
-                    .as_deref()
-                    .is_some_and(|effort| Some(effort) != session.reasoning_effort.as_deref())
-            {
-                return Err(ArgmaxError::service(
-                    "STEER_SETTINGS_CHANGED",
-                    "Steering uses the running turn's model and effort. Queue this follow-up or use Stop and send to change them.",
-                ));
-            }
-            let agent_mode = parse_agent_mode(&message.agent_mode).ok_or_else(|| {
-                ArgmaxError::service(
-                    "STEER_INVALID_MODE",
-                    "The queued follow-up has an invalid mode.",
-                )
-            })?;
-            let workspace = find_workspace_by_id(&connection, &session.workspace_id)?;
-            if matches!(
-                workspace.state.as_str(),
-                "archiving" | "archive-failed" | "archived"
-            ) {
-                return Err(ArgmaxError::service(
-                    "WORKSPACE_ARCHIVING",
-                    "Workspace archive is in progress; no new provider input can be sent.",
-                ));
-            }
-            let admission = self.lifecycle.admit(&session.workspace_id)?;
-            ensure_agent_references_supported(
-                &session.provider,
-                &session.model_id,
-                &message.agent_references,
-            )?;
-            let prompt = agent_reference_prompt(
-                &connection,
-                session_id,
-                &message.content,
-                &message.agent_references,
-            )?;
-            (handle, prompt, agent_mode, admission)
-        };
-        let created_at = now_iso();
-        let inbox_id = message
-            .origin
-            .as_ref()
-            .and_then(|origin| origin.message_id.as_deref());
-        let inbox_created_at: Option<String> = if let Some(id) = inbox_id {
-            // Claim the route atomically before touching the provider. Otherwise
-            // inbox_read can deliver the same message while we await its echo.
-            let claimed = self.database.connection().query_row(
-                "UPDATE session_messages SET delivered_at = ? WHERE id = ? AND delivered_at IS NULL RETURNING created_at",
-                (&created_at, id),
-                |row| row.get(0),
-            ).optional().map_err(sqlite_error)?;
-            if claimed.is_none() {
-                return Err(ArgmaxError::service(
-                    "QUEUED_MESSAGE_ALREADY_DELIVERED",
-                    "This follow-up was already collected from the chat inbox.",
-                ));
-            }
-            claimed
-        } else {
-            None
-        };
-        if let Err(error) = handle.steer(&prompt).await {
-            if !matches!(&error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "STEER_DELIVERY_UNKNOWN")
-            {
-                if let Some(id) = inbox_id {
-                    self.database.connection().execute(
-                        "UPDATE session_messages SET delivered_at = NULL WHERE id = ? AND delivered_at = ?",
-                        (id, &created_at),
-                    ).map_err(sqlite_error)?;
-                }
-            }
-            return Err(error);
-        }
-
-        // Stop/clear may have completed while the acknowledgement was in flight.
-        // Do not append guidance from the old invocation to a fresh conversation.
-        let _send_generation = self
-            .lock_send_generation(session_id, send_generation)
-            .map_err(|_| {
-                ArgmaxError::service(
-                    "STEER_DELIVERY_UNKNOWN",
-                    "Stop interrupted guidance delivery. Check the chat before sending it again.",
-                )
-            })?;
-
-        // Delivery and the local journal cannot share a transaction. Once the
-        // provider acknowledges, any local commit failure is delivery-unknown.
-        let persist = || -> ArgmaxResult<TimelineEvent> {
-            let mut connection = self.database.connection();
-            let transaction = connection.transaction().map_err(sqlite_error)?;
-            let mut payload = composer_payload(agent_mode, Some(&message.attachments));
-            payload["delivery"] = json!("steer");
-            if let Some(origin) = &message.origin {
-                payload["origin"] =
-                    serde_json::to_value(origin).map_err(crate::persistence::json_error)?;
-            }
-            let event = persist_user_prompt(
-                &transaction,
-                &PersistTimelineEventInput {
-                    id: Uuid::new_v4().to_string(),
-                    session_id: session_id.to_string(),
-                    r#type: "user.message".to_string(),
-                    message: message.content.clone(),
-                    payload,
-                    created_at: Some(created_at),
-                },
-                message.author,
-            )?;
-            delete_pending_message(&transaction, session_id, &message.id)?;
-            transaction.commit().map_err(sqlite_error)?;
-            Ok(event)
-        };
-        let event = persist().map_err(|error| ArgmaxError::service(
-            "STEER_DELIVERY_UNKNOWN",
-            format!("The agent accepted the guidance, but it could not be saved: {error}. Check the chat before sending again."),
-        ))?;
-        if let (Some(id), Some(created_at)) = (inbox_id, inbox_created_at) {
-            crate::persistence::session_messages::log_handover("steer", id, &created_at);
-        }
-        self.publish(DashboardDelta {
-            events: vec![event],
-            ..DashboardDelta::default()
-        });
-        Ok(SendInputResult {
-            ok: true,
-            queued: false,
-        })
-    }
-
     /// Boot: wake launchers whose completion wake was waiting out its
     /// coalescing window when the app stopped. Runs after orphan recovery, so
     /// a notice that recovery just wrote is already held and is not duplicated.
@@ -2996,7 +716,7 @@ impl ProviderSessionService {
         // A launch that was in flight when the app stopped started nothing if
         // its session was never written, and may have started its provider if
         // it was. Its receipt says which; the second kind is never repeated.
-        match crate::persistence::launch_receipts::recover_orphaned_receipts(
+        match argmax_store::launch_receipts::recover_orphaned_receipts(
             &mut self.database.connection(),
         ) {
             Ok(recovered) if recovered == Default::default() => {}
@@ -3048,669 +768,50 @@ impl ProviderSessionService {
         }
         for recovered_session in &recovered {
             let session_id = &recovered_session.id;
-            // The writer connection is dropped before publishing: the delta's
-            // push body reads through `read_connection`, whose fallback would
-            // re-lock the writer this thread may still be holding.
-            let (session, workspace, event, is_multitask, projects) = {
-                let connection = self.database.connection();
-                let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
-                let session = update_session_state(
-                    &transaction,
+            let finished_at = now_iso();
+            let mut is_multitask = false;
+            self.commit_turn_end(
+                TurnEnd {
                     session_id,
-                    &SessionStateInput::transition(SessionState::Failed).finished_at(now_iso()),
-                )?;
-                // Mirror the session terminal-state onto the workspace so the
-                // dashboard doesn't keep showing a `running` workspace whose
-                // session was just marked `failed`.
-                let workspace = update_workspace_state_for_session_state_within_transaction(
-                    &transaction,
-                    &session.workspace_id,
-                    SessionState::Failed,
-                )?;
-                let event = persist_timeline_event(
-                    &transaction,
-                    &PersistTimelineEventInput {
-                        id: Uuid::new_v4().to_string(),
-                        session_id: session_id.clone(),
-                        r#type: "process_did_not_survive_restart".to_string(),
-                        message: "Provider process did not survive restart.".to_string(),
-                        payload: json!({}),
-                        created_at: None,
-                    },
-                )?;
-                let is_multitask = session_launch_kind(&transaction, session_id)
-                    .is_ok_and(|kind| kind == LAUNCH_KIND_MULTITASK);
-                let projects = list_projects(&transaction)?;
-                transaction.commit().map_err(sqlite_error)?;
-                (session, workspace, event, is_multitask, projects)
-            };
-            self.publish(DashboardDelta {
-                projects,
-                workspaces: vec![workspace],
-                sessions: vec![session],
-                events: vec![event],
-                ..DashboardDelta::default()
-            });
+                    state: SessionState::Failed,
+                    finished_at: &finished_at,
+                    may_end: |_| true,
+                    yields_to_stop: false,
+                    remove_handle: false,
+                    pause_queue: false,
+                    reconcile_subagents: false,
+                },
+                |transaction| {
+                    let event = persist_timeline_event(
+                        transaction,
+                        &PersistTimelineEventInput {
+                            id: Uuid::new_v4().to_string(),
+                            session_id: session_id.clone(),
+                            r#type: "process_did_not_survive_restart".to_string(),
+                            message: "Provider process did not survive restart.".to_string(),
+                            payload: json!({}),
+                            created_at: None,
+                        },
+                    )?;
+                    is_multitask = session_launch_kind(transaction, session_id)
+                        .is_ok_and(|kind| kind == LAUNCH_KIND_MULTITASK);
+                    Ok(TurnRows {
+                        events: vec![event],
+                        ..TurnRows::default()
+                    })
+                },
+            )?;
             // A multitask that was mid-turn when the app went down never wrote
             // its finish row, so the chat that dispatched it would keep saying
             // "running alongside" for a process that died with the app. Boot is
             // where that becomes knowable, and the row says `failed` because
             // that is what happened to it.
             if is_multitask {
-                self.record_multitask_finish(session_id, SessionState::Failed, &now_iso());
+                self.record_multitask_finish(session_id, SessionState::Failed, &finished_at);
             }
             self.cancel_pending_interactions(session_id)?;
         }
         Ok(recovered.len())
-    }
-
-    fn is_current_provider_invocation(
-        &self,
-        session_id: &str,
-        provider_invocation_id: &str,
-    ) -> bool {
-        self.flush_queue
-            .lock_or_recover("flush queue")
-            .is_current_invocation(session_id, provider_invocation_id)
-    }
-
-    fn handle_provider_event(
-        self: Arc<Self>,
-        event: ProviderRuntimeEvent,
-        provider_invocation_id: String,
-    ) {
-        if !self.is_current_provider_invocation(&event.session_id, &provider_invocation_id) {
-            return;
-        }
-        let result = match event.r#type {
-            ProviderRuntimeEventType::Output => {
-                self.handle_output_event(event, provider_invocation_id)
-            }
-            ProviderRuntimeEventType::StreamStarted => self.handle_stream_started(event),
-            ProviderRuntimeEventType::Exit | ProviderRuntimeEventType::Error => {
-                self.handle_lifecycle_event(event)
-            }
-        };
-        if let Err(error) = result {
-            tracing::warn!(error = ?error, "provider event handling failed");
-        }
-    }
-
-    fn handle_stream_started(&self, event: ProviderRuntimeEvent) -> ArgmaxResult<()> {
-        // Persist a one-shot `session.streaming` marker so the renderer can
-        // hide the "Thinking" bubble the moment the child writes its first
-        // byte. Originally Codex-only because Claude/Cursor "stream message
-        // deltas soon after" — but on the Tauri/PTY path "soon after" turned
-        // out to be several seconds while the provider emits system-init /
-        // tool-use prelude JSON that the normalizer produces zero timeline
-        // events for. Empty Thinking bubble for 4 s is the reported bug; the
-        // beacon clears it on first byte for every provider.
-        let connection = self.database.connection();
-        let timeline_event = persist_timeline_event(
-            &connection,
-            &PersistTimelineEventInput {
-                id: Uuid::new_v4().to_string(),
-                session_id: event.session_id.clone(),
-                r#type: "session.streaming".to_string(),
-                message: String::new(),
-                payload: json!({}),
-                created_at: Some(event.created_at),
-            },
-        )?;
-        drop(connection);
-        self.publish(DashboardDelta {
-            events: vec![timeline_event],
-            ..DashboardDelta::default()
-        });
-        Ok(())
-    }
-
-    fn handle_output_event(
-        self: Arc<Self>,
-        event: ProviderRuntimeEvent,
-        provider_invocation_id: String,
-    ) -> ArgmaxResult<()> {
-        self.output_events.fetch_add(1, Ordering::Relaxed);
-        let trace_bytes = event.message.len();
-        let trace_session = event.session_id.clone();
-        tracing::trace!(
-            session_id = %trace_session,
-            bytes = trace_bytes,
-            "handle_output_event: acquiring DB connection",
-        );
-        let mut connection = self.database.connection();
-        tracing::trace!(
-            session_id = %trace_session,
-            "handle_output_event: acquired DB; acquiring flush queue",
-        );
-        let mut flush_queue = self.flush_queue.lock_or_recover("flush queue");
-        tracing::trace!(
-            session_id = %trace_session,
-            "handle_output_event: acquired flush queue; queuing event",
-        );
-        // Kept before the line is consumed: it names the turn a Codex run began.
-        let turn_started_line = event
-            .message
-            .contains("\"thread.started\"")
-            .then(|| event.message.clone());
-        let mut result = flush_queue.queue_output_event(
-            &mut connection,
-            &provider_invocation_id,
-            ProviderOutputEvent {
-                session_id: event.session_id.clone(),
-                stream: event.stream,
-                message: event.message,
-                created_at: event.created_at,
-            },
-        )?;
-        tracing::trace!(
-            session_id = %trace_session,
-            has_delta = result.delta.is_some(),
-            "handle_output_event: queue_output_event returned",
-        );
-        if let Some(provider_conversation_id) = result.provider_conversation_id.take() {
-            let session = update_session_provider_conversation_id(
-                &connection,
-                &event.session_id,
-                &provider_conversation_id,
-            )?;
-            result
-                .delta
-                .get_or_insert_with(DashboardDelta::default)
-                .sessions
-                .push(session);
-        }
-        // Output proves the conversation holds what a rejoin owed it.
-        if let Some(delta) = &result.delta {
-            if let Err(error) = continuity::note_provider_output(
-                &connection,
-                &event.session_id,
-                delta.events.iter().map(|event| event.r#type.as_str()),
-            ) {
-                tracing::warn!(session_id = %event.session_id, ?error, "could not settle a rejoined conversation");
-            }
-        }
-        if let Some(line) = turn_started_line {
-            if let Err(error) =
-                continuity::observe_provider_line(&connection, &event.session_id, &line)
-            {
-                tracing::warn!(session_id = %event.session_id, ?error, "could not record provider turn");
-            }
-        }
-        drop(flush_queue);
-        drop(connection);
-        let cursor_turn_finished = result.delta.as_ref().is_some_and(|delta| {
-            delta.events.iter().any(|event| {
-                event.r#type == "session.completed"
-                    && event.payload.get("cursorResultSuccess") == Some(&json!(true))
-            })
-        });
-        if let Some(delta) = result.delta.as_mut() {
-            if delta_has_session_completed_event(delta) {
-                self.append_reconciled_subagent_events(&event.session_id, delta);
-            }
-        }
-        let reconcile_subagents = result.delta.as_ref().is_some_and(|delta| {
-            !delta_has_session_completed_event(delta) && delta_has_subagent_control_event(delta)
-        });
-        if let Some(delta) = result.delta {
-            self.schedule_measured_diffs(&event.session_id, &delta);
-            self.schedule_observed_prs(&event.session_id, &delta);
-            self.publish(delta);
-        }
-        if reconcile_subagents {
-            self.schedule_subagent_trace_reconciliation(&event.session_id);
-        }
-        if cursor_turn_finished {
-            let service = Arc::clone(&self);
-            let session_id = event.session_id.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(error) = service.complete_cursor_turn_after_result(&session_id).await {
-                    tracing::warn!(
-                        ?error,
-                        session_id = %session_id,
-                        "cursor turn completion after result/success failed"
-                    );
-                }
-            });
-        }
-        if result.has_pending_batch {
-            self.schedule_batch_flush(&event.session_id);
-        } else {
-            self.cancel_batch_flush(&event.session_id);
-        }
-        if result.has_trailing_fragment {
-            self.schedule_idle_flush(&event.session_id);
-        } else {
-            self.cancel_idle_flush(&event.session_id);
-        }
-        Ok(())
-    }
-
-    fn handle_lifecycle_event(self: &Arc<Self>, event: ProviderRuntimeEvent) -> ArgmaxResult<()> {
-        self.cancel_stream_flushes(&event.session_id);
-        // A genuine process exit is the one place a Cursor turn that never sent
-        // `result/success` should be synthesized as completed — but not when the
-        // user cancelled (the session is heading to `cancelled`, not `complete`).
-        let is_terminating = self
-            .terminating
-            .lock_or_recover("terminating")
-            .contains(&event.session_id);
-        #[cfg(test)]
-        if let Some(hook) = self
-            .after_lifecycle_marker_check
-            .lock_or_recover("lifecycle test hook")
-            .clone()
-        {
-            hook();
-        }
-        self.flush_trailing(&event.session_id, !is_terminating)?;
-        // If the user already initiated terminate(), let cancel_session
-        // own the state transition. Writing `failed`/`complete` here
-        // would race against (and could clobber) the `cancelled` state
-        // the user just saw flash in the dashboard.
-        if is_terminating {
-            self.handles
-                .lock_or_recover("handles")
-                .remove(&event.session_id);
-            self.flush_queue
-                .lock_or_recover("flush queue")
-                .delete_session(&event.session_id);
-            self.cancel_pending_interactions(&event.session_id)?;
-            return Ok(());
-        }
-        self.capture_pr_branch(&event.session_id);
-        // Stop sets the marker before disposal. Keep this lock through commit
-        // so an exit that passed the first check cannot overwrite Stop.
-        let terminating = self.terminating.lock_or_recover("terminating");
-        if terminating.contains(&event.session_id) {
-            return Ok(());
-        }
-        let connection = self.database.connection();
-        let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
-        let succeeded =
-            event.r#type == ProviderRuntimeEventType::Exit && event.exit_code == Some(0);
-        let state = if succeeded {
-            SessionState::Complete
-        } else {
-            SessionState::Failed
-        };
-        let completed_at = event.created_at.clone();
-        let raw_output = persist_raw_output(
-            &transaction,
-            &PersistRawOutputInput {
-                id: Uuid::new_v4().to_string(),
-                session_id: event.session_id.clone(),
-                stream: event.stream.as_str().to_string(),
-                content: event.message.clone(),
-                created_at: Some(event.created_at.clone()),
-            },
-        )?;
-        let session = update_session_state(
-            &transaction,
-            &event.session_id,
-            &SessionStateInput::transition(state).finished_at(event.created_at.clone()),
-        )?;
-        let workspace = update_workspace_state_for_session_state_within_transaction(
-            &transaction,
-            &session.workspace_id,
-            state,
-        )?;
-        // For successful exits, persist `session.completed` with an empty
-        // message — the wait-thread's raw text ("X structured probe exited
-        // with code 0") is debug noise that was leaking into the chat
-        // bubble next to the actual assistant response. The exit code
-        // stays in the payload for diagnostics, and the raw message is
-        // preserved in `raw_outputs` above.
-        let (timeline_type, timeline_message) = if succeeded {
-            ("session.completed".to_string(), String::new())
-        } else {
-            ("error".to_string(), event.message)
-        };
-        // Cursor and OpenCode already recorded this turn's completion from
-        // their own output; a second `session.completed` from the exit would
-        // count the turn twice.
-        let already_completed = succeeded
-            && crate::persistence::events::turn_completion_recorded(
-                &transaction,
-                &event.session_id,
-            )?;
-        let timeline_events = if already_completed {
-            Vec::new()
-        } else {
-            vec![persist_timeline_event(
-                &transaction,
-                &PersistTimelineEventInput {
-                    id: Uuid::new_v4().to_string(),
-                    session_id: event.session_id.clone(),
-                    r#type: timeline_type,
-                    message: timeline_message,
-                    payload: json!({ "exitCode": event.exit_code }),
-                    created_at: Some(event.created_at),
-                },
-            )?]
-        };
-        let mut delta = DashboardDelta {
-            projects: list_projects(&transaction)?,
-            workspaces: vec![workspace],
-            sessions: vec![session],
-            events: timeline_events,
-            raw_outputs: vec![raw_output],
-            ..DashboardDelta::default()
-        };
-        transaction.commit().map_err(sqlite_error)?;
-        drop(terminating);
-        self.handles
-            .lock_or_recover("handles")
-            .remove(&event.session_id);
-        self.flush_queue
-            .lock_or_recover("flush queue")
-            .delete_session(&event.session_id);
-        let queue_paused = if succeeded {
-            Ok(())
-        } else {
-            self.pause_queue_with_connection(&connection, &event.session_id)
-        };
-        drop(connection);
-        self.append_reconciled_subagent_events(&event.session_id, &mut delta);
-        self.publish(delta);
-        // The drain is what sends a follow-up the user queued during the turn.
-        // It must not depend on the approvals cleanup succeeding: an error
-        // there used to return early and strand the queue until the next turn.
-        let interactions_cancelled = self.cancel_pending_interactions(&event.session_id);
-        self.settle_session_after_turn(&event.session_id);
-        self.notify_launcher_of_turn_end(&event.session_id, state, &completed_at);
-        if succeeded {
-            self.drain_queue_after_complete(event.session_id);
-        }
-        interactions_cancelled.and(queue_paused)
-    }
-
-    /// Arc and multitask writes are lifecycle effects. Ordinary completion
-    /// notices are independent policy and may fail without blocking the queue.
-    fn notify_launcher_of_turn_end(
-        self: &Arc<Self>,
-        session_id: &str,
-        state: SessionState,
-        at: &str,
-    ) {
-        if let Err(error) = self.record_arc_turn_end(session_id, state, at) {
-            tracing::warn!(
-                session_id,
-                ?error,
-                "failed to record the arc timeline row for a turn end"
-            );
-        }
-        if matches!(
-            session_launch_kind(&self.database.connection(), session_id).as_deref(),
-            Ok(LAUNCH_KIND_MULTITASK)
-        ) {
-            self.record_multitask_finish(session_id, state, at);
-            return;
-        }
-        if let Err(error) = self.completion_notices.turn_ended(session_id, state, at) {
-            tracing::warn!(
-                session_id,
-                ?error,
-                "failed to prepare the completion notice"
-            );
-        }
-    }
-
-    /// The Arc timeline's view of a turn end. A member's turn becomes a
-    /// `member_finished` row carrying the opening of its answer. A
-    /// coordinator's turn leaves a row only when it changed `NOTES.md`: the
-    /// coordinator wakes on every notice, and a turn that wrote nothing down
-    /// is not part of the Arc's story. Keyed by the turn end, so Cursor's
-    /// second turn-end report writes nothing new.
-    fn record_arc_turn_end(
-        &self,
-        session_id: &str,
-        state: SessionState,
-        at: &str,
-    ) -> ArgmaxResult<()> {
-        let arc = {
-            let connection = self.database.connection();
-            match arcs::find_session_arc(&connection, session_id)? {
-                Some(arc) => arc,
-                None => return Ok(()),
-            }
-        };
-        let is_coordinator = arc.coordinator_session_id.as_deref() == Some(session_id);
-        // Read outside the database lock: the notes file can be large.
-        let notes = is_coordinator
-            .then(|| std::fs::read_to_string(arcs::notes_path(&arc)).ok())
-            .flatten();
-
-        let connection = self.database.connection();
-        let session = find_session_by_id(&connection, session_id)?;
-        let workspace = find_workspace_by_id(&connection, &session.workspace_id)?;
-        let answer = latest_agent_message(&connection, session_id)?.unwrap_or_default();
-
-        if is_coordinator {
-            let Some(notes) = notes else {
-                return Ok(());
-            };
-            let Some(before) = arcs::notes_snapshot(&connection, &arc.id)? else {
-                // An Arc from before the timeline: start diffing from here.
-                return arcs::set_notes_snapshot(&connection, &arc.id, &notes);
-            };
-            let Some(change) = crate::persistence::arc_events::notes_change(&before, &notes) else {
-                return Ok(());
-            };
-            let mut event = NewArcEvent::new(
-                format!("notes:{session_id}:{at}"),
-                &arc.id,
-                ArcEventKind::NotesUpdated,
-                change
-                    .first_new_line
-                    .clone()
-                    .unwrap_or_else(|| "Notes updated".to_string()),
-            );
-            event.occurred_at = Some(at.to_string());
-            event.session_id = Some(session_id);
-            event.project_id = Some(&workspace.project_id);
-            event.status = Some(format!("+{} −{}", change.added, change.removed));
-            event.detail = Some(crate::persistence::arc_events::first_paragraph(&answer));
-            record_arc_event(&connection, &event)?;
-            return arcs::set_notes_snapshot(&connection, &arc.id, &notes);
-        }
-
-        let label = workspace.task_label.trim();
-        let mut event = NewArcEvent::new(
-            format!("finished:{session_id}:{at}"),
-            &arc.id,
-            ArcEventKind::MemberFinished,
-            if label.is_empty() {
-                "Member chat"
-            } else {
-                label
-            },
-        );
-        event.occurred_at = Some(at.to_string());
-        event.session_id = Some(session_id);
-        event.project_id = Some(&workspace.project_id);
-        event.status = Some(state.as_str().to_string());
-        event.detail = Some(crate::persistence::arc_events::first_paragraph(&answer));
-        record_arc_event(&connection, &event)?;
-        Ok(())
-    }
-
-    /// Passive delivery of a finished multitask: a timeline row the parent's
-    /// chat renders as a tail marker, plus the inbox row `inbox_read` and the
-    /// next prompt's preamble pick up. No turn is started.
-    fn record_multitask_finish(&self, session_id: &str, state: SessionState, at: &str) {
-        let (parent_id, event) =
-            match crate::multitask::record_finished(&self.database, session_id, state, at) {
-                Ok(Some(recorded)) => recorded,
-                Ok(None) => return,
-                Err(error) => {
-                    tracing::warn!(
-                        session_id,
-                        ?error,
-                        "failed to record the finished multitask"
-                    );
-                    return;
-                }
-            };
-        if let Some(registry) = self.session_control.get() {
-            registry.notify_inbox(&parent_id);
-        }
-        // The parent is not otherwise touched by this turn ending, so its
-        // timeline row needs its own delta to reach the renderer.
-        let connection = self.database.connection();
-        let Ok(parent) = find_session_by_id(&connection, &parent_id) else {
-            return;
-        };
-        drop(connection);
-        self.publish(DashboardDelta {
-            sessions: vec![parent],
-            events: vec![event],
-            ..DashboardDelta::default()
-        });
-    }
-
-    async fn deliver_notice(self: Arc<Self>, notice: CompletionNotice) {
-        let input = match (
-            SessionId::try_from(notice.to_session_id.clone()),
-            Prompt::try_from(notice.body),
-        ) {
-            (Ok(session_id), Ok(input)) => ProvidersSendInput {
-                agent_references: None,
-                session_id,
-                input,
-                provider: None,
-                model_label: None,
-                model_id: None,
-                reasoning_effort: None,
-                fast_mode: false,
-                agent_mode: None,
-                attachments: None,
-            },
-            _ => return,
-        };
-        match self.send_agent_message(input, notice.origin).await {
-            // Only a notice that actually reached the launcher as a turn has
-            // been delivered. One that queued behind a running turn has not,
-            // and stays collectable from the inbox — the same rule an agent's
-            // own message follows in `session_control`.
-            Ok(result) if !result.queued => {
-                let connection = self.database.connection();
-                if let Err(error) = mark_message_delivered(&connection, &notice.message_id) {
-                    tracing::warn!(?error, "failed to mark a completion notice delivered");
-                }
-            }
-            Ok(_) => {}
-            // The row stays undelivered, so `inbox_read` still hands it over.
-            Err(error) => tracing::warn!(
-                to_session_id = %notice.to_session_id,
-                ?error,
-                "could not start a turn with the completion notice"
-            ),
-        }
-    }
-
-    /// A message from Argmax itself rather than another session — no sender
-    /// session, just a body and a caller-chosen origin label/session for the
-    /// "From <label>" bubble and the click-to-open target (a related session
-    /// the reader would want to jump to, not necessarily who "wrote" this).
-    /// Used by the gh poller's Arc PR/CI events, on the same delivery path
-    /// `session_message` and the completion notice use: the row lands in
-    /// `session_messages` before delivery is attempted, so `inbox_read` and
-    /// `session_wait` see it even when the turn below only queues.
-    ///
-    /// `message_id` is the caller's dedup key — a deterministic id an
-    /// `INSERT OR IGNORE` makes idempotent across ticks and restarts. Returns
-    /// `false` without sending anything when that id was already inserted.
-    /// Returns `Err` when the send itself failed — the insert is rolled back
-    /// first, so a caller checking whether this id's row exists sees a clean
-    /// "not delivered" rather than a row that looks successful.
-    pub async fn send_system_notice(
-        self: &Arc<Self>,
-        message_id: String,
-        to_session_id: &str,
-        origin_session_id: String,
-        origin_label: String,
-        body: String,
-    ) -> ArgmaxResult<bool> {
-        let inserted = {
-            let connection = self.database.connection();
-            insert_session_message(
-                &connection,
-                &NewSessionMessage {
-                    id: message_id.clone(),
-                    from_session_id: None,
-                    to_session_id: to_session_id.to_string(),
-                    body: body.clone(),
-                    kind: MESSAGE_KIND.to_string(),
-                },
-            )?
-        };
-        if !inserted {
-            return Ok(false);
-        }
-        if let Some(registry) = self.session_control.get() {
-            registry.notify_inbox(to_session_id);
-        }
-        let (Ok(session_id), Ok(input)) = (
-            SessionId::try_from(to_session_id.to_string()),
-            Prompt::try_from(body),
-        ) else {
-            return Ok(true);
-        };
-        let send_input = ProvidersSendInput {
-            agent_references: None,
-            session_id,
-            input,
-            provider: None,
-            model_label: None,
-            model_id: None,
-            reasoning_effort: None,
-            fast_mode: false,
-            agent_mode: None,
-            attachments: None,
-        };
-        let origin = MessageOrigin {
-            session_id: origin_session_id,
-            label: origin_label,
-            kind: MESSAGE_KIND.to_string(),
-            message_id: Some(message_id.clone()),
-        };
-        match self.send_agent_message(send_input, origin).await {
-            // Only a notice that actually reached the recipient as a turn has
-            // been delivered; one still queued has not, and stays collectable
-            // from the inbox — the same rule the completion notice follows.
-            Ok(result) if !result.queued => {
-                let connection = self.database.connection();
-                if let Err(error) = mark_message_delivered(&connection, &message_id) {
-                    tracing::warn!(?error, "failed to mark a system notice delivered");
-                }
-                Ok(true)
-            }
-            Ok(_) => Ok(true),
-            // A genuine send failure leaves nothing behind: an inserted-but-
-            // never-delivered row would be indistinguishable from a delivered
-            // one to a caller checking existence (the gh poller's Arc event
-            // fallback does exactly that), so roll the insert back before
-            // propagating the error.
-            Err(error) => {
-                tracing::warn!(
-                    to_session_id,
-                    ?error,
-                    "could not start a turn with a system notice"
-                );
-                let connection = self.database.connection();
-                if let Err(delete_error) =
-                    delete_undelivered_session_message(&connection, &message_id)
-                {
-                    tracing::warn!(
-                        ?delete_error,
-                        "failed to roll back an undelivered system notice"
-                    );
-                }
-                Err(error)
-            }
-        }
     }
 
     fn record_launch_failure(
@@ -3719,106 +820,96 @@ impl ProviderSessionService {
         provider: ProviderId,
         error: ArgmaxError,
     ) -> ArgmaxResult<()> {
-        let connection = self.database.connection();
-        let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
         let completed_at = now_iso();
-        let session = update_session_state(
-            &transaction,
-            session_id,
-            &SessionStateInput::transition(SessionState::Failed).finished_at(completed_at.clone()),
-        )?;
-        let workspace = update_workspace_state_for_session_state_within_transaction(
-            &transaction,
-            &session.workspace_id,
-            SessionState::Failed,
-        )?;
-        let event = persist_timeline_event(
-            &transaction,
-            &PersistTimelineEventInput {
-                id: Uuid::new_v4().to_string(),
-                session_id: session_id.to_string(),
-                r#type: "error".to_string(),
-                message: error.to_string(),
-                payload: json!({ "provider": provider.as_str() }),
-                created_at: None,
+        let ended = self.commit_turn_end(
+            TurnEnd {
+                session_id,
+                state: SessionState::Failed,
+                finished_at: &completed_at,
+                may_end: |_| true,
+                yields_to_stop: false,
+                remove_handle: false,
+                pause_queue: true,
+                reconcile_subagents: false,
+            },
+            |transaction| {
+                let event = persist_timeline_event(
+                    transaction,
+                    &PersistTimelineEventInput {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: session_id.to_string(),
+                        r#type: "error".to_string(),
+                        message: error.to_string(),
+                        payload: json!({ "provider": provider.as_str() }),
+                        created_at: None,
+                    },
+                )?;
+                Ok(TurnRows {
+                    events: vec![event],
+                    ..TurnRows::default()
+                })
             },
         )?;
-        let delta = DashboardDelta {
-            projects: list_projects(&transaction)?,
-            workspaces: vec![workspace],
-            sessions: vec![session],
-            events: vec![event],
-            ..DashboardDelta::default()
-        };
-        transaction.commit().map_err(sqlite_error)?;
-        self.flush_queue
-            .lock_or_recover("flush queue")
-            .delete_session(session_id);
-        let pause_error = self
-            .pause_queue_with_connection(&connection, session_id)
-            .err();
-        // The writer connection is dropped before publishing: the delta's
-        // push body reads through `read_connection`, whose fallback would
-        // re-lock the writer this thread is still holding.
-        drop(connection);
-        self.publish(delta);
         // A launch that never started is still this session's turn ending, and
         // whoever launched it is owed that news: without it a multitask whose
         // CLI could not start leaves a row that says "Running" for as long as
         // the transcript lives, since the finish row it falls back to was never
         // written.
-        self.notify_launcher_of_turn_end(session_id, SessionState::Failed, &completed_at);
-        match pause_error {
-            Some(error) => Err(error),
-            None => Ok(()),
-        }
+        self.announce_turn_end(
+            session_id,
+            SessionState::Failed,
+            &completed_at,
+            TurnFollowUp {
+                settle: false,
+                drain_queue: false,
+            },
+        );
+        ended.map_or(Ok(()), |ended| ended.queue_paused)
     }
 
     fn cancel_session(self: &Arc<Self>, session_id: &str) -> ArgmaxResult<()> {
         self.capture_pr_branch(session_id);
-        let connection = self.database.connection();
-        let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
-        let current = find_session_by_id(&transaction, session_id)?;
-        if !current.state.is_active() {
-            return Ok(());
-        }
         let completed_at = now_iso();
-        let session = update_session_state(
-            &transaction,
-            session_id,
-            &SessionStateInput::transition(SessionState::Cancelled)
-                .finished_at(completed_at.clone()),
-        )?;
-        let workspace = update_workspace_state_for_session_state_within_transaction(
-            &transaction,
-            &session.workspace_id,
-            SessionState::Cancelled,
-        )?;
-        let event = persist_timeline_event(
-            &transaction,
-            &PersistTimelineEventInput {
-                id: Uuid::new_v4().to_string(),
-                session_id: session_id.to_string(),
-                r#type: "session.cancelled".to_string(),
-                message: "Provider chat cancelled.".to_string(),
-                payload: json!({}),
-                created_at: Some(completed_at.clone()),
+        let ended = self.commit_turn_end(
+            TurnEnd {
+                session_id,
+                state: SessionState::Cancelled,
+                finished_at: &completed_at,
+                may_end: SessionState::is_active,
+                yields_to_stop: false,
+                remove_handle: false,
+                pause_queue: false,
+                reconcile_subagents: false,
+            },
+            |transaction| {
+                let event = persist_timeline_event(
+                    transaction,
+                    &PersistTimelineEventInput {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: session_id.to_string(),
+                        r#type: "session.cancelled".to_string(),
+                        message: "Provider chat cancelled.".to_string(),
+                        payload: json!({}),
+                        created_at: Some(completed_at.clone()),
+                    },
+                )?;
+                Ok(TurnRows {
+                    events: vec![event],
+                    ..TurnRows::default()
+                })
             },
         )?;
-        let delta = DashboardDelta {
-            projects: list_projects(&transaction)?,
-            workspaces: vec![workspace],
-            sessions: vec![session],
-            events: vec![event],
-            ..DashboardDelta::default()
-        };
-        transaction.commit().map_err(sqlite_error)?;
-        self.flush_queue
-            .lock_or_recover("flush queue")
-            .delete_session(session_id);
-        drop(connection);
-        self.publish(delta);
-        self.notify_launcher_of_turn_end(session_id, SessionState::Cancelled, &completed_at);
+        if ended.is_some() {
+            self.announce_turn_end(
+                session_id,
+                SessionState::Cancelled,
+                &completed_at,
+                TurnFollowUp {
+                    settle: false,
+                    drain_queue: false,
+                },
+            );
+        }
         Ok(())
     }
 
@@ -3881,7 +972,7 @@ impl ProviderSessionService {
         agent_mode: AgentMode,
         attachments: Option<&[ComposerAttachmentInput]>,
         authorship: TurnAuthorship<'_>,
-    ) -> ArgmaxResult<crate::persistence::events::TimelineEvent> {
+    ) -> ArgmaxResult<argmax_store::events::TimelineEvent> {
         let mut payload = composer_payload(agent_mode, attachments);
         if let Some(origin) = authorship.origin {
             payload["origin"] = serde_json::to_value(origin).unwrap_or(Value::Null);
@@ -3889,7 +980,7 @@ impl ProviderSessionService {
         if let Some(marker) = authorship.starter.payload_marker() {
             payload["starter"] = json!(marker);
         }
-        persist_user_prompt(
+        let event = persist_user_prompt(
             connection,
             &PersistTimelineEventInput {
                 id: Uuid::new_v4().to_string(),
@@ -3900,751 +991,9 @@ impl ProviderSessionService {
                 created_at: None,
             },
             authorship.author,
-        )
-    }
-
-    fn enqueue_pending_message(
-        &self,
-        session_id: &str,
-        content: &str,
-        agent_mode: AgentMode,
-        input: &ProvidersSendInput,
-        origin: Option<MessageOrigin>,
-        author: PromptAuthor,
-    ) -> ArgmaxResult<Option<PendingMessage>> {
-        let mut connection = self.database.connection();
-        // The inbox is visible before send_input can acquire the checkout lock.
-        // Collection may therefore finish before there is a queue copy to remove.
-        // Keep this check under the writer lock through the queue insertion so
-        // collection either wins here or removes the inserted copy afterward.
-        if let Some(message_id) = origin
-            .as_ref()
-            .and_then(|origin| origin.message_id.as_deref())
-        {
-            if is_message_delivered(&connection, message_id)? {
-                return Ok(None);
-            }
-        }
-        let session = find_session_by_id(&connection, session_id)?;
-        self.ensure_no_pending_after_turn(session_id)?;
-        let mut queues = self.queues.lock_or_recover("queues");
-        let mut queue = queues.get(session_id).cloned().unwrap_or_default();
-        if queue.len() >= MAX_PENDING_QUEUE {
-            return Err(ArgmaxError::service(
-                "PENDING_QUEUE_FULL",
-                format!("Pending follow-up queue is full ({MAX_PENDING_QUEUE})."),
-            ));
-        }
-        // A provider the sender named is kept on its row whatever the chat or
-        // the rows ahead of it are on. Rows drain in order and can be removed
-        // or reordered first, so a row that said "Codex" must still say it
-        // when the one that switched to Codex is gone. `None` therefore means
-        // the sender named no provider.
-        let (provider, model_label, model_id, reasoning_effort, fast_mode) =
-            if let Some(requested) = input.provider {
-                // Refused now, while the sender is still looking, rather than
-                // when the row drains with nobody watching.
-                let (Some(label), Some(model)) =
-                    (input.model_label.as_ref(), input.model_id.as_ref())
-                else {
-                    return Err(ArgmaxError::service(
-                        "SWITCH_PROVIDER_REQUIRES_MODEL",
-                        "Naming a provider requires a model for it.",
-                    ));
-                };
-                ensure_permission_mode_supported(
-                    requested,
-                    parse_permission_mode(&session.permission_mode)?,
-                )?;
-                (
-                    Some(requested),
-                    Some(label.as_str().to_string()),
-                    Some(model.as_str().to_string()),
-                    input
-                        .reasoning_effort
-                        .map(|value| value.as_str().to_string()),
-                    input.fast_mode,
-                )
-            } else {
-                // No provider named: only a model or effort the user actually
-                // picked is kept. A send that merely echoes the chat's current
-                // model would, once drained after the router (or a goal) moved
-                // the chat, read as a pin to the old model.
-                let picks_model = input
-                    .model_id
-                    .as_ref()
-                    .is_some_and(|model_id| model_id.as_str() != session.model_id)
-                    || input.reasoning_effort.is_some_and(|effort| {
-                        Some(effort)
-                            != session
-                                .reasoning_effort
-                                .as_deref()
-                                .and_then(parse_reasoning_effort)
-                    });
-                if picks_model {
-                    (
-                        None,
-                        input
-                            .model_label
-                            .as_ref()
-                            .map(|value| value.as_str().to_string()),
-                        input
-                            .model_id
-                            .as_ref()
-                            .map(|value| value.as_str().to_string()),
-                        input
-                            .reasoning_effort
-                            .map(|value| value.as_str().to_string()),
-                        input.fast_mode,
-                    )
-                } else {
-                    (None, None, None, None, input.fast_mode)
-                }
-            };
-        let pending = PendingMessage {
-            id: Uuid::new_v4().to_string(),
-            session_id: session_id.to_string(),
-            content: content.to_string(),
-            agent_mode: agent_mode.as_str().to_string(),
-            provider,
-            model_label,
-            model_id,
-            reasoning_effort,
-            fast_mode,
-            attachments: input.attachments.clone().unwrap_or_default(),
-            agent_references: input.agent_references.clone().unwrap_or_default(),
-            origin,
-            recovery_status: None,
-            queued_at: now_iso(),
-            author,
-        };
-        queue.push_back(pending.clone());
-        replace_session_queue(&mut connection, session_id, &queue)?;
-        queues.insert(session_id.to_string(), queue);
-        drop(queues);
-        self.publish_pending_messages(session_id);
-        Ok(Some(pending))
-    }
-
-    fn clear_queue(&self, session_id: &str) -> ArgmaxResult<()> {
-        let connection = self.database.connection();
-        clear_session_queue(&connection, session_id)?;
-        let removed = self
-            .queues
-            .lock_or_recover("queues")
-            .remove(session_id)
-            .is_some();
-        if removed {
-            self.publish_pending_messages(session_id);
-        }
-        Ok(())
-    }
-
-    /// Provider failures are not a user request to discard unsent work.
-    /// Pause it durably so a later turn cannot silently drain the old queue.
-    fn pause_queue_with_connection(
-        &self,
-        connection: &rusqlite::Connection,
-        session_id: &str,
-    ) -> ArgmaxResult<()> {
-        connection
-            .execute(
-                "UPDATE pending_messages SET delivery_state = 'recovered', updated_at = ?2
-             WHERE session_id = ?1 AND delivery_state = 'pending'",
-                (session_id, now_iso()),
-            )
-            .map_err(crate::persistence::sqlite_error)?;
-        let mut queues = self.queues.lock_or_recover("queues");
-        if let Some(queue) = queues.get_mut(session_id) {
-            for message in queue {
-                if message.recovery_status.is_none() {
-                    message.recovery_status = Some("unsent".to_string());
-                }
-            }
-        }
-        drop(queues);
-        self.publish_pending_messages(session_id);
-        Ok(())
-    }
-
-    pub fn pending_messages_snapshot(&self) -> BTreeMap<String, Vec<PendingMessage>> {
-        self.queues
-            .lock_or_recover("queues")
-            .iter()
-            .map(|(session_id, queue)| (session_id.clone(), queue.iter().cloned().collect()))
-            .collect()
-    }
-
-    /// Remove the queue copies of inbox messages the agent just collected.
-    ///
-    /// The persistence helper skips `launching` rows because their sender owns
-    /// the in-flight hand-off. Holding the writer until the in-memory queue is
-    /// updated keeps a concurrent drain from claiming a row between the two.
-    pub fn reconcile_collected_messages(
-        &self,
-        session_id: &str,
-        collected_message_ids: &[String],
-    ) -> ArgmaxResult<()> {
-        let mut connection = self.database.connection();
-        let removed = delete_messages_for_collected_origins(
-            &mut connection,
-            session_id,
-            collected_message_ids,
         )?;
-        if removed.is_empty() {
-            return Ok(());
-        }
-        let removed: HashSet<&str> = removed.iter().map(String::as_str).collect();
-        let mut queues = self.queues.lock_or_recover("queues");
-        if let Some(queue) = queues.get_mut(session_id) {
-            queue.retain(|message| !removed.contains(message.id.as_str()));
-            if queue.is_empty() {
-                queues.remove(session_id);
-            }
-        }
-        drop(queues);
-        drop(connection);
-        self.publish_pending_messages(session_id);
-        Ok(())
-    }
-
-    fn publish_pending_messages(&self, session_id: &str) {
-        let queue = self
-            .queues
-            .lock_or_recover("queues")
-            .get(session_id)
-            .cloned()
-            .unwrap_or_default();
-        let mut pending_messages = BTreeMap::new();
-        pending_messages.insert(session_id.to_string(), queue.into_iter().collect());
-        self.publish(DashboardDelta {
-            pending_messages: Some(pending_messages),
-            ..DashboardDelta::default()
-        });
-    }
-
-    /// A follow-up can be queued against a process that has just exited:
-    /// `send_input` saw the live handle, then the exit handler removed it,
-    /// wrote the terminal state, and drained a still-empty queue before the
-    /// enqueue landed. Nothing would send that message until the next turn.
-    /// So once a message is queued, look again: no handle and a settled
-    /// session means the turn is over, and the queue drains now. A drain that
-    /// races this one pops under the same lock and finds the queue empty.
-    fn drain_queue_if_turn_ended(self: &Arc<Self>, session_id: &str) {
-        if self
-            .handles
-            .lock_or_recover("handles")
-            .contains_key(session_id)
-        {
-            return;
-        }
-        let state = {
-            let connection = self.database.connection();
-            find_session_by_id(&connection, session_id).map(|session| session.state)
-        };
-        // A session still mid-turn, or one we could not read, keeps its queue:
-        // the drain belongs to whoever ends the turn.
-        if matches!(state, Ok(state) if state.is_settled()) {
-            self.drain_queue_after_complete(session_id.to_string());
-        }
-    }
-
-    fn drain_queue_after_complete(self: &Arc<Self>, session_id: String) {
-        let next = match self.pop_next_undelivered(&session_id) {
-            Ok(Some(next)) => next,
-            Ok(None) => return,
-            Err(error) => {
-                tracing::warn!(session_id, ?error, "failed to claim pending follow-up");
-                return;
-            }
-        };
-        self.publish_pending_messages(&session_id);
-        let service = Arc::clone(self);
-        // Keep a copy so a launch failure can restore the message instead of
-        // silently dropping it after the UI already showed the queue drained.
-        let restore = next.clone();
-        let restore_session = session_id.clone();
-        tauri::async_runtime::spawn(async move {
-            // The recipient may have collected this very message between the
-            // pop and this task running. Re-check: sending a turn for a row
-            // that was already handed over through the inbox would deliver it
-            // twice.
-            if origin_row_is_delivered(&service, &next) {
-                let connection = service.database.connection();
-                if let Err(error) = delete_pending_message(&connection, &restore_session, &next.id)
-                {
-                    tracing::warn!(
-                        session_id = %restore_session,
-                        ?error,
-                        "failed to delete collected pending follow-up"
-                    );
-                    return;
-                }
-                drop(connection);
-                service.drain_queue_after_complete(restore_session);
-                return;
-            }
-            let origin = next.origin.clone();
-            let author = next.author;
-            let inbox_row = origin.as_ref().and_then(|origin| origin.message_id.clone());
-            let send_input = match pending_message_to_send_input(session_id, next) {
-                Ok(input) => input,
-                Err(error) => {
-                    tracing::warn!(
-                        session_id = %restore_session,
-                        ?error,
-                        "dropping invalid queued follow-up"
-                    );
-                    let connection = service.database.connection();
-                    if let Err(delete_error) =
-                        delete_pending_message(&connection, &restore_session, &restore.id)
-                    {
-                        tracing::warn!(
-                            session_id = %restore_session,
-                            ?delete_error,
-                            "failed to delete invalid pending follow-up"
-                        );
-                    }
-                    return;
-                }
-            };
-            match service
-                .send_input_authored(send_input, origin, author)
-                .await
-            {
-                // The queue's whole reason to exist is that the recipient was
-                // busy; this is the moment the wait ends. Closing the inbox row
-                // here is what the immediate path already does on its own
-                // `!queued` branch — without it the row stays open forever, so
-                // every later tool result flags unread mail and `inbox_read`
-                // hands the agent a message it has just taken as a turn.
-                Ok(result) if !result.queued => {
-                    let connection = service.database.connection();
-                    if let Err(error) =
-                        delete_pending_message(&connection, &restore_session, &restore.id)
-                    {
-                        tracing::warn!(
-                            session_id = %restore_session,
-                            ?error,
-                            "failed to finish pending follow-up delivery"
-                        );
-                    }
-                    if let Some(id) = inbox_row {
-                        if let Err(error) = mark_message_delivered(&connection, &id) {
-                            tracing::warn!(
-                                session_id = %restore_session,
-                                ?error,
-                                "failed to mark a drained follow-up delivered"
-                            );
-                        }
-                    }
-                }
-                // A turn started between the pop and the send, so this is
-                // pending under a fresh queue id. The claimed row is complete.
-                Ok(_) => {
-                    let connection = service.database.connection();
-                    if let Err(error) =
-                        delete_pending_message(&connection, &restore_session, &restore.id)
-                    {
-                        tracing::warn!(
-                            session_id = %restore_session,
-                            ?error,
-                            "failed to replace a raced pending follow-up"
-                        );
-                    }
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        session_id = %restore_session,
-                        ?error,
-                        "failed to launch queued follow-up; restoring it to the queue"
-                    );
-                    {
-                        let connection = service.database.connection();
-                        let restore_result = restore_launching_message(
-                            &connection,
-                            &restore_session,
-                            &restore.id,
-                            restore.recovery_status.as_deref(),
-                        )
-                        .and_then(|_| list_session_pending_messages(&connection, &restore_session));
-                        let mut queues = service.queues.lock_or_recover("queues");
-                        match restore_result {
-                            Ok(queue) => {
-                                queues.insert(restore_session.clone(), queue);
-                            }
-                            Err(persist_error) => {
-                                tracing::error!(
-                                    session_id = %restore_session,
-                                    ?persist_error,
-                                    "failed to restore pending follow-up after launch failure"
-                                );
-                            }
-                        }
-                    }
-                    service.publish_pending_messages(&restore_session);
-                }
-            }
-        });
-    }
-
-    /// Pop the next follow-up worth sending: one whose inbox row, if it has
-    /// one, has not been collected. A message the recipient read mid-turn
-    /// through `inbox_read` is dropped here rather than also arriving as a
-    /// turn — and popping continues to the message behind it, since no turn
-    /// will start to trigger the next drain.
-    fn pop_next_undelivered(&self, session_id: &str) -> ArgmaxResult<Option<PendingMessage>> {
-        loop {
-            let next = {
-                let connection = self.database.connection();
-                let mut queues = self.queues.lock_or_recover("queues");
-                if self
-                    .queue_promotions
-                    .lock_or_recover("queue promotions")
-                    .contains(session_id)
-                {
-                    return Ok(None);
-                }
-                let Some(queue) = queues.get_mut(session_id) else {
-                    return Ok(None);
-                };
-                // Recovered items require explicit user action, but they do
-                // not block newer in-process follow-ups from draining.
-                let Some(index) = queue
-                    .iter()
-                    .position(|message| message.recovery_status.is_none())
-                else {
-                    return Ok(None);
-                };
-                let message_id = queue[index].id.clone();
-                mark_message_launching(&connection, session_id, &message_id)?;
-                let next = queue.remove(index);
-                if queue.is_empty() {
-                    queues.remove(session_id);
-                }
-                next
-            };
-            let Some(next) = next else {
-                return Ok(None);
-            };
-            if !origin_row_is_delivered(self, &next) {
-                return Ok(Some(next));
-            }
-            tracing::info!(
-                session_id,
-                message_id = next
-                    .origin
-                    .as_ref()
-                    .and_then(|origin| origin.message_id.as_deref()),
-                "dropping a queued follow-up the recipient already collected from its inbox"
-            );
-            let connection = self.database.connection();
-            delete_pending_message(&connection, session_id, &next.id)?;
-            self.publish_pending_messages(session_id);
-        }
-    }
-
-    /// `synthesize_cursor_exit` is `true` only on a genuine Cursor process exit
-    /// (see `flush_trailing_fragments`). Mid-turn batch flushes and user
-    /// terminates pass `false` so they don't prematurely complete the turn.
-    fn flush_trailing(
-        self: &Arc<Self>,
-        session_id: &str,
-        synthesize_cursor_exit: bool,
-    ) -> ArgmaxResult<()> {
-        let mut connection = self.database.connection();
-        let delta = self
-            .flush_queue
-            .lock_or_recover("flush queue")
-            .flush_trailing_fragments(
-                &mut connection,
-                session_id,
-                &now_iso(),
-                synthesize_cursor_exit,
-            )?;
-        drop(connection);
-        self.publish_flushed_delta(session_id, delta);
-        Ok(())
-    }
-
-    fn flush_pending(self: &Arc<Self>, session_id: &str) -> ArgmaxResult<()> {
-        let mut connection = self.database.connection();
-        let delta = self
-            .flush_queue
-            .lock_or_recover("flush queue")
-            .flush_pending_output(&mut connection, session_id)?;
-        drop(connection);
-        self.publish_flushed_delta(session_id, delta);
-        Ok(())
-    }
-
-    fn publish_flushed_delta(
-        self: &Arc<Self>,
-        session_id: &str,
-        mut delta: Option<DashboardDelta>,
-    ) {
-        if let Some(delta) = delta.as_mut() {
-            if delta_has_session_completed_event(delta) {
-                self.append_reconciled_subagent_events(session_id, delta);
-            }
-        }
-        let reconcile_subagents = delta.as_ref().is_some_and(|delta| {
-            !delta_has_session_completed_event(delta) && delta_has_subagent_control_event(delta)
-        });
-        if let Some(delta) = delta {
-            self.schedule_measured_diffs(session_id, &delta);
-            self.schedule_observed_prs(session_id, &delta);
-            self.publish(delta);
-        }
-        if reconcile_subagents {
-            self.schedule_subagent_trace_reconciliation(session_id);
-        }
-    }
-
-    /// Cursor's `cursor-agent` often emits `result/success` while the child
-    /// process stays alive (same class of bug as the idle-flush comment above).
-    /// Mark the session complete and dispose the handle so the UI does not
-    /// sit on "Working" / thinking verbs until the user hits Stop.
-    async fn complete_cursor_turn_after_result(
-        self: Arc<Self>,
-        session_id: &str,
-    ) -> ArgmaxResult<()> {
-        if self
-            .terminating
-            .lock_or_recover("terminating")
-            .contains(session_id)
-        {
-            return Ok(());
-        }
-        {
-            let connection = self.database.connection();
-            let session = find_session_by_id(&connection, session_id)?;
-            if session.state != SessionState::Running {
-                return Ok(());
-            }
-        }
-        self.cancel_stream_flushes(session_id);
-        // `result/success` already emitted the completion via the normalizer, so
-        // no exit synth here.
-        self.flush_trailing(session_id, false)?;
-
-        self.capture_pr_branch(session_id);
-        let completed_at = now_iso();
-        let (session, workspace, projects) = {
-            let terminating = self.terminating.lock_or_recover("terminating");
-            if terminating.contains(session_id) {
-                return Ok(());
-            }
-            let connection = self.database.connection();
-            let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
-            if find_session_by_id(&transaction, session_id)?.state != SessionState::Running {
-                return Ok(());
-            }
-            let session = update_session_state(
-                &transaction,
-                session_id,
-                &SessionStateInput::transition(SessionState::Complete)
-                    .finished_at(completed_at.clone()),
-            )?;
-            let workspace = update_workspace_state_for_session_state_within_transaction(
-                &transaction,
-                &session.workspace_id,
-                SessionState::Complete,
-            )?;
-            let projects = list_projects(&transaction)?;
-            transaction.commit().map_err(sqlite_error)?;
-            (session, workspace, projects)
-        };
-
-        let entry = self.handles.lock_or_recover("handles").remove(session_id);
-        self.flush_queue
-            .lock_or_recover("flush queue")
-            .delete_session(session_id);
-
-        self.publish(DashboardDelta {
-            projects,
-            workspaces: vec![workspace],
-            sessions: vec![session],
-            ..DashboardDelta::default()
-        });
-
-        // The turn is over here, so its approvals are stale — the exit path
-        // clears them at this same point. Like there, a failure must not return
-        // early: the queue drain below is what sends a follow-up the user typed
-        // during the turn.
-        let mut first_error = self.cancel_pending_interactions(session_id).err();
-        if let Some(HandleEntry::Resolved(handle)) = entry {
-            if let Err(error) = handle.terminate().await {
-                let _ = self.abort_session_after_turn(
-                    session_id,
-                    "Could not move this chat because the Cursor turn did not stop safely.",
-                );
-                first_error.get_or_insert(error);
-            }
-        }
-        self.settle_session_after_turn(session_id);
-        // Cursor ends a turn on `result/success` rather than on a process exit,
-        // so this is that provider's only turn-end seam — and whoever launched
-        // this session is told here, exactly as the exit path tells them. Left
-        // out, a Cursor child never reported back at all: no completion notice
-        // for an agent's launch, and no `multitask.finished` row, so its chat
-        // row could only say that it had stopped, never what it found.
-        self.notify_launcher_of_turn_end(session_id, SessionState::Complete, &completed_at);
-        self.drain_queue_after_complete(session_id.to_string());
-        match first_error {
-            Some(error) => Err(error),
-            None => Ok(()),
-        }
-    }
-
-    fn cancel_stream_flushes(&self, session_id: &str) {
-        self.cancel_batch_flush(session_id);
-        self.cancel_idle_flush(session_id);
-    }
-
-    fn cancel_batch_flush(&self, session_id: &str) {
-        if let Some(handle) = self
-            .batch_flush_tasks
-            .lock_or_recover("batch flush tasks")
-            .remove(session_id)
-        {
-            handle.abort();
-        }
-        self.batch_flush_generation
-            .lock_or_recover("batch flush generation")
-            .remove(session_id);
-    }
-
-    fn schedule_batch_flush(self: &Arc<Self>, session_id: &str) {
-        let mut tasks = self.batch_flush_tasks.lock_or_recover("batch flush tasks");
-        if tasks.contains_key(session_id) {
-            return;
-        }
-        let generation = {
-            let mut generations = self
-                .batch_flush_generation
-                .lock_or_recover("batch flush generation");
-            let next = generations.get(session_id).copied().unwrap_or(0) + 1;
-            generations.insert(session_id.to_string(), next);
-            next
-        };
-        let service = Arc::clone(self);
-        let session_id_owned = session_id.to_string();
-        let session_id_for_map = session_id_owned.clone();
-        let handle = tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(STREAM_BATCH_FLUSH_MS)).await;
-            let current = service
-                .batch_flush_generation
-                .lock_or_recover("batch flush generation")
-                .get(&session_id_owned)
-                .copied();
-            if current != Some(generation) {
-                return;
-            }
-            service
-                .batch_flush_tasks
-                .lock_or_recover("batch flush tasks")
-                .remove(&session_id_owned);
-            let mut generations = service
-                .batch_flush_generation
-                .lock_or_recover("batch flush generation");
-            if generations.get(&session_id_owned) == Some(&generation) {
-                generations.remove(&session_id_owned);
-            }
-            drop(generations);
-            let flush_result = service.flush_pending(&session_id_owned);
-            if let Err(error) = flush_result {
-                tracing::warn!(
-                    ?error,
-                    session_id = %session_id_owned,
-                    "batched stream flush failed"
-                );
-            }
-        });
-        tasks.insert(session_id_for_map, handle);
-    }
-
-    fn cancel_idle_flush(&self, session_id: &str) {
-        if let Some(handle) = self
-            .idle_flush_tasks
-            .lock_or_recover("idle flush tasks")
-            .remove(session_id)
-        {
-            handle.abort();
-        }
-        self.idle_flush_generation
-            .lock_or_recover("idle flush generation")
-            .remove(session_id);
-    }
-
-    fn schedule_idle_flush(self: &Arc<Self>, session_id: &str) {
-        let generation = {
-            let mut generations = self
-                .idle_flush_generation
-                .lock_or_recover("idle flush generation");
-            let next = generations.get(session_id).copied().unwrap_or(0) + 1;
-            generations.insert(session_id.to_string(), next);
-            next
-        };
-        if let Some(handle) = self
-            .idle_flush_tasks
-            .lock_or_recover("idle flush tasks")
-            .remove(session_id)
-        {
-            handle.abort();
-        }
-        let service = Arc::clone(self);
-        let session_id_owned = session_id.to_string();
-        let session_id_for_map = session_id_owned.clone();
-        let handle = tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(STREAM_IDLE_FLUSH_MS)).await;
-            let current = service
-                .idle_flush_generation
-                .lock_or_recover("idle flush generation")
-                .get(&session_id_owned)
-                .copied();
-            if current != Some(generation) {
-                return;
-            }
-            service
-                .idle_flush_tasks
-                .lock_or_recover("idle flush tasks")
-                .remove(&session_id_owned);
-            let mut generations = service
-                .idle_flush_generation
-                .lock_or_recover("idle flush generation");
-            if generations.get(&session_id_owned) == Some(&generation) {
-                generations.remove(&session_id_owned);
-            }
-            drop(generations);
-            service.cancel_batch_flush(&session_id_owned);
-            let flush_result = service.flush_trailing(&session_id_owned, false);
-            if let Err(error) = flush_result {
-                tracing::warn!(
-                    ?error,
-                    session_id = %session_id_owned,
-                    "idle stream flush failed"
-                );
-            }
-        });
-        self.idle_flush_tasks
-            .lock_or_recover("idle flush tasks")
-            .insert(session_id_for_map, handle);
-    }
-
-    pub(crate) fn publish(&self, delta: DashboardDelta) {
-        // Before the emptiness check and before the renderer hop: a blocked
-        // `session_wait` is waiting on exactly this edge, and a send to a
-        // channel with no subscribers is a cheap no-op.
-        for session in &delta.sessions {
-            let _ = self.session_states.send(SessionStateChange {
-                session_id: session.id.clone(),
-                state: session.state,
-            });
-        }
-        if !delta.is_empty() {
-            (self.publish_delta)(delta);
-        }
+        super::turn_waterfall::set_turn_key(session_id, &event.id);
+        Ok(event)
     }
 
     fn cancel_pending_interactions(&self, session_id: &str) -> ArgmaxResult<()> {
@@ -4654,7 +1003,7 @@ impl ProviderSessionService {
                 first_error = Some(error);
             }
         }
-        if let Some(questions) = self.questions.get() {
+        if let Some(questions) = self.questions.as_ref() {
             if let Err(error) = questions.cancel_session_pending(session_id) {
                 first_error.get_or_insert(error);
             }
@@ -4687,229 +1036,6 @@ impl ProviderSessionService {
             dashboard_changed: true,
             ..DashboardDelta::default()
         });
-    }
-
-    /// Mark the worktree where this turn starts, so a provider that reports a
-    /// file write without saying what changed can still get a line stat. Off
-    /// the send path: the mark costs a few hundred milliseconds on a large
-    /// repo, while the agent's first write is a model round-trip away.
-    fn mark_turn_start(&self, session_id: &str, workspace_path: PathBuf) {
-        self.capture_pr_branch(session_id);
-        let mark = self.measured_diffs.open_turn(session_id, workspace_path);
-        tauri::async_runtime::spawn(capture_opening_mark(mark));
-    }
-
-    // Watcher delivery can lag behind the last checkout command of a turn.
-    // Reading symbolic HEAD is small local I/O and also handles linked worktrees.
-    fn capture_pr_branch(&self, session_id: &str) {
-        let result = (|| -> ArgmaxResult<()> {
-            let workspace_path = {
-                let connection = self.database.read_connection();
-                let session = find_session_by_id(&connection, session_id)?;
-                if !session.state.is_active() {
-                    return Ok(());
-                }
-                find_workspace_by_id(&connection, &session.workspace_id)?.path
-            };
-            let Some(branch) = checkout_head_branch(std::path::Path::new(&workspace_path)) else {
-                return Ok(());
-            };
-            let connection = self.database.connection();
-            crate::persistence::sessions::record_session_pr_branch(&connection, session_id, &branch)
-        })();
-        if let Err(error) = result {
-            tracing::warn!(%session_id, %error, "could not capture session PR branch");
-        }
-    }
-
-    /// When a tool's stdout contains a GitHub PR URL (typically `gh pr create`),
-    /// cache that PR immediately. The poller only views `workspace.branch` in
-    /// `workspace.path`, so a PR opened from another worktree would otherwise
-    /// never appear on the sidebar.
-    fn schedule_observed_prs(self: &Arc<Self>, session_id: &str, delta: &DashboardDelta) {
-        let mut numbers = Vec::new();
-        for event in &delta.events {
-            for number in
-                pr_numbers_from_command_event(&event.r#type, &event.message, &event.payload)
-            {
-                if !numbers.contains(&number) {
-                    numbers.push(number);
-                }
-            }
-        }
-        if numbers.is_empty() {
-            return;
-        }
-        let service = Arc::clone(self);
-        let session_id = session_id.to_string();
-        tauri::async_runtime::spawn(async move {
-            let gh = GhService::new(Arc::clone(&service.database));
-            // Refresh scans the persisted events with project identity intact.
-            // A bare PR number from another repository is not attribution.
-            if let Err(error) = gh.refresh(&session_id).await {
-                tracing::warn!(%error, %session_id, "could not cache PR from command output");
-                return;
-            }
-            let workspaces = {
-                let connection = service.database.connection();
-                crate::gh::workspaces_for_pr_refresh(&connection, &session_id)
-            };
-            match workspaces {
-                Ok(workspaces) => service.publish(DashboardDelta {
-                    workspaces,
-                    ..DashboardDelta::default()
-                }),
-                Err(error) => tracing::warn!(
-                    %error,
-                    session_id,
-                    "could not publish workspace after observing a PR"
-                ),
-            }
-        });
-    }
-
-    /// Measure the diffs a provider left out, then rewrite the tool's own
-    /// `command.completed` row with them.
-    ///
-    /// The row is already on screen by the time this runs, so the stat arrives
-    /// a moment after the file name. Updating the row in place (same id, same
-    /// rowid) means the renderer's upsert replaces it and the chat keeps
-    /// reading tool input, rather than learning about a second kind of event.
-    fn schedule_measured_diffs(self: &Arc<Self>, session_id: &str, delta: &DashboardDelta) {
-        let pending = delta
-            .events
-            .iter()
-            .filter_map(|event| {
-                let paths = paths_awaiting_diff(event);
-                (!paths.is_empty()).then(|| (event.id.clone(), paths))
-            })
-            .collect::<Vec<_>>();
-        if pending.is_empty() {
-            return;
-        }
-        let service = Arc::clone(self);
-        let session_id = session_id.to_string();
-        tauri::async_runtime::spawn(async move {
-            for (event_id, paths) in pending {
-                let measured = service.measured_diffs.measure(&session_id, &paths).await;
-                match service.rewrite_event_with_measured_diffs(&event_id, &measured) {
-                    Ok(Some(event)) => service.publish(DashboardDelta {
-                        events: vec![event],
-                        ..DashboardDelta::default()
-                    }),
-                    Ok(None) => {}
-                    Err(error) => tracing::warn!(
-                        %error,
-                        session_id,
-                        event_id,
-                        "could not store measured file-change diffs"
-                    ),
-                }
-            }
-        });
-    }
-
-    fn rewrite_event_with_measured_diffs(
-        &self,
-        event_id: &str,
-        measured: &[MeasuredDiff],
-    ) -> ArgmaxResult<Option<TimelineEvent>> {
-        if measured.is_empty() {
-            return Ok(None);
-        }
-        let connection = self.database.connection();
-        let Some(mut event) = find_event_by_id(&connection, event_id)? else {
-            return Ok(None);
-        };
-        if !merge_measured_diffs(&mut event.payload, measured) {
-            return Ok(None);
-        }
-        update_event_payload(&connection, event_id, &event.payload)?;
-        Ok(Some(event))
-    }
-
-    pub(crate) fn reconcile_subagent_traces(&self, session_id: &str) -> ArgmaxResult<usize> {
-        let written = reconcile_session_subagent_traces(&self.database, session_id)?;
-        if written > 0 {
-            self.publish(DashboardDelta {
-                changed_session_ids: vec![session_id.to_string()],
-                ..DashboardDelta::default()
-            });
-        }
-        Ok(written)
-    }
-
-    pub(crate) fn schedule_subagent_trace_reconciliation(&self, session_id: &str) {
-        let session_id = session_id.to_string();
-        {
-            let mut reconciliations = self
-                .subagent_reconciliations
-                .lock_or_recover("subagent reconciliations");
-            if let Some(rescan) = reconciliations.get_mut(&session_id) {
-                *rescan = true;
-                return;
-            }
-            reconciliations.insert(session_id.clone(), false);
-        }
-        let database = Arc::clone(&self.database);
-        let publish_delta = Arc::clone(&self.publish_delta);
-        let in_flight = Arc::clone(&self.subagent_reconciliations);
-        tauri::async_runtime::spawn_blocking(move || loop {
-            match reconcile_session_subagent_traces(&database, &session_id) {
-                Ok(written) if written > 0 => publish_delta(DashboardDelta {
-                    changed_session_ids: vec![session_id.clone()],
-                    ..DashboardDelta::default()
-                }),
-                Ok(_) => {}
-                Err(error) => tracing::warn!(
-                    error = %error,
-                    session_id,
-                    "failed to reconcile live subagent trace events"
-                ),
-            }
-            let should_rescan = {
-                let mut reconciliations = in_flight.lock_or_recover("subagent reconciliations");
-                match reconciliations.get_mut(&session_id) {
-                    Some(rescan) if *rescan => {
-                        *rescan = false;
-                        true
-                    }
-                    _ => {
-                        reconciliations.remove(&session_id);
-                        false
-                    }
-                }
-            };
-            if !should_rescan {
-                break;
-            }
-        });
-    }
-
-    fn append_reconciled_subagent_events(&self, session_id: &str, delta: &mut DashboardDelta) {
-        let cursor = delta
-            .events
-            .iter()
-            .filter_map(|event| event.row_cursor)
-            .max()
-            .unwrap_or(0);
-        if let Err(error) = reconcile_session_subagent_traces(&self.database, session_id) {
-            tracing::warn!(
-                error = %error,
-                session_id,
-                "failed to reconcile terminal subagent trace events"
-            );
-            return;
-        }
-        let connection = self.database.read_connection();
-        match list_session_events_since(&connection, session_id, Some(cursor), Some(i64::MAX)) {
-            Ok(result) => delta.events.extend(result.events),
-            Err(error) => tracing::warn!(
-                error = %error,
-                session_id,
-                "failed to read reconciled terminal subagent events"
-            ),
-        }
     }
 }
 
@@ -4952,10 +1078,13 @@ fn delta_has_subagent_control_event(delta: &DashboardDelta) -> bool {
 enum AutoFollowUp {
     /// The user picked another model: routing ends, and a 'pinned' row
     /// closes the last route's window.
-    Pinned(crate::routing::RouteDecision),
+    Pinned(argmax_contracts::routing::RouteDecision),
     /// The router's decision, or `None` when there was nothing to classify
     /// with (no key, a classifier failure).
-    Routed(Option<crate::routing::RouteDecision>, Box<SessionSummary>),
+    Routed(
+        Option<argmax_contracts::routing::RouteDecision>,
+        Box<SessionSummary>,
+    ),
 }
 
 /// Rewrites a routed follow-up and returns the route to record. Fast mode is
@@ -4965,7 +1094,7 @@ fn apply_auto_follow_up(
     input: &mut ProvidersSendInput,
     auto_follow_up: Option<AutoFollowUp>,
     session: &SessionSummary,
-) -> ArgmaxResult<Option<crate::routing::RouteDecision>> {
+) -> ArgmaxResult<Option<argmax_contracts::routing::RouteDecision>> {
     let route = match auto_follow_up {
         None => return Ok(None),
         Some(AutoFollowUp::Pinned(route)) => return Ok(Some(route)),
@@ -4989,7 +1118,7 @@ fn apply_auto_follow_up(
                 else {
                     return Ok(None);
                 };
-                route = Some(crate::routing::RouteDecision {
+                route = Some(argmax_contracts::routing::RouteDecision {
                     tier,
                     provider: parse_provider(&session.provider)?,
                     model_id: session.model_id.clone(),
@@ -5002,7 +1131,7 @@ fn apply_auto_follow_up(
                     difficulty: None,
                     kind_confidence: None,
                     difficulty_confidence: None,
-                    decision: crate::routing::RouteDecisionKind::Kept,
+                    decision: argmax_contracts::routing::RouteDecisionKind::Kept,
                     reason: "Session changed during classification, retaining its admitted route"
                         .to_string(),
                     signals: None,
@@ -5016,7 +1145,8 @@ fn apply_auto_follow_up(
     };
     if matches!(
         route.decision,
-        crate::routing::RouteDecisionKind::Reroute | crate::routing::RouteDecisionKind::Escalate
+        argmax_contracts::routing::RouteDecisionKind::Reroute
+            | argmax_contracts::routing::RouteDecisionKind::Escalate
     ) {
         // An escalation off the top of a cheap ladder changes provider; the
         // provider-switch path then rebuilds context from the visible
@@ -5041,6 +1171,7 @@ fn pending_message_to_send_input(
     let session_id = SessionId::try_from(session_id).map_err(ArgmaxError::invalid)?;
     let input = Prompt::try_from(message.content).map_err(ArgmaxError::invalid)?;
     Ok(ProvidersSendInput {
+        submitted_at_ms: None,
         agent_references: (!message.agent_references.is_empty())
             .then_some(message.agent_references),
         session_id,
@@ -5196,10 +1327,21 @@ pub struct SendInputResult {
     pub queued: bool,
 }
 
+/// Whether a model id a client sent names the model this chat already runs. A
+/// client echoes the successor of a retired id, which is not a new pick.
+fn runs_stored_model(session: &SessionSummary, model_id: &str) -> bool {
+    match ProviderId::parse(&session.provider) {
+        Some(provider) => {
+            ModelId::resolve(provider, &session.model_id) == ModelId::resolve(provider, model_id)
+        }
+        None => session.model_id == model_id,
+    }
+}
+
 /// The id a turn's usage is recorded under. An OpenCode turn on Vercel names
 /// the model as Vercel does, matching what OpenCode stores, so its own cost
 /// figure (the bill there) is trusted rather than OpenRouter's table.
-fn usage_model_id(provider: ProviderId, model_id: &str) -> String {
+fn usage_model_id(provider: ProviderId, model_id: &ModelId) -> String {
     if provider == ProviderId::Opencode {
         super::opencode_gateway::selected().route_model_id(model_id)
     } else {
@@ -5214,8 +1356,8 @@ mod tests {
     }
 
     use super::*;
-    use crate::ipc::validation::ReasoningEffort;
     use crate::providers::runtime::{BoxFuture, EventCallback};
+    use argmax_contracts::validation::ReasoningEffort;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[derive(Default)]
@@ -5240,7 +1382,7 @@ mod tests {
     }
 
     fn database_with_running_session() -> Arc<Database> {
-        use crate::persistence::{
+        use argmax_store::{
             projects::{persist_project, PersistProjectInput, ProjectSettings},
             workspaces::{persist_workspace, PersistWorkspaceInput},
         };
@@ -5305,11 +1447,9 @@ mod tests {
     #[test]
     fn lifecycle_completion_rolls_back_if_its_event_cannot_be_written() {
         let database = database_with_running_session();
-        let service = ProviderSessionService::with_launcher(
-            Arc::clone(&database),
-            Arc::new(CountingFailureLauncher::default()),
-            |_| {},
-        );
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(Arc::new(CountingFailureLauncher::default()))
+            .build();
         database
             .connection()
             .execute_batch(
@@ -5369,13 +1509,74 @@ mod tests {
     }
 
     #[test]
+    fn every_turn_end_mirrors_the_workspace_and_writes_one_event() {
+        type EndTurn = fn(&Arc<ProviderSessionService>) -> ArgmaxResult<()>;
+        let paths: [(EndTurn, SessionState, &str); 3] = [
+            (
+                |service| service.cancel_session("session-1"),
+                SessionState::Cancelled,
+                "session.cancelled",
+            ),
+            (
+                |service| {
+                    service.record_launch_failure(
+                        "session-1",
+                        ProviderId::Claude,
+                        ArgmaxError::service("TEST", "no CLI"),
+                    )
+                },
+                SessionState::Failed,
+                "error",
+            ),
+            (
+                |service| {
+                    service.handle_lifecycle_event(ProviderRuntimeEvent {
+                        session_id: "session-1".to_string(),
+                        r#type: ProviderRuntimeEventType::Exit,
+                        stream: super::super::normalizer::ProviderOutputStream::System,
+                        message: "provider exited".to_string(),
+                        exit_code: Some(0),
+                        created_at: "2026-10-03T10:00:00.000Z".to_string(),
+                    })
+                },
+                SessionState::Complete,
+                "session.completed",
+            ),
+        ];
+        for (end_turn, state, event_type) in paths {
+            let database = database_with_running_session();
+            let service = ProviderSessionService::builder(Arc::clone(&database))
+                .launcher(Arc::new(CountingFailureLauncher::default()))
+                .build();
+            end_turn(&service).expect("turn ends");
+            let connection = database.connection();
+            let session = find_session_by_id(&connection, "session-1").unwrap();
+            assert_eq!(session.state, state, "{event_type}");
+            let workspace_state: String = connection
+                .query_row(
+                    "SELECT state FROM workspaces WHERE id = ?1",
+                    [&session.workspace_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(workspace_state, state.as_str(), "{event_type}");
+            let events: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM events WHERE session_id = 'session-1' AND type = ?1",
+                    [event_type],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(events, 1, "{event_type}");
+        }
+    }
+
+    #[test]
     fn cancellation_rolls_back_if_its_event_cannot_be_written() {
         let database = database_with_running_session();
-        let service = ProviderSessionService::with_launcher(
-            Arc::clone(&database),
-            Arc::new(CountingFailureLauncher::default()),
-            |_| {},
-        );
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(Arc::new(CountingFailureLauncher::default()))
+            .build();
         database
             .connection()
             .execute_batch(
@@ -5419,11 +1620,9 @@ mod tests {
     #[test]
     fn provider_exit_during_stop_keeps_the_cancelled_state() {
         let database = database_with_running_session();
-        let service = ProviderSessionService::with_launcher(
-            Arc::clone(&database),
-            Arc::new(CountingFailureLauncher::default()),
-            |_| {},
-        );
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(Arc::new(CountingFailureLauncher::default()))
+            .build();
         {
             let connection = database.connection();
             update_session_state(
@@ -5463,11 +1662,9 @@ mod tests {
     #[test]
     fn stop_marked_during_exit_flush_prevents_completion_commit() {
         let database = database_with_running_session();
-        let service = ProviderSessionService::with_launcher(
-            Arc::clone(&database),
-            Arc::new(CountingFailureLauncher::default()),
-            |_| {},
-        );
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(Arc::new(CountingFailureLauncher::default()))
+            .build();
         let reached_flush = Arc::new(std::sync::Barrier::new(2));
         let resume_flush = Arc::new(std::sync::Barrier::new(2));
         let reached = Arc::clone(&reached_flush);
@@ -5523,11 +1720,12 @@ mod tests {
             )
             .unwrap();
         let launcher = Arc::new(CountingFailureLauncher::default());
-        let service =
-            ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(launcher.clone())
+            .build();
         {
             let connection = database.connection();
-            crate::persistence::sessions::persist_session(
+            argmax_store::sessions::persist_session(
                 &connection,
                 &PersistSessionInput {
                     id: "launcher-session".to_string(),
@@ -5543,7 +1741,7 @@ mod tests {
                 },
             )
             .unwrap();
-            crate::persistence::sessions::record_session_launch(
+            argmax_store::sessions::record_session_launch(
                 &connection,
                 "session-1",
                 "launcher-session",
@@ -5562,18 +1760,15 @@ mod tests {
                 },
             )
             .unwrap();
-            crate::persistence::session_messages::mark_wake_due(
-                &connection,
-                "completion:session-1:t",
-            )
-            .unwrap();
+            argmax_store::session_messages::mark_wake_due(&connection, "completion:session-1:t")
+                .unwrap();
         }
 
         assert_eq!(service.recover_completion_wakes().unwrap(), 1);
         // The wake is attempted once its window closes, whatever the send does
         // with it, and the attempt clears the durable mark.
         for _ in 0..80 {
-            if crate::persistence::session_messages::list_due_wakes(&database.connection())
+            if argmax_store::session_messages::list_due_wakes(&database.connection())
                 .unwrap()
                 .is_empty()
             {
@@ -5582,7 +1777,7 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
         assert!(
-            crate::persistence::session_messages::list_due_wakes(&database.connection())
+            argmax_store::session_messages::list_due_wakes(&database.connection())
                 .unwrap()
                 .is_empty(),
             "the recovered wake must be attempted"
@@ -5593,7 +1788,7 @@ mod tests {
         );
         // The turn it starts carries its origin, so nothing downstream can read
         // an automatic wake as something the person typed.
-        let events = crate::persistence::events::list_session_events_since(
+        let events = argmax_store::events::list_session_events_since(
             &database.connection(),
             "launcher-session",
             None,
@@ -5617,18 +1812,17 @@ mod tests {
         let database = database_with_running_session();
         let published = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
         let published_copy = Arc::clone(&published);
-        let service = ProviderSessionService::with_launcher(
-            Arc::clone(&database),
-            Arc::new(CountingFailureLauncher::default()),
-            move |delta| {
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(Arc::new(CountingFailureLauncher::default()))
+            .publish_delta(move |delta| {
                 published_copy
                     .lock_or_recover("published deltas")
                     .push(delta)
-            },
-        );
+            })
+            .build();
         {
             let connection = database.connection();
-            crate::persistence::sessions::persist_session(
+            argmax_store::sessions::persist_session(
                 &connection,
                 &PersistSessionInput {
                     id: "launcher-session".to_string(),
@@ -5644,7 +1838,7 @@ mod tests {
                 },
             )
             .unwrap();
-            crate::persistence::sessions::record_session_launch(
+            argmax_store::sessions::record_session_launch(
                 &connection,
                 "session-1",
                 "launcher-session",
@@ -5726,11 +1920,9 @@ mod tests {
                 [],
             )
             .unwrap();
-        let service = ProviderSessionService::with_launcher(
-            Arc::clone(&database),
-            Arc::new(CountingFailureLauncher::default()),
-            |_| {},
-        );
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(Arc::new(CountingFailureLauncher::default()))
+            .build();
         let input = serde_json::from_value(json!({
             "sessionId": "session-1", "input": "next", "fastMode": false,
             "modelId": "claude-opus-5-5", "modelLabel": "Opus 5.5", "reasoningEffort": "high"
@@ -5759,8 +1951,8 @@ mod tests {
             "modelId": "gpt-6-astra", "modelLabel": "GPT-6 Astra", "reasoningEffort": "high"
         }))
         .unwrap();
-        let route = crate::routing::RouteDecision {
-            tier: crate::routing::table::AutoTier::Balanced,
+        let route = argmax_contracts::routing::RouteDecision {
+            tier: argmax_contracts::routing::AutoTier::Balanced,
             provider: ProviderId::Codex,
             model_id: "gpt-6-astra".to_string(),
             model_label: "GPT-6 Astra".to_string(),
@@ -5769,7 +1961,7 @@ mod tests {
             difficulty: None,
             kind_confidence: None,
             difficulty_confidence: None,
-            decision: crate::routing::RouteDecisionKind::Reroute,
+            decision: argmax_contracts::routing::RouteDecisionKind::Reroute,
             reason: "Simpler next task".to_string(),
             signals: None,
         };
@@ -5788,7 +1980,7 @@ mod tests {
         assert!(!input.fast_mode);
         assert_eq!(
             recorded.decision,
-            crate::routing::RouteDecisionKind::Reroute
+            argmax_contracts::routing::RouteDecisionKind::Reroute
         );
     }
 
@@ -5802,10 +1994,10 @@ mod tests {
         admitted.model_label = "Fable 5.1".to_string();
         admitted.reasoning_effort = Some("xhigh".to_string());
         let mut route = crate::routing::fallback_decision(
-            crate::routing::table::AutoTier::Balanced,
+            argmax_contracts::routing::AutoTier::Balanced,
             "test classification",
         );
-        route.decision = crate::routing::RouteDecisionKind::Reroute;
+        route.decision = argmax_contracts::routing::RouteDecisionKind::Reroute;
         for still_auto in [true, false] {
             if !still_auto {
                 admitted.auto_tier = None;
@@ -5829,7 +2021,10 @@ mod tests {
             assert!(input.reasoning_effort.is_none());
             if still_auto {
                 let recorded = recorded.unwrap();
-                assert_eq!(recorded.decision, crate::routing::RouteDecisionKind::Kept);
+                assert_eq!(
+                    recorded.decision,
+                    argmax_contracts::routing::RouteDecisionKind::Kept
+                );
                 assert_eq!(recorded.model_id, "claude-fable-5-1");
                 assert_eq!(recorded.effort, Some(ReasoningEffort::Xhigh));
             } else {
@@ -5840,16 +2035,14 @@ mod tests {
 
     #[test]
     fn inbox_collection_before_enqueue_does_not_leave_a_pending_copy() {
-        use crate::persistence::session_messages::{
+        use argmax_store::session_messages::{
             insert_session_message, take_undelivered_messages, NewSessionMessage,
         };
 
         let database = database_with_running_session();
-        let service = ProviderSessionService::with_launcher(
-            Arc::clone(&database),
-            Arc::new(CountingFailureLauncher::default()),
-            |_| {},
-        );
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(Arc::new(CountingFailureLauncher::default()))
+            .build();
         {
             let mut connection = database.connection();
             insert_session_message(
@@ -5898,7 +2091,7 @@ mod tests {
             .get("session-1")
             .is_none_or(VecDeque::is_empty));
         assert!(
-            crate::persistence::pending_messages::list_session_pending_messages(
+            argmax_store::pending_messages::list_session_pending_messages(
                 &database.connection(),
                 "session-1"
             )
@@ -5937,11 +2130,9 @@ mod tests {
     #[test]
     fn a_queued_follow_up_keeps_only_a_model_the_user_picked() {
         let database = database_with_running_session();
-        let service = ProviderSessionService::with_launcher(
-            Arc::clone(&database),
-            Arc::new(CountingFailureLauncher::default()),
-            |_| {},
-        );
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(Arc::new(CountingFailureLauncher::default()))
+            .build();
         let enqueue = |model_id: &str, effort: Option<&str>| {
             let input = serde_json::from_value(json!({
                 "sessionId": "session-1", "input": "next", "fastMode": false,
@@ -5979,11 +2170,9 @@ mod tests {
 
     fn queued_provider_service() -> (Arc<Database>, Arc<ProviderSessionService>) {
         let database = database_with_running_session();
-        let service = ProviderSessionService::with_launcher(
-            Arc::clone(&database),
-            Arc::new(CountingFailureLauncher::default()),
-            |_| {},
-        );
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(Arc::new(CountingFailureLauncher::default()))
+            .build();
         (database, service)
     }
 
@@ -6011,7 +2200,7 @@ mod tests {
     }
 
     fn durable_providers(database: &Database) -> Vec<Option<ProviderId>> {
-        crate::persistence::pending_messages::list_session_pending_messages(
+        argmax_store::pending_messages::list_session_pending_messages(
             &database.connection(),
             "session-1",
         )
@@ -6194,7 +2383,7 @@ mod tests {
         queued.agent_references = references;
         let input =
             pending_message_to_send_input("session-1".to_string(), queued).expect("queued input");
-        let service = ProviderSessionService::new(Arc::clone(&database));
+        let service = ProviderSessionService::builder(Arc::clone(&database)).build();
         let error = service
             .send_input(input)
             .await
@@ -6213,13 +2402,13 @@ mod tests {
     #[test]
     fn only_agent_control_events_trigger_trace_reconciliation() {
         let mut delta = DashboardDelta {
-            events: vec![crate::persistence::events::TimelineEvent {
+            events: vec![argmax_store::events::TimelineEvent {
                 id: "wait".to_string(),
                 session_id: "session".to_string(),
                 r#type: "command.started".to_string(),
                 message: "wait".to_string(),
                 payload: json!({}),
-                semantic: crate::persistence::timeline_semantics::derive(
+                semantic: argmax_store::timeline_semantics::derive(
                     "command.started",
                     "wait",
                     &json!({}),
@@ -6258,7 +2447,7 @@ mod tests {
         update_workspace_state(&database.connection(), "workspace-1", "archiving")
             .expect("archiving workspace");
 
-        let service = ProviderSessionService::new(database);
+        let service = ProviderSessionService::builder(database).build();
         let message_id = Uuid::new_v4().to_string();
         let queued = VecDeque::from([pending_message(
             &message_id,
@@ -6324,7 +2513,7 @@ mod tests {
         assert_eq!(snapshot["session-1"][0].id, message_id);
         {
             let connection = service.database.connection();
-            let durable = crate::persistence::pending_messages::list_pending_messages(&connection)
+            let durable = argmax_store::pending_messages::list_pending_messages(&connection)
                 .expect("durable queue");
             assert_eq!(durable.len(), 1);
             assert_eq!(durable[0].id, message_id);
@@ -6350,7 +2539,7 @@ mod tests {
         {
             let connection = service.database.connection();
             let durable =
-                crate::persistence::pending_messages::list_pending_messages(&connection).unwrap();
+                argmax_store::pending_messages::list_pending_messages(&connection).unwrap();
             assert_eq!(durable[0].id, message_id);
             assert_eq!(durable[0].recovery_status.as_deref(), Some("unsent"));
         }
@@ -6368,7 +2557,7 @@ mod tests {
         {
             let connection = service.database.connection();
             assert!(
-                crate::persistence::pending_messages::list_pending_messages(&connection)
+                argmax_store::pending_messages::list_pending_messages(&connection)
                     .expect("cleared durable queue")
                     .is_empty()
             );
@@ -6421,7 +2610,7 @@ mod tests {
     /// so it has to come back like it does from every other failure here.
     #[tokio::test]
     async fn send_now_restores_the_follow_up_when_stop_cancels_the_promotion() {
-        let service = ProviderSessionService::new(database_with_running_session());
+        let service = ProviderSessionService::builder(database_with_running_session()).build();
         let message_id = Uuid::new_v4().to_string();
         let queued = VecDeque::from([pending_message(
             &message_id,
@@ -6489,11 +2678,9 @@ mod tests {
             message_id
         );
         let connection = service.database.connection();
-        let durable = crate::persistence::pending_messages::list_session_pending_messages(
-            &connection,
-            "session-1",
-        )
-        .expect("durable queue");
+        let durable =
+            argmax_store::pending_messages::list_session_pending_messages(&connection, "session-1")
+                .expect("durable queue");
         assert_eq!(durable.len(), 1, "the row is visible to the composer again");
         assert_eq!(durable[0].content, "stopped mid-promotion");
     }
@@ -6503,7 +2690,7 @@ mod tests {
     #[tokio::test]
     async fn a_person_prompt_with_an_origin_is_refused() {
         let database = database_with_running_session();
-        let service = ProviderSessionService::new(database);
+        let service = ProviderSessionService::builder(database).build();
         let input: ProvidersSendInput = serde_json::from_value(json!({
             "sessionId": "session-1", "input": "hello", "fastMode": false
         }))
@@ -6533,6 +2720,7 @@ mod tests {
                 Queueing::Allowed,
                 MidTurnDelivery::Queue,
                 person,
+                None,
             )
             .await
             .unwrap_err();
@@ -6542,10 +2730,61 @@ mod tests {
         ));
     }
 
+    fn ending_turn(
+        session_id: &str,
+        yields_to_stop: bool,
+        may_end: fn(SessionState) -> bool,
+    ) -> TurnEnd<'_> {
+        TurnEnd {
+            session_id,
+            state: SessionState::Complete,
+            finished_at: "2026-01-01T00:00:00Z",
+            may_end,
+            yields_to_stop,
+            remove_handle: false,
+            pause_queue: false,
+            reconcile_subagents: false,
+        }
+    }
+
+    #[test]
+    fn a_turn_end_that_stop_owns_or_that_cannot_apply_still_closes_the_waterfall_turn() {
+        let service = ProviderSessionService::builder(database_with_running_session()).build();
+        let no_rows = |_: &rusqlite::Transaction<'_>| Ok(TurnRows::default());
+
+        crate::providers::turn_waterfall::open_for_test("session-1");
+        service
+            .terminating
+            .lock_or_recover("terminating")
+            .insert("session-1".to_string());
+        let ended = service
+            .commit_turn_end(ending_turn("session-1", true, |_| true), no_rows)
+            .expect("stop-owned end");
+        assert!(ended.is_none());
+        assert_eq!(
+            crate::providers::turn_waterfall::is_ended_for_test("session-1"),
+            Some(true)
+        );
+        service
+            .terminating
+            .lock_or_recover("terminating")
+            .remove("session-1");
+
+        crate::providers::turn_waterfall::open_for_test("session-1");
+        let ended = service
+            .commit_turn_end(ending_turn("session-1", false, |_| false), no_rows)
+            .expect("end that does not apply");
+        assert!(ended.is_none());
+        assert_eq!(
+            crate::providers::turn_waterfall::is_ended_for_test("session-1"),
+            Some(true)
+        );
+    }
+
     #[test]
     fn multitask_claim_blocks_the_turn_end_drain_until_it_is_resolved() {
         let database = database_with_running_session();
-        let service = ProviderSessionService::new(database);
+        let service = ProviderSessionService::builder(database).build();
         let queue = VecDeque::from([
             pending_message("pending-1", "session-1", "run alongside"),
             pending_message("pending-2", "session-1", "send after the turn"),
@@ -6597,8 +2836,9 @@ mod tests {
     async fn stop_permanently_invalidates_a_send_that_passed_the_initial_check() {
         let database = database_with_running_session();
         let launcher = Arc::new(CountingFailureLauncher::default());
-        let service =
-            ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(launcher.clone())
+            .build();
         let gate = Arc::new(SendInputTestGate::default());
         *service
             .send_input_test_gate
@@ -6608,6 +2848,7 @@ mod tests {
             tokio::spawn(async move {
                 service
                     .send_input(ProvidersSendInput {
+                        submitted_at_ms: None,
                         agent_references: None,
                         session_id: SessionId::try_from("session-1".to_string())
                             .expect("session id"),
@@ -6657,6 +2898,269 @@ mod tests {
         assert!(!events
             .iter()
             .any(|event| { event.r#type == "user.message" && event.message == "must not launch" }));
+    }
+
+    #[derive(Default)]
+    struct OverlapLauncher {
+        started: tokio::sync::Notify,
+        settled: tokio::sync::Notify,
+        gate_outcome: Mutex<Option<ArgmaxResult<()>>>,
+    }
+
+    impl ProviderProcessLauncher for OverlapLauncher {
+        fn launch<'a>(
+            &'a self,
+            _input: ProviderLaunchInput,
+            _on_event: EventCallback,
+        ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+            Box::pin(async {
+                Err(ArgmaxError::service(
+                    "UNEXPECTED_TEST_LAUNCH",
+                    "the session service launches through the gate",
+                ))
+            })
+        }
+
+        fn launch_gated<'a>(
+            &'a self,
+            _input: ProviderLaunchInput,
+            _on_event: EventCallback,
+            gate: crate::providers::prompt_gate::PromptGate,
+        ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+            Box::pin(async move {
+                self.started.notify_one();
+                let outcome = gate.wait().await;
+                *self.gate_outcome.lock().unwrap() = Some(outcome.clone());
+                self.settled.notify_one();
+                outcome?;
+                Err(ArgmaxError::service(
+                    "TEST_GATE_OPENED",
+                    "the gate opened for a stopped turn",
+                ))
+            })
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_stop_while_the_checkpoint_runs_beside_the_launch_refuses_the_prompt() {
+        let database = database_with_running_session();
+        let checkout = tempfile::tempdir().unwrap();
+        database
+            .connection()
+            .execute(
+                "UPDATE workspaces SET path = ? WHERE id = 'workspace-1'",
+                [checkout.path().display().to_string()],
+            )
+            .unwrap();
+        let launcher = Arc::new(OverlapLauncher::default());
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(launcher.clone())
+            .build();
+        let capture = Arc::new(SendInputTestGate::default());
+        *service
+            .capture_test_gate
+            .lock_or_recover("capture test gate") = Some(Arc::clone(&capture));
+
+        let session = service
+            .launch(
+                serde_json::from_value(serde_json::json!({
+                    "workspaceId": "workspace-1", "provider": "claude", "prompt": "overlap",
+                    "modelLabel": "Sonnet 5.5", "modelId": "claude-sonnet-5-5",
+                    "cols": 80, "rows": 24
+                }))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        let wait = std::time::Duration::from_secs(5);
+        // The launch is underway while the checkpoint has not finished.
+        tokio::time::timeout(wait, capture.reached.notified())
+            .await
+            .expect("capture started");
+        tokio::time::timeout(wait, launcher.started.notified())
+            .await
+            .expect("launch started during the capture");
+        assert!(launcher.gate_outcome.lock().unwrap().is_none());
+
+        service
+            .terminate(ProvidersTerminateInput {
+                session_id: SessionId::try_from(session.id.clone()).unwrap(),
+            })
+            .await
+            .expect("Stop completes");
+        capture.release.notify_one();
+        tokio::time::timeout(wait, launcher.settled.notified())
+            .await
+            .expect("gate settled");
+
+        let outcome = launcher.gate_outcome.lock().unwrap().clone().unwrap();
+        assert!(
+            matches!(
+                outcome,
+                Err(ArgmaxError::ServiceError { ref sub_code, .. })
+                    if sub_code == "PROVIDER_LAUNCH_CANCELLED"
+            ),
+            "{outcome:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(service.open_handle_count(), 0);
+        let stopped = find_session_by_id(&database.connection(), &session.id).unwrap();
+        assert_eq!(stopped.state, SessionState::Cancelled);
+    }
+
+    /// Spawns a real child, then holds it until the gate settles, the way a
+    /// provider launch does. A refused gate kills the child.
+    #[derive(Default)]
+    struct ChildHoldingLauncher {
+        pid: Mutex<Option<u32>>,
+        started: tokio::sync::Notify,
+    }
+
+    impl ProviderProcessLauncher for ChildHoldingLauncher {
+        fn launch<'a>(
+            &'a self,
+            _input: ProviderLaunchInput,
+            _on_event: EventCallback,
+        ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+            Box::pin(async {
+                Err(ArgmaxError::service(
+                    "UNEXPECTED_TEST_LAUNCH",
+                    "the session service launches through the gate",
+                ))
+            })
+        }
+
+        fn launch_gated<'a>(
+            &'a self,
+            _input: ProviderLaunchInput,
+            _on_event: EventCallback,
+            gate: crate::providers::prompt_gate::PromptGate,
+        ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+            Box::pin(async move {
+                let mut child = tokio::process::Command::new("sleep")
+                    .arg("30")
+                    .kill_on_drop(true)
+                    .spawn()
+                    .unwrap();
+                *self.pid.lock().unwrap() = child.id();
+                self.started.notify_one();
+                let outcome = gate.wait().await;
+                let _ = child.kill().await;
+                outcome?;
+                Err(ArgmaxError::service(
+                    "TEST_GATE_OPENED",
+                    "the gate opened for a stopped turn",
+                ))
+            })
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_stop_kills_the_cli_while_the_capture_waits_for_the_checkout_lock() {
+        let database = database_with_running_session();
+        let checkout = tempfile::tempdir().unwrap();
+        for args in [
+            &["init", "--initial-branch=main"][..],
+            &[
+                "-c",
+                "user.email=t@example.com",
+                "-c",
+                "user.name=T",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "base",
+            ],
+        ] {
+            let status = tokio::process::Command::new("git")
+                .args(args)
+                .current_dir(checkout.path())
+                .status()
+                .await
+                .unwrap();
+            assert!(status.success());
+        }
+        database
+            .connection()
+            .execute(
+                "UPDATE workspaces SET path = ? WHERE id = 'workspace-1'",
+                [checkout.path().display().to_string()],
+            )
+            .unwrap();
+        let launcher = Arc::new(ChildHoldingLauncher::default());
+        let service = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(launcher.clone())
+            .build();
+        service.set_checkpoint_service(crate::checkpoints::service::CheckpointService::new(
+            Arc::clone(&database),
+        ));
+        let capture = Arc::new(SendInputTestGate::default());
+        *service
+            .capture_test_gate
+            .lock_or_recover("capture test gate") = Some(Arc::clone(&capture));
+
+        let session = service
+            .launch(
+                serde_json::from_value(serde_json::json!({
+                    "workspaceId": "workspace-1", "provider": "claude", "prompt": "overlap",
+                    "modelLabel": "Sonnet 5.5", "modelId": "claude-sonnet-5-5",
+                    "cols": 80, "rows": 24
+                }))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        let wait = std::time::Duration::from_secs(5);
+        tokio::time::timeout(wait, capture.reached.notified())
+            .await
+            .expect("capture started");
+        // A running check holds the checkout lock for its whole command.
+        let lock = crate::git::ops::checkout_write_lock(checkout.path())
+            .await
+            .unwrap();
+        let held = lock.lock().await;
+        capture.release.notify_one();
+        tokio::time::timeout(wait, launcher.started.notified())
+            .await
+            .expect("the CLI spawned");
+        let pid = launcher.pid.lock().unwrap().expect("pid");
+
+        service
+            .terminate(ProvidersTerminateInput {
+                session_id: SessionId::try_from(session.id.clone()).unwrap(),
+            })
+            .await
+            .expect("Stop completes");
+        let alive = || {
+            std::process::Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .status()
+                .unwrap()
+                .success()
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while alive() {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the CLI is gone while the checkout lock is still held");
+
+        drop(held);
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let checkpoints = argmax_store::checkpoints::list_checkpoints(
+            &database.read_connection(),
+            "workspace-1",
+            10,
+        )
+        .unwrap();
+        assert!(
+            checkpoints.is_empty(),
+            "the abandoned capture wrote {checkpoints:?}"
+        );
+        let stopped = find_session_by_id(&database.connection(), &session.id).unwrap();
+        assert_eq!(stopped.state, SessionState::Cancelled);
     }
 
     #[test]

@@ -27,7 +27,6 @@ export type DetectedIde = Bindings.DetectedIde;
 export type DiagnosticsReport = Bindings.DiagnosticsReport;
 export type IdeId = Bindings.IdeId;
 export type OpenFileApp = Bindings.OpenFileApp;
-export type IpcChannelStats = Bindings.IpcChannelStats;
 export type DebugSnapshot = Bindings.DebugSnapshot;
 export type PerformanceCapture = Bindings.PerformanceCapture;
 export type PerformanceSample = Bindings.PerformanceSample;
@@ -183,14 +182,22 @@ type WireSubtype<Wire, Narrowed extends Wire> = Narrowed;
 
 export type LaunchProviderSessionInput = OptionalNullable<
   Bindings.ProvidersLaunchInput,
-  "reasoningEffort" | "agentMode" | "permissionMode" | "attachments" | "goalCondition" | "goalMaxTurns"
+  | "reasoningEffort"
+  | "agentMode"
+  | "permissionMode"
+  | "attachments"
+  | "goalCondition"
+  | "goalMaxTurns"
 >;
 export type ProviderSessionInput = OptionalNullable<
   Bindings.ProvidersSendInput,
   "modelLabel" | "modelId" | "reasoningEffort" | "agentMode" | "attachments" | "agentReferences"
 >;
 export type AgentReference = Bindings.AgentReference;
-export type NativeAgentIdentity = Pick<AgentReference, "providerParentConversationId" | "providerChildSessionId">;
+export type NativeAgentIdentity = Pick<
+  AgentReference,
+  "providerParentConversationId" | "providerChildSessionId"
+>;
 export type ProvidersCancelQueuedMessageInput = Bindings.ProvidersCancelQueuedMessageInput;
 export type ProvidersSendQueuedMessageNowInput = Bindings.ProvidersSendQueuedMessageNowInput;
 /** How a pending message reaches an active provider turn. */
@@ -238,6 +245,7 @@ export type SessionForkResult = Retype<
 >;
 export type MultitaskLaunched = Bindings.MultitaskLaunched;
 export type SessionCostSummaryInput = Bindings.SessionCostSummaryInput;
+export type TurnWaterfall = Bindings.TurnWaterfall;
 export type WorkspaceStatusInput = OptionalNullable<Bindings.WorkspaceStatusInput, "workspaceIds">;
 export type TerminalSpawnInput = Bindings.TerminalSpawnInput;
 export type TerminalWriteInput = Bindings.TerminalWriteInput;
@@ -298,7 +306,10 @@ export type WorkspaceFileWriteResult = Bindings.WorkspaceFileWriteResult;
 
 export type RunCheckInput = Bindings.ChecksRunInput;
 
-export type WorkspaceArchiveResult = Retype<Bindings.WorkspaceArchiveResult, { workspace: WorkspaceSummary }>;
+export type WorkspaceArchiveResult = Retype<
+  Bindings.WorkspaceArchiveResult,
+  { workspace: WorkspaceSummary }
+>;
 export type SkillsListInput = OptionalNullable<Bindings.SkillsListInput, "workspaceId">;
 export type ConnectionsListInput = OptionalNullable<Bindings.ConnectionsListInput, "workspaceId">;
 export type OpenInIdeInput = Bindings.WorkspacesOpenInIdeInput;
@@ -463,10 +474,7 @@ export type DashboardListSnapshot = Pick<
   "projects" | "workspaces" | "sessions" | "checks" | "pendingMessages" | "arcs"
 >;
 
-export type WorkspaceStatusSnapshot = Pick<
-  DashboardSnapshot,
-  "workspaces" | "sessions" | "checks"
->;
+export type WorkspaceStatusSnapshot = Pick<DashboardSnapshot, "workspaces" | "sessions" | "checks">;
 
 /**
  * The recovery fields are optional here: the renderer treats a missing one
@@ -494,7 +502,7 @@ export type SyncStatus = Retype<Bindings.SyncStatus, { config: SyncConfigInput }
 
 /** A stored scheduled task: a prompt plus schedule, fired by the Rust
  *  scheduler as a normal top-level session. Wire shape mirrors the Rust
- *  `Routine` record (see src-tauri/src/persistence/routines.rs).
+ *  `Routine` record (see src-tauri/crates/argmax-store/src/routines.rs).
  *
  *  Permission mode is not stored per task. New scheduled chats use the
  *  app-wide Tool permissions setting; follow-ups retain the existing
@@ -530,11 +538,24 @@ export interface ArgmaxApi {
     create: (input: CreateProjectInput) => Promise<ProjectSummary>;
     configure: (input: ConfigureProjectInput) => Promise<ProjectSummary>;
     generateOverview: (input: { projectId: string }) => Promise<ProjectSummary>;
-    updateOverview: (input: { projectId: string; text: string; expectedRevision: number }) => Promise<ProjectSummary>;
-    applyOverviewDraft: (input: { projectId: string; expectedRevision: number }) => Promise<ProjectSummary>;
-    discardOverviewDraft: (input: { projectId: string; expectedRevision: number }) => Promise<ProjectSummary>;
+    updateOverview: (input: {
+      projectId: string;
+      text: string;
+      expectedRevision: number;
+    }) => Promise<ProjectSummary>;
+    applyOverviewDraft: (input: {
+      projectId: string;
+      expectedRevision: number;
+    }) => Promise<ProjectSummary>;
+    discardOverviewDraft: (input: {
+      projectId: string;
+      expectedRevision: number;
+    }) => Promise<ProjectSummary>;
     getFolders: (input: { projectId: string }) => Promise<ProjectFolder[]>;
-    getFolderContext: (input: { projectId: string; projectFolderId?: string }) => Promise<{ project: ProjectSummary; isGit: boolean; folderId: string }>;
+    getFolderContext: (input: {
+      projectId: string;
+      projectFolderId?: string;
+    }) => Promise<{ project: ProjectSummary; isGit: boolean; folderId: string }>;
     pickDirectory: () => Promise<{ cancelled: boolean; path: string | null }>;
     pickFolder: () => Promise<ProjectFolderPickResult>;
     register: (input: RegisterProjectInput) => Promise<ProjectSummary>;
@@ -544,7 +565,11 @@ export interface ArgmaxApi {
     /** The project's usable checkouts and the branch checked out in each. */
     listCheckouts: (projectId: string, projectFolderId?: string) => Promise<ProjectCheckout[]>;
     refreshBranch: (projectId: string, projectFolderId?: string) => Promise<ProjectSummary>;
-    switchBranch: (projectId: string, branch: string, projectFolderId?: string) => Promise<ProjectSummary>;
+    switchBranch: (
+      projectId: string,
+      branch: string,
+      projectFolderId?: string,
+    ) => Promise<ProjectSummary>;
     /** Project check: whether the prompt reads like work for another project. */
     checkPrompt: (input: ProjectsCheckPromptInput) => Promise<ProjectCheck>;
     /** Sets or clears (`null`) this project's branch template. */
@@ -564,7 +589,10 @@ export interface ArgmaxApi {
     openInIde: (input: OpenInIdeInput) => Promise<Bindings.SystemOk>;
     autoTitle: (input: AutotitleWorkspaceInput) => Promise<Bindings.SystemOk>;
     setPinned: (input: { workspaceId: string; pinned: boolean }) => Promise<WorkspaceSummary>;
-    setPriorityDismissed: (input: { workspaceId: string; dismissed: boolean }) => Promise<WorkspaceSummary>;
+    setPriorityDismissed: (input: {
+      workspaceId: string;
+      dismissed: boolean;
+    }) => Promise<WorkspaceSummary>;
     setPriorityAdded: (input: { workspaceId: string; added: boolean }) => Promise<WorkspaceSummary>;
     /** Hides the row in the snooze shelf until `until` (RFC 3339), or unsnoozes with `null`. */
     setSnoozedUntil: (input: Bindings.WorkspacesSetSnoozedUntilInput) => Promise<WorkspaceSummary>;
@@ -584,7 +612,7 @@ export interface ArgmaxApi {
     terminate: (sessionId: string) => Promise<Bindings.SystemOk>;
     cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) => Promise<Bindings.SystemOk>;
     sendQueuedMessageNow: (
-      input: ProvidersSendQueuedMessageNowInput
+      input: ProvidersSendQueuedMessageNowInput,
     ) => Promise<Bindings.SendInputResult>;
   };
   cloud: {
@@ -598,8 +626,12 @@ export interface ArgmaxApi {
     import: (input: Bindings.VisualizationImportInput) => Promise<VisualizationArtifact>;
     read: (input: Bindings.VisualizationReadInput) => Promise<VisualizationRead>;
     setState: (input: Bindings.VisualizationSetStateInput) => Promise<VisualizationWidgetState>;
-    setControls: (input: Bindings.VisualizationSetControlsInput) => Promise<Partial<Record<string, Bindings.JsonValue>>>;
-    preview: (input: Bindings.VisualizationPreviewInput) => Promise<Bindings.VisualizationPreviewResult>;
+    setControls: (
+      input: Bindings.VisualizationSetControlsInput,
+    ) => Promise<Partial<Record<string, Bindings.JsonValue>>>;
+    preview: (
+      input: Bindings.VisualizationPreviewInput,
+    ) => Promise<Bindings.VisualizationPreviewResult>;
     publish: (input: Bindings.VisualizationPublishInput) => Promise<VisualizationArtifact>;
     export: (input: Bindings.VisualizationReadInput) => Promise<string>;
   };
@@ -635,12 +667,19 @@ export interface ArgmaxApi {
      *  reply to yet or the helper call failed. */
     suggestFollowUp: (input: SessionSuggestFollowUpInput) => Promise<FollowUpSuggestion>;
     costSummary: (input: SessionCostSummaryInput) => Promise<SessionCostSummary>;
-    search: (input: { query: string; limit?: number }) => Promise<Array<{
-      sessionId: string;
-      eventId: string;
-      snippet: string;
-      rank: number;
-    }>>;
+    /** The first answer of the turn `turnKey` was painted. Fire-and-forget;
+     *  desktop only. See `providers::turn_waterfall`. */
+    turnPainted: (input: Bindings.SessionTurnPaintedInput) => Promise<void>;
+    /** The newest turn waterfalls, newest first. */
+    turnWaterfalls: (input: Bindings.SessionTurnWaterfallsInput) => Promise<TurnWaterfall[]>;
+    search: (input: { query: string; limit?: number }) => Promise<
+      Array<{
+        sessionId: string;
+        eventId: string;
+        snippet: string;
+        rank: number;
+      }>
+    >;
   };
   goals: {
     set: (input: GoalSetInput) => Promise<Goal>;
@@ -667,14 +706,17 @@ export interface ArgmaxApi {
     revertHunk: (input: ReviewIndexHunkInput) => Promise<void>;
     stageHunk: (input: ReviewIndexHunkInput) => Promise<void>;
     unstageHunk: (input: ReviewIndexHunkInput) => Promise<void>;
-    listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
+    listChangedFiles: (
+      target: WorkspaceTarget,
+      comparison?: ReviewComparison,
+    ) => Promise<ChangedFileSummary[]>;
     /** `contextLines` is only honored for a single-file request; omit it for
      *  git's default context. See ReviewLoadDiffInput. */
     loadDiff: (
       target: WorkspaceTarget,
       filePath?: string,
       comparison?: ReviewComparison,
-      contextLines?: number
+      contextLines?: number,
     ) => Promise<WorkspaceDiff>;
   };
   workspace: {
@@ -684,7 +726,7 @@ export interface ArgmaxApi {
       target: WorkspaceTarget,
       filePath: string,
       content: string,
-      expectedMtimeMs: number | null
+      expectedMtimeMs: number | null,
     ) => Promise<WorkspaceFileWriteResult>;
     statFile: (target: WorkspaceTarget, filePath: string) => Promise<WorkspaceFileStat>;
     /** Read-only preview of a file outside every workspace: an absolute path or `~/…`. */
@@ -721,20 +763,37 @@ export interface ArgmaxApi {
     setProjectCheck: (input: { mode: ProjectCheckMode }) => Promise<RoutingSettings>;
     /** Which gateway OpenCode runs on, and the keys saved for each. */
     opencodeGateway: () => Promise<OpencodeGatewaySettings>;
-    setOpencodeGateway: (input: Bindings.SetOpencodeGatewayInput) => Promise<OpencodeGatewaySettings>;
-    setOpencodeGatewayKey: (input: Bindings.SetOpencodeGatewayKeyInput) => Promise<OpencodeGatewaySettings>;
-    clearOpencodeGatewayKey: (input: Bindings.ClearOpencodeGatewayKeyInput) => Promise<OpencodeGatewaySettings>;
+    setOpencodeGateway: (
+      input: Bindings.SetOpencodeGatewayInput,
+    ) => Promise<OpencodeGatewaySettings>;
+    setOpencodeGatewayKey: (
+      input: Bindings.SetOpencodeGatewayKeyInput,
+    ) => Promise<OpencodeGatewaySettings>;
+    clearOpencodeGatewayKey: (
+      input: Bindings.ClearOpencodeGatewayKeyInput,
+    ) => Promise<OpencodeGatewaySettings>;
     /** The app-wide branch template for new isolated workspaces. */
     branchTemplate: () => Promise<Bindings.BranchTemplateSettings>;
-    setBranchTemplate: (input: Bindings.SetBranchTemplateInput) => Promise<Bindings.BranchTemplateSettings>;
+    setBranchTemplate: (
+      input: Bindings.SetBranchTemplateInput,
+    ) => Promise<Bindings.BranchTemplateSettings>;
     setBrowserTools: (input: { enabled: boolean }) => Promise<AgentToolsSettings>;
+    /** Which MCP servers a Claude turn starts ("MCP at turn start"). */
+    claudeMcp: () => Promise<Bindings.ClaudeMcpSettings>;
+    setClaudeMcp: (input: Bindings.SetClaudeMcpInput) => Promise<Bindings.ClaudeMcpSettings>;
+    /** Runs `claude mcp list` to count connectors and plugin servers; takes seconds. */
+    claudeMcpProbe: () => Promise<Bindings.ClaudeProbeCounts | null>;
     previewChatCleanup: () => Promise<ChatCleanupPreview>;
     deleteOldChats: (input: DeleteOldChatsInput) => Promise<DeleteOldChatsResult>;
   };
   system: {
     confirm: (message: string) => Promise<boolean>;
     openPath: (input: { path: string; cwd?: string }) => Promise<Bindings.SystemOk>;
-    openFileIn: (input: { path: string; cwd: string; app: OpenFileApp }) => Promise<Bindings.SystemOk>;
+    openFileIn: (input: {
+      path: string;
+      cwd: string;
+      app: OpenFileApp;
+    }) => Promise<Bindings.SystemOk>;
     listDetectedIdes: () => Promise<DetectedIde[]>;
     diagnostics: () => Promise<DiagnosticsReport>;
     debugSnapshot: (input?: { afterLogSeq?: number }) => Promise<DebugSnapshot>;
@@ -764,7 +823,11 @@ export interface ArgmaxApi {
   };
   remote: {
     getStatus: () => Promise<RemoteStatus>;
-    setConfig: (input: { enabled: boolean; port: number; ntfyTopic: string }) => Promise<RemoteStatus>;
+    setConfig: (input: {
+      enabled: boolean;
+      port: number;
+      ntfyTopic: string;
+    }) => Promise<RemoteStatus>;
     testNotification: () => Promise<Bindings.SystemOk>;
     setApnsConfig: (input: {
       keyPath: string;
@@ -881,7 +944,11 @@ export interface ArgmaxApi {
     reload: (tabId: string) => Promise<Bindings.SystemOk>;
     stop: (tabId: string) => Promise<Bindings.SystemOk>;
     setTheme: (mode: Bindings.ThemeMode) => Promise<Bindings.SystemOk>;
-    setBounds: (input: { bounds: BrowserBounds; visible: boolean; tabId: string }) => Promise<Bindings.SystemOk>;
+    setBounds: (input: {
+      bounds: BrowserBounds;
+      visible: boolean;
+      tabId: string;
+    }) => Promise<Bindings.SystemOk>;
     /** Gives the page the window's keyboard focus, the way clicking into it would. */
     focus: (tabId: string) => Promise<Bindings.SystemOk>;
     /** Destroys the tab's webview (history and session included). */
@@ -895,12 +962,18 @@ export interface ArgmaxApi {
       /** Crop to one snapshot ref; wins over `rect`. */
       ref?: string;
     }) => Promise<BrowserScreenshot>;
-    evaluate: (input: { tabId: string; script: string; timeoutMs?: number }) => Promise<BrowserEvaluateResult>;
+    evaluate: (input: {
+      tabId: string;
+      script: string;
+      timeoutMs?: number;
+    }) => Promise<BrowserEvaluateResult>;
     /** Live tabs, optionally only one session's. */
     listTabs: (input: { sessionId?: string }) => Promise<{ tabs: BrowserTabInfo[] }>;
     /** Opens a page in a tab owned by a session; the webview starts hidden. */
     openForSession: (input: { url: string; sessionId: string }) => Promise<{ tabId: string }>;
-    snapshot: (input: BrowserTabTarget & { interactiveOnly?: boolean }) => Promise<BrowserPageSnapshot>;
+    snapshot: (
+      input: BrowserTabTarget & { interactiveOnly?: boolean },
+    ) => Promise<BrowserPageSnapshot>;
     find: (input: BrowserTabTarget & { query: string }) => Promise<BrowserFindResult>;
     getText: (input: BrowserTabTarget & { maxChars?: number }) => Promise<BrowserPageText>;
     extract: (input: BrowserTabTarget & { maxChars?: number }) => Promise<BrowserPageExtraction>;

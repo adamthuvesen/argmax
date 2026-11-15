@@ -9,9 +9,18 @@ import {
   GitPullRequestClosed,
   MoreHorizontal,
   SquareTerminal,
-  X
+  X,
 } from "lucide-react";
-import { Fragment, useEffect, useRef, useState, type JSX, type MouseEvent, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type JSX,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
+import { prActions } from "../data/bridgeActions.js";
 import { errorMessage } from "../../shared/error.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
@@ -23,9 +32,9 @@ import { openWebUrl } from "../lib/openWebUrl.js";
 import type { SubagentCluster } from "../lib/subagentSummary.js";
 import {
   primaryWorkspacePr,
-  refreshSessionPrs,
+  refreshSessionPrsOnOpen,
   workspaceSessionPrs,
-  type WorkspaceSessionPr
+  type WorkspaceSessionPr,
 } from "../lib/sessionPrs.js";
 import { AgentEmblem } from "./AgentEmblem.js";
 import { WorkingNest } from "./WorkingNest.js";
@@ -67,7 +76,7 @@ export function WorkspaceCard({
   subagents,
   projectFolderChanges = [],
   workingFolderName,
-  workspace
+  workspace,
 }: {
   /** Null until the changed-file list has loaded for this workspace. */
   changeSummary: { fileCount: number; additions: number; deletions: number } | null;
@@ -92,8 +101,11 @@ export function WorkspaceCard({
   const [isPrHistoryOpen, setIsPrHistoryOpen] = useState(false);
   const [branchCopyFlash, copyBranch] = useCopyToClipboard();
   const hasChanges = changeSummary !== null && changeSummary.fileCount > 0;
-  const changedFolders = projectFolderChanges.filter((group) => group.folder.enabled && !group.error && group.files.length > 0);
-  const changesLabel = changesState === "error" ? "unavailable" : changesState === "ready" ? null : "…";
+  const changedFolders = projectFolderChanges.filter(
+    (group) => group.folder.enabled && !group.error && group.files.length > 0,
+  );
+  const changesLabel =
+    changesState === "error" ? "unavailable" : changesState === "ready" ? null : "…";
   const prs = workspaceSessionPrs(workspace);
   const primaryPr = primaryWorkspacePr(workspace);
   const visiblePrs = visibleWorkspacePrs(prs, primaryPr);
@@ -111,24 +123,26 @@ export function WorkspaceCard({
     // The rows land on the actions menu; the card is here for the workspace
     // publish `prs:refresh` performs on its way out, which is why it shares
     // that call rather than making a second one.
-    void refreshSessionPrs(session.id)?.catch(() => undefined);
+    return refreshSessionPrsOnOpen(session.id, workspace.branch);
   }, [session?.id, workspace.kind, workspace.branch]);
 
   const setPrimaryPr = (prNumber: number | null): void => {
-    if (!session || !window.argmax?.prs?.setPrimary) return;
+    const prs = prActions();
+    if (!session || !prs?.setPrimary) return;
     setIsPrPending(true);
     setStatus(null);
-    void window.argmax.prs
+    void prs
       .setPrimary({ sessionId: session.id, prNumber })
       .catch((error: unknown) => showErrorToast(errorMessage(error)))
       .finally(() => setIsPrPending(false));
   };
 
   const dismissPr = (prNumber: number): void => {
-    if (!session || !window.argmax?.prs?.dismiss) return;
+    const prs = prActions();
+    if (!session || !prs?.dismiss) return;
     setIsPrPending(true);
     setStatus(null);
-    void window.argmax.prs
+    void prs
       .dismiss({ sessionId: session.id, prNumber })
       .catch((error: unknown) => showErrorToast(errorMessage(error)))
       .finally(() => setIsPrPending(false));
@@ -136,10 +150,11 @@ export function WorkspaceCard({
 
   // Never archives the chat; the report says what was kept.
   const cleanupPr = (prNumber: number): void => {
-    if (!session || !window.argmax?.prs?.cleanup) return;
+    const prs = prActions();
+    if (!session || !prs?.cleanup) return;
     setIsPrPending(true);
     setStatus(null);
-    void window.argmax.prs
+    void prs
       .cleanup({ sessionId: session.id, prNumber })
       .then((report) => showInfoToast(report.text))
       .catch((error: unknown) => showErrorToast(errorMessage(error)))
@@ -202,7 +217,9 @@ export function WorkspaceCard({
       </div>
 
       <div className="workspace-card-rows">
-        {workingFolderName || changedFolders.length > 0 ? <div className="workspace-card-section-label">Changes</div> : null}
+        {workingFolderName || changedFolders.length > 0 ? (
+          <div className="workspace-card-section-label">Changes</div>
+        ) : null}
         <WorkspaceCardRow
           icon={<FileDiff size={13} aria-hidden="true" />}
           label={workingFolderName ?? "Changes"}
@@ -212,7 +229,10 @@ export function WorkspaceCard({
           // are not yet a verdict — loading, failed — say so in the meta slot.
           meta={
             hasChanges ? (
-              <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
+              <ChangeCount
+                additions={changeSummary.additions}
+                deletions={changeSummary.deletions}
+              />
             ) : changesLabel ? (
               <span className="workspace-card-quiet">{changesLabel}</span>
             ) : null
@@ -241,7 +261,9 @@ export function WorkspaceCard({
                 title={`Review ${files.length} changed ${files.length === 1 ? "file" : "files"} in ${folder.rootPath}. This shared checkout can include changes from other chats.`}
                 meta={<ChangeCount additions={totals.additions} deletions={totals.deletions} />}
                 disabled={!onOpenFolderChanges}
-                onClick={() => { if (files[0]) onOpenFolderChanges?.(folder.id, files[0].path); }}
+                onClick={() => {
+                  if (files[0]) onOpenFolderChanges?.(folder.id, files[0].path);
+                }}
               />
             </div>
           );
@@ -284,9 +306,9 @@ export function WorkspaceCard({
                 <ChevronDown size={12} aria-hidden="true" />
                 {hiddenPrs.length} more
               </button>
-              {isPrHistoryOpen ? <div className="workspace-card-pr-more-list">
-                {hiddenPrs.map(prRow)}
-              </div> : null}
+              {isPrHistoryOpen ? (
+                <div className="workspace-card-pr-more-list">{hiddenPrs.map(prRow)}</div>
+              ) : null}
             </div>
           ) : null}
         </section>
@@ -299,7 +321,7 @@ export function WorkspaceCard({
 
 function visibleWorkspacePrs(
   prs: readonly WorkspaceSessionPr[],
-  primary: WorkspaceSessionPr | null
+  primary: WorkspaceSessionPr | null,
 ): readonly WorkspaceSessionPr[] {
   const visible: WorkspaceSessionPr[] = [];
   if (primary) visible.push(primary);
@@ -318,7 +340,7 @@ function WorkspacePrRow({
   onDismiss,
   onSetPrimary,
   onUseAutomatic,
-  pr
+  pr,
 }: {
   busy: boolean;
   onCleanup: () => void;
@@ -333,7 +355,8 @@ function WorkspacePrRow({
   const state = pr.prState?.toLowerCase() ?? "unknown";
   const stateLabel = `${state.charAt(0).toUpperCase()}${state.slice(1)}`;
   const details = [pr.relationship === "referenced" ? "Referenced" : null, pr.headRefName]
-    .filter(Boolean).join(" · ");
+    .filter(Boolean)
+    .join(" · ");
   const rowTitle = pr.url
     ? `Open pull request #${pr.prNumber} on GitHub (${state})`
     : `Pull request #${pr.prNumber} (${state}) has no URL. Refresh its GitHub state to open it.`;
@@ -384,59 +407,65 @@ function WorkspacePrRow({
         >
           <MoreHorizontal size={13} aria-hidden="true" />
         </button>
-        {actionsOpen ? <div className="workspace-card-pr-actions-menu" role="menu" aria-label={`PR #${pr.prNumber} actions`}>
-          {!pr.isPinned ? (
-            <button
-              type="button"
-              role="menuitem"
-              disabled={busy}
-              onClick={() => {
-                setActionsOpen(false);
-                onSetPrimary();
-              }}
-            >
-              {pr.relationship === "unverified" ? "Confirm and make primary" : "Make primary"}
-            </button>
-          ) : null}
-          {pr.isPinned ? (
-            <button
-              type="button"
-              role="menuitem"
-              disabled={busy}
-              onClick={() => {
-                setActionsOpen(false);
-                onUseAutomatic();
-              }}
-            >
-              Automatic selection
-            </button>
-          ) : null}
-          {pr.prState === "MERGED" ? (
-            <button
-              type="button"
-              role="menuitem"
-              disabled={busy}
-              title="Delete the merged branch and update the base. Keeps this chat and its checkout."
-              onClick={() => {
-                setActionsOpen(false);
-                onCleanup();
-              }}
-            >
-              Clean up
-            </button>
-          ) : null}
-          <button
-            type="button"
-            role="menuitem"
-            disabled={busy}
-            onClick={() => {
-              setActionsOpen(false);
-              onDismiss();
-            }}
+        {actionsOpen ? (
+          <div
+            className="workspace-card-pr-actions-menu"
+            role="menu"
+            aria-label={`PR #${pr.prNumber} actions`}
           >
-            Remove from this chat
-          </button>
-        </div> : null}
+            {!pr.isPinned ? (
+              <button
+                type="button"
+                role="menuitem"
+                disabled={busy}
+                onClick={() => {
+                  setActionsOpen(false);
+                  onSetPrimary();
+                }}
+              >
+                {pr.relationship === "unverified" ? "Confirm and make primary" : "Make primary"}
+              </button>
+            ) : null}
+            {pr.isPinned ? (
+              <button
+                type="button"
+                role="menuitem"
+                disabled={busy}
+                onClick={() => {
+                  setActionsOpen(false);
+                  onUseAutomatic();
+                }}
+              >
+                Automatic selection
+              </button>
+            ) : null}
+            {pr.prState === "MERGED" ? (
+              <button
+                type="button"
+                role="menuitem"
+                disabled={busy}
+                title="Delete the merged branch and update the base. Keeps this chat and its checkout."
+                onClick={() => {
+                  setActionsOpen(false);
+                  onCleanup();
+                }}
+              >
+                Clean up
+              </button>
+            ) : null}
+            <button
+              type="button"
+              role="menuitem"
+              disabled={busy}
+              onClick={() => {
+                setActionsOpen(false);
+                onDismiss();
+              }}
+            >
+              Remove from this chat
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -452,13 +481,23 @@ function WorkspacePrRow({
  * the multitasks dispatched from it. The label follows — "Alongside" once a
  * multitask is in there, since they are not subagents.
  */
-function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster; onOpenAgents?: () => void }): JSX.Element {
+function SubagentsSection({
+  cluster,
+  onOpenAgents,
+}: {
+  cluster: SubagentCluster;
+  onOpenAgents?: () => void;
+}): JSX.Element {
   const visible = cluster.entries.slice(0, SUBAGENT_AVATAR_LIMIT);
   const overflow = cluster.entries.length - visible.length;
   const roster = cluster.entries
     .map((entry) => `${entry.codename} — ${agentStatusLabel(entry.status)}`)
     .join(", ");
-  const noun = cluster.hasMultitask ? "running alongside" : cluster.entries.length === 1 ? "subagent" : "subagents";
+  const noun = cluster.hasMultitask
+    ? "running alongside"
+    : cluster.entries.length === 1
+      ? "subagent"
+      : "subagents";
   const title = `${cluster.entries.length} ${noun}: ${roster}`;
   const firstRunning = cluster.entries.find((entry) => entry.status === "running");
   const label = cluster.hasMultitask ? "Alongside" : "Agents";
@@ -470,6 +509,7 @@ function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster;
           <span
             key={entry.toolUseId}
             className="workspace-card-agent"
+            data-testid="workspace-card-agent"
             data-icon-color={entry.iconColor}
             data-status={entry.status}
           >
@@ -481,9 +521,18 @@ function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster;
             />
           </span>
         ))}
-        {overflow > 0 ? <span className="workspace-card-agent workspace-card-agent-more">+{overflow}</span> : null}
+        {overflow > 0 ? (
+          <span
+            className="workspace-card-agent workspace-card-agent-more"
+            data-testid="workspace-card-agent"
+          >
+            +{overflow}
+          </span>
+        ) : null}
       </span>
-      {cluster.running > 0 ? <WorkingNest active size={12} phaseKey={firstRunning?.toolUseId} /> : null}
+      {cluster.running > 0 ? (
+        <WorkingNest active size={12} phaseKey={firstRunning?.toolUseId} />
+      ) : null}
     </>
   );
 
@@ -539,8 +588,11 @@ function PrStateIcon({ state }: { state: string | null }): JSX.Element {
   if (state !== "OPEN" && state !== "MERGED" && state !== "CLOSED") {
     return <GithubIcon size={13} aria-hidden="true" />;
   }
-  const Icon = state === "MERGED" ? GitMerge : state === "OPEN" ? GitPullRequest : GitPullRequestClosed;
-  return <Icon size={13} aria-hidden="true" className="workspace-card-pr-state" data-pr-state={state} />;
+  const Icon =
+    state === "MERGED" ? GitMerge : state === "OPEN" ? GitPullRequest : GitPullRequestClosed;
+  return (
+    <Icon size={13} aria-hidden="true" className="workspace-card-pr-state" data-pr-state={state} />
+  );
 }
 
 function WorkspaceCardRow({
@@ -551,7 +603,7 @@ function WorkspaceCardRow({
   meta = null,
   onClick,
   pressed,
-  title
+  title,
 }: {
   ariaLabel?: string;
   disabled?: boolean;

@@ -62,7 +62,7 @@ export function createWindowSnapshotInbox(now: () => number = Date.now): {
     unclaimedCount: () => {
       dropExpired();
       return unclaimed.length;
-    }
+    },
   };
 }
 
@@ -78,7 +78,7 @@ export function startWindowSnapshotInbox(
     onAttach: (listener: (snapshot: WindowSnapshotAttach) => void) => () => void;
     onFailed: (listener: (failure: WindowSnapshotFailure) => void) => () => void;
   },
-  inbox: Pick<typeof windowSnapshotInbox, "deliver"> = windowSnapshotInbox
+  inbox: Pick<typeof windowSnapshotInbox, "deliver"> = windowSnapshotInbox,
 ): () => void {
   const stopAttach = api.onAttach((snapshot) => inbox.deliver(snapshot));
   const stopFailed = api.onFailed((failure) => showErrorToast(failure.message));

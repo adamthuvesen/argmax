@@ -5,7 +5,7 @@ import {
   resetSafeJsonWarningsForTesting,
   safeJsonParse,
   safeJsonParseArray,
-  safeJsonParseRecord
+  safeJsonParseRecord,
 } from "./safeJson.js";
 
 afterEach(() => {
@@ -45,7 +45,11 @@ describe("safeJsonParse — always returns unknown", () => {
   it("logs malformed contextless JSON under the unknown bucket", () => {
     const warn = vi.spyOn(logger, "warn");
     safeJsonParse("{bad");
-    expect(warn).toHaveBeenCalledWith("safeJson", "parse error", expect.objectContaining({ context: "<unknown>" }));
+    expect(warn).toHaveBeenCalledWith(
+      "safeJson",
+      "parse error",
+      expect.objectContaining({ context: "<unknown>" }),
+    );
   });
 });
 

@@ -1,0 +1,11 @@
+#!/bin/sh
+# Refuses a commit with a secret in the staged files. .gitleaks.toml lists the
+# test fixtures that look like secrets.
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks is not installed, so staged files were not scanned for secrets. Run: brew install gitleaks" >&2
+  exit 0
+fi
+gitleaks git --staged --no-banner --redact --verbose --log-level warn || {
+  echo "pre-commit: remove the secret above from the staged file, or list a test fixture in .gitleaks.toml." >&2
+  exit 1
+}

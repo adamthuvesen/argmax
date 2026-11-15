@@ -39,18 +39,44 @@ export interface VisualizationControlGroup {
 
 export type VisualizationRuntimeMessage =
   | { type: "argmax:visualization-height"; instanceId: string; height: number }
-  | { type: "argmax:visualization-state"; instanceId: string; requestId: string; state: VisualizationState }
-  | { type: "argmax:visualization-follow-up"; instanceId: string; requestId: string; prompt: string; title?: string }
+  | {
+      type: "argmax:visualization-state";
+      instanceId: string;
+      requestId: string;
+      state: VisualizationState;
+    }
+  | {
+      type: "argmax:visualization-follow-up";
+      instanceId: string;
+      requestId: string;
+      prompt: string;
+      title?: string;
+    }
   | { type: "argmax:visualization-link"; instanceId: string; url: string }
-  | { type: "argmax:visualization-controls"; instanceId: string; groups: VisualizationControlGroup[] };
+  | {
+      type: "argmax:visualization-controls";
+      instanceId: string;
+      groups: VisualizationControlGroup[];
+    };
 
 export type VisualizationHostMessage =
-  | { type: "argmax:visualization-appearance"; instanceId: string; appearance: VisualizationAppearance }
+  | {
+      type: "argmax:visualization-appearance";
+      instanceId: string;
+      appearance: VisualizationAppearance;
+    }
   | { type: "argmax:visualization-state"; instanceId: string; state: VisualizationState }
   | { type: "argmax:visualization-ack"; instanceId: string; requestId: string; error?: string }
-  | { type: "argmax:visualization-control"; instanceId: string; id: string; value: string | number | boolean }
+  | {
+      type: "argmax:visualization-control";
+      instanceId: string;
+      id: string;
+      value: string | number | boolean;
+    }
   | { type: "argmax:visualization-reset"; instanceId: string; groupId?: string }
-  | { type: "argmax:visualization-original"; instanceId: string; active: boolean; groupId?: string };
-
-export const VISUALIZATION_RUNTIME_VERSION = 1;
-export const VISUALIZATION_STATE_BYTES = 16 * 1024;
+  | {
+      type: "argmax:visualization-original";
+      instanceId: string;
+      active: boolean;
+      groupId?: string;
+    };

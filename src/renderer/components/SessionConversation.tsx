@@ -1,15 +1,12 @@
 import { usePrMilestone } from "../hooks/usePrMilestone.js";
+import { arcActions, questionActions } from "../data/bridgeActions.js";
 import { VisualizationSessionContext } from "../lib/visualizationSession.js";
 import { TurnExhale } from "./TurnExhale.js";
 import { showErrorToast } from "../state/toast.js";
-import {
-  GitBranch,
-  MessageSquarePlus,
-  MessagesSquare,
-  X
-} from "lucide-react";
+import { GitBranch, MessageSquarePlus, MessagesSquare, X } from "lucide-react";
 import {
   lazy,
+  startTransition,
   Suspense,
   useCallback,
   useEffect,
@@ -17,7 +14,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type JSX
+  type JSX,
 } from "react";
 import type {
   AgentMode,
@@ -34,15 +31,16 @@ import type {
   RawProviderOutput,
   SessionSummary,
   TimelineEvent,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../../shared/types.js";
 import type { SendInputResult } from "../../shared/bindings.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
+import { useTurnPaintReport } from "../hooks/useTurnPaintReport.js";
 import { useConversationScroll } from "../hooks/useConversationScroll.js";
 import { useSessionComposerState } from "../hooks/useSessionComposerState.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { isAutoTier, type ModelPickerSelection } from "../lib/models.js";
-import { successorModelId } from "../../shared/providerModels.js";
+import { resolveModelId } from "../../shared/providerModels.js";
 import { repoNameFromPath } from "../lib/projects.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
 import type { FontSize } from "../lib/fonts.js";
@@ -58,7 +56,7 @@ import {
   latestClearEvent,
   openRunMarkerAt,
   outputsAfterClear,
-  subAgentToolUseIds
+  subAgentToolUseIds,
 } from "../lib/sessionConversationModel.js";
 import { assignAgentCodenames, nativeAgentReferences } from "../lib/agentNames.js";
 import { multitaskTabId } from "../lib/agentTabs.js";
@@ -75,11 +73,15 @@ import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
 import { ScrollToLatestButton } from "./ScrollToLatestButton.js";
 import { ShowEarlier } from "./ShowEarlier.js";
 import { SessionNote } from "./SessionNote.js";
-import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
+import {
+  foldConversationItems,
+  foldRenderItems,
+  type RenderItem,
+} from "../lib/foldConversation.js";
 import {
   collectAskUserQuestionState,
   hasOutstandingCardAsk as sessionHasOutstandingCardAsk,
-  isAskUserQuestionToolName
+  isAskUserQuestionToolName,
 } from "../lib/turnInteractiveCards.js";
 import { liveThoughtOwnsProgress } from "../lib/sessionTurnView.js";
 import type { FollowUpDelivery, ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
@@ -89,10 +91,14 @@ import { buildDetailsSeed, buildSideChatSeed } from "../lib/sideChat.js";
 import { SelectionToolbar, type ChatSelection } from "./SelectionToolbar.js";
 import { QuestionDock } from "./QuestionDock.js";
 import type { QuestionAnswers } from "../lib/questions.js";
-import { postToNative } from "../mobile/nativeHost.js";
 import { SessionComposer, type NewSessionSeed } from "./SessionComposer.js";
 import { importChunk } from "../lib/importChunk.js";
-const GoalStatus = lazy(() => importChunk(async () => ({ default: (await import("./GoalStatus.js")).GoalStatus })));
+const GoalStatus = lazy(() =>
+  importChunk(
+    async () => ({ default: (await import("./GoalStatus.js")).GoalStatus }),
+    "goal-status",
+  ),
+);
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
 import { WorkingNest } from "./WorkingNest.js";
 import { ActivityBeatContext } from "../lib/activityBeat.js";
@@ -105,13 +111,13 @@ import { uuidV4 } from "../lib/uuid.js";
 import { parseUserMessageAttachments, sendAfterTerminate } from "./sessionConversationHelpers.js";
 import {
   SessionConversationTurn,
-  SessionConversationUserMessage
+  SessionConversationUserMessage,
 } from "./SessionConversationTurn.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { showPromoteArcDialog } from "../state/overlays.js";
 import {
   readCheckpointUnavailableReason,
-  useTurnCheckpoints
+  useTurnCheckpoints,
 } from "../hooks/useTurnCheckpoints.js";
 
 // How many transcript items are mounted at once.
@@ -124,6 +130,16 @@ import {
 const CONVERSATION_WINDOW = 120;
 /// Items revealed per "Show earlier" click.
 const CONVERSATION_WINDOW_STEP = 240;
+/// Items an opened chat mounts in its first frame. Following places the latest
+/// prompt at the top of the viewport, so the last few turns are all the first
+/// paint can show. Mounting the whole window of the longest real chat made
+/// ~8,500 nodes and one frame of about 250 ms.
+const FIRST_PAINT_ITEMS = 8;
+/// Items each later frame adds above them until the window is full. Steps of
+/// 12 made 25–40 ms frames in WKWebView; 8 keep the fill under a 50 ms frame.
+const MOUNT_GROWTH_STEP = 8;
+/// How long the fill waits after the reader's last wheel, key, or touch input.
+const SCROLL_INPUT_QUIET_MS = 150;
 
 /// The pre-answer floor. A provider that says its first word inside this
 /// window has announced itself better than the cue could, and a line that
@@ -162,7 +178,7 @@ function thinkingGapDelayMs(gaps: readonly number[]): number {
   const median = sorted[Math.floor(sorted.length / 2)] ?? THINKING_GAP_DELAY_MS;
   return Math.min(
     THINKING_GAP_DELAY_MAX_MS,
-    Math.max(THINKING_GAP_DELAY_MIN_MS, median * THINKING_GAP_MEDIAN_FACTOR)
+    Math.max(THINKING_GAP_DELAY_MIN_MS, median * THINKING_GAP_MEDIAN_FACTOR),
   );
 }
 
@@ -215,7 +231,6 @@ export function SessionConversation({
   floating = false,
   goalEnabled = true,
   goalMaxTurns,
-  nativeComposerFloor = false,
   revertEnabled = true,
   registerAnnotationSink,
   defaultIde = null,
@@ -234,8 +249,6 @@ export function SessionConversation({
   onToggleTerminal,
   onToggleWorkspaceCard,
   onOpenFile,
-  onOpenDiff,
-  onOpenChanges,
   onOpenAgent,
   onOpenMultitask,
   onLoadSessionEvents,
@@ -247,7 +260,7 @@ export function SessionConversation({
   session,
   workspaceCardEnabled = true,
   contextIndicatorEnabled = false,
-  workspace
+  workspace,
 }: {
   checks?: CheckRun[];
   /** Settings → Appearance: the font scale shared by the transcript and composer. */
@@ -289,10 +302,7 @@ export function SessionConversation({
   onOpenSession?: (sessionId: string) => void;
   /** Opens the "More details" explainer popup with the given first message.
       Enables the selection toolbar's "More details" action when provided. */
-  onOpenDetails?: (
-    seedPrompt: string,
-    context?: { attachToChat?: () => void }
-  ) => Promise<void>;
+  onOpenDetails?: (seedPrompt: string, context?: { attachToChat?: () => void }) => Promise<void>;
   /** Floating popup only: "Add to chat" header button wired back to the
    *  originating composer's annotation lane. */
   onAttachToChat?: () => void;
@@ -307,10 +317,6 @@ export function SessionConversation({
       `/goal` command; off for revert hides "Revert to here" on a turn. */
   goalEnabled?: boolean;
   goalMaxTurns?: number;
-  /** The phone shell draws the composer natively and this page hides its own
-      stack, which would take the goal bar down with it. Set, the bar rides in
-      its own stack above the native card instead. */
-  nativeComposerFloor?: boolean;
   revertEnabled?: boolean;
   /** Lets the parent pane feed review-panel line comments into this
       conversation's annotation lane. Registered on mount, cleared on unmount. */
@@ -326,7 +332,7 @@ export function SessionConversation({
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
     agentReferences?: AgentReference[],
-    delivery?: FollowUpDelivery
+    delivery?: FollowUpDelivery,
   ) => Promise<SendInputResult>;
   /** Follow-ups composed while the agent was running. Render as cancellable
       chips above the composer; cleared from the parent as the queue drains. */
@@ -335,13 +341,13 @@ export function SessionConversation({
   onSendQueuedMessageNow?: (
     sessionId: string,
     messageId: string,
-    delivery?: QueuedMessageDelivery
+    delivery?: QueuedMessageDelivery,
   ) => Promise<void>;
   onMultitask?: (
     sessionId: string,
     prompt: string,
     provider: ProviderId,
-    pendingMessageId?: string
+    pendingMessageId?: string,
   ) => Promise<void>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
@@ -352,11 +358,6 @@ export function SessionConversation({
       provided, the chip routes to the in-app right panel by default, with
       ⌘/Ctrl-click flagged via `preferIde` for the external IDE shortcut. */
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
-  /** A host that owns its own review surface (the phone) routes a tapped
-      changed file here instead of into this pane's dock, which it has none of. */
-  onOpenDiff?: (path: string) => void;
-  /** Same, for the card's Review button. */
-  onOpenChanges?: () => void;
   onOpenAgent?: (tool: ToolCall) => void;
   /** Opens a multitask's chat in this pane's dock, beside the subagents. */
   onOpenMultitask?: (sessionId: string) => void;
@@ -387,7 +388,7 @@ export function SessionConversation({
     addAnnotation,
     removeAnnotation,
     clearAnnotations,
-    openFilePaths
+    openFilePaths,
   } = useSessionComposerState({ session, isFocused, review, registerAnnotationSink });
   const eventsRef = useRef(events);
   eventsRef.current = events;
@@ -397,53 +398,52 @@ export function SessionConversation({
   }, [sessionId]);
   // `events` is sorted descending upstream (mergeDashboardDelta), so a reverse
   // gives ascending order for free without a per-tick string comparator pass.
-  const reconciledOptimisticUserMessages = useMemo(
-    () => {
-      let changed = false;
-      const currentSessionMessages = optimisticUserMessages.filter((pending) => {
-        const belongsToCurrentSession = pending.event.sessionId === sessionId;
-        if (!belongsToCurrentSession) changed = true;
-        return belongsToCurrentSession;
-      });
-      const acknowledgedEventIds = new Set(
-        currentSessionMessages.flatMap(({ acknowledgedByEventId }) =>
-          acknowledgedByEventId ? [acknowledgedByEventId] : []
-        )
-      );
-      // Match oldest-first so one persisted row can acknowledge only the send
-      // that produced it when identical follow-ups are submitted in sequence.
-      const reconciledOldestFirst = [...currentSessionMessages].reverse().map((pending) => {
-        if (pending.acknowledgedByEventId) return pending;
-        const acknowledgement = [...events].reverse().find(
+  const reconciledOptimisticUserMessages = useMemo(() => {
+    let changed = false;
+    const currentSessionMessages = optimisticUserMessages.filter((pending) => {
+      const belongsToCurrentSession = pending.event.sessionId === sessionId;
+      if (!belongsToCurrentSession) changed = true;
+      return belongsToCurrentSession;
+    });
+    const acknowledgedEventIds = new Set(
+      currentSessionMessages.flatMap(({ acknowledgedByEventId }) =>
+        acknowledgedByEventId ? [acknowledgedByEventId] : [],
+      ),
+    );
+    // Match oldest-first so one persisted row can acknowledge only the send
+    // that produced it when identical follow-ups are submitted in sequence.
+    const reconciledOldestFirst = [...currentSessionMessages].reverse().map((pending) => {
+      if (pending.acknowledgedByEventId) return pending;
+      const acknowledgement = [...events]
+        .reverse()
+        .find(
           (event) =>
             !acknowledgedEventIds.has(event.id) &&
             !pending.eventIdsAtSend.has(event.id) &&
             event.sessionId === pending.event.sessionId &&
             event.type === "user.message" &&
-            event.message === pending.event.message
+            event.message === pending.event.message,
         );
-        if (!acknowledgement) return pending;
-        changed = true;
-        acknowledgedEventIds.add(acknowledgement.id);
-        return { ...pending, acknowledgedByEventId: acknowledgement.id };
-      });
-      // Keep acknowledgements as tombstones while an identical send is still
-      // pending. Otherwise the same persisted row would be reused on the next
-      // render and briefly swallow the later bubble too.
-      const unacknowledgedMessages = new Set(
-        reconciledOldestFirst
-          .filter(({ acknowledgedByEventId }) => acknowledgedByEventId === null)
-          .map(({ event }) => event.message)
-      );
-      const retained = reconciledOldestFirst.filter(({ event, acknowledgedByEventId }) => {
-        const keep = acknowledgedByEventId === null || unacknowledgedMessages.has(event.message);
-        if (!keep) changed = true;
-        return keep;
-      });
-      return changed ? retained.reverse() : optimisticUserMessages;
-    },
-    [events, optimisticUserMessages, sessionId]
-  );
+      if (!acknowledgement) return pending;
+      changed = true;
+      acknowledgedEventIds.add(acknowledgement.id);
+      return { ...pending, acknowledgedByEventId: acknowledgement.id };
+    });
+    // Keep acknowledgements as tombstones while an identical send is still
+    // pending. Otherwise the same persisted row would be reused on the next
+    // render and briefly swallow the later bubble too.
+    const unacknowledgedMessages = new Set(
+      reconciledOldestFirst
+        .filter(({ acknowledgedByEventId }) => acknowledgedByEventId === null)
+        .map(({ event }) => event.message),
+    );
+    const retained = reconciledOldestFirst.filter(({ event, acknowledgedByEventId }) => {
+      const keep = acknowledgedByEventId === null || unacknowledgedMessages.has(event.message);
+      if (!keep) changed = true;
+      return keep;
+    });
+    return changed ? retained.reverse() : optimisticUserMessages;
+  }, [events, optimisticUserMessages, sessionId]);
   useEffect(() => {
     if (reconciledOptimisticUserMessages === optimisticUserMessages) return;
     setOptimisticUserMessages(reconciledOptimisticUserMessages);
@@ -451,20 +451,20 @@ export function SessionConversation({
   const visibleOptimisticUserMessages = useMemo(
     () =>
       reconciledOptimisticUserMessages.filter(
-        ({ acknowledgedByEventId }) => acknowledgedByEventId === null
+        ({ acknowledgedByEventId }) => acknowledgedByEventId === null,
       ),
-    [reconciledOptimisticUserMessages]
+    [reconciledOptimisticUserMessages],
   );
   const liveEvents = useMemo(
     () => [
       ...visibleOptimisticUserMessages.map(({ event }) => event),
-      ...eventsAfterLatestClear(events)
+      ...eventsAfterLatestClear(events),
     ],
-    [events, visibleOptimisticUserMessages]
+    [events, visibleOptimisticUserMessages],
   );
   const liveRawOutputs = useMemo(
     () => outputsAfterClear(rawOutputs, latestClearEvent(events)),
-    [events, rawOutputs]
+    [events, rawOutputs],
   );
   const conversationEvents = useMemo(() => buildConversationEvents(liveEvents), [liveEvents]);
   const openRunAt = useMemo(() => openRunMarkerAt(liveEvents), [liveEvents]);
@@ -486,8 +486,8 @@ export function SessionConversation({
         child.workspace?.taskLabel ?? "",
         child.session.attention,
         child.pendingApproval?.command ?? "",
-        child.session.startedAt ?? ""
-      ].join("\u0000")
+        child.session.startedAt ?? "",
+      ].join("\u0000"),
     )
     .join("\u0001");
   const multitaskLive = useMemo(
@@ -497,7 +497,8 @@ export function SessionConversation({
           .split("\u0001")
           .filter((entry) => entry.length > 0)
           .map((entry) => {
-            const [id, state, taskLabel, attention, approvalCommand, startedAt] = entry.split("\u0000");
+            const [id, state, taskLabel, attention, approvalCommand, startedAt] =
+              entry.split("\u0000");
             return [
               id,
               {
@@ -505,16 +506,19 @@ export function SessionConversation({
                 taskLabel,
                 attention: attention as SessionSummary["attention"],
                 approvalCommand: approvalCommand || null,
-                startedAt: startedAt || null
-              }
+                startedAt: startedAt || null,
+              },
             ] as const;
-          })
+          }),
       ),
-    [multitaskLiveKey]
+    [multitaskLiveKey],
   );
-  const stopMultitask = useCallback((sessionId: string): void => {
-    void onTerminateSession(sessionId);
-  }, [onTerminateSession]);
+  const stopMultitask = useCallback(
+    (sessionId: string): void => {
+      void onTerminateSession(sessionId);
+    },
+    [onTerminateSession],
+  );
   const askSideChat = useMemo(() => {
     if (!onOpenSideChat) return undefined;
     return (selection: ChatSelection): void => {
@@ -529,9 +533,11 @@ export function SessionConversation({
       void onOpenDetails(buildDetailsSeed(selection.text, conversationEvents), {
         // The popup hides the seed excerpt; this closure lets its header
         // button attach that excerpt to this composer instead.
-        attachToChat: () => addAnnotation(selection)
+        attachToChat: () => addAnnotation(selection),
       }).catch((error) => {
-        showErrorToast(error instanceof Error ? error.message : "Could not open the details popup.");
+        showErrorToast(
+          error instanceof Error ? error.message : "Could not open the details popup.",
+        );
       });
     };
   }, [addAnnotation, conversationEvents, onOpenDetails]);
@@ -545,8 +551,9 @@ export function SessionConversation({
   // is still in its pre-answer thinking phase.
   const hasRenderableContent = hasRenderableSessionContent(conversationEvents, liveEvents);
   const terminalTranscript = useMemo(
-    () => (hasRenderableContent ? "" : buildTerminalTranscript(liveRawOutputs, session?.id ?? null)),
-    [liveRawOutputs, session?.id, hasRenderableContent]
+    () =>
+      hasRenderableContent ? "" : buildTerminalTranscript(liveRawOutputs, session?.id ?? null),
+    [liveRawOutputs, session?.id, hasRenderableContent],
   );
 
   // A running session or one waiting on user input can hold a genuinely
@@ -556,19 +563,20 @@ export function SessionConversation({
   const sessionRunning = session?.state === "running";
   const sessionProviderActive = sessionRunning || session?.state === "waiting";
   const toolCalls = useMemo(
-    () => buildSessionToolCalls(
-      liveEvents,
-      sessionProviderActive,
-      session?.state === "failed" || session?.state === "cancelled"
-    ),
-    [liveEvents, session?.state, sessionProviderActive]
+    () =>
+      buildSessionToolCalls(
+        liveEvents,
+        sessionProviderActive,
+        session?.state === "failed" || session?.state === "cancelled",
+      ),
+    [liveEvents, session?.state, sessionProviderActive],
   );
   const agentCodenames = useMemo(() => assignAgentCodenames(toolCalls), [toolCalls]);
   // The workspace card's Subagents section reads the same tool list the agent
   // tabs do, so its avatars and counts can never disagree with the tabs.
   const subagentCluster = useMemo(
     () => buildSubagentCluster(toolCalls, agentCodenames, multitasks ?? []),
-    [toolCalls, agentCodenames, multitasks]
+    [toolCalls, agentCodenames, multitasks],
   );
 
   // The card counts what the dock's tab strip counts, so opening it must show
@@ -584,7 +592,8 @@ export function SessionConversation({
       entry.multitask ? multitaskTabId(entry.toolUseId) : entry.toolUseId;
     const clusterTabIds = new Set(subagentCluster.entries.map(tabIdFor));
     const preferred =
-      subagentCluster.entries.find((entry) => entry.status === "running") ?? subagentCluster.entries[0];
+      subagentCluster.entries.find((entry) => entry.status === "running") ??
+      subagentCluster.entries[0];
     if (!preferred) {
       review.openAgents();
       return;
@@ -632,16 +641,17 @@ export function SessionConversation({
 
   const conversationItems = useMemo(
     () => foldConversationItems(conversationEvents, toolCalls),
-    [conversationEvents, toolCalls]
+    [conversationEvents, toolCalls],
   );
 
   const renderItems = useMemo(
     (): RenderItem[] => foldRenderItems(conversationItems, session),
-    [conversationItems, session]
+    [conversationItems, session],
   );
   const { checkpointIds, refresh: refreshCheckpoints } = useTurnCheckpoints(
     revertEnabled ? workspace?.id : undefined,
-    session?.state
+    session?.state,
+    workspace?.lastActivityAt,
   );
   // A turn whose before-turn checkpoint failed carries the reason on its own
   // user message, keyed the same way `checkpointIds` is. Without this the
@@ -676,7 +686,7 @@ export function SessionConversation({
           const status = multitaskDisplayStatus(live?.state ?? notice.state, live?.attention);
           return status === "running" || status === "needs-you";
         }),
-    [renderItems, dismissedMultitasks, multitaskLive]
+    [renderItems, dismissedMultitasks, multitaskLive],
   );
   const dismissMultitaskRow = useCallback((sessionId: string): void => {
     setDismissedMultitasks((current) => dismissMultitask(current, sessionId));
@@ -689,9 +699,9 @@ export function SessionConversation({
           item.assistantEvents.length > 0 ||
           item.steerEvents.length > 0 ||
           item.todo !== undefined ||
-          item.toolItems.length > 0
+          item.toolItems.length > 0,
       ),
-    [renderItems]
+    [renderItems],
   );
   const latestConversationIndex = useMemo(() => {
     for (let index = transcriptRenderItems.length - 1; index >= 0; index -= 1) {
@@ -711,12 +721,31 @@ export function SessionConversation({
     return -1;
   }, [latestConversationIndex, transcriptRenderItems]);
   const [visibleCount, setVisibleCount] = useState(CONVERSATION_WINDOW);
-  // A different session starts from the bottom again.
-  useEffect(() => setVisibleCount(CONVERSATION_WINDOW), [sessionId]);
-  const windowStart = Math.max(0, transcriptRenderItems.length - visibleCount);
+  // How many items are mounted while the window fills after the first paint;
+  // null once it is full. Rows grow above the reader, and the scroll
+  // controller keeps the bottom pinned or the reading anchor in place.
+  const [mountLimit, setMountLimit] = useState<number | null>(FIRST_PAINT_ITEMS);
+  // A different session starts from the bottom again. Reset during render: a
+  // pane that changes session in place must not mount the full window first.
+  const [windowSessionId, setWindowSessionId] = useState(sessionId);
+  if (windowSessionId !== sessionId) {
+    setWindowSessionId(sessionId);
+    setVisibleCount(CONVERSATION_WINDOW);
+    setMountLimit(FIRST_PAINT_ITEMS);
+  }
+  const windowTarget = Math.min(visibleCount, transcriptRenderItems.length);
+  const windowFilling = mountLimit !== null && mountLimit < windowTarget;
+  // A failed backfill loads nothing more, so it ends the fill too.
+  const historySettled = eventsBackfilled || historyLoadFailed;
+  // What Show earlier offers: items outside the full window, not the ones the
+  // fill has yet to mount.
+  const fullWindowStart = Math.max(0, transcriptRenderItems.length - visibleCount);
+  const windowStart = windowFilling
+    ? Math.max(0, transcriptRenderItems.length - mountLimit)
+    : fullWindowStart;
   const windowedItems = useMemo(
     () => transcriptRenderItems.slice(windowStart),
-    [transcriptRenderItems, windowStart]
+    [transcriptRenderItems, windowStart],
   );
   const lastTurnPromptId = useMemo(() => {
     for (let i = transcriptRenderItems.length - 1; i >= 0; i -= 1) {
@@ -771,7 +800,7 @@ export function SessionConversation({
           // pane too narrow to hold it.
           setStatus({
             kind: "info",
-            message: "Workspace card is on. It shows up on chats that have a git worktree."
+            message: "Workspace card is on. It shows up on chats that have a git worktree.",
           });
           return;
         }
@@ -779,7 +808,7 @@ export function SessionConversation({
           setStatus({
             kind: "info",
             message:
-              "Workspace card is on, but this pane is too narrow to show it. Widen the pane or pick a narrower chat width in Settings."
+              "Workspace card is on, but this pane is too narrow to show it. Widen the pane or pick a narrower chat width in Settings.",
           });
         }
       });
@@ -795,9 +824,15 @@ export function SessionConversation({
       additions: totals.additions,
       deletions: totals.deletions,
       isOpen: review.isPanelOpen && review.layout.modes.includes("changes"),
-      onOpen: review.toggleChangesPanel
+      onOpen: review.toggleChangesPanel,
     };
-  }, [review.files, review.filesState, review.isPanelOpen, review.layout.modes, review.toggleChangesPanel]);
+  }, [
+    review.files,
+    review.filesState,
+    review.isPanelOpen,
+    review.layout.modes,
+    review.toggleChangesPanel,
+  ]);
   // Composer is enabled whenever the session is alive. During `running`,
   // typed messages get queued in main and drain when the current turn
   // finishes. `complete` and `cancelled` are also enabled because main's
@@ -808,7 +843,9 @@ export function SessionConversation({
   // live handle, so sending input takes the same relaunch-with-resume path and
   // continues the conversation. An archived workspace can only be read.
   const canSend = Boolean(
-    session && workspace?.state !== "archived" && ["complete", "waiting", "running", "cancelled", "failed"].includes(session.state)
+    session &&
+    workspace?.state !== "archived" &&
+    ["complete", "waiting", "running", "cancelled", "failed"].includes(session.state),
   );
   // Currently running → the next submit goes onto the queue rather than
   // straight to the agent. Used to tweak placeholder and Send tooltip copy.
@@ -819,7 +856,7 @@ export function SessionConversation({
   const childToolUseIds = useMemo(() => subAgentToolUseIds(toolCalls), [toolCalls]);
   const lastSignificantEvent = useMemo(
     () => lastSignificantSessionEvent(liveEvents, childToolUseIds),
-    [childToolUseIds, liveEvents]
+    [childToolUseIds, liveEvents],
   );
   const canonicalLastSignificantEvent = lastSignificantEvent
     ? decodeTimelineEvent(lastSignificantEvent)
@@ -834,7 +871,7 @@ export function SessionConversation({
   // state releases the instant the provider says anything of its own.
   const lastAgentResponseId = useMemo(
     () => lastAgentResponseEvent(liveEvents, childToolUseIds)?.id ?? null,
-    [childToolUseIds, liveEvents]
+    [childToolUseIds, liveEvents],
   );
   const lastAgentResponseIdRef = useRef<string | null>(lastAgentResponseId);
   useEffect(() => {
@@ -863,7 +900,7 @@ export function SessionConversation({
       mode: AgentMode,
       attachments?: ComposerAttachment[],
       _agentReferences?: AgentReference[],
-      delivery: FollowUpDelivery = "queue"
+      delivery: FollowUpDelivery = "queue",
     ): Promise<void> => {
       const optimisticId = `optimistic:${targetSessionId}:${uuidV4()}`;
       const echoed = sessionStateRef.current !== "running";
@@ -876,23 +913,23 @@ export function SessionConversation({
               type: "user.message",
               message: text,
               payload: { source: "composer" },
-              createdAt: new Date().toISOString()
+              createdAt: new Date().toISOString(),
             },
             eventIdsAtSend: new Set(eventsRef.current.map((event) => event.id)),
-            acknowledgedByEventId: null
+            acknowledgedByEventId: null,
           },
-          ...current
+          ...current,
         ]);
       }
       turnSawLiveStateRef.current = false;
       setTurnStartBaseline({
         agentResponseId: lastAgentResponseIdRef.current,
         state: sessionStateRef.current,
-        sentAtMs: Date.now()
+        sentAtMs: Date.now(),
       });
       const dropOptimisticSend = (): void => {
         setOptimisticUserMessages((current) =>
-          current.filter(({ event }) => event.id !== optimisticId)
+          current.filter(({ event }) => event.id !== optimisticId),
         );
         setTurnStartBaseline(null);
       };
@@ -905,7 +942,7 @@ export function SessionConversation({
           targetSessionId === session?.id &&
           isAutoTier(session?.autoTier) &&
           model.provider === session?.provider &&
-          model.modelId === successorModelId(session?.provider, session?.modelId) &&
+          model.modelId === resolveModelId(session?.provider, session?.modelId) &&
           (model.reasoningEffort ?? null) === (session?.reasoningEffort ?? null)
             ? { ...model, autoTier: session?.autoTier }
             : model;
@@ -917,20 +954,52 @@ export function SessionConversation({
             (model.provider === "cursor" && model.modelId !== "composer-2.5")) &&
           model.provider === session?.provider &&
           targetSessionId === session?.id
-          ? nativeAgentReferences(toolCalls, agentCodenames, session?.providerConversationId)
-              .filter((reference) => mentionedNames.has(reference.name.toLowerCase()))
-          : [];
+            ? nativeAgentReferences(
+                toolCalls,
+                agentCodenames,
+                session?.providerConversationId,
+              ).filter((reference) => mentionedNames.has(reference.name.toLowerCase()))
+            : [];
         if (references.length > 0) {
           if (delivery === "steer") {
-            result = await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, references, delivery);
+            result = await onSendSessionInput(
+              targetSessionId,
+              text,
+              deliveryModel,
+              mode,
+              attachments,
+              references,
+              delivery,
+            );
           } else {
-            result = await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, references);
+            result = await onSendSessionInput(
+              targetSessionId,
+              text,
+              deliveryModel,
+              mode,
+              attachments,
+              references,
+            );
           }
         } else {
           if (delivery === "steer") {
-            result = await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, undefined, delivery);
+            result = await onSendSessionInput(
+              targetSessionId,
+              text,
+              deliveryModel,
+              mode,
+              attachments,
+              undefined,
+              delivery,
+            );
           } else {
-            result = await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments);
+            result = await onSendSessionInput(
+              targetSessionId,
+              text,
+              deliveryModel,
+              mode,
+              attachments,
+            );
           }
         }
       } catch (error) {
@@ -944,8 +1013,18 @@ export function SessionConversation({
       // echo, and the cue stays because that turn is still working.
       if (result.queued && echoed) dropOptimisticSend();
     },
-    [onSendSessionInput, session?.id, session?.provider, session?.providerConversationId,
-      session?.autoTier, session?.modelId, session?.reasoningEffort, toolCalls, agentCodenames]
+    [
+      onSendSessionInput,
+      session?.id,
+      session?.provider,
+      session?.providerConversationId,
+      session?.autoTier,
+      // oxlint-disable-next-line argmax/no-raw-model-id -- a dependency key, not a read of the model.
+      session?.modelId,
+      session?.reasoningEffort,
+      toolCalls,
+      agentCodenames,
+    ],
   );
   const isTurnStarting = turnStartBaseline !== null;
   // Whether the session reached a live state after the send. A follow-up sent
@@ -956,7 +1035,11 @@ export function SessionConversation({
   const turnSawLiveStateRef = useRef(false);
   useEffect(() => {
     if (turnStartBaseline === null) return;
-    if (session?.state === "running" || session?.state === "waiting" || session?.state === "blocked") {
+    if (
+      session?.state === "running" ||
+      session?.state === "waiting" ||
+      session?.state === "blocked"
+    ) {
       turnSawLiveStateRef.current = true;
     }
     const agentTookOver = lastAgentResponseId !== turnStartBaseline.agentResponseId;
@@ -1012,9 +1095,9 @@ export function SessionConversation({
           // reports its own terminal state. Reading the receipt itself as
           // visible progress silences this cue throughout the child's work.
           !tool.backgroundLaunch &&
-          !isAskUserQuestionToolName(tool.name)
+          !isAskUserQuestionToolName(tool.name),
       ),
-    [toolCalls]
+    [toolCalls],
   );
   // An outstanding question means the agent has
   // handed the turn over to the user — even if the probe is still alive
@@ -1024,7 +1107,7 @@ export function SessionConversation({
   // the tool's `createdAt`).
   const hasOutstandingCardAsk = useMemo(
     () => sessionHasOutstandingCardAsk(liveEvents, toolCalls),
-    [liveEvents, toolCalls]
+    [liveEvents, toolCalls],
   );
   // The turn is live and nothing visible is progressing this instant. True both
   // for the pre-answer beat (nothing emitted yet) and for mid-turn pauses (the
@@ -1044,7 +1127,7 @@ export function SessionConversation({
       toolItems: latest.toolItems,
       isLatestTurn: true,
       sessionRunning,
-      isPausedOnUserInput: hasOutstandingCardAsk
+      isPausedOnUserInput: hasOutstandingCardAsk,
     });
   }, [hasOutstandingCardAsk, isTurnStarting, renderItems, sessionRunning]);
   const agentWorkingSilently =
@@ -1106,7 +1189,7 @@ export function SessionConversation({
     if (answerBeatId === null) return;
     const remaining = remainingDelayMs(
       THINKING_AFTER_ASSISTANT_COMPLETED_DELAY_MS,
-      lastSignificantEventAtMs
+      lastSignificantEventAtMs,
     );
     if (remaining === 0) {
       setSettledAnswerId(answerBeatId);
@@ -1127,8 +1210,7 @@ export function SessionConversation({
   // screen to double up with. Consulting them there only created ways for the
   // pane to go silent for the ten to thirty seconds a relaunched provider takes
   // to speak, which is the one stretch that most needs a sign of life.
-  const isThinking =
-    isTurnStarting || (agentWorkingSilently && !compacting && !isAnswerSettling);
+  const isThinking = isTurnStarting || (agentWorkingSilently && !compacting && !isAnswerSettling);
   // When this silent stretch began, as far as the transcript can pin it: the
   // last significant event, but never earlier than the send that opened a
   // turn-start beat (that stretch began when the composer fired, not with the
@@ -1166,7 +1248,7 @@ export function SessionConversation({
   /// The line on its way out, or null. It carries its own anchor so the
   /// dissolving line is the one that was just live rather than a remount.
   const [leavingThinking, setLeavingThinking] = useState<{ anchorMs: number | undefined } | null>(
-    null
+    null,
   );
   const thinkingShowTimerRef = useRef<number | null>(null);
   /// Which beat the pending wait was scheduled for, so a beat that starts
@@ -1177,9 +1259,15 @@ export function SessionConversation({
   // consecutive significant events. Per turn, because a previous turn's pace
   // says nothing about this one's — a read-only question and a twelve-file
   // edit are not the same turn twice.
-  const thinkingGapsRef = useRef<{ turnId: string | null; previousAtMs: number | null; gaps: number[] }>(
-    { turnId: null, previousAtMs: null, gaps: [] }
-  );
+  const thinkingGapsRef = useRef<{
+    turnId: string | null;
+    previousAtMs: number | null;
+    gaps: number[];
+  }>({
+    turnId: null,
+    previousAtMs: null,
+    gaps: [],
+  });
 
   useEffect(() => {
     setIsThinkingVisible(false);
@@ -1276,7 +1364,13 @@ export function SessionConversation({
       thinkingHideTimerRef.current = null;
       setLeavingThinking(null);
     }, THINKING_FADE_OUT_MS);
-  }, [anyVisibleToolRunning, isInitialThinkingBeat, isThinking, isThinkingVisible, thinkingAnchorMs]);
+  }, [
+    anyVisibleToolRunning,
+    isInitialThinkingBeat,
+    isThinking,
+    isThinkingVisible,
+    thinkingAnchorMs,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -1322,20 +1416,57 @@ export function SessionConversation({
       sessionId,
       provider: session?.provider ?? null,
       visible: isThinkingVisible,
-      reason: cueReason
+      reason: cueReason,
     });
   }, [cueReason, isThinkingVisible, isTurnStarting, session?.provider, sessionId, sessionRunning]);
 
   // Restored turns must not replay their entrance animation on every reopen.
-  const restoringTranscript = useRestoreWithoutMotion(eventsBackfilled);
+  // Rows that mount while the window fills are restored too.
+  const restoringTranscript = useRestoreWithoutMotion(eventsBackfilled && !windowFilling);
+  useTurnPaintReport(sessionId, events);
   const {
     scrollRef: conversationListRef,
     contentRef: conversationContentRef,
     follow: conversationFollow,
-    scrollToBottom: scrollConversationToBottom
+    scrollToBottom: scrollConversationToBottom,
+    msSinceScrollInput: msSinceConversationScrollInput,
   } = useConversationScroll({ sessionId, items: conversationItems, resetKey: lastTurnPromptId });
+  useEffect(() => {
+    if (mountLimit === null) return;
+    if (!windowFilling) {
+      // A cold open backfills in pages, so a short window can still grow.
+      if (historySettled) setMountLimit(null);
+      return;
+    }
+    // A timeout queued from a frame callback runs after that frame paints.
+    // Growth waits out the reader's scroll input: the anchor correction it
+    // causes is a scrollTop write, which stops a WebKit momentum scroll.
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const grow = (): void => {
+      const quietFor = msSinceConversationScrollInput();
+      if (quietFor < SCROLL_INPUT_QUIET_MS) {
+        timeout = setTimeout(grow, SCROLL_INPUT_QUIET_MS - quietFor);
+        return;
+      }
+      startTransition(() =>
+        setMountLimit((limit) => (limit === null ? null : limit + MOUNT_GROWTH_STEP)),
+      );
+    };
+    const frame = requestAnimationFrame(() => {
+      timeout = setTimeout(grow);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timeout);
+    };
+  }, [historySettled, mountLimit, msSinceConversationScrollInput, windowFilling]);
   // The scroll controller preserves the reading anchor across this prepend.
+  // During the fill the control finishes the window it already offers.
   const showEarlierItems = (): void => {
+    if (windowFilling) {
+      setMountLimit(null);
+      return;
+    }
     setVisibleCount((current) => current + CONVERSATION_WINDOW_STEP);
   };
   const floatingHeading =
@@ -1363,8 +1494,7 @@ export function SessionConversation({
   // would queue behind that turn and never drain, so its answer goes back
   // through the question request whatever the provider.
   const blockingQuestionRequest =
-    liveQuestion?.tool.delivery === "blocking" &&
-    liveQuestion.tool.requestId
+    liveQuestion?.tool.delivery === "blocking" && liveQuestion.tool.requestId
       ? liveQuestion.tool.requestId
       : null;
   const questionDocked =
@@ -1381,31 +1511,13 @@ export function SessionConversation({
       setDismissedQuestionId(liveQuestion.tool.id);
     }
   }, [blockingQuestionRequest, composerDraftPresent, liveQuestion]);
-  // The native iPhone shell draws its own composer card under this page and
-  // has the page's stack hidden, so the docked panel would be hidden with it.
-  // Tell the shell the slot is taken — the panel stays this page's, the card
-  // stands down — and hand it back when the question leaves. A no-op outside
-  // the shell. Nothing to close before the first open: the card is up from the
-  // moment the chat is.
-  const questionPostedRef = useRef(false);
-  useEffect(() => {
-    if (!questionDocked && !questionPostedRef.current) return;
-    questionPostedRef.current = questionDocked;
-    postToNative({ type: "question", open: questionDocked });
-  }, [questionDocked]);
-  useEffect(
-    () => () => {
-      if (questionPostedRef.current) postToNative({ type: "question", open: false });
-    },
-    []
-  );
   const answerLiveQuestion = useCallback(
     async (answerText: string, answers: QuestionAnswers): Promise<boolean> => {
       if (!session || !liveQuestion) return Promise.resolve(false);
       setStatus(null);
       shouldRefocusInput.current = true;
       if (blockingQuestionRequest) {
-        const resolveQuestion = window.argmax?.questions.resolve;
+        const resolveQuestion = questionActions()?.resolve;
         if (!resolveQuestion) {
           return false;
         }
@@ -1413,7 +1525,7 @@ export function SessionConversation({
           await resolveQuestion({
             sessionId: session.id,
             requestId: blockingQuestionRequest,
-            answers
+            answers,
           });
           setDismissedQuestionId(liveQuestion.tool.id);
           return true;
@@ -1426,10 +1538,19 @@ export function SessionConversation({
         session.state === "running",
         onTerminateSession,
         () => sendSessionInput(session.id, answerText, selectedModel, "auto"),
-        () => undefined
+        () => undefined,
       );
     },
-    [blockingQuestionRequest, liveQuestion, onTerminateSession, selectedModel, sendSessionInput, session, setStatus, shouldRefocusInput]
+    [
+      blockingQuestionRequest,
+      liveQuestion,
+      onTerminateSession,
+      selectedModel,
+      sendSessionInput,
+      session,
+      setStatus,
+      shouldRefocusInput,
+    ],
   );
   const dismissLiveQuestion = useCallback(async (): Promise<boolean> => {
     if (!liveQuestion) return false;
@@ -1438,7 +1559,7 @@ export function SessionConversation({
       setDismissedQuestionId(liveQuestion.tool.id);
       return true;
     }
-    const resolveQuestion = window.argmax?.questions.resolve;
+    const resolveQuestion = questionActions()?.resolve;
     if (!resolveQuestion) {
       return false;
     }
@@ -1447,7 +1568,7 @@ export function SessionConversation({
         sessionId: session.id,
         requestId: blockingQuestionRequest,
         answers: {},
-        dismissed: true
+        dismissed: true,
       });
       setDismissedQuestionId(liveQuestion.tool.id);
       return true;
@@ -1456,19 +1577,12 @@ export function SessionConversation({
     }
   }, [blockingQuestionRequest, liveQuestion, session, setStatus]);
 
-  const goalStatus = !floating && session && workspace && goalEnabled ? (
-    <Suspense fallback={null}>
-      <GoalStatus key={`goal:${session.id}`} session={session} />
-    </Suspense>
-  ) : null;
-  // Tucked into the composer everywhere the composer is this page's. Under the
-  // phone shell it is not: `setComposer(true)` hides that whole stack, and a
-  // goal bar hidden with it leaves a running goal with no clear button
-  // anywhere on the phone. So it gets its own stack above the native card,
-  // exempt from that rule the way a docked question is. On desktop it follows
-  // the agent-window scale through the session grid, while the phone keeps its
-  // own native composer scale.
-  const goalInComposer = !nativeComposerFloor;
+  const goalStatus =
+    !floating && session && workspace && goalEnabled ? (
+      <Suspense fallback={null}>
+        <GoalStatus key={`goal:${session.id}`} session={session} />
+      </Suspense>
+    ) : null;
   // Exactly one line is live: the cue if it is up, otherwise the call that just
   // landed, and nothing once the turn settles.
   const activityBeatToolId =
@@ -1478,318 +1592,343 @@ export function SessionConversation({
 
   return (
     <VisualizationSessionContext.Provider value={session?.id ?? null}>
-    <ActivityBeatContext.Provider value={activityBeatToolId}>
-    <section
-      className="conversation-surface"
-      aria-label="Conversation"
-      data-workspace-card={workspaceCardMounted ? "true" : undefined}
-    >
-      <div className="section-heading" data-window-drag={floating ? undefined : true}>
-        {floating ? (
-          <div className="session-title">
-            {workspace && workspace.kind !== "git" ? (
-              <MessagesSquare size={13} aria-hidden="true" className="session-title-icon" />
-            ) : (
-              <GitBranch size={13} aria-hidden="true" className="session-title-icon" />
-            )}
-            <h2>{floatingHeading}</h2>
+      <ActivityBeatContext.Provider value={activityBeatToolId}>
+        <section
+          className="conversation-surface"
+          aria-label="Conversation"
+          data-workspace-card={workspaceCardMounted ? "true" : undefined}
+        >
+          <div className="section-heading" data-window-drag={floating ? undefined : true}>
+            {floating ? (
+              <div className="session-title">
+                {workspace && workspace.kind !== "git" ? (
+                  <MessagesSquare size={13} aria-hidden="true" className="session-title-icon" />
+                ) : (
+                  <GitBranch size={13} aria-hidden="true" className="session-title-icon" />
+                )}
+                <h2>{floatingHeading}</h2>
+              </div>
+            ) : null}
+            <div className="conversation-header-actions">
+              {floating && onAttachToChat ? (
+                <button
+                  className="details-attach-chat"
+                  type="button"
+                  title="Attach the explained excerpt to the chat composer"
+                  onClick={onAttachToChat}
+                >
+                  <MessageSquarePlus size={13} aria-hidden="true" />
+                  <span>Add to chat</span>
+                </button>
+              ) : null}
+              {floating ? null : (
+                <SessionActionsMenu
+                  defaultIde={defaultIde}
+                  detectedIdes={detectedIdes}
+                  onOpenInIde={onOpenInIde}
+                  isLogOpen={isLogOpen}
+                  isWorkspaceCardEnabled={workspaceCardEnabled}
+                  onBrowseFiles={review.openPanelInFilesMode}
+                  onNewSession={onNewSession ? () => onNewSession() : undefined}
+                  onToggleLog={onToggleLog}
+                  onToggleWorkspaceCard={handleToggleWorkspaceCard}
+                  onOpenLaunchingChat={
+                    session?.launchedBySessionId && onOpenSession
+                      ? () => onOpenSession(session.launchedBySessionId as string)
+                      : undefined
+                  }
+                  onStartArc={
+                    session && !session.arcId && !session.imported && arcActions()
+                      ? {
+                          run: () => showPromoteArcDialog(session.id),
+                          disabledReason: ["created", "running", "blocked"].includes(session.state)
+                            ? "Wait for this turn to finish"
+                            : null,
+                        }
+                      : undefined
+                  }
+                  session={session}
+                  workspace={workspace}
+                />
+              )}
+              {onClose ? (
+                <button
+                  className="small-icon session-pane-close"
+                  type="button"
+                  title={floating ? "Close popup" : "Close pane (⌘W)"}
+                  aria-label={floating ? "Close popup" : "Close pane"}
+                  onClick={onClose}
+                >
+                  <X size={16} />
+                </button>
+              ) : null}
+            </div>
           </div>
-        ) : null}
-        <div className="conversation-header-actions">
-          {floating && onAttachToChat ? (
-            <button
-              className="details-attach-chat"
-              type="button"
-              title="Attach the explained excerpt to the chat composer"
-              onClick={onAttachToChat}
+          {historyLoadFailed ? (
+            <div
+              className="conversation-history-retry loading-line"
+              role="status"
+              aria-label="Chat history unavailable"
             >
-              <MessageSquarePlus size={13} aria-hidden="true" />
-              <span>Add to chat</span>
-            </button>
+              <span>Chat history could not load.</span>
+              <button type="button" className="empty-state-retry" onClick={onRetryHistoryLoad}>
+                Retry
+              </button>
+            </div>
           ) : null}
-          {floating ? null : (
-            <SessionActionsMenu
-              defaultIde={defaultIde}
-              detectedIdes={detectedIdes}
-              onOpenInIde={onOpenInIde}
-              isLogOpen={isLogOpen}
-              isWorkspaceCardEnabled={workspaceCardEnabled}
-              onBrowseFiles={review.openPanelInFilesMode}
-              onNewSession={onNewSession ? () => onNewSession() : undefined}
-              onToggleLog={onToggleLog}
-              onToggleWorkspaceCard={handleToggleWorkspaceCard}
-              onOpenLaunchingChat={
-                session?.launchedBySessionId && onOpenSession
-                  ? () => onOpenSession(session.launchedBySessionId as string)
-                  : undefined
-              }
-              onStartArc={
-                session && !session.arcId && !session.imported && window.argmax?.arcs
-                  ? {
-                      run: () => showPromoteArcDialog(session.id),
-                      disabledReason: ["created", "running", "blocked"].includes(session.state)
-                        ? "Wait for this turn to finish"
-                        : null
-                    }
-                  : undefined
-              }
-              session={session}
-              workspace={workspace}
-            />
-          )}
-          {onClose ? (
-            <button
-              className="small-icon session-pane-close"
-              type="button"
-              title={floating ? "Close popup" : "Close pane (⌘W)"}
-              aria-label={floating ? "Close popup" : "Close pane"}
-              onClick={onClose}
-            >
-              <X size={16} />
-            </button>
-          ) : null}
-        </div>
-      </div>
-      {historyLoadFailed ? (
-        <div className="conversation-history-retry loading-line" role="status" aria-label="Chat history unavailable">
-          <span>Chat history could not load.</span>
-          <button type="button" className="empty-state-retry" onClick={onRetryHistoryLoad}>Retry</button>
-        </div>
-      ) : null}
-      {/* Wrapper for the scroll edges: `.scroll-fade` sits on this box,
+          {/* Wrapper for the scroll edges: `.scroll-fade` sits on this box,
           outside the scroller, so the sticky scroll-to-latest button
           inside the list never fades with the content passing under it. */}
-      {/* The backlog lands in pages, each one growing the transcript and
+          {/* The backlog lands in pages, each one growing the transcript and
           re-pinning it to the bottom, so a chat opened cold would show its
           first prompt at the top and then jump. Keep the list laid out but
           invisible until the last page is in; the scroll controller pins the
           bottom in the meantime and the reveal changes nothing it measured. */}
-      <div
-        className="conversation-scroll scroll-fade"
-        ref={conversationScrollRef}
-        data-restoring={restoringTranscript ? "true" : undefined}
-        data-loading={eventsBackfilled || historyLoadFailed ? undefined : "true"}
-      >
-        {eventsBackfilled || historyLoadFailed ? null : (
-          <div className="conversation-loading loading-line" role="status" aria-label="Loading chat">
-            <WorkingNest active size={16} />
-          </div>
-        )}
-        {prMilestone ? <TurnExhale key={prMilestone} weight={1} onDone={finishPrMilestone} /> : null}
-        {workspaceCardMounted && workspace ? (
-          <WorkspaceCard
-            changeSummary={changeSummary}
-            changesState={review.filesState}
-            isTerminalOpen={isTerminalOpen ?? false}
-            onBrowseFiles={review.openPanelInFilesMode}
-            onHide={() => onHideWorkspaceCard?.()}
-            onOpenChanges={() => {
-              review.projectFolderChanges?.clearSelection();
-              if (review.projectFolderChanges?.selection) review.openChangesPanel();
-              else review.toggleChangesPanel();
-            }}
-            workingFolderName={repoNameFromPath(review.projectFolderChanges?.workingFolder?.rootPath) ?? review.projectFolderChanges?.workingFolder?.name}
-            projectFolderChanges={review.projectFolderChanges?.groups}
-            onOpenFolderChanges={(folderId, filePath) => {
-              review.projectFolderChanges?.selectFile(folderId, filePath);
-              review.openChangesPanel();
-            }}
-            onOpenAgents={handleOpenAgents}
-            onToggleTerminal={() => onToggleTerminal?.()}
-            session={session}
-            setStatus={setStatus}
-            subagents={subagentCluster}
-            workspace={workspace}
-          />
-        ) : null}
-        <div
-          className="conversation-list"
-          ref={conversationListRef}
-          aria-label="Conversation messages"
-          tabIndex={0}
-        >
-          <div className="conversation-content" ref={conversationContentRef}>
-            {windowStart > 0 ? (
-              <ShowEarlier noun="messages" count={windowStart} onClick={showEarlierItems} />
-            ) : null}
-            {transcriptRenderItems.length > 0 ? (
-              windowedItems.map((item, windowIndex) => {
-                const index = windowStart + windowIndex;
-                if (item.kind === "user-message") {
-                  return (
-                    <SessionConversationUserMessage
-                      key={item.event.id}
-                      event={item.event}
-                      attachments={parseUserMessageAttachments(item)}
-                      isTurnAnchor={item.event.id === lastTurnPromptId}
-                      onOpenSession={onOpenSession}
-                    />
-                  );
-                }
-                if (item.kind === "compaction") {
-                  return <CompactionNotice key={item.id} notice={item.notice} />;
-                }
-                if (item.kind === "project-move") {
-                  return <ProjectMoveNotice key={item.id} notice={item.notice} />;
-                }
-                if (item.kind === "provider-switch") {
-                  return <ProviderSwitchNotice key={item.id} notice={item.notice} />;
-                }
-                if (item.kind === "session-note") {
-                  return <SessionNote key={item.id} message={item.message} sourceActivity={item.sourceActivity} />;
-                }
-                return (
-                  <SessionConversationTurn
-                    key={item.id}
-                    item={item}
-                    priorItem={index > 0 ? transcriptRenderItems[index - 1] ?? null : null}
-                    isLatestTurn={index === latestTurnIndex}
-                    openRunAt={openRunAt}
-                    session={session}
-                    workspace={workspace}
-                    agentCodenames={agentCodenames}
-                    onOpenFile={onOpenFile}
-                    onOpenAgent={onOpenAgent}
-                    onForkSession={onForkSession}
-                    revertCheckpointIds={checkpointIds}
-                    revertCheckpointUnavailable={checkpointUnavailable}
-                    onReverted={() => {
-                      refreshCheckpoints();
-                      review.workspaceFiles.refreshList();
-                      review.openChangesPanel();
-                    }}
-                    defaultToolCallsDisplay={defaultToolCallsDisplay}
-                    defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
-                    thinkingDisplay={thinkingDisplay}
-                    defaultTurnChangesExpanded={defaultTurnChangesExpanded}
-                    follow={conversationFollow}
-                    restoringTranscript={restoringTranscript}
-                    todo={item.todo ?? null}
-                    onOpenDiff={onOpenDiff ?? review.openFile}
-                    onOpenReview={onOpenChanges ?? review.openChangesPanel}
-                  />
-                );
-              })
-            ) : terminalTranscript ? (
-              <article className="chat-bubble assistant terminal-transcript">
-                <pre>{terminalTranscript}</pre>
-              </article>
-            ) : isThinking ? null : (
-              <p className="conversation-empty">Agent replies will appear here.</p>
+          <div
+            className="conversation-scroll scroll-fade"
+            data-testid="conversation-scroll"
+            ref={conversationScrollRef}
+            data-restoring={restoringTranscript ? "true" : undefined}
+            data-loading={eventsBackfilled || historyLoadFailed ? undefined : "true"}
+          >
+            {eventsBackfilled || historyLoadFailed ? null : (
+              <div
+                className="conversation-loading loading-line"
+                role="status"
+                aria-label="Loading chat"
+              >
+                <WorkingNest active size={16} />
+              </div>
             )}
-            {terminalTranscript && conversationItems.length > 0 ? (
-              <article className="chat-bubble assistant terminal-transcript">
-                <pre>{terminalTranscript}</pre>
-              </article>
+            {prMilestone ? (
+              <TurnExhale key={prMilestone} weight={1} onDone={finishPrMilestone} />
             ) : null}
-            {/* The Thinking line's slot stays in the layout whether the line is
+            {workspaceCardMounted && workspace ? (
+              <WorkspaceCard
+                changeSummary={changeSummary}
+                changesState={review.filesState}
+                isTerminalOpen={isTerminalOpen ?? false}
+                onBrowseFiles={review.openPanelInFilesMode}
+                onHide={() => onHideWorkspaceCard?.()}
+                onOpenChanges={() => {
+                  review.projectFolderChanges?.clearSelection();
+                  if (review.projectFolderChanges?.selection) review.openChangesPanel();
+                  else review.toggleChangesPanel();
+                }}
+                workingFolderName={
+                  repoNameFromPath(review.projectFolderChanges?.workingFolder?.rootPath) ??
+                  review.projectFolderChanges?.workingFolder?.name
+                }
+                projectFolderChanges={review.projectFolderChanges?.groups}
+                onOpenFolderChanges={(folderId, filePath) => {
+                  review.projectFolderChanges?.selectFile(folderId, filePath);
+                  review.openChangesPanel();
+                }}
+                onOpenAgents={handleOpenAgents}
+                onToggleTerminal={() => onToggleTerminal?.()}
+                session={session}
+                setStatus={setStatus}
+                subagents={subagentCluster}
+                workspace={workspace}
+              />
+            ) : null}
+            <div
+              className="conversation-list"
+              ref={conversationListRef}
+              aria-label="Conversation messages"
+              tabIndex={0}
+            >
+              <div className="conversation-content" ref={conversationContentRef}>
+                {fullWindowStart > 0 ? (
+                  <ShowEarlier noun="messages" count={fullWindowStart} onClick={showEarlierItems} />
+                ) : null}
+                {transcriptRenderItems.length > 0 ? (
+                  windowedItems.map((item, windowIndex) => {
+                    const index = windowStart + windowIndex;
+                    if (item.kind === "user-message") {
+                      return (
+                        <SessionConversationUserMessage
+                          key={item.event.id}
+                          event={item.event}
+                          attachments={parseUserMessageAttachments(item)}
+                          isTurnAnchor={item.event.id === lastTurnPromptId}
+                          onOpenSession={onOpenSession}
+                        />
+                      );
+                    }
+                    if (item.kind === "compaction") {
+                      return <CompactionNotice key={item.id} notice={item.notice} />;
+                    }
+                    if (item.kind === "project-move") {
+                      return <ProjectMoveNotice key={item.id} notice={item.notice} />;
+                    }
+                    if (item.kind === "provider-switch") {
+                      return <ProviderSwitchNotice key={item.id} notice={item.notice} />;
+                    }
+                    if (item.kind === "session-note") {
+                      return (
+                        <SessionNote
+                          key={item.id}
+                          message={item.message}
+                          sourceActivity={item.sourceActivity}
+                        />
+                      );
+                    }
+                    return (
+                      <SessionConversationTurn
+                        key={item.id}
+                        item={item}
+                        priorItem={index > 0 ? (transcriptRenderItems[index - 1] ?? null) : null}
+                        isLatestTurn={index === latestTurnIndex}
+                        openRunAt={openRunAt}
+                        session={session}
+                        workspace={workspace}
+                        agentCodenames={agentCodenames}
+                        onOpenFile={onOpenFile}
+                        onOpenAgent={onOpenAgent}
+                        onForkSession={onForkSession}
+                        revertCheckpointIds={checkpointIds}
+                        revertCheckpointUnavailable={checkpointUnavailable}
+                        onReverted={() => {
+                          refreshCheckpoints();
+                          review.workspaceFiles.refreshList();
+                          review.openChangesPanel();
+                        }}
+                        defaultToolCallsDisplay={defaultToolCallsDisplay}
+                        defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+                        thinkingDisplay={thinkingDisplay}
+                        defaultTurnChangesExpanded={defaultTurnChangesExpanded}
+                        follow={conversationFollow}
+                        restoringTranscript={restoringTranscript}
+                        todo={item.todo ?? null}
+                        onOpenDiff={review.openFile}
+                        onOpenReview={review.openChangesPanel}
+                      />
+                    );
+                  })
+                ) : terminalTranscript ? (
+                  <article
+                    className="chat-bubble assistant terminal-transcript"
+                    data-testid="terminal-transcript"
+                  >
+                    <pre>{terminalTranscript}</pre>
+                  </article>
+                ) : isThinking ? null : (
+                  <p className="conversation-empty">Agent replies will appear here.</p>
+                )}
+                {terminalTranscript && conversationItems.length > 0 ? (
+                  <article
+                    className="chat-bubble assistant terminal-transcript"
+                    data-testid="terminal-transcript"
+                  >
+                    <pre>{terminalTranscript}</pre>
+                  </article>
+                ) : null}
+                {/* The Thinking line's slot stays in the layout whether the line is
                 in it or not. It sits after the transcript, and it leaves at the
                 moment the first answer token lands. Unmounting the row there
                 would shorten the transcript under a reader pinned to the bottom
                 and pull the view up by its height. */}
-            <div className="conversation-tail">
-              {isThinkingVisible || leavingThinking !== null ? (
-                <ThinkingLabel
-                  phaseKey={workspace?.id ?? session?.id}
-                  startedAtMs={isThinkingVisible ? thinkingAnchorMs : leavingThinking?.anchorMs}
-                  leaving={!isThinkingVisible}
-                />
-              ) : null}
+                <div className="conversation-tail" data-testid="conversation-tail">
+                  {isThinkingVisible || leavingThinking !== null ? (
+                    <ThinkingLabel
+                      phaseKey={workspace?.id ?? session?.id}
+                      startedAtMs={isThinkingVisible ? thinkingAnchorMs : leavingThinking?.anchorMs}
+                      leaving={!isThinkingVisible}
+                    />
+                  ) : null}
+                </div>
+              </div>
             </div>
+            <ScrollToLatestButton
+              follow={conversationFollow}
+              onClick={scrollConversationToBottom}
+            />
           </div>
-        </div>
-        <ScrollToLatestButton follow={conversationFollow} onClick={scrollConversationToBottom} />
-      </div>
-      <SelectionToolbar
-        containerRef={conversationScrollRef}
-        onAddToChat={addAnnotation}
-        {...(askSideChat ? { onAskSideChat: askSideChat } : {})}
-        {...(askDetails ? { onMoreDetails: askDetails } : {})}
-      />
-      <div className="session-meta-cards">
-        {session ? <ForkBar sessionId={session.id} onOpenSession={onOpenSession} /> : null}
-        <ChangedFilesCard
-          workspaceId={workspace?.id}
-          checkCommands={workspace?.checkCommands ?? project?.settings.checkCommands ?? []}
-          checks={checks ?? []}
-          onRunCheck={onRunCheck}
-        />
-        {composerMultitaskNotices.length > 0 ? (
-          <MultitaskGroup
-            notices={composerMultitaskNotices}
-            live={multitaskLive}
-            onOpen={onOpenMultitask ?? onOpenSession}
-            onStop={stopMultitask}
-            onDismiss={dismissMultitaskRow}
-            onLoadSessionEvents={onLoadSessionEvents}
+          <SelectionToolbar
+            containerRef={conversationScrollRef}
+            onAddToChat={addAnnotation}
+            {...(askSideChat ? { onAskSideChat: askSideChat } : {})}
+            {...(askDetails ? { onMoreDetails: askDetails } : {})}
           />
-        ) : null}
-        <PrWatchPill prs={workspace?.prs ?? []} chatFontSize={chatFontSize} />
-      </div>
-      {goalInComposer || !goalStatus ? null : (
-        <div
-          className="session-composer-stack"
-          data-goal
-          data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
-          data-type-scale={chatFontSize === undefined ? "composer" : undefined}
-        >
-          {goalStatus}
-        </div>
-      )}
-      {questionDocked && liveQuestion ? (
-        <div className="session-composer-stack" data-question>
-          {goalInComposer ? goalStatus : null}
-          <QuestionDock
-            key={liveQuestion.tool.id}
-            questions={liveQuestion.tool.questions}
-            onAnswer={answerLiveQuestion}
-            onDismiss={dismissLiveQuestion}
-            {...(blockingQuestionRequest ? { dismissLabel: "Dismiss question" } : {})}
-          />
-        </div>
-      ) : (
-      <SessionComposer
-        isFocused={isFocused}
-        canSend={canSend}
-        chatFontSize={chatFontSize}
-        changeSummary={changeSummary}
-        contextIndicatorEnabled={contextIndicatorEnabled}
-        fastModeEnabled={fastModeEnabled}
-        floating={floating}
-        inputRef={inputRef}
-        isQueueing={isQueueing}
-        defaultFollowUpDelivery={defaultFollowUpDelivery}
-        sentPrompts={sentPrompts}
-        onFastModeEnabledChange={onFastModeEnabledChange}
-        onDraftPresentChange={setComposerDraftPresent}
-        onCancelQueuedMessage={onCancelQueuedMessage}
-        onSendQueuedMessageNow={onSendQueuedMessageNow}
-        onMultitask={onMultitask}
-        onExpandToFullChat={onExpandToFullChat}
-        onSendSessionInput={sendSessionInput}
-        onStartNewSession={onNewSession}
-        onTerminateSession={onTerminateSession}
-        onClearSession={onClearSession}
-        pendingAnnotations={pendingAnnotations}
-        onRemoveAnnotation={removeAnnotation}
-        onClearAnnotations={clearAnnotations}
-        openFilePaths={openFilePaths}
-        pendingMessages={pendingMessages}
-        reviewPanelOpen={review.isPanelOpen}
-        selectedModel={selectedModel}
-        session={session}
-        setSelectedModel={setSelectedModelForSession}
-        setStatus={setStatus}
-        shouldRefocusInput={shouldRefocusInput}
-        status={status}
-        workspace={workspace}
-        goalEnabled={goalEnabled}
-        goalMaxTurns={goalMaxTurns}
-        goalStatus={goalInComposer ? goalStatus : null}
-      />
-      )}
-    </section>
-    </ActivityBeatContext.Provider>
+          <div className="session-meta-cards" data-testid="session-meta-cards">
+            {session ? <ForkBar sessionId={session.id} onOpenSession={onOpenSession} /> : null}
+            <ChangedFilesCard
+              workspaceId={workspace?.id}
+              checkCommands={workspace?.checkCommands ?? project?.settings.checkCommands ?? []}
+              checks={checks ?? []}
+              onRunCheck={onRunCheck}
+            />
+            {composerMultitaskNotices.length > 0 ? (
+              <MultitaskGroup
+                notices={composerMultitaskNotices}
+                live={multitaskLive}
+                onOpen={onOpenMultitask ?? onOpenSession}
+                onStop={stopMultitask}
+                onDismiss={dismissMultitaskRow}
+                onLoadSessionEvents={onLoadSessionEvents}
+              />
+            ) : null}
+            <PrWatchPill prs={workspace?.prs ?? []} chatFontSize={chatFontSize} />
+          </div>
+          {questionDocked && liveQuestion ? (
+            <div
+              className="session-composer-stack"
+              data-testid="question-composer-stack"
+              data-question
+            >
+              {goalStatus}
+              <QuestionDock
+                key={liveQuestion.tool.id}
+                questions={liveQuestion.tool.questions}
+                onAnswer={answerLiveQuestion}
+                onDismiss={dismissLiveQuestion}
+                {...(blockingQuestionRequest ? { dismissLabel: "Dismiss question" } : {})}
+              />
+            </div>
+          ) : (
+            <SessionComposer
+              isFocused={isFocused}
+              canSend={canSend}
+              chatFontSize={chatFontSize}
+              changeSummary={changeSummary}
+              contextIndicatorEnabled={contextIndicatorEnabled}
+              fastModeEnabled={fastModeEnabled}
+              floating={floating}
+              inputRef={inputRef}
+              isQueueing={isQueueing}
+              defaultFollowUpDelivery={defaultFollowUpDelivery}
+              sentPrompts={sentPrompts}
+              onFastModeEnabledChange={onFastModeEnabledChange}
+              onDraftPresentChange={setComposerDraftPresent}
+              onCancelQueuedMessage={onCancelQueuedMessage}
+              onSendQueuedMessageNow={onSendQueuedMessageNow}
+              onMultitask={onMultitask}
+              onExpandToFullChat={onExpandToFullChat}
+              onSendSessionInput={sendSessionInput}
+              onStartNewSession={onNewSession}
+              onTerminateSession={onTerminateSession}
+              onClearSession={onClearSession}
+              pendingAnnotations={pendingAnnotations}
+              onRemoveAnnotation={removeAnnotation}
+              onClearAnnotations={clearAnnotations}
+              openFilePaths={openFilePaths}
+              pendingMessages={pendingMessages}
+              reviewPanelOpen={review.isPanelOpen}
+              selectedModel={selectedModel}
+              session={session}
+              setSelectedModel={setSelectedModelForSession}
+              setStatus={setStatus}
+              shouldRefocusInput={shouldRefocusInput}
+              status={status}
+              workspace={workspace}
+              goalEnabled={goalEnabled}
+              goalMaxTurns={goalMaxTurns}
+              goalStatus={goalStatus}
+            />
+          )}
+        </section>
+      </ActivityBeatContext.Provider>
     </VisualizationSessionContext.Provider>
   );
 }

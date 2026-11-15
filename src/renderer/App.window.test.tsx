@@ -7,7 +7,7 @@ import {
   sessionRow,
   setupAppTestMocks,
   snapshot,
-  workspaceRow
+  workspaceRow,
 } from "../test/appTestHarness.js";
 
 // A chat torn off into a second desktop window: the row action that opens
@@ -40,7 +40,7 @@ describe("App windows", () => {
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
-      sessions: [...snapshot.sessions, secondSession]
+      sessions: [...snapshot.sessions, secondSession],
     });
     window.history.replaceState(null, "", `/?session=${secondSession.id}`);
 

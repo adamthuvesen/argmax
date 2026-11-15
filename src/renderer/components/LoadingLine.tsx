@@ -12,7 +12,7 @@ import { WorkingNest } from "./WorkingNest.js";
  */
 export function LoadingLine({
   label,
-  className
+  className,
 }: {
   label: string;
   className?: string;

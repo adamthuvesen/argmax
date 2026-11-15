@@ -12,7 +12,7 @@ import type { JSX, ReactNode } from "react";
  */
 export function MarkdownTable({ children }: { children?: ReactNode }): JSX.Element {
   return (
-    <div className="markdown-table-scroll">
+    <div className="markdown-table-scroll" data-testid="markdown-table-scroll">
       <table>{children}</table>
     </div>
   );

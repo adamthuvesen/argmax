@@ -1,9 +1,10 @@
 import Foundation
 
-// Codable mirrors of the TypeScript dashboard shapes the bridge serialises
-// (`src/shared/types.ts`, generated from Rust by tauri-specta). Only the
-// fields the phone reads are here: everything else on the wire is ignored,
-// which is what keeps a host that grows a column from breaking this app.
+// The enums and containers around the dashboard rows. The rows themselves are
+// in GeneratedWireResponses.swift, generated from the Rust bindings by
+// `scripts/export-swift-contracts.mjs`. Only the fields the phone reads are
+// there: everything else on the wire is ignored, which is what keeps a host
+// that grows a column from breaking this app.
 //
 // Two rules make that tolerance real, and both are load-bearing:
 //
@@ -196,101 +197,6 @@ enum WorkspaceKind: OpenWireEnum {
 /// "Chat", which is the label a repo-less chat's row wears.
 let scratchProjectID = "scratch-side-chats"
 
-/// `ProjectSummary`. `settings` and `counts` are desktop-only and dropped.
-struct ProjectSummary: Codable, Hashable, Sendable, Identifiable {
-    var id: String
-    var name: String
-    var repoPath: String
-    var currentBranch: String
-    var defaultBranch: String?
-    var latestActivityAt: String?
-}
-
-/// `WorkspaceSummary` — the unit of work a chat list row stands for.
-///
-/// The PR and priority columns are here because the Priority section reads
-/// them directly: a red check or an open pull request is the workspace's
-/// business, not any one session's.
-struct WorkspaceSummary: Codable, Hashable, Sendable, Identifiable {
-    var id: String
-    var projectId: String
-    /// The project folder this chat works in. Nil for side chats and for
-    /// hosts older than named projects. "New chat here" sends it back so the
-    /// new chat starts in the same folder.
-    var projectFolderId: String? = nil
-    var taskLabel: String
-    var branch: String
-    var baseRef: String
-    var path: String
-    var state: WorkspaceState
-    var kind: WorkspaceKind
-    var sharedWorkspace: Bool
-    var dirty: Bool
-    var changedFiles: Int
-    var lastActivityAt: String
-    var pinned: Bool
-    var priorityDismissedAt: String?
-    var priorityAddedAt: String?
-    /// RFC 3339 instant the desktop's snooze shelf holds this row until. Display
-    /// metadata only — a snooze never changes the chat's state. Absent when the
-    /// host omits it (not snoozed, or a host older than the shelf). The phone
-    /// decodes it so the field survives a round trip; it does not shelve rows.
-    var snoozedUntil: String?
-    var prState: String?
-    var prNumber: Int?
-    var prCheckState: String?
-    var prActivityAt: String?
-    /// The glyph the desktop's icon picker put on this row, as a curated
-    /// Lucide name (`src/renderer/lib/sessionIcons.ts`). Optional because a
-    /// row only has one once someone picks it, and because the host wrote
-    /// rows before the column existed.
-    var icon: String?
-    /// The palette entry paired with `icon` — a *name* ("violet"), not a
-    /// colour: the value is a token both clients resolve against their own
-    /// theme, which is how one pick reads right on paper and on charcoal.
-    var iconColor: String?
-    /// Shared host acknowledgement of the activity actually shown on a device.
-    var lastViewedAt: String? = nil
-    var prs: [WorkspacePullRequest]? = nil
-}
-
-struct WorkspacePullRequest: Codable, Hashable, Sendable {
-    var prNumber: Int
-    var url: String?
-}
-
-/// `SessionSummary` — one chat with one provider.
-///
-/// `launchKind` and `launchedBySessionId` are the multitask linkage: a
-/// multitask belongs to the chat that dispatched it and has no row of its own.
-struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
-    var id: String
-    var workspaceId: String
-    var provider: String
-    var modelLabel: String
-    var modelId: String
-    var prompt: String
-    var state: SessionState
-    var attention: AttentionState
-    /// When `attention` last changed. Null on rows written before the column
-    /// existed, which the Priority rules treat as "not yet a reason".
-    var attentionChangedAt: String?
-    var startedAt: String
-    var completedAt: String?
-    var lastActivityAt: String
-    var imported: Bool
-    var launchKind: String
-    var launchedBySessionId: String?
-    /// Read on open so the composer's effort chip starts right instead of
-    /// showing the first option until the metadata read lands.
-    var reasoningEffort: String?
-    /// The Arc this chat belongs to, as its coordinator or a member.
-    var arcId: String? = nil
-    /// The Router tier while the router picks this chat's model; absent once
-    /// a model is picked by hand.
-    var autoTier: String? = nil
-}
-
 /// The four slices of `DashboardSnapshot` the phone keeps.
 ///
 /// The host also sends `events`, `rawOutputs`, `approvals`, `checks` and
@@ -325,42 +231,5 @@ struct DashboardSnapshot: Codable, Hashable, Sendable {
         sessions = try container.decodeIfPresent([SessionSummary].self, forKey: .sessions) ?? []
         // Also absent from a snapshot this app cached before it read arcs.
         arcs = try container.decodeIfPresent([ArcSummary].self, forKey: .arcs) ?? []
-    }
-}
-
-/// `DashboardDelta` — whole-object replacement per row, plus the two removal
-/// lists, which are the only way the protocol can say "gone".
-struct DashboardDelta: Codable, Hashable, Sendable {
-    var projects: [ProjectSummary]?
-    var workspaces: [WorkspaceSummary]?
-    var sessions: [SessionSummary]?
-    var removedSessionIds: [String]?
-    var removedWorkspaceIds: [String]?
-    /// Hints rather than rows: the host says "the dashboard moved, read it
-    /// again" instead of shipping the changed rows, and names the sessions
-    /// whose transcripts advanced. `resyncRequired` means the event stream
-    /// dropped frames and the whole snapshot must be reloaded.
-    var dashboardChanged: Bool?
-    var changedSessionIds: [String]?
-    var resyncRequired: Bool?
-
-    init(
-        projects: [ProjectSummary]? = nil,
-        workspaces: [WorkspaceSummary]? = nil,
-        sessions: [SessionSummary]? = nil,
-        removedSessionIds: [String]? = nil,
-        removedWorkspaceIds: [String]? = nil,
-        dashboardChanged: Bool? = nil,
-        changedSessionIds: [String]? = nil,
-        resyncRequired: Bool? = nil
-    ) {
-        self.dashboardChanged = dashboardChanged
-        self.changedSessionIds = changedSessionIds
-        self.resyncRequired = resyncRequired
-        self.projects = projects
-        self.workspaces = workspaces
-        self.sessions = sessions
-        self.removedSessionIds = removedSessionIds
-        self.removedWorkspaceIds = removedWorkspaceIds
     }
 }

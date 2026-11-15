@@ -3,9 +3,11 @@ import { useEffect, useRef, useState } from "react";
 const DEFAULT_DURATION_MS = 600;
 
 function readPrefersReducedMotion(): boolean {
-  return typeof window !== "undefined" &&
+  return (
+    typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 /**
@@ -19,7 +21,10 @@ function readPrefersReducedMotion(): boolean {
  * displayed value when the target moves mid-flight, and always lands
  * exactly on it.
  */
-export function useAnimatedNumber(target: number, durationMs: number = DEFAULT_DURATION_MS): number {
+export function useAnimatedNumber(
+  target: number,
+  durationMs: number = DEFAULT_DURATION_MS,
+): number {
   const [display, setDisplay] = useState(target);
   const displayRef = useRef(target);
   const rafRef = useRef(0);

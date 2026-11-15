@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::support::git_repo::seed_git_repo;
-use argmax_lib::git::exec::{
+use argmax_process::git_exec::{
     reject_leading_dash, run_git_buffer, run_git_buffer_with_options, run_git_text,
     run_git_text_with_allowed_exit_codes, run_git_text_with_options, GitExecOptions,
 };
@@ -184,7 +184,7 @@ async fn hooks_run_with_the_hydrated_path() {
     // the child got its PATH from us. Containment rather than equality because
     // git prepends its own exec-path before handing PATH to a hook.
     let hook_path = std::fs::read_to_string(&recorded).expect("hook recorded its PATH");
-    let hydrated = argmax_lib::util::login_shell::path();
+    let hydrated = argmax_process::login_shell::path();
     assert!(
         hook_path.contains(&hydrated),
         "hook PATH did not come from the login shell\n  hook: {hook_path}\n  want: {hydrated}"

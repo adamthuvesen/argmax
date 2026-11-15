@@ -53,7 +53,13 @@ const SPARK_SIZE = 3;
 
 type Spark = { x: number; y: number; vx: number; vy: number; life: number };
 
-export function TurnExhale({ weight, onDone }: { weight: number; onDone: () => void }): JSX.Element {
+export function TurnExhale({
+  weight,
+  onDone,
+}: {
+  weight: number;
+  onDone: () => void;
+}): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Held in a ref so a re-render of the turn (a hover, a sibling delta) can
   // never restart the sweep or leave a second loop running.
@@ -162,7 +168,7 @@ export function TurnExhale({ weight, onDone }: { weight: number; onDone: () => v
             y: height - Math.random() * height * 0.55,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
-            life: SPARK_LIFE
+            life: SPARK_LIFE,
           });
         }
       }
@@ -217,7 +223,7 @@ export function TurnExhale({ weight, onDone }: { weight: number; onDone: () => v
     });
     themeObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme", "data-accent"]
+      attributeFilter: ["data-theme", "data-accent"],
     });
 
     return () => {

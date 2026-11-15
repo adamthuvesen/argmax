@@ -1,10 +1,10 @@
 use super::inputs::*;
 use crate::{
     checks::service::{CheckService, RunWorkspaceCheckInput},
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::checks::CheckRun,
     state::AppState,
 };
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::checks::CheckRun;
 use std::sync::Arc;
 use tauri::State;
 

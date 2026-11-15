@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnBlock, type TurnBodyChild, type TurnToolItem } from "./TurnBlock.js";
 import { __liveTimerTickForTest } from "../lib/liveTimer.js";
@@ -16,7 +16,7 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
     createdAt: "2026-05-12T15:00:00.000Z",
     completedAt: "2026-05-12T15:00:02.500Z",
     error: null,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -27,13 +27,13 @@ function body(...children: TurnBodyChild[]): TurnBodyChild[] {
 const assistantChild = (id: string, label = "assistant text"): TurnBodyChild => ({
   kind: "assistant",
   id,
-  node: <p data-testid={id}>{label}</p>
+  node: <p data-testid={id}>{label}</p>,
 });
 
 const toolChild = (id: string, label = "tools"): TurnBodyChild => ({
   kind: "tool",
   id,
-  node: <div data-testid={id}>{label}</div>
+  node: <div data-testid={id}>{label}</div>,
 });
 
 describe("TurnBlock", () => {
@@ -49,7 +49,7 @@ describe("TurnBlock", () => {
       assistantTimestamps: [],
       body: body(toolChild("activity", "Read files"), assistantChild("answer", "Done.")),
       hideWorkingWhenCollapsed: true,
-      toolsExpanded: false
+      toolsExpanded: false,
     };
     const { rerender } = render(<TurnBlock {...props} isTurnActive />);
     rerender(<TurnBlock {...props} isTurnActive={false} />);
@@ -73,7 +73,7 @@ describe("TurnBlock", () => {
         hideWorkingWhenCollapsed
         toolsExpanded={false}
         isTurnActive={false}
-      />
+      />,
     );
     expect(screen.queryByText("Read files")).toBeNull();
     expect(screen.getByText("Done.")).toBeInTheDocument();
@@ -86,7 +86,7 @@ describe("TurnBlock", () => {
       assistantTimestamps: [],
       body: [{ kind: "tool" as const, id: "activity", node: <button>Read files</button> }],
       hideWorkingWhenCollapsed: true,
-      toolsExpanded: false
+      toolsExpanded: false,
     };
     const { rerender } = render(<TurnBlock {...props} isTurnActive />);
     rerender(<TurnBlock {...props} isTurnActive={false} />);
@@ -96,13 +96,15 @@ describe("TurnBlock", () => {
   });
 
   it("labels the chip 'Working' while a tool is running and renders assistant + tool nodes", () => {
-    const items: TurnToolItem[] = [{ kind: "tool", tool: tool({ status: "running", completedAt: null }) }];
+    const items: TurnToolItem[] = [
+      { kind: "tool", tool: tool({ status: "running", completedAt: null }) },
+    ];
     render(
       <TurnBlock
         toolItems={items}
         assistantTimestamps={[]}
         body={body(assistantChild("assistant"), toolChild("tools"))}
-      />
+      />,
     );
     expect(screen.getByRole("button", { name: "Working" })).toBeInTheDocument();
     expect(screen.queryByText("Composer 2")).toBeNull();
@@ -119,7 +121,7 @@ describe("TurnBlock", () => {
         assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
         body={body(assistantChild("assistant", "reply"), toolChild("tools"))}
         toolsExpanded={false}
-      />
+      />,
     );
     const chip = screen.getByRole("button", { name: /Worked for/ });
     expect(chip).toBeInTheDocument();
@@ -141,9 +143,9 @@ describe("TurnBlock", () => {
           name: "Agent",
           status: "running",
           completedAt: null,
-          createdAt: "2026-09-07T05:45:08.653Z"
-        })
-      }
+          createdAt: "2026-09-07T05:45:08.653Z",
+        }),
+      },
     ];
     render(
       <TurnBlock
@@ -153,7 +155,7 @@ describe("TurnBlock", () => {
         isTurnActive={false}
         body={body(toolChild("tools"), assistantChild("assistant", "handed off"))}
         toolsExpanded={false}
-      />
+      />,
     );
     expect(screen.getByRole("button", { name: "Worked for 24s" })).toBeInTheDocument();
   });
@@ -168,16 +170,21 @@ describe("TurnBlock", () => {
         toolsExpanded={false}
         hideWorkingWhenCollapsed
         changes={<div data-testid="changes">5 files changed</div>}
-      />
+      />,
     );
-    expect(screen.getByRole("button", { name: /Worked for/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /Worked for/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     expect(screen.queryByTestId("tools")).toBeNull();
     expect(screen.getByTestId("assistant")).toBeInTheDocument();
     expect(screen.getByTestId("changes")).toBeInTheDocument();
   });
 
   it("keeps working rows visible while the turn is still running in hide-working mode", () => {
-    const items: TurnToolItem[] = [{ kind: "tool", tool: tool({ status: "running", completedAt: null }) }];
+    const items: TurnToolItem[] = [
+      { kind: "tool", tool: tool({ status: "running", completedAt: null }) },
+    ];
     render(
       <TurnBlock
         toolItems={items}
@@ -185,7 +192,7 @@ describe("TurnBlock", () => {
         body={body(assistantChild("assistant", "streaming..."), toolChild("tools"))}
         toolsExpanded={false}
         hideWorkingWhenCollapsed
-      />
+      />,
     );
     expect(screen.getByTestId("tools")).toBeInTheDocument();
     expect(screen.getByTestId("assistant")).toBeInTheDocument();
@@ -200,9 +207,12 @@ describe("TurnBlock", () => {
         body={body(assistantChild("assistant", "reply"), toolChild("tools"))}
         toolsExpanded
         hideWorkingWhenCollapsed
-      />
+      />,
     );
-    expect(screen.getByRole("button", { name: /Worked for/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /Worked for/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     expect(screen.getByTestId("tools")).toBeInTheDocument();
     expect(screen.getByTestId("assistant")).toBeInTheDocument();
   });
@@ -217,7 +227,7 @@ describe("TurnBlock", () => {
         body={body(assistantChild("assistant", "reply"), toolChild("tools"))}
         toolsExpanded
         onToggleTools={onToggleTools}
-      />
+      />,
     );
     expect(screen.getByTestId("tools")).toBeInTheDocument();
     const chip = screen.getByRole("button", { name: /Worked for/ });
@@ -231,29 +241,46 @@ describe("TurnBlock", () => {
     const disclosure: TurnBodyChild = {
       kind: "tool",
       id: "disclosure",
-      node: <details><summary>Inspect tool output</summary><p>Tool output</p></details>
+      node: (
+        <details data-testid="tool-details">
+          <summary>Inspect tool output</summary>
+          <p>Tool output</p>
+        </details>
+      ),
     };
     const plan: TurnBodyChild = {
       kind: "assistant",
       id: "plan",
-      node: <details><summary>Plan</summary><p>Review the changes</p></details>
+      node: (
+        <details data-testid="plan-details">
+          <summary>Plan</summary>
+          <p>Review the changes</p>
+        </details>
+      ),
     };
     const props = { toolItems: [{ kind: "tool" as const, tool: tool() }], assistantTimestamps: [] };
     const { rerender } = render(<TurnBlock {...props} body={body(activity, disclosure)} />);
-    const toolDetails = screen.getByText("Inspect tool output").closest("details");
-    expect(toolDetails).not.toBeNull();
+    const toolDetails = screen.getByTestId("tool-details");
+    expect(toolDetails).toContainElement(screen.getByText("Inspect tool output"));
     fireEvent.click(screen.getByText("Inspect tool output"));
     expect(toolDetails).toHaveAttribute("open");
 
     rerender(<TurnBlock {...props} body={body(activity, disclosure, plan)} />);
-    const planDetails = screen.getByText("Plan").closest("details");
-    expect(planDetails).not.toBeNull();
+    const planDetails = screen.getByTestId("plan-details");
+    expect(planDetails).toContainElement(screen.getByText("Plan"));
     fireEvent.click(screen.getByText("Plan"));
     expect(planDetails).toHaveAttribute("open");
 
-    rerender(<TurnBlock {...props} body={body(plan, activity, disclosure, assistantChild("reply", "Done"))} />);
-    expect(screen.getByText("Inspect tool output").closest("details")).toBe(toolDetails);
-    expect(screen.getByText("Plan").closest("details")).toBe(planDetails);
+    rerender(
+      <TurnBlock
+        {...props}
+        body={body(plan, activity, disclosure, assistantChild("reply", "Done"))}
+      />,
+    );
+    expect(screen.getByTestId("tool-details")).toBe(toolDetails);
+    expect(screen.getByTestId("plan-details")).toBe(planDetails);
+    expect(toolDetails).toContainElement(screen.getByText("Inspect tool output"));
+    expect(planDetails).toContainElement(screen.getByText("Plan"));
     expect(toolDetails).toHaveAttribute("open");
     expect(planDetails).toHaveAttribute("open");
     expect(screen.getByText("Done")).toBeInTheDocument();
@@ -265,7 +292,7 @@ describe("TurnBlock", () => {
         toolItems={[]}
         assistantTimestamps={[Date.parse("2026-05-12T15:00:00.000Z")]}
         body={body(assistantChild("assistant", "just text"))}
-      />
+      />,
     );
     expect(screen.queryByRole("button", { name: /Worked|Working/ })).not.toBeInTheDocument();
     expect(screen.getByText("Worked for 0s")).toHaveClass("turn-block-chip-static");
@@ -283,7 +310,7 @@ describe("TurnBlock", () => {
         body={body(assistantChild("assistant", "..."))}
         isTurnActive
         turnStartedAtMs={Date.parse("2026-05-12T15:00:00.000Z")}
-      />
+      />,
     );
     expect(screen.getByRole("button", { name: "Working" })).toBeInTheDocument();
   });
@@ -292,29 +319,30 @@ describe("TurnBlock", () => {
     const start = Date.parse("2026-05-12T15:00:00.000Z");
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(start);
     try {
-      const { container } = render(
+      render(
         <TurnBlock
           toolItems={[]}
           assistantTimestamps={[]}
           body={body(assistantChild("assistant", "..."))}
           isTurnActive
           turnStartedAtMs={start}
-        />
+        />,
       );
-      const live = container.querySelector(".turn-block-chip span span");
-      expect(live).not.toBeNull();
-      expect(live?.textContent).toBe("0s");
+      const live = within(screen.getByRole("button", { name: "Working" })).getByTestId(
+        "turn-block-elapsed",
+      );
+      expect(live.textContent).toBe("0s");
       // Mid-second: chip must still read "0s" — no 0.4s noise.
       nowSpy.mockReturnValue(start + 400);
       __liveTimerTickForTest();
-      expect(live!.textContent).toBe("0s");
+      expect(live.textContent).toBe("0s");
       // A full second later: ticker flips to "1s".
       nowSpy.mockReturnValue(start + 1_000);
       __liveTimerTickForTest();
-      expect(live!.textContent).toBe("1s");
+      expect(live.textContent).toBe("1s");
       nowSpy.mockReturnValue(start + 3_750);
       __liveTimerTickForTest();
-      expect(live!.textContent).toBe("3s");
+      expect(live.textContent).toBe("3s");
     } finally {
       nowSpy.mockRestore();
     }
@@ -331,10 +359,10 @@ describe("TurnBlock", () => {
         assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
         body={body(
           toolChild("tool-before", "search call"),
-          assistantChild("assistant-after", "final answer")
+          assistantChild("assistant-after", "final answer"),
         )}
         toolsExpanded
-      />
+      />,
     );
     const tool0 = screen.getByTestId("tool-before");
     const after = screen.getByTestId("assistant-after");

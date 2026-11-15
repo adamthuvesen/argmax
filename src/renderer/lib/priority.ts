@@ -36,7 +36,7 @@ const REASON_RANK: Record<PriorityReasonKind, number> = {
   failed: 4,
   "ci-red": 3,
   "review-ready": 2,
-  "pr-open": 1
+  "pr-open": 1,
 };
 
 /** Reasons that are also a session attention value, so a row can wear one. */
@@ -45,7 +45,7 @@ const ATTENTION_REASONS = new Set<PriorityReasonKind>([
   "question-asked",
   "blocked",
   "failed",
-  "review-ready"
+  "review-ready",
 ]);
 
 interface PriorityReason {
@@ -107,7 +107,7 @@ interface WorkspaceAttention {
 
 /** The session whose attention speaks for the workspace, if any does. */
 function loudestSession(
-  sessions: SessionSummary[]
+  sessions: SessionSummary[],
 ): Map<string, { kind: PriorityReasonKind; changedAt: string | null; lastActivityAt: string }> {
   const bySession = new Map<
     string,
@@ -127,7 +127,7 @@ function loudestSession(
     bySession.set(session.workspaceId, {
       kind,
       changedAt: session.attentionChangedAt ?? null,
-      lastActivityAt: session.lastActivityAt
+      lastActivityAt: session.lastActivityAt,
     });
   }
   return bySession;
@@ -170,9 +170,7 @@ interface WorkspaceReasonsInput {
  * done here"). Pinned workspaces are *not*: a pin changes where a row sits,
  * not whether it needs you. Placement rules live in `computePriorityEntries`.
  */
-function computeWorkspaceReasons(
-  input: WorkspaceReasonsInput
-): Map<string, PriorityReason[]> {
+function computeWorkspaceReasons(input: WorkspaceReasonsInput): Map<string, PriorityReason[]> {
   const { workspaces, sessions, unreadWorkspaceIds } = input;
   const bySession = loudestSession(sessions);
   const result = new Map<string, PriorityReason[]>();
@@ -224,7 +222,7 @@ function computeWorkspaceReasons(
 export function computeWorkspaceAttention(
   workspaces: WorkspaceSummary[],
   sessions: SessionSummary[],
-  unreadWorkspaceIds?: ReadonlySet<string>
+  unreadWorkspaceIds?: ReadonlySet<string>,
 ): Map<string, WorkspaceAttention> {
   const bySession = loudestSession(sessions);
   const reasons = computeWorkspaceReasons({ workspaces, sessions, unreadWorkspaceIds });
@@ -236,7 +234,7 @@ export function computeWorkspaceAttention(
     result.set(workspaceId, {
       attention: top.kind as PriorityAttention,
       changedAt: top.since,
-      lastActivityAt: session.lastActivityAt
+      lastActivityAt: session.lastActivityAt,
     });
   }
   return result;
@@ -268,12 +266,12 @@ export function computeWorkspaceAttention(
 export function computePriorityEntries(
   workspaces: WorkspaceSummary[],
   sessions: SessionSummary[],
-  unreadWorkspaceIds?: ReadonlySet<string>
+  unreadWorkspaceIds?: ReadonlySet<string>,
 ): PriorityEntry[] {
   const reasonsByWorkspace = computeWorkspaceReasons({
     workspaces,
     sessions,
-    unreadWorkspaceIds
+    unreadWorkspaceIds,
   });
   const workingWorkspaces = workingWorkspaceIds(sessions);
 
@@ -285,7 +283,8 @@ export function computePriorityEntries(
       workspace.state === "kept" ||
       workspace.state === "archiving" ||
       workspace.state === "archive-failed"
-    ) continue;
+    )
+      continue;
     const reasons = reasonsByWorkspace.get(workspace.id) ?? [];
     const working = workingWorkspaces.has(workspace.id);
     const manuallyAdded = Boolean(workspace.priorityAddedAt);
@@ -298,7 +297,7 @@ export function computePriorityEntries(
       // its own; otherwise it renders plain.
       reason: top?.kind ?? null,
       attention: top && ATTENTION_REASONS.has(top.kind) ? (top.kind as PriorityAttention) : null,
-      working
+      working,
     });
   }
 

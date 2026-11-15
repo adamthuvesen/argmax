@@ -42,14 +42,14 @@ function flowSegments(tokens: UsageTokenTotals): FlowSegment[] {
       part: "uncached",
       label: "Uncached input",
       tokens: tokens.inputUncached,
-      note: "at the full input rate"
+      note: "at the full input rate",
     },
     {
       part: "output",
       label: "Output",
       tokens: tokens.output,
-      note: `${formatTokens(tokens.reasoning)} of it reasoning`
-    }
+      note: `${formatTokens(tokens.reasoning)} of it reasoning`,
+    },
   ];
 }
 
@@ -69,7 +69,7 @@ function layoutSegments(segments: readonly FlowSegment[], total: number): DrawnS
   const floor = MIN_DRAWN + GAP;
   const shares = segments.map((segment) => (segment.tokens / total) * SPAN);
   const widths = shares.map((share, index) =>
-    segments[index].tokens > 0 ? Math.max(share, floor) : 0
+    segments[index].tokens > 0 ? Math.max(share, floor) : 0,
   );
   const debt = widths.reduce((sum, width, index) => sum + width - shares[index], 0);
   const widest = shares.reduce((best, share, index) => (share > shares[best] ? index : best), 0);

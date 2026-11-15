@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type JSX } from "react";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
+import { sessionActions } from "../data/bridgeActions.js";
 import { createPortal } from "react-dom";
 import type { ForkMergePreview } from "../../shared/types.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
@@ -14,7 +16,7 @@ import { showErrorToast, showInfoToast } from "../state/toast.js";
  */
 export function ForkMergeDialog({
   childSessionId,
-  onClose
+  onClose,
 }: {
   childSessionId: string;
   onClose: () => void;
@@ -25,23 +27,13 @@ export function ForkMergeDialog({
   const dialogRef = useRef<HTMLDivElement | null>(null);
   useRestoreFocus(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!window.argmax) return;
-    window.argmax.session
-      .forkMergePreview({ sessionId: childSessionId })
-      .then((next) => {
-        if (!cancelled) setPreview(next);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setLoadError(error instanceof Error ? error.message : "Couldn't read the fork.");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [childSessionId]);
+  useBridgeQuery({
+    key: ["session.forkMergePreview", childSessionId],
+    read: (api) => api.session.forkMergePreview({ sessionId: childSessionId }),
+    onData: setPreview,
+    onError: (error) =>
+      setLoadError(error instanceof Error ? error.message : "Couldn't read the fork."),
+  });
 
   useEffect(() => {
     function onKey(event: KeyboardEvent): void {
@@ -57,19 +49,20 @@ export function ForkMergeDialog({
   const canSend = preview !== null && !preview.nothingNew && throughEventId !== null && !sending;
 
   const send = async (): Promise<void> => {
-    if (!canSend || !window.argmax || throughEventId === null) return;
+    const session = sessionActions();
+    if (!canSend || !session || throughEventId === null) return;
     setSending(true);
     try {
-      const result = await window.argmax.session.forkMerge({
+      const result = await session.forkMerge({
         sessionId: childSessionId,
-        throughEventId
+        throughEventId,
       });
       showInfoToast(
         !result.merged
           ? "Those findings were already brought back."
           : result.queued
             ? `Queued for ${preview?.sourceLabel ?? "the source chat"}; it sends when that turn ends.`
-            : `Sent to ${preview?.sourceLabel ?? "the source chat"}.`
+            : `Sent to ${preview?.sourceLabel ?? "the source chat"}.`,
       );
       onClose();
     } catch (error) {
@@ -118,18 +111,20 @@ export function ForkMergeDialog({
             ) : null}
             {preview.sourceBusy ? (
               <p className="fork-merge-note" role="status">
-                {preview.sourceLabel} is working. The message waits in its queue until that turn ends.
+                {preview.sourceLabel} is working. The message waits in its queue until that turn
+                ends.
               </p>
             ) : null}
             {preview.unconfirmedMergeId ? (
               <p className="fork-merge-note" role="status">
-                An earlier merge is still waiting in {preview.sourceLabel}&apos;s queue and counts as
-                sent. Discard it there to bring those findings back again.
+                An earlier merge is still waiting in {preview.sourceLabel}&apos;s queue and counts
+                as sent. Discard it there to bring those findings back again.
               </p>
             ) : null}
             {preview.truncated ? (
               <p className="fork-merge-note" role="status">
-                Only the most recent messages are included. The message points at this fork for the rest.
+                Only the most recent messages are included. The message points at this fork for the
+                rest.
               </p>
             ) : null}
             {preview.nothingNew ? null : (
@@ -156,6 +151,6 @@ export function ForkMergeDialog({
         </footer>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

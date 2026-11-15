@@ -7,14 +7,22 @@ function props(overrides: Partial<ReviewTabsBarProps> = {}): ReviewTabsBarProps 
     items: [
       { id: "changes", kind: "changes", label: "Changes" },
       { id: "browser-1", kind: "browser", label: "App preview", title: "http://localhost:3000" },
-      { id: "file-1", kind: "file", label: "index.ts", title: "src/index.ts", dirty: true }
+      { id: "file-1", kind: "file", label: "index.ts", title: "src/index.ts", dirty: true },
     ],
     activeId: "changes",
     visibleIds: ["changes"],
-    onSelect: vi.fn(), onClose: vi.fn(), onMove: vi.fn(), onSplit: vi.fn(),
-    onOpen: vi.fn(), onReopen: vi.fn(), canReopen: false,
-    hasAgents: true, hasBrowser: true, hasTerminal: true, artifactsEnabled: false,
-    ...overrides
+    onSelect: vi.fn(),
+    onClose: vi.fn(),
+    onMove: vi.fn(),
+    onSplit: vi.fn(),
+    onOpen: vi.fn(),
+    onReopen: vi.fn(),
+    canReopen: false,
+    hasAgents: true,
+    hasBrowser: true,
+    hasTerminal: true,
+    artifactsEnabled: false,
+    ...overrides,
   };
 }
 
@@ -24,6 +32,8 @@ describe("ReviewTabsBar", () => {
   it("preserves manual tab scrolling across unrelated parent renders", () => {
     const callbacks = props();
     const { rerender } = render(<ReviewTabsBar {...callbacks} />);
+    expect(screen.getByRole("tab", { name: "Changes" })).toHaveAttribute("aria-selected", "true");
+    // oxlint-disable-next-line argmax/no-node-access -- scrollIntoView belongs on the tab's wrapper, which is the tab's direct parent and has no role
     const active = screen.getByRole("tab", { name: "Changes" }).parentElement!;
     const scrollIntoView = vi.fn();
     active.scrollIntoView = scrollIntoView;
@@ -37,7 +47,7 @@ describe("ReviewTabsBar", () => {
     Object.defineProperties(strip, {
       clientWidth: { configurable: true, value: 300 },
       scrollWidth: { configurable: true, value: 700 },
-      scrollLeft: { configurable: true, writable: true, value: 0 }
+      scrollLeft: { configurable: true, writable: true, value: 0 },
     });
     const scrollBy = vi.fn();
     strip.scrollBy = scrollBy;
@@ -77,7 +87,12 @@ describe("ReviewTabsBar", () => {
   });
 
   it("opens only available tools and the optional artifacts shortcut", () => {
-    const callbacks = props({ hasAgents: false, hasTerminal: false, artifactsEnabled: true, canReopen: true });
+    const callbacks = props({
+      hasAgents: false,
+      hasTerminal: false,
+      artifactsEnabled: true,
+      canReopen: true,
+    });
     render(<ReviewTabsBar {...callbacks} />);
     fireEvent.click(screen.getByRole("button", { name: "New workspace tab" }));
     const menu = screen.getByRole("menu", { name: "Open workspace tab" });
@@ -92,7 +107,10 @@ describe("ReviewTabsBar", () => {
   it("splits the right-clicked tab and exposes bounded reorder actions", () => {
     const callbacks = props();
     render(<ReviewTabsBar {...callbacks} />);
-    fireEvent.contextMenu(screen.getByRole("tab", { name: "http://localhost:3000" }), { clientX: 80, clientY: 60 });
+    fireEvent.contextMenu(screen.getByRole("tab", { name: "http://localhost:3000" }), {
+      clientX: 80,
+      clientY: 60,
+    });
     const menu = screen.getByRole("menu", { name: "App preview tab actions" });
     expect(within(menu).getByRole("menuitem", { name: "Move Left" })).toBeEnabled();
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Show Below" }));
@@ -115,7 +133,9 @@ describe("ReviewTabsBar", () => {
     expect(first).toHaveFocus();
     fireEvent.keyDown(first, { key: "End" });
     expect(screen.getByRole("menuitem", { name: "Reopen Closed Tab" })).toHaveFocus();
-    fireEvent.keyDown(document.activeElement ?? first, { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Reopen Closed Tab" }), {
+      key: "Escape",
+    });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     expect(browser).toHaveFocus();
     expect(callbacks.onSelect).not.toHaveBeenCalled();
@@ -133,7 +153,11 @@ describe("ReviewTabsBar", () => {
   it("reorders dragged resources without propagating a drag to the split panel", () => {
     const callbacks = props();
     const onPanelDrag = vi.fn();
-    render(<div onDragStart={onPanelDrag}><ReviewTabsBar {...callbacks} /></div>);
+    render(
+      <div onDragStart={onPanelDrag}>
+        <ReviewTabsBar {...callbacks} />
+      </div>,
+    );
     const changes = screen.getByRole("tab", { name: "Changes" });
     const browser = screen.getByRole("tab", { name: "http://localhost:3000" });
     const dataTransfer = { setData: vi.fn(), effectAllowed: "none", dropEffect: "none" };

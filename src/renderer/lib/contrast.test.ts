@@ -5,7 +5,7 @@ import {
   CONTRAST_STORAGE_KEY,
   DEFAULT_CONTRAST,
   readStoredContrast,
-  toContrast
+  toContrast,
 } from "./contrast.js";
 
 afterEach(() => {

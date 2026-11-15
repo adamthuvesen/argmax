@@ -35,7 +35,7 @@ fn source_renames(root: &Path) -> Vec<String> {
 #[test]
 fn every_command_is_registered() {
     let fixture = fixture_channels();
-    assert_eq!(fixture, argmax_lib::ipc::REGISTERED_CHANNELS);
+    assert_eq!(fixture, argmax_lib::ipc::catalogue::REGISTERED_CHANNELS);
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let source = source_renames(root);
@@ -50,7 +50,7 @@ fn every_command_is_registered() {
         "source command renames drifted from fixture"
     );
 
-    let bindings = argmax_lib::ipc::specta_builder()
+    let bindings = argmax_lib::ipc::catalogue::specta_builder()
         .export_str(Typescript::default().bigint(BigIntExportBehavior::Number))
         .expect("export bindings");
     let exported_commands = bindings.matches("TAURI_INVOKE(").count();
@@ -82,8 +82,9 @@ fn generated_ipc_files_are_current() {
             root.join("../src/shared/ipcSchemas.ts"),
         ),
     ];
-    argmax_lib::export_bindings(&files[0].0).expect("export bindings");
-    argmax_lib::export_ipc_inventory(&files[1].0, &files[2].0).expect("export IPC inventory");
+    argmax_lib::ipc::bindings_export::export_bindings(&files[0].0).expect("export bindings");
+    argmax_lib::ipc::bindings_export::export_ipc_inventory(&files[1].0, &files[2].0)
+        .expect("export IPC inventory");
 
     for (generated_path, committed_path) in files {
         let generated = fs::read_to_string(&generated_path).expect("read generated file");

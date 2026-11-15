@@ -16,7 +16,7 @@ import { useMemo, useRef } from "react";
 export function useStableFilter<T>(
   items: T[],
   key: string | null,
-  predicate: (item: T) => boolean
+  predicate: (item: T) => boolean,
 ): T[] {
   const prevRef = useRef<T[]>([]);
   return useMemo(() => {
@@ -28,6 +28,6 @@ export function useStableFilter<T>(
     }
     prevRef.current = next;
     return next;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- predicate is recreated each render; `key` gates recomputation
+    // oxlint-disable-next-line react/exhaustive-deps -- predicate is recreated each render; `key` gates recomputation
   }, [items, key]);
 }

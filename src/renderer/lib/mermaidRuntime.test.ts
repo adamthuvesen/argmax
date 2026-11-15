@@ -4,7 +4,7 @@ import {
   cssColorToHex,
   mermaidBreakoutWidth,
   mermaidErrorMessage,
-  mermaidLayout
+  mermaidLayout,
 } from "./mermaidRuntime.js";
 
 describe("isMermaidFenceClass", () => {
@@ -44,7 +44,7 @@ describe("cssColorToHex", () => {
 describe("mermaidErrorMessage", () => {
   it("keeps the first line and strips an Error prefix", () => {
     expect(mermaidErrorMessage(new Error("Parse error on line 2:\n  extra"))).toBe(
-      "Parse error on line 2:"
+      "Parse error on line 2:",
     );
   });
 });

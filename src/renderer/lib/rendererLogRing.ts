@@ -34,7 +34,7 @@ export function recordRendererLog(input: {
     level: input.level ?? "debug",
     scope: input.scope,
     message: input.message,
-    fields: input.fields
+    fields: input.fields,
   };
   nextSeq -= 1;
   const next = entries.length >= CAP ? entries.slice(entries.length - CAP + 1) : entries.slice();

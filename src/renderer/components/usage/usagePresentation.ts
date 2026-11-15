@@ -11,12 +11,12 @@ export const USAGE_PROVIDER_ORDER: readonly ProviderId[] = [
   "codex",
   "cursor",
   "opencode",
-  "grok"
+  "grok",
 ];
 
 /**
- * A model id without its routing prefix: `openrouter/deepseek/deepseek-v4.1-flash`
- * reads `deepseek-v4.1-flash`. The provider label beside it already names
+ * A model id without its routing prefix: `openrouter/deepseek/deepseek-v4.1-flash-1017`
+ * reads `deepseek-v4.1-flash-1017`. The provider label beside it already names
  * where the call ran, and the full id stays on the row's tooltip.
  */
 export function modelDisplayId(modelId: string): string {
@@ -47,7 +47,7 @@ export function providerValue(row: UsageProviderSummary, metric: UsageMetric): n
  */
 export function orderedProviderRows(
   providers: readonly UsageProviderSummary[],
-  metric: UsageMetric
+  metric: UsageMetric,
 ): UsageProviderSummary[] {
   const rank = new Map(USAGE_PROVIDER_ORDER.map((id, index) => [id, index]));
   return [...providers].sort((a, b) => {
@@ -63,10 +63,7 @@ export function orderedProviderRows(
  * source and a provider that spent nothing in the window both draw a flat
  * zero line, which is noise — the chart carries only what moved.
  */
-export function chartedProviders(
-  summary: UsageSummary,
-  metric: UsageMetric
-): ProviderId[] {
+export function chartedProviders(summary: UsageSummary, metric: UsageMetric): ProviderId[] {
   const moved = new Set<ProviderId>();
   for (const point of summary.series) {
     for (const value of point.values) {

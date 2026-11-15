@@ -107,7 +107,7 @@ const FIND_RUNTIME = `
 export function browserFindScript(
   action: "search" | "step" | "clear",
   query = "",
-  delta = 0
+  delta = 0,
 ): string {
   const runtime = FIND_RUNTIME;
   if (action === "search") {

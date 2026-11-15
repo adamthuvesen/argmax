@@ -1,0 +1,3 @@
+#!/usr/bin/env node
+// The driver lives in verify.mjs, which `npm run check` type-checks. This file keeps the command name.
+import "./verify.mjs";

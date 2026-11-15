@@ -10,7 +10,7 @@ import type { JSX } from "react";
 export function LinesSkeleton({
   rows = 12,
   label,
-  className
+  className,
 }: {
   rows?: number;
   label: string;
@@ -24,7 +24,12 @@ export function LinesSkeleton({
       aria-label={label}
     >
       {Array.from({ length: rows }, (_, index) => (
-        <span key={index} className="loading-block lines-skeleton-row" aria-hidden="true" />
+        <span
+          key={index}
+          data-testid="loading-block"
+          className="loading-block lines-skeleton-row"
+          aria-hidden="true"
+        />
       ))}
     </div>
   );

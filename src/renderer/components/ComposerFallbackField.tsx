@@ -27,7 +27,7 @@ export function ComposerFallbackField({
   onCaretChange,
   dataPlaceholderKind,
   dataRouteCaption,
-  fieldRef
+  fieldRef,
 }: ComposerEditorProps): JSX.Element {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   useImperativeHandle(fieldRef, () => ref.current as HTMLTextAreaElement);

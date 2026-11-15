@@ -7,7 +7,7 @@ let clock = 0;
 function todoEvent(
   mode: "snapshot" | "merge",
   items: { id?: string; text?: string; status: string }[],
-  toolUseId: string | null = null
+  toolUseId: string | null = null,
 ): TimelineEvent {
   clock += 1;
   return {
@@ -21,10 +21,10 @@ function todoEvent(
       items: items.map((item) => ({
         id: item.id ?? null,
         text: item.text ?? null,
-        status: item.status
-      }))
+        status: item.status,
+      })),
     },
-    createdAt: `2026-01-01T00:00:${String(clock).padStart(2, "0")}.000Z`
+    createdAt: `2026-01-01T00:00:${String(clock).padStart(2, "0")}.000Z`,
   };
 }
 
@@ -34,7 +34,7 @@ const other = (type: string): TimelineEvent => ({
   type,
   message: "",
   payload: {},
-  createdAt: "2026-01-01T00:00:00.000Z"
+  createdAt: "2026-01-01T00:00:00.000Z",
 });
 
 describe("foldTodoEvents", () => {
@@ -47,13 +47,13 @@ describe("foldTodoEvents", () => {
       todoEvent("snapshot", [
         { text: "Read the normalizers", status: "done" },
         { text: "Write the projection", status: "active" },
-        { text: "Verify with checks", status: "pending" }
-      ])
+        { text: "Verify with checks", status: "pending" },
+      ]),
     ]);
     expect(list?.items.map((item) => item.text)).toEqual([
       "Read the normalizers",
       "Write the projection",
-      "Verify with checks"
+      "Verify with checks",
     ]);
     expect(list?.doneCount).toBe(1);
     expect(list?.active?.text).toBe("Write the projection");
@@ -64,17 +64,17 @@ describe("foldTodoEvents", () => {
       todoEvent("snapshot", [
         { id: "1", text: "Prove the address bar path", status: "done" },
         { id: "2", text: "Handle Enter in the address bar", status: "active" },
-        { id: "3", text: "Add regression tests", status: "pending" }
+        { id: "3", text: "Add regression tests", status: "pending" },
       ]),
       todoEvent("merge", [
         { id: "2", status: "done" },
-        { id: "3", status: "active" }
-      ])
+        { id: "3", status: "active" },
+      ]),
     ]);
     expect(list?.items[1]).toEqual({
       id: "2",
       text: "Handle Enter in the address bar",
-      status: "done"
+      status: "done",
     });
     expect(list?.active?.text).toBe("Add regression tests");
     expect(list?.doneCount).toBe(2);
@@ -91,7 +91,7 @@ describe("foldTodoEvents", () => {
   it("replaces the whole list when a new snapshot arrives", () => {
     const list = foldTodoEvents([
       todoEvent("snapshot", [{ id: "1", text: "Old plan", status: "done" }]),
-      todoEvent("snapshot", [{ id: "9", text: "New plan", status: "pending" }])
+      todoEvent("snapshot", [{ id: "9", text: "New plan", status: "pending" }]),
     ]);
     expect(list?.items).toEqual([{ id: "9", text: "New plan", status: "pending" }]);
   });
@@ -100,9 +100,9 @@ describe("foldTodoEvents", () => {
     const list = foldTodoEvents([
       todoEvent("snapshot", [
         { id: "1", text: "Keep", status: "pending" },
-        { id: "2", text: "Drop", status: "pending" }
+        { id: "2", text: "Drop", status: "pending" },
       ]),
-      todoEvent("merge", [{ id: "2", status: "removed" }])
+      todoEvent("merge", [{ id: "2", status: "removed" }]),
     ]);
     expect(list?.items.map((item) => item.text)).toEqual(["Keep"]);
   });
@@ -111,11 +111,11 @@ describe("foldTodoEvents", () => {
     const list = foldTodoEvents([
       todoEvent("merge", [{ id: "5", text: "Wire up the projection", status: "pending" }]),
       todoEvent("merge", [{ id: "6", text: "Verify with checks", status: "pending" }]),
-      todoEvent("merge", [{ id: "5", status: "active" }])
+      todoEvent("merge", [{ id: "5", status: "active" }]),
     ]);
     expect(list?.items).toEqual([
       { id: "5", text: "Wire up the projection", status: "active" },
-      { id: "6", text: "Verify with checks", status: "pending" }
+      { id: "6", text: "Verify with checks", status: "pending" },
     ]);
   });
 
@@ -124,7 +124,7 @@ describe("foldTodoEvents", () => {
     malformed.payload.items = [{ status: "not-a-status" }, 7];
     const list = foldTodoEvents([
       todoEvent("snapshot", [{ id: "1", text: "Survives", status: "pending" }]),
-      malformed
+      malformed,
     ]);
     expect(list?.items).toEqual([{ id: "1", text: "Survives", status: "pending" }]);
   });

@@ -2,20 +2,20 @@
 //! Wire reference: anthropics/claude-agent-sdk-python, _internal/query.py.
 use super::{
     adapters::get_provider_definition,
-    environment::build_provider_environment,
     normalizer::ProviderOutputStream,
+    prompt_gate::PromptGate,
     runtime::{
         BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType,
         ProviderRuntimeHandle,
     },
-    PermissionMode, ProviderId, ProviderLaunchInput,
+    turn_waterfall::{self, Stamp},
+    ProviderLaunchInput,
 };
-use crate::{
-    approvals::service::ApprovalService,
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::time::now_iso,
-    session_control::SessionLaunchProcessConfig,
-};
+use crate::{approvals::service::ApprovalService, session_control::SessionLaunchProcessConfig};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::{PermissionMode, ProviderId};
+use argmax_process::environment::build_provider_environment;
+use argmax_store::time::now_iso;
 use serde_json::{json, Value};
 use std::{
     collections::VecDeque,
@@ -247,6 +247,7 @@ pub async fn launch_turn(
     config: Option<&SessionLaunchProcessConfig>,
     approvals: Arc<ApprovalService>,
     emit: EventCallback,
+    prompt_gate: &PromptGate,
 ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
     // Only a launch with a fresh-start fallback waits for the handshake; every
     // other launch returns as soon as the process is spawned.
@@ -286,17 +287,16 @@ pub async fn launch_turn(
     if input.permission_mode == PermissionMode::AskEachTime {
         args.extend(["--permission-mode", "manual"].map(str::to_string));
     }
-    let mut overrides = vec![
-        ("NO_COLOR".to_string(), "1".to_string()),
-        (
-            "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS".to_string(),
-            "0".to_string(),
-        ),
-    ];
+    let mut overrides = vec![("NO_COLOR".to_string(), "1".to_string())];
+    overrides.extend(
+        super::adapters::CLAUDE_TURN_ENV
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.to_string())),
+    );
     if let Some(config) = config {
         overrides.extend(config.env_pairs());
     }
-    overrides.extend(super::mcp_injection::claude_linked_root_env(config));
+    overrides.extend(super::mcp_injection::claude_launch_env(config));
     let mut command = tokio::process::Command::new(binary);
     command
         .args(args)
@@ -309,7 +309,9 @@ pub async fn launch_turn(
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
+    turn_waterfall::stamp(&input.session_id, Stamp::EnvReady);
     let mut child = command.spawn().map_err(io_error)?;
+    turn_waterfall::stamp(&input.session_id, Stamp::Spawn);
     let mut stdin = child
         .stdin
         .take()
@@ -325,8 +327,22 @@ pub async fn launch_turn(
     let pending_user_echoes = Arc::new(tokio::sync::Mutex::new(UserEchoes::default()));
     let writer_pending_user_echoes = Arc::clone(&pending_user_echoes);
     let (write_tx, mut write_rx) = mpsc::unbounded_channel::<WriteRequest>();
+    let writer_session_id = input.session_id.clone();
     let writer = tokio::spawn(async move {
         while let Some(request) = write_rx.recv().await {
+            let waterfall_step = if request.message.get("request_id").and_then(Value::as_str)
+                == Some("argmax-initialize")
+            {
+                Some(Stamp::InitializeSent)
+            } else if request
+                .user_echo
+                .as_ref()
+                .is_some_and(|echo| matches!(echo.acknowledgement, UserEcho::Initial))
+            {
+                Some(Stamp::PromptWritten)
+            } else {
+                None
+            };
             {
                 let mut echoes = writer_pending_user_echoes.lock().await;
                 // Dropping the request drops `written`, which the steer
@@ -342,6 +358,9 @@ pub async fn launch_turn(
                 .write_all(format!("{}\n", request.message).as_bytes())
                 .await?;
             stdin.flush().await?;
+            if let Some(step) = waterfall_step {
+                turn_waterfall::stamp(&writer_session_id, step);
+            }
             if let Some(written) = request.written {
                 let _ = written.send(());
             }
@@ -369,12 +388,18 @@ pub async fn launch_turn(
         provider_session_id: provider_session_id.clone(),
     });
     let input = input.clone();
+    let loop_gate = prompt_gate.clone();
     tokio::spawn(async move {
+        let prompt_gate = loop_gate;
+        // Set once `initialize` is acknowledged while the pre-turn checkpoint
+        // is still running: the prompt goes out when the gate opens.
+        let mut prompt_waits_for_gate = false;
         let invocation = uuid::Uuid::new_v4().to_string();
         let mut lines = BufReader::new(stdout).lines();
         let mut errors = BufReader::new(stderr).lines();
         let mut stderr_open = true;
         let mut initialized = false;
+        let mut saw_stdout = false;
         let deadline = tokio::time::sleep(Duration::from_secs(60));
         tokio::pin!(deadline);
         let mut requests = JoinSet::new();
@@ -384,6 +409,12 @@ pub async fn launch_turn(
         loop {
             tokio::select! {
                 _ = cancelled.changed() => { break; }
+                opened = prompt_gate.wait(), if prompt_waits_for_gate => {
+                    prompt_waits_for_gate = false;
+                    if opened.is_err() { code = 1; break; }
+                    turn_waterfall::stamp(&input.session_id, Stamp::PromptGateWaited);
+                    send_initial_prompt(&write_tx, &provider_session_id, &input, &emit);
+                }
                 _ = &mut deadline, if !initialized => { emit_event(&emit, &input, ProviderRuntimeEventType::Error, "Claude control initialization timed out".into(), None); code = 1; break; }
                 line = errors.next_line(), if stderr_open => {
                     match line { Ok(Some(line)) if !initialized && gate.is_some() && line.contains(MISSING_CONVERSATION) => {
@@ -395,6 +426,10 @@ pub async fn launch_turn(
                 }
                 line = lines.next_line() => {
                     let line = match line { Ok(Some(line)) => line, Ok(None) => { code = 1; break; }, Err(error) => { emit_event(&emit,&input,ProviderRuntimeEventType::Error,error.to_string(),None);code=1;break; } };
+                    if !saw_stdout {
+                        saw_stdout = true;
+                        turn_waterfall::stamp(&input.session_id, Stamp::FirstStdout);
+                    }
                     let Ok(message) = serde_json::from_str::<Value>(&line) else { continue; };
                     if !initialized && reports_missing_conversation(&message) {
                         if let Some(gate) = &gate { gate.settle(true); }
@@ -405,13 +440,14 @@ pub async fn launch_turn(
                         Some("control_response") if message.pointer("/response/request_id").and_then(Value::as_str) == Some("argmax-initialize") => {
                             if message.pointer("/response/subtype").and_then(Value::as_str) != Some("success") { emit_event(&emit,&input,ProviderRuntimeEventType::Error,message.to_string(),None);code=1;break; }
                             initialized = true;
+                            turn_waterfall::stamp(&input.session_id, Stamp::InitializeAck);
                             if let Some(gate) = &gate { gate.settle(false); }
-                            let _ = write_tx.send(WriteRequest::user(
-                                &provider_session_id,
-                                &input.prompt,
-                                UserEcho::Initial,
-                            ));
-                            emit_event(&emit,&input,ProviderRuntimeEventType::StreamStarted,String::new(),None);
+                            if prompt_gate.is_resolved() {
+                                if prompt_gate.wait().await.is_err() { code = 1; break; }
+                                send_initial_prompt(&write_tx, &provider_session_id, &input, &emit);
+                            } else {
+                                prompt_waits_for_gate = true;
+                            }
                         }
                         Some("control_request") => {
                             let Some(id) = message.get("request_id").and_then(Value::as_str).map(str::to_string) else { continue; };
@@ -447,6 +483,11 @@ pub async fn launch_turn(
                             }
                         }
                         _ => {
+                            if message.get("type").and_then(Value::as_str) == Some("system")
+                                && message.get("subtype").and_then(Value::as_str) == Some("init")
+                            {
+                                turn_waterfall::stamp(&input.session_id, Stamp::CliInit);
+                            }
                             if message.get("type").and_then(Value::as_str) == Some("user") {
                                 let acknowledgement = match replayed_user_prompt(&message) {
                                     Some(prompt) => {
@@ -541,6 +582,15 @@ pub async fn launch_turn(
         );
         let _ = done_tx.send(true);
     });
+    // The CLI boots while the checkpoint finishes. A refused gate ends the
+    // launch as the capture would have before the spawn: with its error, and
+    // with the process gone before this returns.
+    if let Err(error) = prompt_gate.wait().await {
+        let _ = handle.cancel.send(true);
+        let mut done = handle.done.clone();
+        let _ = done.wait_for(|done| *done).await;
+        return Err(error);
+    }
     if let Some(verdict) = verdict {
         if verdict.await == Ok(true) {
             return Err(ArgmaxError::service(
@@ -550,6 +600,26 @@ pub async fn launch_turn(
         }
     }
     Ok(handle)
+}
+
+fn send_initial_prompt(
+    write_tx: &mpsc::UnboundedSender<WriteRequest>,
+    provider_session_id: &str,
+    input: &ProviderLaunchInput,
+    emit: &EventCallback,
+) {
+    let _ = write_tx.send(WriteRequest::user(
+        provider_session_id,
+        &input.prompt,
+        UserEcho::Initial,
+    ));
+    emit_event(
+        emit,
+        input,
+        ProviderRuntimeEventType::StreamStarted,
+        String::new(),
+        None,
+    );
 }
 
 /// Whether the runtime answers this request itself instead of asking the user.
@@ -745,7 +815,8 @@ impl Drop for ControlHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::database::Database;
+    use crate::providers::model_catalogue::ModelId;
+    use argmax_store::database::Database;
     fn launch_input(
         permission_mode: PermissionMode,
         agent_mode: super::super::AgentMode,
@@ -756,7 +827,7 @@ mod tests {
             workspace_path: "/tmp".into(),
             prompt: "p".into(),
             model_label: "Opus 5".into(),
-            model_id: "claude-opus-5".into(),
+            model_id: ModelId::resolve(ProviderId::Claude, "claude-opus-5"),
             reasoning_effort: None,
             fast_mode: false,
             resume_conversation_id: None,
@@ -771,7 +842,7 @@ mod tests {
 
     #[test]
     fn card_tools_and_full_access_answer_themselves() {
-        use super::super::AgentMode;
+        use argmax_contracts::validation::AgentMode;
         let ask = launch_input(PermissionMode::AskEachTime, AgentMode::Auto);
         assert!(answers_itself(&ask, Some("AskUserQuestion")));
         assert!(!answers_itself(&ask, Some("ExitPlanMode")));
@@ -871,9 +942,16 @@ done
         );
         input.workspace_path = temp.path().to_path_buf();
         input.prompt = "/review https://example.test/pr/1\n\nUse /snow to verify things".into();
-        let handle = launch_turn(server.to_str().unwrap(), &input, None, approvals, callback)
-            .await
-            .unwrap();
+        let handle = launch_turn(
+            server.to_str().unwrap(),
+            &input,
+            None,
+            approvals,
+            callback,
+            &PromptGate::open(),
+        )
+        .await
+        .unwrap();
         let completed = tokio::time::timeout(Duration::from_secs(2), async {
             while !handle.disposed() {
                 tokio::time::sleep(Duration::from_millis(10)).await;
@@ -935,8 +1013,15 @@ done
             fresh_fallback_prompt: Some("portable".to_string()),
             ..Default::default()
         });
-        let launched =
-            launch_turn(server.to_str().unwrap(), &input, None, approvals, callback).await;
+        let launched = launch_turn(
+            server.to_str().unwrap(),
+            &input,
+            None,
+            approvals,
+            callback,
+            &PromptGate::open(),
+        )
+        .await;
         (launched, events)
     }
 
@@ -1032,6 +1117,150 @@ exit 1"#,
             .any(|event| event.r#type == ProviderRuntimeEventType::Exit));
     }
 
+    /// A fake `claude` that logs its pid and each stdin line, and answers
+    /// `initialize` at once.
+    #[cfg(unix)]
+    fn logging_fake_claude(dir: &std::path::Path) -> std::path::PathBuf {
+        fake_claude(
+            dir,
+            r#"echo $$ > claude.pid
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> stdin.log
+  case "$line" in
+    *'"subtype":"initialize"'*)
+      printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"argmax-initialize","response":{}}}'
+      ;;
+  esac
+done"#,
+        )
+    }
+
+    #[cfg(unix)]
+    fn stdin_log(dir: &std::path::Path) -> String {
+        std::fs::read_to_string(dir.join("stdin.log")).unwrap_or_default()
+    }
+
+    #[cfg(unix)]
+    async fn wait_until(mut ready: impl FnMut() -> bool) {
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !ready() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("condition reached");
+    }
+
+    #[cfg(unix)]
+    fn gated_launch(
+        server: std::path::PathBuf,
+        dir: &std::path::Path,
+        gate: PromptGate,
+    ) -> tokio::task::JoinHandle<ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+        let approvals = ApprovalService::new(Arc::new(Database::open_in_memory().unwrap()));
+        let mut input = launch_input(
+            PermissionMode::ProviderDefaults,
+            super::super::AgentMode::Auto,
+        );
+        input.workspace_path = dir.to_path_buf();
+        input.prompt = "do the work".into();
+        tokio::spawn(async move {
+            launch_turn(
+                server.to_str().unwrap(),
+                &input,
+                None,
+                approvals,
+                Arc::new(|_| {}),
+                &gate,
+            )
+            .await
+        })
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_prompt_waits_for_the_checkpoint_gate_after_initialize() {
+        let temp = tempfile::tempdir().unwrap();
+        let server = logging_fake_claude(temp.path());
+        let (opener, gate, _) = PromptGate::shut(Arc::new(|_| {}));
+        let launch = gated_launch(server, temp.path(), gate);
+
+        // The CLI spawns and finishes its handshake while the gate is shut.
+        wait_until(|| stdin_log(temp.path()).contains("argmax-initialize")).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(!stdin_log(temp.path()).contains("\"type\":\"user\""));
+        assert!(!launch.is_finished());
+
+        opener.resolve(Ok(()));
+        let handle = launch.await.unwrap().expect("launch after the gate opens");
+        wait_until(|| stdin_log(temp.path()).contains("\"type\":\"user\"")).await;
+        handle.terminate().await.unwrap();
+    }
+
+    // Claude reads these before it applies `--settings` env, so only the
+    // process environment makes them take effect.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn every_claude_turn_env_pair_is_in_the_process_env_not_the_settings() {
+        let temp = tempfile::tempdir().unwrap();
+        let server = fake_claude(
+            temp.path(),
+            r#"env > env.log
+printf '%s\n' "$@" > args.log
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> stdin.log
+  case "$line" in
+    *'"subtype":"initialize"'*)
+      printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"argmax-initialize","response":{}}}'
+      ;;
+  esac
+done"#,
+        );
+        let launch = gated_launch(server, temp.path(), PromptGate::open());
+        let handle = launch.await.unwrap().expect("launch");
+        wait_until(|| stdin_log(temp.path()).contains("argmax-initialize")).await;
+        handle.terminate().await.unwrap();
+
+        let env = std::fs::read_to_string(temp.path().join("env.log")).unwrap();
+        let args = std::fs::read_to_string(temp.path().join("args.log")).unwrap();
+        // Without it the `result` event waits on an unused summary model call.
+        assert!(env
+            .lines()
+            .any(|line| line == "CLAUDE_CODE_CLASSIFIER_SUMMARY=0"));
+        for (name, value) in super::super::adapters::CLAUDE_TURN_ENV {
+            assert!(
+                env.lines().any(|line| line == format!("{name}={value}")),
+                "{name}={value} missing from the child env:\n{env}"
+            );
+            assert!(!args.contains(name), "{name} is passed in argv:\n{args}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_refused_gate_ends_the_launch_with_no_prompt_and_no_process() {
+        let temp = tempfile::tempdir().unwrap();
+        let server = logging_fake_claude(temp.path());
+        let (opener, gate, _) = PromptGate::shut(Arc::new(|_| {}));
+        let launch = gated_launch(server, temp.path(), gate);
+        wait_until(|| stdin_log(temp.path()).contains("argmax-initialize")).await;
+
+        opener.resolve(Err(ArgmaxError::service(
+            "PROVIDER_LAUNCH_CANCELLED",
+            "The turn was cancelled before launch.",
+        )));
+        let error = launch.await.unwrap().err().expect("the launch is refused");
+        assert!(error.to_string().contains("cancelled"), "{error}");
+        assert!(!stdin_log(temp.path()).contains("\"type\":\"user\""));
+        let pid = std::fs::read_to_string(temp.path().join("claude.pid")).unwrap();
+        let alive = std::process::Command::new("kill")
+            .args(["-0", pid.trim()])
+            .status()
+            .unwrap()
+            .success();
+        assert!(!alive, "the CLI outlived the refused launch");
+    }
+
     // Claude replays a steered message only when it picks it up, and a turn
     // deep in a long tool call holds that for minutes. Delivery is decided by
     // the write, so a silent reader must not turn a delivered follow-up into
@@ -1076,9 +1305,16 @@ done
         input.workspace_path = temp.path().to_path_buf();
         input.prompt = "original task".into();
 
-        let handle = launch_turn(server.to_str().unwrap(), &input, None, approvals, callback)
-            .await
-            .unwrap();
+        let handle = launch_turn(
+            server.to_str().unwrap(),
+            &input,
+            None,
+            approvals,
+            callback,
+            &PromptGate::open(),
+        )
+        .await
+        .unwrap();
         tokio::time::timeout(Duration::from_secs(2), handle.steer("steer-token"))
             .await
             .expect("steering does not wait on the model's own pace")
@@ -1138,9 +1374,16 @@ done
         input.workspace_path = temp.path().to_path_buf();
         input.prompt = "original task".into();
 
-        let handle = launch_turn(server.to_str().unwrap(), &input, None, approvals, callback)
-            .await
-            .unwrap();
+        let handle = launch_turn(
+            server.to_str().unwrap(),
+            &input,
+            None,
+            approvals,
+            callback,
+            &PromptGate::open(),
+        )
+        .await
+        .unwrap();
         assert!(handle.supports_steering());
         handle.steer("steer-token").await.unwrap();
 
@@ -1228,9 +1471,16 @@ done
         input.workspace_path = temp.path().to_path_buf();
         input.prompt = "implement with a background agent".into();
 
-        let handle = launch_turn(server.to_str().unwrap(), &input, None, approvals, callback)
-            .await
-            .unwrap();
+        let handle = launch_turn(
+            server.to_str().unwrap(),
+            &input,
+            None,
+            approvals,
+            callback,
+            &PromptGate::open(),
+        )
+        .await
+        .unwrap();
         tokio::time::timeout(Duration::from_secs(5), async {
             while !handle.disposed() {
                 tokio::time::sleep(Duration::from_millis(10)).await;
@@ -1315,9 +1565,16 @@ done
         input.workspace_path = temp.path().to_path_buf();
         input.prompt = "implement with a background agent".into();
 
-        let handle = launch_turn(server.to_str().unwrap(), &input, None, approvals, callback)
-            .await
-            .unwrap();
+        let handle = launch_turn(
+            server.to_str().unwrap(),
+            &input,
+            None,
+            approvals,
+            callback,
+            &PromptGate::open(),
+        )
+        .await
+        .unwrap();
         tokio::time::timeout(Duration::from_secs(5), async {
             while !handle.disposed() {
                 tokio::time::sleep(Duration::from_millis(10)).await;
@@ -1374,13 +1631,20 @@ done
         input.session_id = uuid::Uuid::new_v4().to_string();
         input.workspace_path = temp.path().to_path_buf();
         input.model_label = "Haiku 4.5".into();
-        input.model_id = "claude-haiku-4-5".into();
+        input.model_id = ModelId::resolve(input.provider, "claude-haiku-4-5");
         input.prompt = format!(
             "Use the Bash tool to run sleep 5, then finish the original task by including this exact token in your final response: {original_token}"
         );
-        let handle = launch_turn(&binary, &input, None, approvals, callback)
-            .await
-            .unwrap();
+        let handle = launch_turn(
+            &binary,
+            &input,
+            None,
+            approvals,
+            callback,
+            &PromptGate::open(),
+        )
+        .await
+        .unwrap();
         let steer_prompt =
             format!("Also include this exact token in the same final response: {steer_token}");
         handle.steer(&steer_prompt).await.unwrap();

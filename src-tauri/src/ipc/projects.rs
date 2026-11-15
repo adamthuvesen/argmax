@@ -8,16 +8,17 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use super::inputs::*;
-use super::{live_database, read_off_main};
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
-use crate::persistence::database::Database;
-use crate::persistence::projects::{
-    delete_project, list_projects, parse_github_remote, persist_project, require_project,
-    update_project_settings, PersistProjectInput, ProjectRemote, ProjectSettings, ProjectSummary,
-};
+use crate::application::project_registration::*;
 use crate::routing::project_check::ProjectCheck;
 use crate::state::AppState;
+use crate::state::{live_database, read_off_main};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::git_exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
+use argmax_store::database::Database;
+use argmax_store::projects::{
+    delete_project, list_projects, persist_project, require_project, update_project_settings,
+    PersistProjectInput, ProjectSettings, ProjectSummary,
+};
 
 #[tauri::command(rename = "projects:list")]
 #[specta::specta]
@@ -147,17 +148,17 @@ pub async fn projects_configure(
 pub async fn projects_get_folders(
     state: State<'_, AppState>,
     input: ProjectsGetFoldersInput,
-) -> ArgmaxResult<Vec<crate::persistence::project_folders::ProjectFolderSummary>> {
+) -> ArgmaxResult<Vec<argmax_store::project_folders::ProjectFolderSummary>> {
     projects_get_folders_impl(&state, input).await
 }
 
 pub(crate) async fn projects_get_folders_impl(
     state: &AppState,
     input: ProjectsGetFoldersInput,
-) -> ArgmaxResult<Vec<crate::persistence::project_folders::ProjectFolderSummary>> {
+) -> ArgmaxResult<Vec<argmax_store::project_folders::ProjectFolderSummary>> {
     let database = live_database(state)?;
     read_off_main(move || {
-        crate::persistence::project_folders::list_project_folders(
+        argmax_store::project_folders::list_project_folders(
             &database.read_connection(),
             input.project_id.as_str(),
         )
@@ -189,9 +190,9 @@ pub(crate) async fn projects_create_impl(
     let connection = database.connection();
     let transaction = connection
         .unchecked_transaction()
-        .map_err(crate::persistence::sqlite_error)?;
+        .map_err(argmax_store::sqlite_error)?;
     persist_project(&transaction, &project)?;
-    crate::persistence::project_folders::configure_project_folders_in_transaction(
+    argmax_store::project_folders::configure_project_folders_in_transaction(
         &transaction,
         &project_id,
         input.name.as_str(),
@@ -199,11 +200,9 @@ pub(crate) async fn projects_create_impl(
         &primary,
     )?;
     let generation =
-        crate::persistence::project_overviews::begin_generation(&transaction, &project_id, true)?;
+        argmax_store::project_overviews::begin_generation(&transaction, &project_id, true)?;
     let result = require_project(&transaction, &project_id)?;
-    transaction
-        .commit()
-        .map_err(crate::persistence::sqlite_error)?;
+    transaction.commit().map_err(argmax_store::sqlite_error)?;
     drop(connection);
     if let Some(generation) = generation {
         super::project_overviews::spawn_generation(state, database, project_id, generation);
@@ -226,7 +225,7 @@ pub(crate) async fn projects_configure_impl(
     .await?;
     let project = {
         let connection = database.connection();
-        crate::persistence::project_folders::configure_project_folders(
+        argmax_store::project_folders::configure_project_folders(
             &connection,
             input.project_id.as_str(),
             input.name.as_str(),
@@ -244,15 +243,15 @@ async fn validate_project_folders(
     paths: &[String],
     primary_path: &str,
 ) -> ArgmaxResult<(
-    Vec<crate::persistence::project_folders::PersistProjectFolderInput>,
+    Vec<argmax_store::project_folders::PersistProjectFolderInput>,
     String,
 )> {
-    use crate::persistence::project_folders::{
+    use argmax_store::project_folders::{
         list_project_folders, project_for_folder, PersistProjectFolderInput,
     };
     let existing = {
         let connection = database.read_connection();
-        if crate::persistence::projects::find_project_by_id(&connection, project_id)?.is_some() {
+        if argmax_store::projects::find_project_by_id(&connection, project_id)?.is_some() {
             list_project_folders(&connection, project_id)?
         } else {
             Vec::new()
@@ -271,7 +270,7 @@ async fn validate_project_folders(
         let root = if previous.is_some() && path != primary_path {
             PathBuf::from(path)
         } else {
-            crate::persistence::linked_repos::canonical_folder_root(path)?
+            argmax_store::linked_repos::canonical_folder_root(path)?
         };
         let root_text = root.to_string_lossy().into_owned();
         if folders.iter().any(|folder| folder.root_path == root_text) {
@@ -296,7 +295,7 @@ async fn validate_project_folders(
             .transpose()?
             .unwrap_or(default_settings(&Uuid::new_v4().to_string())?);
         if previous.is_none() {
-            settings.worktree_location = crate::util::data_dir::worktree_root()?
+            settings.worktree_location = argmax_store::worktree_root()?
                 .join(project_id)
                 .join(Uuid::new_v4().to_string())
                 .to_string_lossy()
@@ -314,10 +313,15 @@ async fn validate_project_folders(
         let prior_project = previous
             .map(|folder| project_for_folder(&database.read_connection(), &folder.id))
             .transpose()?;
-        let prior_remote = previous.map(|folder| {
-            let connection = database.read_connection();
-            connection.query_row("SELECT repo_remote_owner, repo_remote_name FROM project_folders WHERE id = ?", [&folder.id], |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?))).map_err(crate::persistence::sqlite_error)
-        }).transpose()?.and_then(|(owner, name)| owner.zip(name).map(|(owner, name)| ProjectRemote { owner, name }));
+        let prior_remote = previous
+            .map(|folder| {
+                argmax_store::project_folders::folder_remote(
+                    &database.read_connection(),
+                    &folder.id,
+                )
+            })
+            .transpose()?
+            .flatten();
         folders.push(PersistProjectFolderInput {
             root_path: root_text,
             current_branch: metadata
@@ -376,10 +380,10 @@ pub(crate) async fn projects_remove_impl(
 ) -> ArgmaxResult<()> {
     // `workspaces.project_id` cascades on project delete: removing the hidden
     // scratch project would silently take every side chat with it.
-    if input.project_id.as_str() == crate::workspaces::SCRATCH_PROJECT_ID {
+    if input.project_id.as_str() == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
         return Err(ArgmaxError::service(
             "PROJECT_NOT_REMOVABLE",
-            "The side-chats project is app-managed and cannot be removed.",
+            "The Chat project is app-managed and cannot be removed.",
         ));
     }
     // Resolve the database before tearing anything down: an unopened database
@@ -443,14 +447,14 @@ pub(crate) async fn projects_get_folder_context_impl(
 ) -> ArgmaxResult<ProjectFolderContext> {
     let database = live_database(state)?;
     read_off_main(move || {
-        let (mut project, folder_id) = crate::persistence::project_folders::project_for_launch(
+        let (mut project, folder_id) = argmax_store::project_folders::project_for_launch(
             &database.read_connection(),
             input.project_id.as_str(),
             input.project_folder_id.as_deref(),
         )?;
-        let is_git = crate::persistence::project_folders::folder_is_git(&project.repo_path)?;
+        let is_git = argmax_store::project_folders::folder_is_git(&project.repo_path)?;
         if is_git {
-            let branch = crate::git::exec::run_git_text_blocking(
+            let branch = argmax_process::git_exec::run_git_text_blocking(
                 Path::new(&project.repo_path),
                 ["branch", "--show-current"],
                 GIT_DEFAULT_TIMEOUT,
@@ -460,7 +464,7 @@ pub(crate) async fn projects_get_folder_context_impl(
             } else {
                 branch.trim().into()
             };
-            crate::persistence::project_folders::update_folder_branch(
+            argmax_store::project_folders::update_folder_branch(
                 &database.connection(),
                 &project.id,
                 &folder_id,
@@ -495,14 +499,14 @@ pub(crate) async fn projects_list_branches_impl(
     let (repo_path, default_branch) = {
         let database = live_database(state)?;
         let connection = database.connection();
-        let (project, _) = crate::persistence::project_folders::project_for_launch(
+        let (project, _) = argmax_store::project_folders::project_for_launch(
             &connection,
             input.project_id.as_str(),
             input.project_folder_id.as_deref(),
         )?;
         (project.repo_path, project.default_branch)
     };
-    if !crate::persistence::project_folders::folder_is_git(&repo_path)? {
+    if !argmax_store::project_folders::folder_is_git(&repo_path)? {
         return Err(ArgmaxError::service(
             "PROJECT_GIT_REQUIRED",
             "Choose a Git repository to select a branch.",
@@ -562,14 +566,14 @@ pub(crate) async fn projects_refresh_branch_impl(
     let (project, folder_id) = {
         let database = live_database(state)?;
         let connection = database.connection();
-        crate::persistence::project_folders::project_for_launch(
+        argmax_store::project_folders::project_for_launch(
             &connection,
             input.project_id.as_str(),
             input.project_folder_id.as_deref(),
         )?
     };
     let repo_path = project.repo_path;
-    if !crate::persistence::project_folders::folder_is_git(&repo_path)? {
+    if !argmax_store::project_folders::folder_is_git(&repo_path)? {
         return Err(ArgmaxError::service(
             "PROJECT_GIT_REQUIRED",
             "Choose a Git repository to select a branch.",
@@ -593,7 +597,7 @@ pub(crate) async fn projects_refresh_branch_impl(
     };
     let database = live_database(state)?;
     let connection = database.connection();
-    crate::persistence::project_folders::update_folder_branch(
+    argmax_store::project_folders::update_folder_branch(
         &connection,
         input.project_id.as_str(),
         &folder_id,
@@ -606,14 +610,14 @@ pub(crate) async fn projects_refresh_branch_impl(
 pub async fn projects_list_checkouts(
     state: State<'_, AppState>,
     input: ProjectsListCheckoutsInput,
-) -> ArgmaxResult<Vec<crate::workspaces::ProjectCheckout>> {
+) -> ArgmaxResult<Vec<crate::workspaces::orchestration::ProjectCheckout>> {
     projects_list_checkouts_impl(&state, input).await
 }
 
 pub(crate) async fn projects_list_checkouts_impl(
     state: &AppState,
     input: ProjectsListCheckoutsInput,
-) -> ArgmaxResult<Vec<crate::workspaces::ProjectCheckout>> {
+) -> ArgmaxResult<Vec<crate::workspaces::orchestration::ProjectCheckout>> {
     super::workspaces::live_workspaces(state)?
         .list_checkouts_in_folder(
             input.project_id.as_str(),
@@ -638,14 +642,14 @@ pub(crate) async fn projects_switch_branch_impl(
     let (project, folder_id) = {
         let database = live_database(state)?;
         let connection = database.connection();
-        crate::persistence::project_folders::project_for_launch(
+        argmax_store::project_folders::project_for_launch(
             &connection,
             input.project_id.as_str(),
             input.project_folder_id.as_deref(),
         )?
     };
     let repo_path = project.repo_path;
-    if !crate::persistence::project_folders::folder_is_git(&repo_path)? {
+    if !argmax_store::project_folders::folder_is_git(&repo_path)? {
         return Err(ArgmaxError::service(
             "PROJECT_GIT_REQUIRED",
             "Choose a Git repository to select a branch.",
@@ -661,7 +665,7 @@ pub(crate) async fn projects_switch_branch_impl(
     .await?;
     let database = live_database(state)?;
     let connection = database.connection();
-    crate::persistence::project_folders::update_folder_branch(
+    argmax_store::project_folders::update_folder_branch(
         &connection,
         input.project_id.as_str(),
         &folder_id,
@@ -679,13 +683,6 @@ pub enum ProjectFolderPickResult {
         cancelled: bool,
         project: Box<ProjectSummary>,
     },
-}
-
-struct GitMetadata {
-    repo_path: PathBuf,
-    current_branch: String,
-    default_branch: Option<String>,
-    remote: Option<ProjectRemote>,
 }
 
 pub(crate) async fn pick_project_folder(
@@ -717,228 +714,6 @@ pub(crate) async fn register_project_path(
 ) -> ArgmaxResult<ProjectSummary> {
     let database = live_database(state)?;
     register_repo_path(&database, candidate_path).await
-}
-
-/// Add the repository at `candidate_path`, or return the project already
-/// registered for it. Takes the database rather than the app state so the
-/// session-control socket, which has no `AppState`, can register a repository
-/// an agent named for the first time.
-pub(crate) async fn register_repo_path(
-    database: &Database,
-    candidate_path: PathBuf,
-) -> ArgmaxResult<ProjectSummary> {
-    let canonical_path = canonicalize_repo_path(&candidate_path).await?;
-    {
-        let connection = database.connection();
-        if let Some(project) = crate::persistence::projects::find_project_by_repo_path(
-            &connection,
-            &canonical_path.to_string_lossy(),
-        )? {
-            return Ok(project);
-        }
-    }
-    let metadata = read_git_metadata(&canonical_path).await?;
-    if let Some(default_branch) = metadata.default_branch.as_deref() {
-        assert_valid_ref_name(&metadata.repo_path, default_branch).await?;
-    }
-
-    let project_id = Uuid::new_v4().to_string();
-    let settings = default_settings(&project_id)?;
-    let project = PersistProjectInput {
-        id: project_id,
-        name: metadata
-            .repo_path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("Project")
-            .to_string(),
-        repo_path: metadata.repo_path.to_string_lossy().to_string(),
-        current_branch: metadata.current_branch,
-        default_branch: metadata.default_branch,
-        settings,
-    };
-
-    let project = {
-        let connection = database.connection();
-        if let Some(existing) = crate::persistence::projects::find_project_by_repo_path(
-            &connection,
-            &project.repo_path,
-        )? {
-            return Ok(existing);
-        }
-        persist_project(&connection, &project)?
-    };
-    let remote = match metadata.remote {
-        Some(remote) => Some(remote),
-        None => crate::git::ops::resolve_project_remote(&canonical_path).await,
-    };
-    if let Some(remote) = remote.as_ref() {
-        let connection = database.connection();
-        let _ = crate::persistence::projects::update_project_remote(
-            &connection,
-            &project.id,
-            Some(remote),
-        );
-    }
-    Ok(project)
-}
-
-async fn canonicalize_repo_path(candidate_path: &Path) -> ArgmaxResult<PathBuf> {
-    let resolved = tokio::fs::canonicalize(candidate_path)
-        .await
-        .map_err(|error| {
-            ArgmaxError::service(
-                "PROJECT_PATH",
-                format!(
-                    "Argmax could not resolve {}. {error}",
-                    candidate_path.display()
-                ),
-            )
-        })?;
-    let metadata = tokio::fs::metadata(&resolved).await.map_err(|error| {
-        ArgmaxError::service(
-            "PROJECT_PATH",
-            format!("Argmax could not stat {}. {error}", resolved.display()),
-        )
-    })?;
-    if !metadata.is_dir() {
-        return Err(ArgmaxError::service(
-            "PROJECT_PATH",
-            format!("{} is not a directory.", resolved.display()),
-        ));
-    }
-    if tokio::fs::metadata(resolved.join(".git")).await.is_err() {
-        return Err(ArgmaxError::service(
-            "PROJECT_NOT_GIT",
-            format!(
-                "{} is not a git repository (.git missing).",
-                resolved.display()
-            ),
-        ));
-    }
-    Ok(resolved)
-}
-
-async fn read_git_metadata(candidate_path: &Path) -> ArgmaxResult<GitMetadata> {
-    let root = run_git_text(
-        candidate_path,
-        ["rev-parse", "--show-toplevel"],
-        GIT_DEFAULT_TIMEOUT,
-    )
-    .await
-    .map_err(project_git_error)?;
-    let repo_path = PathBuf::from(root.trim());
-    let current_branch = run_git_text(
-        &repo_path,
-        ["branch", "--show-current"],
-        GIT_DEFAULT_TIMEOUT,
-    )
-    .await
-    .map_err(project_git_error)?
-    .trim()
-    .to_string();
-    let current_branch = if current_branch.is_empty() {
-        "HEAD".to_string()
-    } else {
-        current_branch
-    };
-    let default_branch = discover_default_branch(&repo_path, &current_branch).await?;
-    let remote_url = run_git_text(
-        &repo_path,
-        ["config", "--get", "remote.origin.url"],
-        GIT_DEFAULT_TIMEOUT,
-    )
-    .await
-    .ok();
-    let remote = remote_url.as_deref().and_then(parse_github_remote);
-
-    Ok(GitMetadata {
-        repo_path,
-        current_branch,
-        default_branch,
-        remote,
-    })
-}
-
-async fn discover_default_branch(
-    repo_path: &Path,
-    current_branch: &str,
-) -> ArgmaxResult<Option<String>> {
-    if let Ok(origin_head) = run_git_text(
-        repo_path,
-        [
-            "symbolic-ref",
-            "--quiet",
-            "--short",
-            "refs/remotes/origin/HEAD",
-        ],
-        GIT_DEFAULT_TIMEOUT,
-    )
-    .await
-    {
-        let branch = origin_head
-            .trim()
-            .strip_prefix("origin/")
-            .unwrap_or(origin_head.trim());
-        if !branch.is_empty() {
-            return Ok(Some(branch.to_string()));
-        }
-    }
-
-    for branch in ["main", "master", "trunk"] {
-        if run_git_text(
-            repo_path,
-            [
-                "show-ref",
-                "--verify",
-                "--quiet",
-                &format!("refs/heads/{branch}"),
-            ],
-            GIT_DEFAULT_TIMEOUT,
-        )
-        .await
-        .is_ok()
-        {
-            return Ok(Some(branch.to_string()));
-        }
-    }
-
-    Ok((current_branch != "HEAD").then(|| current_branch.to_string()))
-}
-
-async fn assert_valid_ref_name(repo_path: &Path, reference: &str) -> ArgmaxResult<()> {
-    run_git_text(
-        repo_path,
-        ["check-ref-format", "--allow-onelevel", reference],
-        GIT_DEFAULT_TIMEOUT,
-    )
-    .await
-    .map(|_| ())
-    .map_err(|_| {
-        ArgmaxError::service(
-            "GIT_REF_INVALID",
-            format!("Invalid git ref name: {reference}"),
-        )
-    })
-}
-
-fn default_settings(project_id: &str) -> ArgmaxResult<ProjectSettings> {
-    Ok(ProjectSettings {
-        worktree_location: crate::util::data_dir::worktree_root()?
-            .join(project_id)
-            .to_string_lossy()
-            .to_string(),
-        setup_command: String::new(),
-        check_commands: Vec::new(),
-        merge_cleanup: Default::default(),
-    })
-}
-
-fn project_git_error(error: ArgmaxError) -> ArgmaxError {
-    ArgmaxError::service(
-        "PROJECT_GIT",
-        format!("Argmax requires a local git repository. {error}"),
-    )
 }
 
 #[cfg(test)]
@@ -982,9 +757,7 @@ mod tests {
         let project = register_repo_path(&database, repo.clone()).await.unwrap();
         assert_eq!(
             PathBuf::from(&project.settings.worktree_location),
-            crate::util::data_dir::worktree_root()
-                .unwrap()
-                .join(&project.id)
+            argmax_store::worktree_root().unwrap().join(&project.id)
         );
         assert!(state.db.set(database).is_ok());
 
@@ -1045,7 +818,7 @@ mod tests {
     #[tokio::test]
     async fn folder_context_and_branch_switch_preserve_project_primary() {
         use super::*;
-        use crate::persistence::project_folders::{
+        use argmax_store::project_folders::{
             configure_project_folders, list_project_folders, PersistProjectFolderInput,
         };
         use std::sync::Arc;

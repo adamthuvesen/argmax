@@ -13,16 +13,16 @@ export const demoSnapshot: DashboardSnapshot = {
         mergeCleanup: "off",
         worktreeLocation: "~/code/.argmax/worktrees",
         setupCommand: "npm install",
-        checkCommands: ["npm run lint", "npm test", "npm run tauri:build"]
+        checkCommands: ["npm run lint", "npm test", "npm run tauri:build"],
       },
       counts: {
         active: 2,
         blocked: 0,
         failed: 1,
-        reviewReady: 1
+        reviewReady: 1,
       },
-      latestActivityAt: "2026-05-08T15:54:00.000Z"
-    }
+      latestActivityAt: "2026-05-08T15:54:00.000Z",
+    },
   ],
   workspaces: [
     {
@@ -48,7 +48,7 @@ export const demoSnapshot: DashboardSnapshot = {
       prCreatedAt: null,
       prMergedAt: null,
       prCheckState: null,
-      prActivityAt: null
+      prActivityAt: null,
     },
     {
       // The multitask dispatched from the review-studio chat: same checkout,
@@ -75,7 +75,7 @@ export const demoSnapshot: DashboardSnapshot = {
       prCreatedAt: null,
       prMergedAt: null,
       prCheckState: null,
-      prActivityAt: null
+      prActivityAt: null,
     },
     {
       id: "workspace-review-studio",
@@ -100,7 +100,7 @@ export const demoSnapshot: DashboardSnapshot = {
       prCreatedAt: null,
       prMergedAt: null,
       prCheckState: null,
-      prActivityAt: null
+      prActivityAt: null,
     },
     {
       id: "workspace-approval-gate",
@@ -128,7 +128,7 @@ export const demoSnapshot: DashboardSnapshot = {
       prActivityAt: null,
       // Snoozed, but an approval is pending: a snooze never hides a request
       // the agent is blocked on, so this row stays in Priority.
-      snoozedUntil: "2099-01-01T00:00:00.000Z"
+      snoozedUntil: "2099-01-01T00:00:00.000Z",
     },
     {
       // Snoozed and quiet, so it sits on the collapsed Snoozed shelf.
@@ -155,8 +155,8 @@ export const demoSnapshot: DashboardSnapshot = {
       prCreatedAt: null,
       prMergedAt: null,
       prCheckState: null,
-      prActivityAt: null
-    }
+      prActivityAt: null,
+    },
   ],
   sessions: [
     {
@@ -270,7 +270,7 @@ export const demoSnapshot: DashboardSnapshot = {
       contextTokens: 0,
       imported: false,
       launchKind: "agent",
-    }
+    },
   ],
   events: [
     {
@@ -279,7 +279,7 @@ export const demoSnapshot: DashboardSnapshot = {
       type: "user.message",
       message: "Read the layout files and tell me how density is handled.",
       payload: {},
-      createdAt: "2026-05-08T15:53:40.000Z"
+      createdAt: "2026-05-08T15:53:40.000Z",
     },
     {
       id: "event-board-announce",
@@ -287,23 +287,30 @@ export const demoSnapshot: DashboardSnapshot = {
       type: "message.completed",
       message: "On it — let me read a few files first.",
       payload: {},
-      createdAt: "2026-05-08T15:53:45.000Z"
+      createdAt: "2026-05-08T15:53:45.000Z",
     },
     {
       id: "event-board-tool-1-s",
       sessionId: "session-ui-board",
       type: "command.started",
       message: "Read",
-      payload: { id: "tu_board_1", name: "Read", input: { file_path: "src/renderer/board/layout.ts" } },
-      createdAt: "2026-05-08T15:53:46.000Z"
+      payload: {
+        id: "tu_board_1",
+        name: "Read",
+        input: { file_path: "src/renderer/board/layout.ts" },
+      },
+      createdAt: "2026-05-08T15:53:46.000Z",
     },
     {
       id: "event-board-tool-1-c",
       sessionId: "session-ui-board",
       type: "command.completed",
       message: "tool_result",
-      payload: { tool_use_id: "tu_board_1", content: "// layout pass\nexport function layout() { /* ... */ }" },
-      createdAt: "2026-05-08T15:53:47.000Z"
+      payload: {
+        tool_use_id: "tu_board_1",
+        content: "// layout pass\nexport function layout() { /* ... */ }",
+      },
+      createdAt: "2026-05-08T15:53:47.000Z",
     },
     {
       id: "event-board-tool-2-s",
@@ -311,15 +318,19 @@ export const demoSnapshot: DashboardSnapshot = {
       type: "command.started",
       message: "Glob",
       payload: { id: "tu_board_2", name: "Glob", input: { pattern: "src/renderer/board/*.ts" } },
-      createdAt: "2026-05-08T15:53:47.000Z"
+      createdAt: "2026-05-08T15:53:47.000Z",
     },
     {
       id: "event-board-tool-2-c",
       sessionId: "session-ui-board",
       type: "command.completed",
       message: "tool_result",
-      payload: { tool_use_id: "tu_board_2", content: "src/renderer/board/layout.ts\nsrc/renderer/board/density.ts\nsrc/renderer/board/markers.ts" },
-      createdAt: "2026-05-08T15:53:48.000Z"
+      payload: {
+        tool_use_id: "tu_board_2",
+        content:
+          "src/renderer/board/layout.ts\nsrc/renderer/board/density.ts\nsrc/renderer/board/markers.ts",
+      },
+      createdAt: "2026-05-08T15:53:48.000Z",
     },
     {
       id: "event-board-tool-3-s",
@@ -327,31 +338,43 @@ export const demoSnapshot: DashboardSnapshot = {
       type: "command.started",
       message: "Read",
       payload: { id: "tu_board_3", name: "Read", input: { file_path: "src/renderer/board" } },
-      createdAt: "2026-05-08T15:53:49.000Z"
+      createdAt: "2026-05-08T15:53:49.000Z",
     },
     {
       id: "event-board-tool-3-c",
       sessionId: "session-ui-board",
       type: "command.completed",
       message: "tool_result",
-      payload: { tool_use_id: "tu_board_3", is_error: true, content: "EISDIR: illegal operation on a directory" },
-      createdAt: "2026-05-08T15:53:50.000Z"
+      payload: {
+        tool_use_id: "tu_board_3",
+        is_error: true,
+        content: "EISDIR: illegal operation on a directory",
+      },
+      createdAt: "2026-05-08T15:53:50.000Z",
     },
     {
       id: "event-board-tool-4-s",
       sessionId: "session-ui-board",
       type: "command.started",
       message: "Bash",
-      payload: { id: "tu_board_4", name: "Bash", input: { command: "wc -l src/renderer/board/*.ts" } },
-      createdAt: "2026-05-08T15:53:51.000Z"
+      payload: {
+        id: "tu_board_4",
+        name: "Bash",
+        input: { command: "wc -l src/renderer/board/*.ts" },
+      },
+      createdAt: "2026-05-08T15:53:51.000Z",
     },
     {
       id: "event-board-tool-4-c",
       sessionId: "session-ui-board",
       type: "command.completed",
       message: "tool_result",
-      payload: { tool_use_id: "tu_board_4", content: " 142 src/renderer/board/layout.ts\n  88 src/renderer/board/density.ts\n  56 src/renderer/board/markers.ts\n 286 total" },
-      createdAt: "2026-05-08T15:53:53.000Z"
+      payload: {
+        tool_use_id: "tu_board_4",
+        content:
+          " 142 src/renderer/board/layout.ts\n  88 src/renderer/board/density.ts\n  56 src/renderer/board/markers.ts\n 286 total",
+      },
+      createdAt: "2026-05-08T15:53:53.000Z",
     },
     {
       id: "event-board-tool-5-s",
@@ -365,50 +388,68 @@ export const demoSnapshot: DashboardSnapshot = {
           description: "Audit board density heuristics",
           prompt:
             "Read src/renderer/board/density.ts and check whether the attention-level → row-height mapping handles the edge cases: 0 sessions, single session, and >12 sessions. Report findings with file:line refs. Don't modify code.",
-          subagent_type: "general-purpose"
-        }
+          subagent_type: "general-purpose",
+        },
       },
-      createdAt: "2026-05-08T15:53:54.000Z"
+      createdAt: "2026-05-08T15:53:54.000Z",
     },
     {
       id: "ev-sub-think",
       sessionId: "session-ui-board",
       type: "message.delta",
-      message: "The mapping lives in density.ts. I should read it first, then check the three edge cases the prompt names.",
+      message:
+        "The mapping lives in density.ts. I should read it first, then check the three edge cases the prompt names.",
       payload: { parent_tool_use_id: "tu_board_5", thinking: true },
-      createdAt: "2026-05-08T15:53:54.200Z"
+      createdAt: "2026-05-08T15:53:54.200Z",
     },
     {
       id: "ev-sub-narr-1",
       sessionId: "session-ui-board",
       type: "message.completed",
       message: "Reading the density heuristics now.",
-      payload: { parent_tool_use_id: "tu_board_5", agentModelId: "gpt-5.6-sol", agentReasoningEffort: "high" },
-      createdAt: "2026-05-08T15:53:54.400Z"
+      payload: {
+        parent_tool_use_id: "tu_board_5",
+        agentModelId: "gpt-5.6-sol",
+        agentReasoningEffort: "high",
+      },
+      createdAt: "2026-05-08T15:53:54.400Z",
     },
     {
       id: "ev-sub-t1-s",
       sessionId: "session-ui-board",
       type: "command.started",
       message: "Read",
-      payload: { id: "tu_sub_1", name: "Read", parent_tool_use_id: "tu_board_5", input: { file_path: "src/renderer/board/density.ts" } },
-      createdAt: "2026-05-08T15:53:54.500Z"
+      payload: {
+        id: "tu_sub_1",
+        name: "Read",
+        parent_tool_use_id: "tu_board_5",
+        input: { file_path: "src/renderer/board/density.ts" },
+      },
+      createdAt: "2026-05-08T15:53:54.500Z",
     },
     {
       id: "ev-sub-t1-c",
       sessionId: "session-ui-board",
       type: "command.completed",
       message: "tool_result",
-      payload: { tool_use_id: "tu_sub_1", content: "export function rowHeight(count: number): number { ... }" },
-      createdAt: "2026-05-08T15:53:54.900Z"
+      payload: {
+        tool_use_id: "tu_sub_1",
+        content: "export function rowHeight(count: number): number { ... }",
+      },
+      createdAt: "2026-05-08T15:53:54.900Z",
     },
     {
       id: "ev-sub-t2-s",
       sessionId: "session-ui-board",
       type: "command.started",
       message: "Grep",
-      payload: { id: "tu_sub_2", name: "Grep", parent_tool_use_id: "tu_board_5", input: { pattern: "rowHeight", path: "src/renderer" } },
-      createdAt: "2026-05-08T15:53:55.000Z"
+      payload: {
+        id: "tu_sub_2",
+        name: "Grep",
+        parent_tool_use_id: "tu_board_5",
+        input: { pattern: "rowHeight", path: "src/renderer" },
+      },
+      createdAt: "2026-05-08T15:53:55.000Z",
     },
     {
       id: "ev-sub-t2-c",
@@ -416,7 +457,7 @@ export const demoSnapshot: DashboardSnapshot = {
       type: "command.completed",
       message: "tool_result",
       payload: { tool_use_id: "tu_sub_2", content: "density.ts:18\ndensity.ts:32\nlayout.ts:71" },
-      createdAt: "2026-05-08T15:53:55.400Z"
+      createdAt: "2026-05-08T15:53:55.400Z",
     },
     {
       id: "ev-sub-narr-2",
@@ -424,15 +465,20 @@ export const demoSnapshot: DashboardSnapshot = {
       type: "message.completed",
       message: "Now checking how the cap behaves above twelve sessions.",
       payload: { parent_tool_use_id: "tu_board_5" },
-      createdAt: "2026-05-08T15:53:55.500Z"
+      createdAt: "2026-05-08T15:53:55.500Z",
     },
     {
       id: "ev-sub-t3-s",
       sessionId: "session-ui-board",
       type: "command.started",
       message: "Bash",
-      payload: { id: "tu_sub_3", name: "Bash", parent_tool_use_id: "tu_board_5", input: { command: "rg -n 'MAX_ROWS' src/renderer/board" } },
-      createdAt: "2026-05-08T15:53:55.600Z"
+      payload: {
+        id: "tu_sub_3",
+        name: "Bash",
+        parent_tool_use_id: "tu_board_5",
+        input: { command: "rg -n 'MAX_ROWS' src/renderer/board" },
+      },
+      createdAt: "2026-05-08T15:53:55.600Z",
     },
     {
       id: "ev-sub-t3-c",
@@ -440,15 +486,20 @@ export const demoSnapshot: DashboardSnapshot = {
       type: "command.completed",
       message: "tool_result",
       payload: { tool_use_id: "tu_sub_3", content: "density.ts:32:const MAX_ROWS = 12;" },
-      createdAt: "2026-05-08T15:53:56.000Z"
+      createdAt: "2026-05-08T15:53:56.000Z",
     },
     {
       id: "ev-sub-t4-s",
       sessionId: "session-ui-board",
       type: "command.started",
       message: "Bash",
-      payload: { id: "tu_sub_4", name: "Bash", parent_tool_use_id: "tu_board_5", input: { command: "npx vitest run src/renderer/board" } },
-      createdAt: "2026-05-08T15:53:56.100Z"
+      payload: {
+        id: "tu_sub_4",
+        name: "Bash",
+        parent_tool_use_id: "tu_board_5",
+        input: { command: "npx vitest run src/renderer/board" },
+      },
+      createdAt: "2026-05-08T15:53:56.100Z",
     },
     {
       id: "ev-sub-t4-c",
@@ -456,7 +507,7 @@ export const demoSnapshot: DashboardSnapshot = {
       type: "command.completed",
       message: "tool_result",
       payload: { tool_use_id: "tu_sub_4", content: "3 passed" },
-      createdAt: "2026-05-08T15:53:56.600Z"
+      createdAt: "2026-05-08T15:53:56.600Z",
     },
     {
       id: "event-board-tool-5-c",
@@ -466,9 +517,9 @@ export const demoSnapshot: DashboardSnapshot = {
       payload: {
         tool_use_id: "tu_board_5",
         content:
-          "density.ts:18 handles 0 sessions by returning the default row height (good); :32 caps at 12 sessions but the cap is silent — flag in UI when truncated."
+          "density.ts:18 handles 0 sessions by returning the default row height (good); :32 caps at 12 sessions but the cap is silent — flag in UI when truncated.",
       },
-      createdAt: "2026-05-08T15:53:58.000Z"
+      createdAt: "2026-05-08T15:53:58.000Z",
     },
     {
       id: "event-board-tool-6-s",
@@ -478,9 +529,9 @@ export const demoSnapshot: DashboardSnapshot = {
       payload: {
         id: "tu_board_6",
         name: "mcp__claude_ai_Slack__slack_search_public",
-        input: { query: "attention markers density" }
+        input: { query: "attention markers density" },
       },
-      createdAt: "2026-05-08T15:53:58.500Z"
+      createdAt: "2026-05-08T15:53:58.500Z",
     },
     {
       id: "event-board-tool-6-c",
@@ -489,17 +540,19 @@ export const demoSnapshot: DashboardSnapshot = {
       message: "tool_result",
       payload: {
         tool_use_id: "tu_board_6",
-        content: "2 results in #design-system: the gutter markers were agreed at 3 levels (calm, attention, urgent)."
+        content:
+          "2 results in #design-system: the gutter markers were agreed at 3 levels (calm, attention, urgent).",
       },
-      createdAt: "2026-05-08T15:53:59.000Z"
+      createdAt: "2026-05-08T15:53:59.000Z",
     },
     {
       id: "event-board-message",
       sessionId: "session-ui-board",
       type: "message.completed",
-      message: "Agent board skeleton is rendering; tuning density and attention markers.\n\n- **layout.ts** owns the column grid (12-col, snap to 8px).\n- **density.ts** maps attention level → row height.\n- **markers.ts** paints the gutter indicators.",
+      message:
+        "Agent board skeleton is rendering; tuning density and attention markers.\n\n- **layout.ts** owns the column grid (12-col, snap to 8px).\n- **density.ts** maps attention level → row height.\n- **markers.ts** paints the gutter indicators.",
       payload: { surface: "agent-board" },
-      createdAt: "2026-05-08T15:54:00.000Z"
+      createdAt: "2026-05-08T15:54:00.000Z",
     },
     {
       id: "event-board-multitask-launched",
@@ -511,9 +564,9 @@ export const demoSnapshot: DashboardSnapshot = {
         childWorkspaceId: "workspace-multitask-changelog",
         taskLabel: "Fix the changelog date",
         prompt: "The changelog says 2025 for the 0.4 entry — fix it.",
-        worktree: false
+        worktree: false,
       },
-      createdAt: "2026-05-08T15:53:58.000Z"
+      createdAt: "2026-05-08T15:53:58.000Z",
     },
     {
       id: "event-multitask-child-user",
@@ -521,7 +574,7 @@ export const demoSnapshot: DashboardSnapshot = {
       type: "user.message",
       message: "The changelog says 2025 for the 0.4 entry — fix it.",
       payload: { source: "multitask" },
-      createdAt: "2026-05-08T15:53:58.000Z"
+      createdAt: "2026-05-08T15:53:58.000Z",
     },
     {
       id: "event-multitask-child-answer",
@@ -529,7 +582,7 @@ export const demoSnapshot: DashboardSnapshot = {
       type: "message.completed",
       message: "Corrected the 0.4 heading to 2026 in CHANGELOG.md.",
       payload: {},
-      createdAt: "2026-05-08T15:54:02.000Z"
+      createdAt: "2026-05-08T15:54:02.000Z",
     },
     {
       id: "event-board-multitask-finished",
@@ -540,9 +593,9 @@ export const demoSnapshot: DashboardSnapshot = {
         childSessionId: "session-multitask-changelog",
         taskLabel: "Fix the changelog date",
         state: "complete",
-        answer: "Corrected the 0.4 heading to 2026 in CHANGELOG.md."
+        answer: "Corrected the 0.4 heading to 2026 in CHANGELOG.md.",
       },
-      createdAt: "2026-05-08T15:54:02.000Z"
+      createdAt: "2026-05-08T15:54:02.000Z",
     },
     {
       id: "event-review-complete",
@@ -550,7 +603,7 @@ export const demoSnapshot: DashboardSnapshot = {
       type: "session.completed",
       message: "Review studio shell is ready for local diff wiring.",
       payload: { exitCode: 0 },
-      createdAt: "2026-05-08T15:48:00.000Z"
+      createdAt: "2026-05-08T15:48:00.000Z",
     },
     {
       id: "event-approval-needed",
@@ -558,8 +611,8 @@ export const demoSnapshot: DashboardSnapshot = {
       type: "approval.requested",
       message: "Approval needed before deleting a generated worktree.",
       payload: { riskLevel: "high" },
-      createdAt: "2026-05-08T15:42:00.000Z"
-    }
+      createdAt: "2026-05-08T15:42:00.000Z",
+    },
   ],
   rawOutputs: [
     {
@@ -567,8 +620,8 @@ export const demoSnapshot: DashboardSnapshot = {
       sessionId: "session-ui-board",
       stream: "pty",
       content: "Running layout pass...\n",
-      createdAt: "2026-05-08T15:54:00.000Z"
-    }
+      createdAt: "2026-05-08T15:54:00.000Z",
+    },
   ],
   approvals: [
     {
@@ -582,8 +635,8 @@ export const demoSnapshot: DashboardSnapshot = {
       riskLevel: "high",
       status: "pending",
       createdAt: "2026-05-08T15:42:00.000Z",
-      resolvedAt: null
-    }
+      resolvedAt: null,
+    },
   ],
   checks: [
     {
@@ -594,8 +647,8 @@ export const demoSnapshot: DashboardSnapshot = {
       exitCode: 0,
       summary: "Renderer and main process compiled successfully.",
       startedAt: "2026-05-08T15:45:00.000Z",
-      completedAt: "2026-05-08T15:46:00.000Z"
-    }
+      completedAt: "2026-05-08T15:46:00.000Z",
+    },
   ],
   arcs: [
     {
@@ -608,7 +661,7 @@ export const demoSnapshot: DashboardSnapshot = {
       memberCount: 1,
       updatedAt: "2026-05-08T15:54:00.000Z",
       lastEventAt: null,
-      archivedAt: null
-    }
-  ]
+      archivedAt: null,
+    },
+  ],
 };

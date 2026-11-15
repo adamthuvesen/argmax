@@ -43,7 +43,7 @@ export function launcherDraftKey(projectId: string): string {
 }
 
 export function readDraft(key: string | null): ComposerDraft {
-  return key ? readAll().drafts[key] ?? EMPTY : EMPTY;
+  return key ? (readAll().drafts[key] ?? EMPTY) : EMPTY;
 }
 
 type RestoreHandler = (draft: ComposerDraft) => void;

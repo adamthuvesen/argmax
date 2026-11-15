@@ -30,8 +30,11 @@ import {
   snapshot,
   terminateProvider,
   workspaceRow,
-  sessionRow
+  sessionRow,
 } from "../test/appTestHarness.js";
+import { FIXED_NOW_MS, freezeClock, isoAgo } from "../test/fixedClock.js";
+
+freezeClock();
 
 async function submitNewProject(name: string): Promise<void> {
   fireEvent.change(await screen.findByLabelText("Project name"), { target: { value: name } });
@@ -45,15 +48,17 @@ function pasteScreenshot(target: HTMLElement): void {
   const file = new File([new Uint8Array([137, 80, 78, 71])], "shot.png", { type: "image/png" });
   fireEvent.paste(target, {
     clipboardData: {
-      items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
-    }
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
+    },
   });
 }
 
 function attachedScreenshots(): string[] {
   const region = screen.queryByLabelText("Attached images");
   if (!region) return [];
-  return Array.from(region.querySelectorAll("img")).map((image) => image.getAttribute("src") ?? "");
+  return within(region)
+    .queryAllByRole("presentation")
+    .map((image) => image.getAttribute("src") ?? "");
 }
 
 describe("App", () => {
@@ -70,43 +75,71 @@ describe("App", () => {
       provider: "codex",
       label: "GPT-6.1 Sol",
       modelId: "gpt-6.1-sol",
-      reasoningEffort: "high"
+      reasoningEffort: "high",
     });
     render(<App />);
 
-    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("GPT-6.1 Sol");
+    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent(
+      "GPT-6.1 Sol",
+    );
   });
 
   it("moves a provider-switch screenshot to the launcher without mixing in its old draft", async () => {
-    const screenshot = { filePath: "/attachments/current.png", mimeType: "image/png", sizeBytes: 4 };
-    const unrelated = { filePath: "/attachments/old-launcher.png", mimeType: "image/png", sizeBytes: 4 };
-    window.localStorage.setItem("argmax.composer.drafts", JSON.stringify({
-      "session-1": { text: "", attachments: [screenshot] },
-      "launch-project-1": { text: "Old launcher thought", attachments: [unrelated] }
-    }));
+    const screenshot = {
+      filePath: "/attachments/current.png",
+      mimeType: "image/png",
+      sizeBytes: 4,
+    };
+    const unrelated = {
+      filePath: "/attachments/old-launcher.png",
+      mimeType: "image/png",
+      sizeBytes: 4,
+    };
+    window.localStorage.setItem(
+      "argmax.composer.drafts",
+      JSON.stringify({
+        "session-1": { text: "", attachments: [screenshot] },
+        "launch-project-1": { text: "Old launcher thought", attachments: [unrelated] },
+      }),
+    );
     mockDashboardSnapshot({
       ...snapshot,
       sessions: snapshot.sessions.map((session) => ({
         ...session,
         state: "complete" as const,
-        providerConversationId: "conv-1"
-      }))
+        providerConversationId: "conv-1",
+      })),
     });
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByLabelText("Chat prompt");
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
-    fireEvent.click(within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "Sonnet 5.5" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Switch this chat to Claude" })).getByRole("button", { name: "New chat" }));
+    fireEvent.click(
+      within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", {
+        name: "Sonnet 5.5",
+      }),
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Switch this chat to Claude" })).getByRole(
+        "button",
+        {
+          name: "New chat",
+        },
+      ),
+    );
 
     expect(await screen.findByLabelText("Task prompt")).toHaveValue("");
     expect(attachedScreenshots()).toEqual([attachmentProtocolUrl(screenshot.filePath)]);
     fireEvent.click(screen.getByTitle("Start agent"));
-    await waitFor(() => expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: "@/attachments/current.png",
-      attachments: [screenshot]
-    })));
+    await waitFor(() =>
+      expect(launchProvider).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "@/attachments/current.png",
+          attachments: [screenshot],
+        }),
+      ),
+    );
   });
 
   it("toggles project sessions in the sidebar and remembers collapsed projects", async () => {
@@ -115,8 +148,8 @@ describe("App", () => {
     mockDashboardSnapshot({
       ...snapshot,
       sessions: snapshot.sessions.map((session) =>
-        session.id === "session-1" ? { ...session, state: "complete" } : session
-      )
+        session.id === "session-1" ? { ...session, state: "complete" } : session,
+      ),
     });
     const { unmount } = render(<App />);
 
@@ -125,7 +158,10 @@ describe("App", () => {
     fireEvent.click(hideProjectSessions);
 
     expect(screen.queryByRole("button", { name: "Build dashboard" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show Argmax chats" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Show Argmax chats" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
 
     unmount();
     render(<App />);
@@ -153,9 +189,9 @@ describe("App", () => {
             type: "message.delta",
             message: "Streaming now.",
             payload: {},
-            createdAt: "2026-05-08T15:54:01.000Z"
-          }
-        ]
+            createdAt: "2026-05-08T15:54:01.000Z",
+          },
+        ],
       });
     });
 
@@ -170,7 +206,9 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Chat model" }));
     fireEvent.click(
-      within(await screen.findByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "GPT-6.1 Sol" })
+      within(await screen.findByRole("listbox", { name: "Chat model" })).getByRole("button", {
+        name: "GPT-6.1 Sol",
+      }),
     );
     const initialLabel = screen.getByRole("button", { name: "Chat model" }).textContent ?? "";
     expect(initialLabel).toContain("GPT-6.1 Sol");
@@ -187,9 +225,9 @@ describe("App", () => {
             modelLabel: "Haiku 4.5",
             modelId: "claude-haiku-4-5",
             reasoningEffort: undefined,
-            lastActivityAt: "2026-05-08T15:55:00.000Z"
-          }
-        ]
+            lastActivityAt: "2026-05-08T15:55:00.000Z",
+          },
+        ],
       });
     });
 
@@ -208,17 +246,17 @@ describe("App", () => {
         kind: "git",
         path: "/tmp/argmax",
         dirty: true,
-        changedFiles: 3
+        changedFiles: 3,
       })),
-      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" })),
     };
     mockDashboardSnapshot(sharedSnapshot);
     archiveWorkspace.mockResolvedValue({
       workspace: {
         ...(sharedSnapshot.workspaces[0] ?? snapshot.workspaces[0]),
-        state: "archived"
+        state: "archived",
       },
-      recoveryPath: null
+      recoveryPath: null,
     });
 
     try {
@@ -226,7 +264,7 @@ describe("App", () => {
       fireEvent.click(await screen.findByRole("button", { name: "Archive chat" }));
 
       await waitFor(() =>
-        expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: false })
+        expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: false }),
       );
       expect(confirmSpy).not.toHaveBeenCalled();
     } finally {
@@ -244,17 +282,17 @@ describe("App", () => {
         sharedWorkspace: false,
         kind: "git",
         dirty: true,
-        changedFiles: 2
+        changedFiles: 2,
       })),
-      sessions: snapshot.sessions.map((session) => ({ ...session, state: "failed" }))
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "failed" })),
     };
     mockDashboardSnapshot(failedSnapshot);
     archiveWorkspace.mockResolvedValue({
       workspace: {
         ...(failedSnapshot.workspaces[0] ?? snapshot.workspaces[0]),
-        state: "archived"
+        state: "archived",
       },
-      recoveryPath: "/tmp/workspace-archive/workspace-1"
+      recoveryPath: "/tmp/workspace-archive/workspace-1",
     });
 
     try {
@@ -262,57 +300,73 @@ describe("App", () => {
       fireEvent.click(await screen.findByRole("button", { name: "Archive chat" }));
 
       expect(confirmSpy).toHaveBeenCalledWith(
-        "Build dashboard has 2 uncommitted changes. Archive this worktree and keep its files in recovery storage?"
+        "Build dashboard has 2 uncommitted changes. Archive this worktree and keep its files in recovery storage?",
       );
       await waitFor(() =>
-        expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: true })
+        expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: true }),
       );
     } finally {
       confirmSpy.mockRestore();
     }
   });
 
-  it.each([false, true])("waits for dirty archive confirmation before applying answer %s", async (accepted) => {
-    const dirtySnapshot: DashboardSnapshot = {
-      ...snapshot,
-      workspaces: snapshot.workspaces.map((workspace) => ({
-        ...workspace, state: "complete", sharedWorkspace: false, dirty: true, changedFiles: 2
-      })),
-      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
-    };
-    mockDashboardSnapshot(dirtySnapshot);
-    let resolveConfirmation!: (answer: boolean) => void;
-    const confirmation = new Promise<boolean>((resolve) => { resolveConfirmation = resolve; });
-    const confirmSpy = vi.spyOn(window.argmax!.system, "confirm").mockReturnValue(confirmation);
-    archiveWorkspace.mockResolvedValue({
-      workspace: { ...dirtySnapshot.workspaces[0], state: "archived" },
-      recoveryPath: "/tmp/workspace-archive/workspace-1"
-    });
+  it.each([false, true])(
+    "waits for dirty archive confirmation before applying answer %s",
+    async (accepted) => {
+      const dirtySnapshot: DashboardSnapshot = {
+        ...snapshot,
+        workspaces: snapshot.workspaces.map((workspace) => ({
+          ...workspace,
+          state: "complete",
+          sharedWorkspace: false,
+          dirty: true,
+          changedFiles: 2,
+        })),
+        sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" })),
+      };
+      mockDashboardSnapshot(dirtySnapshot);
+      let resolveConfirmation!: (answer: boolean) => void;
+      const confirmation = new Promise<boolean>((resolve) => {
+        resolveConfirmation = resolve;
+      });
+      const confirmSpy = vi.spyOn(window.argmax!.system, "confirm").mockReturnValue(confirmation);
+      archiveWorkspace.mockResolvedValue({
+        workspace: { ...dirtySnapshot.workspaces[0], state: "archived" },
+        recoveryPath: "/tmp/workspace-archive/workspace-1",
+      });
 
-    render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Archive chat" }));
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(archiveWorkspace).not.toHaveBeenCalled();
-
-    await act(async () => {
-      resolveConfirmation(accepted);
-      await confirmation;
-    });
-    if (accepted) {
-      expect(archiveWorkspace).toHaveBeenCalledExactlyOnceWith({ workspaceId: "workspace-1", force: true });
-    } else {
+      render(<App />);
+      fireEvent.click(await screen.findByRole("button", { name: "Archive chat" }));
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
       expect(archiveWorkspace).not.toHaveBeenCalled();
-      expect(screen.getByRole("button", { name: "Archive chat" })).toBeInTheDocument();
-    }
-  });
+
+      await act(async () => {
+        resolveConfirmation(accepted);
+        await confirmation;
+      });
+      if (accepted) {
+        expect(archiveWorkspace).toHaveBeenCalledExactlyOnceWith({
+          workspaceId: "workspace-1",
+          force: true,
+        });
+      } else {
+        expect(archiveWorkspace).not.toHaveBeenCalled();
+        expect(screen.getByRole("button", { name: "Archive chat" })).toBeInTheDocument();
+      }
+    },
+  );
 
   it("keeps a dirty workspace when its confirmation dialog fails", async () => {
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: snapshot.workspaces.map((workspace) => ({
-        ...workspace, state: "complete", sharedWorkspace: false, dirty: true, changedFiles: 2
+        ...workspace,
+        state: "complete",
+        sharedWorkspace: false,
+        dirty: true,
+        changedFiles: 2,
       })),
-      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" })),
     });
     vi.spyOn(window.argmax!.system, "confirm").mockRejectedValue(new Error("Dialog unavailable"));
     render(<App />);
@@ -331,30 +385,28 @@ describe("App", () => {
         sharedWorkspace: true,
         kind: "git",
         dirty: false,
-        changedFiles: 0
+        changedFiles: 0,
       })),
-      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" })),
     };
     mockDashboardSnapshot(activeSnapshot);
     archiveWorkspace.mockResolvedValue({
       workspace: {
         ...(activeSnapshot.workspaces[0] ?? snapshot.workspaces[0]),
-        state: "archived"
+        state: "archived",
       },
-      recoveryPath: null
+      recoveryPath: null,
     });
 
     render(<App />);
 
-    // Open the chat
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     expect(await screen.findByRole("button", { name: "Close pane" })).toBeInTheDocument();
 
-    // Archive the active chat
     fireEvent.click(screen.getByRole("button", { name: "Archive chat" }));
 
     await waitFor(() =>
-      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: false })
+      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: false }),
     );
 
     // Chat should now be closed and launcher should be visible
@@ -374,20 +426,20 @@ describe("App", () => {
         sharedWorkspace: false,
         kind: "git",
         dirty: false,
-        changedFiles: 0
+        changedFiles: 0,
       })),
-      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" })),
     };
     mockDashboardSnapshot(cleanIsolatedSnapshot);
     const workspace = cleanIsolatedSnapshot.workspaces[0] ?? snapshot.workspaces[0];
     archiveWorkspace
       .mockResolvedValueOnce({
         workspace: { ...workspace, state: "kept", dirty: true, changedFiles: 2 },
-        recoveryPath: null
+        recoveryPath: null,
       })
       .mockResolvedValueOnce({
         workspace: { ...workspace, state: "archived" },
-        recoveryPath: "/tmp/workspace-archive/workspace-1"
+        recoveryPath: "/tmp/workspace-archive/workspace-1",
       });
 
     try {
@@ -395,8 +447,14 @@ describe("App", () => {
       fireEvent.click(await screen.findByRole("button", { name: "Archive chat" }));
 
       await waitFor(() => expect(archiveWorkspace).toHaveBeenCalledTimes(2));
-      expect(archiveWorkspace).toHaveBeenNthCalledWith(1, { workspaceId: "workspace-1", force: false });
-      expect(archiveWorkspace).toHaveBeenNthCalledWith(2, { workspaceId: "workspace-1", force: true });
+      expect(archiveWorkspace).toHaveBeenNthCalledWith(1, {
+        workspaceId: "workspace-1",
+        force: false,
+      });
+      expect(archiveWorkspace).toHaveBeenNthCalledWith(2, {
+        workspaceId: "workspace-1",
+        force: true,
+      });
       expect(confirmSpy).toHaveBeenCalledTimes(1);
     } finally {
       confirmSpy.mockRestore();
@@ -413,9 +471,9 @@ describe("App", () => {
         id: "ws_1",
         type: "web_search",
         name: "web_search",
-        input: {}
+        input: {},
       },
-      createdAt: "2026-05-08T15:53:58.000Z"
+      createdAt: "2026-05-08T15:53:58.000Z",
     };
     const toolCompleted: DashboardSnapshot["events"][number] = {
       id: "event-tool-completed",
@@ -427,14 +485,14 @@ describe("App", () => {
         type: "web_search",
         name: "web_search",
         input: {
-          query: "pizza recipe"
-        }
+          query: "pizza recipe",
+        },
       },
-      createdAt: "2026-05-08T15:53:59.000Z"
+      createdAt: "2026-05-08T15:53:59.000Z",
     };
     mockDashboardSnapshot({
       ...snapshot,
-      events: [snapshot.events[0], toolCompleted, toolStarted]
+      events: [snapshot.events[0], toolCompleted, toolStarted],
     });
     sessionEventsSince.mockResolvedValue({
       events: [snapshot.events[0], toolCompleted, toolStarted],
@@ -445,7 +503,7 @@ describe("App", () => {
       deletedEventIds: [],
       deletedRawOutputIds: [],
       resetRequired: false,
-      hasMore: false
+      hasMore: false,
     });
 
     render(<App />);
@@ -466,7 +524,7 @@ describe("App", () => {
       type: "command.started",
       message: "Read",
       payload: { id: "tu_1", type: "Read", name: "Read", input: { file_path: "README.md" } },
-      createdAt: "2026-05-08T15:53:50.000Z"
+      createdAt: "2026-05-08T15:53:50.000Z",
     };
     const toolCompleted: DashboardSnapshot["events"][number] = {
       id: "event-tool-completed",
@@ -474,7 +532,7 @@ describe("App", () => {
       type: "command.completed",
       message: "tool_result",
       payload: { tool_use_id: "tu_1", content: "file body" },
-      createdAt: "2026-05-08T15:53:51.000Z"
+      createdAt: "2026-05-08T15:53:51.000Z",
     };
     const streamingDeltas: DashboardSnapshot["events"] = Array.from({ length: 120 }, (_, i) => ({
       id: `event-delta-${i}`,
@@ -482,7 +540,7 @@ describe("App", () => {
       type: "message.delta" as const,
       message: `chunk ${i}`,
       payload: {},
-      createdAt: new Date(Date.parse("2026-05-08T15:53:52.000Z") + i).toISOString()
+      createdAt: new Date(Date.parse("2026-05-08T15:53:52.000Z") + i).toISOString(),
     }));
     const messageCompleted: DashboardSnapshot["events"][number] = {
       id: "event-msg-completed",
@@ -490,12 +548,18 @@ describe("App", () => {
       type: "message.completed",
       message: "All set.",
       payload: {},
-      createdAt: "2026-05-08T15:54:00.000Z"
+      createdAt: "2026-05-08T15:54:00.000Z",
     };
 
     const firstEvent = snapshot.events[0];
     if (!firstEvent) throw new Error("test fixture missing baseline event");
-    const eventsBundle = [firstEvent, toolStarted, toolCompleted, ...streamingDeltas, messageCompleted];
+    const eventsBundle = [
+      firstEvent,
+      toolStarted,
+      toolCompleted,
+      ...streamingDeltas,
+      messageCompleted,
+    ];
     mockDashboardSnapshot({ ...snapshot, events: eventsBundle });
     sessionEventsSince.mockResolvedValue({
       events: eventsBundle,
@@ -506,7 +570,7 @@ describe("App", () => {
       deletedEventIds: [],
       deletedRawOutputIds: [],
       resetRequired: false,
-      hasMore: false
+      hasMore: false,
     });
 
     render(<App />);
@@ -527,7 +591,7 @@ describe("App", () => {
       type: "user.message",
       message: "yes explore the codebase",
       payload: {},
-      createdAt: "2026-05-08T15:56:43.000Z"
+      createdAt: "2026-05-08T15:56:43.000Z",
     };
     const announce: DashboardSnapshot["events"][number] = {
       id: "ev-msg-announce",
@@ -535,25 +599,58 @@ describe("App", () => {
       type: "message.completed",
       message: "I'll explore the codebase.",
       payload: {},
-      createdAt: "2026-05-08T15:56:49.000Z"
+      createdAt: "2026-05-08T15:56:49.000Z",
     };
     // First two tool starts share the announce timestamp.
     const toolEvents: DashboardSnapshot["events"] = [
-      { id: "ev-glob-1-s", sessionId: "session-1", type: "command.started", message: "Glob",
+      {
+        id: "ev-glob-1-s",
+        sessionId: "session-1",
+        type: "command.started",
+        message: "Glob",
         payload: { id: "tu1", name: "Glob", input: { pattern: "src/**/*.py" } },
-        createdAt: "2026-05-08T15:56:49.000Z" },
-      { id: "ev-glob-1-c", sessionId: "session-1", type: "command.completed", message: "tool_result",
-        payload: { tool_use_id: "tu1", content: "match" }, createdAt: "2026-05-08T15:56:50.000Z" },
-      { id: "ev-glob-2-s", sessionId: "session-1", type: "command.started", message: "Glob",
+        createdAt: "2026-05-08T15:56:49.000Z",
+      },
+      {
+        id: "ev-glob-1-c",
+        sessionId: "session-1",
+        type: "command.completed",
+        message: "tool_result",
+        payload: { tool_use_id: "tu1", content: "match" },
+        createdAt: "2026-05-08T15:56:50.000Z",
+      },
+      {
+        id: "ev-glob-2-s",
+        sessionId: "session-1",
+        type: "command.started",
+        message: "Glob",
         payload: { id: "tu2", name: "Glob", input: { pattern: "src/**/*.ts" } },
-        createdAt: "2026-05-08T15:56:50.000Z" },
-      { id: "ev-glob-2-c", sessionId: "session-1", type: "command.completed", message: "tool_result",
-        payload: { tool_use_id: "tu2", content: "match" }, createdAt: "2026-05-08T15:56:50.000Z" },
-      { id: "ev-read-1-s", sessionId: "session-1", type: "command.started", message: "Read",
+        createdAt: "2026-05-08T15:56:50.000Z",
+      },
+      {
+        id: "ev-glob-2-c",
+        sessionId: "session-1",
+        type: "command.completed",
+        message: "tool_result",
+        payload: { tool_use_id: "tu2", content: "match" },
+        createdAt: "2026-05-08T15:56:50.000Z",
+      },
+      {
+        id: "ev-read-1-s",
+        sessionId: "session-1",
+        type: "command.started",
+        message: "Read",
         payload: { id: "tu3", name: "Read", input: { file_path: "README.md" } },
-        createdAt: "2026-05-08T15:56:50.000Z" },
-      { id: "ev-read-1-c", sessionId: "session-1", type: "command.completed", message: "tool_result",
-        payload: { tool_use_id: "tu3", content: "file" }, createdAt: "2026-05-08T15:56:52.000Z" }
+        createdAt: "2026-05-08T15:56:50.000Z",
+      },
+      {
+        id: "ev-read-1-c",
+        sessionId: "session-1",
+        type: "command.completed",
+        message: "tool_result",
+        payload: { tool_use_id: "tu3", content: "file" },
+        createdAt: "2026-05-08T15:56:52.000Z",
+      },
     ];
     const finalAnswer: DashboardSnapshot["events"][number] = {
       id: "ev-msg-final",
@@ -561,7 +658,7 @@ describe("App", () => {
       type: "message.completed",
       message: "I've explored.",
       payload: {},
-      createdAt: "2026-05-08T15:57:25.000Z"
+      createdAt: "2026-05-08T15:57:25.000Z",
     };
 
     const eventsBundle = [userMessage, announce, ...toolEvents, finalAnswer];
@@ -575,7 +672,7 @@ describe("App", () => {
       deletedEventIds: [],
       deletedRawOutputIds: [],
       resetRequired: false,
-      hasMore: false
+      hasMore: false,
     });
 
     render(<App />);
@@ -588,7 +685,9 @@ describe("App", () => {
     const conversation = await screen.findByRole("region", { name: "Conversation" });
     await waitFor(() => expect(conversation).toHaveTextContent("I'll explore the codebase."));
     expect(conversation).toHaveTextContent("I've explored.");
-    expect(screen.getByRole("button", { name: /^Read a file, searched(: |$)/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^Read a file, searched(: |$)/ }),
+    ).toBeInTheDocument();
   });
 
   it("hides provider protocol JSON from the first-turn raw transcript fallback", async () => {
@@ -602,9 +701,9 @@ describe("App", () => {
           stream: "stdout",
           content:
             '{"type":"thread.started","thread_id":"019e0bd0-7694-7032-85cd-f670d78ac282"}\n{"type":"turn.started"}\n{"type":"init","cwd":"/tmp/argmax","session_id":"claude-session","tools":["Task","Bash"]}\n',
-          createdAt: "2026-05-08T15:54:01.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:01.000Z",
+        },
+      ],
     };
     mockDashboardSnapshot(lifecycleSnapshot);
     sessionEventsSince.mockResolvedValue({
@@ -616,7 +715,7 @@ describe("App", () => {
       deletedEventIds: [],
       deletedRawOutputIds: [],
       resetRequired: false,
-      hasMore: false
+      hasMore: false,
     });
 
     render(<App />);
@@ -655,9 +754,11 @@ describe("App", () => {
   it("starts the default provider from the composer", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 5.5");
+    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent(
+      "Opus 5.5",
+    );
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
-      target: { value: "Implement PTY launch" }
+      target: { value: "Implement PTY launch" },
     });
     fireEvent.click(screen.getByTitle("Start agent"));
 
@@ -665,8 +766,8 @@ describe("App", () => {
       expect(createCurrentWorkspace).toHaveBeenCalledWith({
         projectId: "project-1",
         projectFolderId: "project-1:primary",
-        taskLabel: "Implement PTY launch"
-      })
+        taskLabel: "Implement PTY launch",
+      }),
     );
     expect(launchProvider).toHaveBeenCalledWith({
       workspaceId: "workspace-1",
@@ -681,22 +782,23 @@ describe("App", () => {
       cols: 120,
       rows: 32,
       attachments: null,
-      autoTier: null
+      autoTier: null,
+      submittedAtMs: FIXED_NOW_MS,
     });
     await waitFor(() =>
       expect(autotitleWorkspace).toHaveBeenCalledWith({
         workspaceId: "workspace-1",
         provider: "claude",
         modelId: "claude-sonnet-5-5",
-        prompt: "Implement PTY launch"
-      })
+        prompt: "Implement PTY launch",
+      }),
     );
     expect(createCurrentWorkspace.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
-      launchProvider.mock.invocationCallOrder[0] ?? 0
+      launchProvider.mock.invocationCallOrder[0] ?? 0,
     );
     expect(setWorkspaceIcon).not.toHaveBeenCalled();
     expect(launchProvider.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
-      autotitleWorkspace.mock.invocationCallOrder[0] ?? 0
+      autotitleWorkspace.mock.invocationCallOrder[0] ?? 0,
     );
     expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
   });
@@ -707,13 +809,11 @@ describe("App", () => {
     const promptBox = await screen.findByLabelText("Task prompt");
     // Spy only once the launcher is on screen, so its own random draws (the
     // rotating hero heading) don't eat the queued icon/color values.
-    const random = vi.spyOn(Math, "random")
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(0.999);
+    const random = vi.spyOn(Math, "random").mockReturnValueOnce(0).mockReturnValueOnce(0.999);
 
     try {
       fireEvent.change(promptBox, {
-        target: { value: "Implement PTY launch" }
+        target: { value: "Implement PTY launch" },
       });
       fireEvent.click(screen.getByTitle("Start agent"));
 
@@ -724,11 +824,11 @@ describe("App", () => {
           // first icon and 0.999 the last colour. Naming the entries here meant
           // appending a colour failed this test.
           icon: SESSION_ICON_NAMES[0],
-          iconColor: SESSION_ICON_COLORS[SESSION_ICON_COLORS.length - 1]
-        })
+          iconColor: SESSION_ICON_COLORS[SESSION_ICON_COLORS.length - 1],
+        }),
       );
       expect(setWorkspaceIcon.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
-        launchProvider.mock.invocationCallOrder[0] ?? 0
+        launchProvider.mock.invocationCallOrder[0] ?? 0,
       );
     } finally {
       random.mockRestore();
@@ -772,7 +872,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
-      target: { value: "Implement PTY launch" }
+      target: { value: "Implement PTY launch" },
     });
     fireEvent.click(screen.getByTitle("Start agent"));
     await screen.findByRole("region", { name: "Conversation" });
@@ -781,49 +881,55 @@ describe("App", () => {
     expect(await screen.findByLabelText("Task prompt")).toHaveValue("");
   });
 
-  it.each(["button", "Escape"])("returns to the launcher and archives a chat stopped after two seconds using %s", async (stopAction) => {
-    window.localStorage.setItem(ESCAPE_STOPS_CHAT_KEY, "true");
-    const freshWorkspace = {
-      ...snapshot.workspaces[0],
-      id: "workspace-new",
-      taskLabel: "Fix login auth bug in wrong repo"
-    };
-    createCurrentWorkspace.mockResolvedValue(freshWorkspace);
-    const freshSession = {
-      ...snapshot.sessions[0],
-      id: "session-new",
-      workspaceId: "workspace-new",
-      prompt: "Fix login auth bug in wrong repo",
-      startedAt: new Date(Date.now() - 2_000).toISOString(),
-      state: "running" as const
-    };
-    launchProvider.mockResolvedValue(freshSession);
+  it.each(["button", "Escape"])(
+    "returns to the launcher and archives a chat stopped after two seconds using %s",
+    async (stopAction) => {
+      window.localStorage.setItem(ESCAPE_STOPS_CHAT_KEY, "true");
+      const freshWorkspace = {
+        ...snapshot.workspaces[0],
+        id: "workspace-new",
+        taskLabel: "Fix login auth bug in wrong repo",
+      };
+      createCurrentWorkspace.mockResolvedValue(freshWorkspace);
+      const freshSession = {
+        ...snapshot.sessions[0],
+        id: "session-new",
+        workspaceId: "workspace-new",
+        prompt: "Fix login auth bug in wrong repo",
+        startedAt: isoAgo(2_000),
+        state: "running" as const,
+      };
+      launchProvider.mockResolvedValue(freshSession);
 
-    render(<App />);
+      render(<App />);
 
-    const promptBox = await screen.findByLabelText("Task prompt");
-    fireEvent.change(promptBox, {
-      target: { value: "Fix login auth bug in wrong repo" }
-    });
-    fireEvent.click(screen.getByTitle("Start agent"));
+      const promptBox = await screen.findByLabelText("Task prompt");
+      fireEvent.change(promptBox, {
+        target: { value: "Fix login auth bug in wrong repo" },
+      });
+      fireEvent.click(screen.getByTitle("Start agent"));
 
-    const stopButton = await screen.findByRole("button", { name: "Stop chat" });
-    expect(stopButton).toBeInTheDocument();
+      const stopButton = await screen.findByRole("button", { name: "Stop chat" });
+      expect(stopButton).toBeInTheDocument();
 
-    if (stopAction === "Escape") {
-      fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Escape" });
-    } else {
-      fireEvent.click(stopButton);
-    }
+      if (stopAction === "Escape") {
+        fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Escape" });
+      } else {
+        fireEvent.click(stopButton);
+      }
 
-    await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-new"));
-    await waitFor(() =>
-      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-new", force: true })
-    );
+      await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-new"));
+      await waitFor(() =>
+        expect(archiveWorkspace).toHaveBeenCalledWith({
+          workspaceId: "workspace-new",
+          force: true,
+        }),
+      );
 
-    const restoredPromptBox = await screen.findByLabelText("Task prompt");
-    expect(restoredPromptBox).toHaveValue("Fix login auth bug in wrong repo");
-  });
+      const restoredPromptBox = await screen.findByLabelText("Task prompt");
+      expect(restoredPromptBox).toHaveValue("Fix login auth bug in wrong repo");
+    },
+  );
 
   it("does not return to composer when stopped after the 10s window", async () => {
     const oldSession = {
@@ -831,8 +937,8 @@ describe("App", () => {
       id: "session-old",
       workspaceId: "workspace-1",
       prompt: "Build dashboard feature",
-      startedAt: new Date(Date.now() - 30_000).toISOString(),
-      state: "running" as const
+      startedAt: isoAgo(30_000),
+      state: "running" as const,
     };
     launchProvider.mockResolvedValue(oldSession);
 
@@ -840,7 +946,7 @@ describe("App", () => {
 
     const promptBox = await screen.findByLabelText("Task prompt");
     fireEvent.change(promptBox, {
-      target: { value: "Build dashboard feature" }
+      target: { value: "Build dashboard feature" },
     });
     fireEvent.click(screen.getByTitle("Start agent"));
 
@@ -859,7 +965,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
-      target: { value: "Implement PTY launch" }
+      target: { value: "Implement PTY launch" },
     });
     fireEvent.click(screen.getByTitle("Start agent"));
 
@@ -873,7 +979,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
-      target: { value: "Implement PTY launch" }
+      target: { value: "Implement PTY launch" },
     });
     // Worktree is off by default (current checkout); enable it.
     const worktreeToggle = screen.getByRole("button", { name: "Worktree" });
@@ -887,12 +993,12 @@ describe("App", () => {
         projectId: "project-1",
         projectFolderId: "project-1:primary",
         taskLabel: "Implement PTY launch",
-        baseRef: "main"
-      })
+        baseRef: "main",
+      }),
     );
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
     expect(launchProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ workspaceId: "workspace-1", prompt: "Implement PTY launch" })
+      expect.objectContaining({ workspaceId: "workspace-1", prompt: "Implement PTY launch" }),
     );
     expect(window.localStorage.getItem("argmax.workspaceMode")).toBe("worktree");
   });
@@ -902,9 +1008,12 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("button", { name: "Worktree" })).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByRole("button", { name: "Worktree" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
-      target: { value: "Resume the migration" }
+      target: { value: "Resume the migration" },
     });
     fireEvent.click(screen.getByTitle("Start agent"));
 
@@ -913,8 +1022,8 @@ describe("App", () => {
         projectId: "project-1",
         projectFolderId: "project-1:primary",
         taskLabel: "Resume the migration",
-        baseRef: "main"
-      })
+        baseRef: "main",
+      }),
     );
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
   });
@@ -927,7 +1036,7 @@ describe("App", () => {
       path: "/tmp/argmax",
       state: "running",
       sharedWorkspace: true,
-      lastActivityAt: "2026-05-08T16:10:00.000Z"
+      lastActivityAt: "2026-05-08T16:10:00.000Z",
     });
     const newSession = sessionRow({
       id: "session-new",
@@ -942,7 +1051,7 @@ describe("App", () => {
       attention: "normal",
       startedAt: "2026-05-08T16:10:00.000Z",
       completedAt: null,
-      lastActivityAt: "2026-05-08T16:10:00.000Z"
+      lastActivityAt: "2026-05-08T16:10:00.000Z",
     });
     const newEvent: DashboardSnapshot["events"][number] = {
       id: "event-new",
@@ -950,14 +1059,34 @@ describe("App", () => {
       type: "message.completed",
       message: "New session answer.",
       payload: {},
-      createdAt: "2026-05-08T16:10:01.000Z"
+      createdAt: "2026-05-08T16:10:01.000Z",
     };
     mockDashboardSnapshot(snapshot);
     sessionEventsSince.mockImplementation((input) => {
       if (input.sessionId === "session-new") {
-        return Promise.resolve({ events: [newEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+        return Promise.resolve({
+          events: [newEvent],
+          rawOutputs: [],
+          eventCursor: 2,
+          rawOutputCursor: 0,
+          changeCursor: null,
+          deletedEventIds: [],
+          deletedRawOutputIds: [],
+          resetRequired: false,
+          hasMore: false,
+        });
       }
-      return Promise.resolve({ events: snapshot.events, rawOutputs: snapshot.rawOutputs, eventCursor: 1, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+      return Promise.resolve({
+        events: snapshot.events,
+        rawOutputs: snapshot.rawOutputs,
+        eventCursor: 1,
+        rawOutputCursor: 0,
+        changeCursor: null,
+        deletedEventIds: [],
+        deletedRawOutputIds: [],
+        resetRequired: false,
+        hasMore: false,
+      });
     });
     createCurrentWorkspace.mockResolvedValue(newWorkspace);
     launchProvider.mockResolvedValue(newSession);
@@ -965,7 +1094,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
-      target: { value: "New session" }
+      target: { value: "New session" },
     });
     fireEvent.click(screen.getByTitle("Start agent"));
 
@@ -974,13 +1103,16 @@ describe("App", () => {
       dashboardDeltaListener?.({
         workspaces: [newWorkspace],
         sessions: [newSession],
-        events: [newEvent]
+        events: [newEvent],
       });
     });
 
     expect(await screen.findByText("New session answer.")).toBeInTheDocument();
     expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "New session" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: "New session" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
   });
 
   it("displays an @-mention-only launch prompt as the user message in the new session", async () => {
@@ -992,7 +1124,7 @@ describe("App", () => {
       path: "/tmp/argmax",
       state: "running",
       sharedWorkspace: true,
-      lastActivityAt: "2026-05-08T16:10:00.000Z"
+      lastActivityAt: "2026-05-08T16:10:00.000Z",
     });
     const newSession = sessionRow({
       id: "session-mention",
@@ -1007,7 +1139,7 @@ describe("App", () => {
       attention: "normal",
       startedAt: "2026-05-08T16:10:00.000Z",
       completedAt: null,
-      lastActivityAt: "2026-05-08T16:10:00.000Z"
+      lastActivityAt: "2026-05-08T16:10:00.000Z",
     });
     const userEvent: DashboardSnapshot["events"][number] = {
       id: "event-user-mention",
@@ -1015,14 +1147,34 @@ describe("App", () => {
       type: "user.message",
       message: "@AGENTS.md",
       payload: { source: "composer", agentMode: "auto" },
-      createdAt: "2026-05-08T16:10:00.500Z"
+      createdAt: "2026-05-08T16:10:00.500Z",
     };
     mockDashboardSnapshot(snapshot);
     sessionEventsSince.mockImplementation((input) => {
       if (input.sessionId === "session-mention") {
-        return Promise.resolve({ events: [userEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+        return Promise.resolve({
+          events: [userEvent],
+          rawOutputs: [],
+          eventCursor: 2,
+          rawOutputCursor: 0,
+          changeCursor: null,
+          deletedEventIds: [],
+          deletedRawOutputIds: [],
+          resetRequired: false,
+          hasMore: false,
+        });
       }
-      return Promise.resolve({ events: snapshot.events, rawOutputs: snapshot.rawOutputs, eventCursor: 1, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+      return Promise.resolve({
+        events: snapshot.events,
+        rawOutputs: snapshot.rawOutputs,
+        eventCursor: 1,
+        rawOutputCursor: 0,
+        changeCursor: null,
+        deletedEventIds: [],
+        deletedRawOutputIds: [],
+        resetRequired: false,
+        hasMore: false,
+      });
     });
     createCurrentWorkspace.mockResolvedValue(newWorkspace);
     launchProvider.mockResolvedValue(newSession);
@@ -1035,19 +1187,22 @@ describe("App", () => {
 
     await waitFor(() =>
       expect(launchProvider).toHaveBeenCalledWith(
-        expect.objectContaining({ prompt: "@AGENTS.md" })
-      )
+        expect.objectContaining({ prompt: "@AGENTS.md" }),
+      ),
     );
     act(() => {
       dashboardDeltaListener?.({
         workspaces: [newWorkspace],
         sessions: [newSession],
-        events: [userEvent]
+        events: [userEvent],
       });
     });
 
     const bubble = await screen.findByText("@AGENTS.md", { selector: "p" });
-    expect(bubble.closest(".chat-bubble.user")).not.toBeNull();
+    const bubbleArticle = screen
+      .getAllByRole("article")
+      .find((article) => article.contains(bubble));
+    expect(bubbleArticle).toHaveClass("chat-bubble", "user");
   });
 
   it("starts Claude when selected in the composer", async () => {
@@ -1059,7 +1214,7 @@ describe("App", () => {
     // effort-capable) carries that Medium over rather than resetting.
     fireEvent.click(within(launchPopover).getByText("Sonnet 5.5"));
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
-      target: { value: "Review this change" }
+      target: { value: "Review this change" },
     });
     fireEvent.click(screen.getByTitle("Start agent"));
 
@@ -1077,8 +1232,9 @@ describe("App", () => {
         cols: 120,
         rows: 32,
         attachments: null,
-        autoTier: null
-      })
+        autoTier: null,
+        submittedAtMs: FIXED_NOW_MS,
+      }),
     );
   });
 
@@ -1116,7 +1272,7 @@ describe("App", () => {
     render(<App />);
 
     const detailsToggle = await screen.findByRole("button", {
-      name: "Project and branch: Argmax, main"
+      name: "Project and branch: Argmax, main",
     });
     expect(detailsToggle).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(detailsToggle);
@@ -1127,9 +1283,9 @@ describe("App", () => {
 
     const branchToggle = within(details).getByRole("button", { name: "Switch branch" });
     fireEvent.click(branchToggle);
-    expect(await within(details).findByRole("listbox", { name: "Select branch" })).toHaveTextContent(
-      "feature/tidy"
-    );
+    expect(
+      await within(details).findByRole("listbox", { name: "Select branch" }),
+    ).toHaveTextContent("feature/tidy");
     fireEvent.click(within(details).getByRole("button", { name: "feature/tidy" }));
     expect(detailsToggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("dialog", { name: "Project and branch" })).not.toBeInTheDocument();
@@ -1144,7 +1300,7 @@ describe("App", () => {
     const list = await screen.findByRole("listbox", { name: "Select branch" });
     // The list holds focus while open, so typing lands here and not in the
     // prompt behind it.
-    await waitFor(() => expect(document.activeElement).toBe(list));
+    await waitFor(() => expect(list).toHaveFocus());
 
     fireEvent.keyDown(list, { key: "f" });
     fireEvent.keyDown(list, { key: "i" });
@@ -1162,9 +1318,9 @@ describe("App", () => {
     fireEvent.click(modelToggle);
     expect(modelToggle).toHaveAttribute("aria-expanded", "true");
 
-    const dismissLayer = document.querySelector(".picker-dismiss-layer");
+    const dismissLayer = screen.getByTestId("picker-dismiss-layer");
     expect(dismissLayer).toBeInTheDocument();
-    fireEvent.mouseDown(dismissLayer as Element);
+    fireEvent.mouseDown(dismissLayer);
 
     expect(modelToggle).toHaveAttribute("aria-expanded", "false");
   });
@@ -1188,7 +1344,7 @@ describe("App", () => {
     expect(screen.getByText("Created Dotfiles.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Task prompt"), {
-      target: { value: "Update shell aliases" }
+      target: { value: "Update shell aliases" },
     });
     fireEvent.click(screen.getByTitle("Start agent"));
 
@@ -1196,8 +1352,8 @@ describe("App", () => {
       expect(createCurrentWorkspace).toHaveBeenCalledWith({
         projectId: "project-2",
         projectFolderId: "project-2:primary",
-        taskLabel: "Update shell aliases"
-      })
+        taskLabel: "Update shell aliases",
+      }),
     );
   });
 
@@ -1250,7 +1406,9 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Add Project" }));
 
     await submitNewProject("Argmax");
-    expect(await screen.findByRole("status")).toHaveTextContent("Argmax requires a local git repository.");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Argmax requires a local git repository.",
+    );
     expect(screen.getByLabelText("Task prompt")).toBeInTheDocument();
   });
 
@@ -1260,7 +1418,7 @@ describe("App", () => {
       projects: [],
       workspaces: [],
       sessions: [],
-      events: []
+      events: [],
     });
     // Empty discovery: the launcher CTA stays disabled until at least one
     // provider is detected — Argmax can't launch a session without a CLI.
@@ -1285,7 +1443,7 @@ describe("App", () => {
       projects: [],
       workspaces: [],
       sessions: [],
-      events: []
+      events: [],
     });
     providersDiscover.mockResolvedValue([
       {
@@ -1297,8 +1455,8 @@ describe("App", () => {
         version: "1.2.3",
         authenticated: true,
         setupGuidance: null,
-        approvalSupport: "observable-only"
-      }
+        approvalSupport: "observable-only",
+      },
     ]);
 
     render(<App />);
@@ -1309,7 +1467,6 @@ describe("App", () => {
     const launcherCta = await screen.findByTitle("Pick a local git repository");
     expect(launcherCta).not.toBeDisabled();
   });
-
 
   it("renders the dashboard error state with a Retry button and reloads on click", async () => {
     let attempts = 0;
@@ -1331,10 +1488,9 @@ describe("App", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
   });
 
-
   it.each([
     new Error("The conversation is still running."),
-    { message: "The conversation is still running.", code: "SESSION_RUNNING" }
+    { message: "The conversation is still running.", code: "SESSION_RUNNING" },
   ])("shows the backend reason when clearing a chat fails: %j", async (failure) => {
     window.argmax!.session.clear = vi.fn().mockRejectedValueOnce(failure);
     render(<App />);
@@ -1386,19 +1542,17 @@ describe("App without Tauri bridge", () => {
     Object.defineProperty(window, "location", {
       configurable: true,
       writable: true,
-      value: { ...originalLocation, hostname: "example.test", host: "example.test" }
+      value: { ...originalLocation, hostname: "example.test", host: "example.test" },
     });
 
     try {
       render(<App />);
-      expect(
-        await screen.findByText(/Preview mode — showing sample data/)
-      ).toBeInTheDocument();
+      expect(await screen.findByText(/Preview mode — showing sample data/)).toBeInTheDocument();
     } finally {
       Object.defineProperty(window, "location", {
         configurable: true,
         writable: true,
-        value: originalLocation
+        value: originalLocation,
       });
       window.argmax = previousArgmax;
     }
@@ -1412,21 +1566,19 @@ describe("App without Tauri bridge", () => {
     Object.defineProperty(window, "location", {
       configurable: true,
       writable: true,
-      value: { ...originalLocation, hostname: "127.0.0.1", host: "127.0.0.1:5173" }
+      value: { ...originalLocation, hostname: "127.0.0.1", host: "127.0.0.1:5173" },
     });
 
     try {
       render(<App />);
 
-      expect(
-        screen.queryByText(/Preview mode — showing sample data/)
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/Preview mode — showing sample data/)).not.toBeInTheDocument();
       expect(await screen.findByText("Design parallel agent board")).toBeInTheDocument();
     } finally {
       Object.defineProperty(window, "location", {
         configurable: true,
         writable: true,
-        value: originalLocation
+        value: originalLocation,
       });
       window.argmax = previousArgmax;
     }

@@ -22,13 +22,14 @@ use tokio::process::Command;
 
 use super::{
     adapters::{get_provider_definition, opencode_variant_args_on},
-    environment::build_provider_environment,
+    model_catalogue::ModelId,
     opencode_gateway::{self, OpencodeGateway},
     opencode_isolation::IsolatedOpenCodeData,
     opencode_server::merge_launch_environment,
-    ProviderId, ReasoningEffort,
 };
 use crate::goals::GoalVerdict;
+use argmax_contracts::validation::{ProviderId, ReasoningEffort};
+use argmax_process::environment::build_provider_environment;
 
 /// Generous upper bound — a cold CLI start (auth refresh, model spin-up) can
 /// take several seconds. Past this we give up and the caller keeps its default.
@@ -135,24 +136,6 @@ pub async fn suggest_follow_up(
     sanitize_suggestion(&answer)
 }
 
-/// The cheap, fast model each provider's helper calls ride.
-///
-/// `PROVIDER_TITLE_MODEL` in `src/shared/providerModels.ts` is the source of
-/// truth: the renderer reads it and passes the id into `workspaces:autotitle`
-/// and `session:suggest-follow-up`. The Goal evaluator runs entirely in Rust
-/// with no renderer in the loop, so it reads the same table from here. Keep
-/// the two in step, the way `provider_defaults` in `lib.rs` is kept in step
-/// with `PROVIDER_MODEL_DEFAULTS`.
-pub fn helper_model(provider: ProviderId) -> &'static str {
-    match provider {
-        ProviderId::Claude => "claude-sonnet-5-5",
-        ProviderId::Codex => "gpt-6-luna",
-        ProviderId::Cursor => "composer-2.5",
-        ProviderId::Opencode => "openrouter/z-ai/glm-5.3-flash",
-        ProviderId::Grok => "grok-4.7",
-    }
-}
-
 /// Summarizes only the supplied repository sample. The helper has no file or shell tools.
 pub async fn summarize_repository(
     provider: ProviderId,
@@ -187,8 +170,7 @@ fn parse_repository_summary(raw: &str) -> Option<String> {
         .collect::<Vec<_>>()
         .join(" ");
     (!summary.is_empty()
-        && summary.chars().count()
-            <= crate::persistence::linked_repos::MAX_LINKED_REPO_SUMMARY_CHARS)
+        && summary.chars().count() <= argmax_store::linked_repos::MAX_LINKED_REPO_SUMMARY_CHARS)
         .then_some(summary)
 }
 
@@ -196,7 +178,7 @@ fn parse_repository_summary(raw: &str) -> Option<String> {
 /// generator means the call or its JSON failed, so another provider may try.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectOverviewAnswer {
-    Written(crate::persistence::project_overviews::OverviewDocument),
+    Written(argmax_store::project_overviews::OverviewDocument),
     PurposeNotEstablished,
 }
 
@@ -204,7 +186,7 @@ pub async fn generate_project_overview(
     provider: ProviderId,
     model_id: &str,
     context: &str,
-    allowed_sources: &[crate::persistence::project_overviews::OverviewSource],
+    allowed_sources: &[argmax_store::project_overviews::OverviewSource],
 ) -> Option<ProjectOverviewAnswer> {
     let instruction = format!(
         "PROJECT OVERVIEW GENERATION. Write a concise project orientation, at most 1500 characters. \
@@ -221,13 +203,13 @@ pub async fn generate_project_overview(
 
 fn parse_project_overview(
     raw: &str,
-    allowed_sources: &[crate::persistence::project_overviews::OverviewSource],
+    allowed_sources: &[argmax_store::project_overviews::OverviewSource],
 ) -> Option<ProjectOverviewAnswer> {
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Generated {
         text: String,
-        sources: Vec<crate::persistence::project_overviews::OverviewSource>,
+        sources: Vec<argmax_store::project_overviews::OverviewSource>,
     }
     let generated: Generated = serde_json::from_value(first_json_object(raw)?).ok()?;
     let text = generated.text.trim();
@@ -250,10 +232,10 @@ fn parse_project_overview(
         return None;
     }
     Some(ProjectOverviewAnswer::Written(
-        crate::persistence::project_overviews::OverviewDocument {
+        argmax_store::project_overviews::OverviewDocument {
             text: text.to_owned(),
             sources: generated.sources,
-            generated_at: Some(crate::persistence::time::now_iso()),
+            generated_at: Some(argmax_store::time::now_iso()),
         },
     ))
 }
@@ -656,6 +638,7 @@ fn one_shot_command(
 /// model offers: a title needs no thinking. The variant is looked up on the
 /// catalog id; `-m` names the model on the selected gateway.
 fn opencode_command(model_id: &str, instruction: &str, gateway: OpencodeGateway) -> OneShotCommand {
+    let model_id = ModelId::resolve(ProviderId::Opencode, model_id);
     let mut args: Vec<String> = vec![
         "run".into(),
         "--format".into(),
@@ -663,10 +646,10 @@ fn opencode_command(model_id: &str, instruction: &str, gateway: OpencodeGateway)
         "--agent".into(),
         "plan".into(),
         "-m".into(),
-        gateway.route_model_id(model_id),
+        gateway.route_model_id(&model_id),
     ];
     args.extend(opencode_variant_args_on(
-        model_id,
+        &model_id,
         Some(ReasoningEffort::Low),
         gateway,
     ));
@@ -683,7 +666,7 @@ async fn run_capture(
     provider: ProviderId,
     command: OneShotCommand,
 ) -> Option<String> {
-    let binary = if super::verification::requested() {
+    let binary = if argmax_process::environment::verification_requested() {
         super::verification::binary_path(provider)?
     } else {
         get_provider_definition(provider).binary_name.to_string()
@@ -981,7 +964,7 @@ mod tests {
 
     #[test]
     fn project_overview_requires_real_sampled_citations_and_bounded_text() {
-        use crate::persistence::project_overviews::OverviewSource;
+        use argmax_store::project_overviews::OverviewSource;
         let allowed = vec![OverviewSource {
             folder_id: "primary:p".into(),
             path: "README.md".into(),

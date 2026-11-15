@@ -2,12 +2,12 @@ use serde::{Deserialize, Serialize};
 
 use super::PROTOCOL_VERSION;
 use crate::mcp::browser_bridge::{BrowserOutcome, BrowserRequest};
-use crate::sessions::{attention::AttentionState, state::SessionState};
+use argmax_contracts::sessions::{attention::AttentionState, state::SessionState};
 
 /// One request on the session-control socket.
 ///
-/// This is the whole wire protocol: the `argmax session …` CLI and the
-/// `argmax mcp` tools both build a [`SessionControlAction`] and hand it to
+/// This is the whole wire protocol: the `argmax mcp` tools and the inbox hook
+/// build a [`SessionControlAction`] and hand it to
 /// [`send_session_control`](super::send_session_control), and the socket
 /// handler matches on the same enum.
 /// Each action carries exactly the fields it uses, so a nonsense combination
@@ -327,7 +327,7 @@ pub struct LaunchAction {
     #[serde(default)]
     pub branch: Option<String>,
     #[serde(default)]
-    pub provider: Option<crate::providers::ProviderId>,
+    pub provider: Option<argmax_contracts::validation::ProviderId>,
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
@@ -335,11 +335,11 @@ pub struct LaunchAction {
     /// Thinking effort for a model that takes one. Defaults to the calling
     /// session's own.
     #[serde(default)]
-    pub reasoning: Option<crate::providers::ReasoningEffort>,
+    pub reasoning: Option<argmax_contracts::validation::ReasoningEffort>,
     /// How the new session answers permission prompts. Defaults to the
     /// calling session's own, which is auto-approve unless the user changed it.
     #[serde(default)]
-    pub permission_mode: Option<crate::providers::PermissionMode>,
+    pub permission_mode: Option<argmax_contracts::validation::PermissionMode>,
     /// Wake the calling session after this many minutes if the launched
     /// session has not finished by then. The wake is dropped the moment the
     /// completion notice is delivered, so a finished session never fires it.
@@ -818,7 +818,7 @@ pub struct ArcStatusLimits {
 pub struct ArcStatusOutcome {
     pub arc_id: String,
     pub name: String,
-    pub state: crate::persistence::arcs::ArcState,
+    pub state: argmax_store::arcs::ArcState,
     pub dir: String,
     /// The local wall clock when the call was answered, `%Y-%m-%d %H:%M %Z`.
     /// A long-running coordinator has no clock of its own and will otherwise
@@ -990,10 +990,10 @@ pub struct LaunchedSession {
     /// The mode the session runs under after the caller's own mode capped the
     /// request. Always set on a new launch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub permission_mode: Option<crate::providers::PermissionMode>,
+    pub permission_mode: Option<argmax_contracts::validation::PermissionMode>,
     /// Set only when the caller asked for a looser mode than it may hand out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub permission_mode_requested: Option<crate::providers::PermissionMode>,
+    pub permission_mode_requested: Option<argmax_contracts::validation::PermissionMode>,
     /// True when this is the first launch's answer replayed for a retry.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub replayed: bool,
@@ -1228,9 +1228,9 @@ impl SessionControlResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::ProviderId;
     use crate::session_control::server::{read_json_line, Frame};
     use crate::session_control::MAX_REQUEST_BYTES;
+    use argmax_contracts::validation::ProviderId;
 
     #[test]
     fn a_move_action_accepts_either_destination_on_the_wire() {
@@ -1302,8 +1302,8 @@ mod tests {
                 provider: Some(ProviderId::Claude),
                 model: Some("claude-opus-5".to_string()),
                 task_label: Some("Side quest".to_string()),
-                reasoning: Some(crate::providers::ReasoningEffort::High),
-                permission_mode: Some(crate::providers::PermissionMode::AskEachTime),
+                reasoning: Some(argmax_contracts::validation::ReasoningEffort::High),
+                permission_mode: Some(argmax_contracts::validation::PermissionMode::AskEachTime),
                 check_in_minutes: Some(45),
                 client_request_id: Some("retry-1".to_string()),
             }),

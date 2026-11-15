@@ -26,13 +26,13 @@ const workspace = (id: string, overrides: Partial<WorkspaceSummary> = {}): Works
   prActivityAt: null,
   icon: null,
   iconColor: null,
-  ...overrides
+  ...overrides,
 });
 
 const session = (
   workspaceId: string,
   attention: SessionSummary["attention"],
-  overrides: Partial<SessionSummary> = {}
+  overrides: Partial<SessionSummary> = {},
 ): SessionSummary => ({
   id: `session-${workspaceId}-${attention}`,
   workspaceId,
@@ -56,7 +56,7 @@ const session = (
   contextTokens: 0,
   imported: false,
   launchKind: "agent",
-  ...overrides
+  ...overrides,
 });
 
 describe("computePriorityEntries", () => {
@@ -67,22 +67,28 @@ describe("computePriorityEntries", () => {
         workspace("w-review", { lastActivityAt: "2026-05-12T17:35:00.000Z" }),
         workspace("w-approval", { lastActivityAt: "2026-05-12T17:55:00.000Z" }),
         workspace("w-blocked-old", { lastActivityAt: "2026-05-12T17:40:00.000Z" }),
-        workspace("w-blocked-new", { lastActivityAt: "2026-05-12T17:50:00.000Z" })
+        workspace("w-blocked-new", { lastActivityAt: "2026-05-12T17:50:00.000Z" }),
       ],
       [
         session("w-normal", "normal"),
         session("w-review", "review-ready", { lastActivityAt: "2026-05-12T17:35:00.000Z" }),
         session("w-approval", "approval-needed", { lastActivityAt: "2026-05-12T17:55:00.000Z" }),
-        session("w-blocked-old", "blocked", { attentionChangedAt: "2026-05-12T10:00:00.000Z", lastActivityAt: "2026-05-12T17:40:00.000Z" }),
-        session("w-blocked-new", "blocked", { attentionChangedAt: "2026-05-12T12:00:00.000Z", lastActivityAt: "2026-05-12T17:50:00.000Z" })
-      ]
+        session("w-blocked-old", "blocked", {
+          attentionChangedAt: "2026-05-12T10:00:00.000Z",
+          lastActivityAt: "2026-05-12T17:40:00.000Z",
+        }),
+        session("w-blocked-new", "blocked", {
+          attentionChangedAt: "2026-05-12T12:00:00.000Z",
+          lastActivityAt: "2026-05-12T17:50:00.000Z",
+        }),
+      ],
     );
 
     expect(entries.map((entry) => entry.workspace.id)).toEqual([
       "w-approval",
       "w-blocked-new",
       "w-blocked-old",
-      "w-review"
+      "w-review",
     ]);
   });
 
@@ -91,13 +97,13 @@ describe("computePriorityEntries", () => {
       [
         workspace("w-pinned-attention", { pinned: true }),
         workspace("w-pinned-manual", { pinned: true, priorityAddedAt: "2026-05-12T17:30:00.000Z" }),
-        workspace("w-blocked")
+        workspace("w-blocked"),
       ],
       [
         session("w-pinned-attention", "blocked"),
         session("w-pinned-manual", "approval-needed"),
-        session("w-blocked", "blocked")
-      ]
+        session("w-blocked", "blocked"),
+      ],
     );
     expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-blocked"]);
   });
@@ -105,7 +111,7 @@ describe("computePriorityEntries", () => {
   it("excludes archived and kept workspaces", () => {
     const entries = computePriorityEntries(
       [workspace("w-archived", { state: "archived" }), workspace("w-kept", { state: "kept" })],
-      [session("w-archived", "failed"), session("w-kept", "review-ready")]
+      [session("w-archived", "failed"), session("w-kept", "review-ready")],
     );
     expect(entries).toEqual([]);
   });
@@ -113,7 +119,7 @@ describe("computePriorityEntries", () => {
   it("uses the highest-severity session when a workspace has several", () => {
     const entries = computePriorityEntries(
       [workspace("w-1")],
-      [session("w-1", "review-ready"), session("w-1", "blocked")]
+      [session("w-1", "review-ready"), session("w-1", "blocked")],
     );
     expect(entries).toHaveLength(1);
     expect(entries[0]?.attention).toBe("blocked");
@@ -122,23 +128,23 @@ describe("computePriorityEntries", () => {
   it("honors a dismissal until attention changes again", () => {
     const dismissed = workspace("w-1", {
       priorityDismissedAt: "2026-05-12T16:00:00.000Z",
-      priorityAddedAt: null
+      priorityAddedAt: null,
     });
 
     // Dismissal newer than the attention change → hidden.
     expect(
       computePriorityEntries(
         [dismissed],
-        [session("w-1", "review-ready", { attentionChangedAt: "2026-05-12T15:00:00.000Z" })]
-      )
+        [session("w-1", "review-ready", { attentionChangedAt: "2026-05-12T15:00:00.000Z" })],
+      ),
     ).toEqual([]);
 
     // Attention changed after the dismissal → re-promoted.
     expect(
       computePriorityEntries(
         [dismissed],
-        [session("w-1", "approval-needed", { attentionChangedAt: "2026-05-12T17:00:00.000Z" })]
-      )
+        [session("w-1", "approval-needed", { attentionChangedAt: "2026-05-12T17:00:00.000Z" })],
+      ),
     ).toHaveLength(1);
   });
 
@@ -147,14 +153,16 @@ describe("computePriorityEntries", () => {
     (attention) => {
       const entries = computePriorityEntries(
         [workspace("w-old", { lastActivityAt: "2020-01-01T00:00:00.000Z" })],
-        [session("w-old", attention, {
-          attentionChangedAt: "2020-01-01T00:00:00.000Z",
-          lastActivityAt: "2020-01-01T00:00:00.000Z"
-        })],
-        new Set(["w-old"])
+        [
+          session("w-old", attention, {
+            attentionChangedAt: "2020-01-01T00:00:00.000Z",
+            lastActivityAt: "2020-01-01T00:00:00.000Z",
+          }),
+        ],
+        new Set(["w-old"]),
       );
       expect(entries.map((entry) => entry.reason)).toEqual([attention]);
-    }
+    },
   );
 
   it("keeps a working row however long the turn has run", () => {
@@ -163,9 +171,9 @@ describe("computePriorityEntries", () => {
       [
         session("w-1", "approval-needed", {
           state: "running",
-          lastActivityAt: "2026-05-11T09:00:00.000Z"
-        })
-      ]
+          lastActivityAt: "2026-05-11T09:00:00.000Z",
+        }),
+      ],
     );
     expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-1"]);
   });
@@ -173,35 +181,48 @@ describe("computePriorityEntries", () => {
   it("floats manual adds without attention, sorted by lastActivityAt descending", () => {
     const entries = computePriorityEntries(
       [
-        workspace("w-manual", { priorityAddedAt: "2026-05-12T17:30:00.000Z", lastActivityAt: "2026-05-12T17:40:00.000Z" }),
-        workspace("w-blocked", { lastActivityAt: "2026-05-12T17:50:00.000Z" })
+        workspace("w-manual", {
+          priorityAddedAt: "2026-05-12T17:30:00.000Z",
+          lastActivityAt: "2026-05-12T17:40:00.000Z",
+        }),
+        workspace("w-blocked", { lastActivityAt: "2026-05-12T17:50:00.000Z" }),
       ],
       [
         // A manual add does not need session attention.
-        session("w-manual", "normal", { attentionChangedAt: undefined, lastActivityAt: "2026-05-12T17:40:00.000Z" }),
-        session("w-blocked", "blocked", { attentionChangedAt: "2026-05-12T17:00:00.000Z", lastActivityAt: "2026-05-12T17:50:00.000Z" })
-      ]
+        session("w-manual", "normal", {
+          attentionChangedAt: undefined,
+          lastActivityAt: "2026-05-12T17:40:00.000Z",
+        }),
+        session("w-blocked", "blocked", {
+          attentionChangedAt: "2026-05-12T17:00:00.000Z",
+          lastActivityAt: "2026-05-12T17:50:00.000Z",
+        }),
+      ],
     );
     expect(entries.map((entry) => [entry.workspace.id, entry.attention])).toEqual([
       ["w-blocked", "blocked"],
-      ["w-manual", null]
+      ["w-manual", null],
     ]);
   });
 
   it("keeps an old manual add after its reply is read", () => {
     const entries = computePriorityEntries(
-      [workspace("w-manual", {
-        priorityAddedAt: "2020-01-01T00:00:00.000Z",
-        lastActivityAt: "2020-01-01T00:00:00.000Z"
-      })],
-      [session("w-manual", "review-ready", {
-        attentionChangedAt: "2020-01-01T00:00:00.000Z",
-        lastActivityAt: "2020-01-01T00:00:00.000Z"
-      })],
-      new Set()
+      [
+        workspace("w-manual", {
+          priorityAddedAt: "2020-01-01T00:00:00.000Z",
+          lastActivityAt: "2020-01-01T00:00:00.000Z",
+        }),
+      ],
+      [
+        session("w-manual", "review-ready", {
+          attentionChangedAt: "2020-01-01T00:00:00.000Z",
+          lastActivityAt: "2020-01-01T00:00:00.000Z",
+        }),
+      ],
+      new Set(),
     );
     expect(entries.map((entry) => [entry.workspace.id, entry.reason])).toEqual([
-      ["w-manual", null]
+      ["w-manual", null],
     ]);
   });
 
@@ -210,27 +231,39 @@ describe("computePriorityEntries", () => {
       [workspace("w-live"), workspace("w-blocked")],
       [
         session("w-live", "normal", { state: "running" }),
-        session("w-blocked", "blocked", { attentionChangedAt: "2026-05-12T17:00:00.000Z" })
-      ]
+        session("w-blocked", "blocked", { attentionChangedAt: "2026-05-12T17:00:00.000Z" }),
+      ],
     );
     expect(entries.map((entry) => [entry.workspace.id, entry.attention, entry.working])).toEqual([
       ["w-live", null, true],
-      ["w-blocked", "blocked", false]
+      ["w-blocked", "blocked", false],
     ]);
   });
 
   it("sorts working rows newest-first, above non-working entries", () => {
     const entries = computePriorityEntries(
       [
-        workspace("w-manual", { priorityAddedAt: "2026-05-12T17:30:00.000Z", lastActivityAt: "2026-05-12T17:55:00.000Z" }),
+        workspace("w-manual", {
+          priorityAddedAt: "2026-05-12T17:30:00.000Z",
+          lastActivityAt: "2026-05-12T17:55:00.000Z",
+        }),
         workspace("w-older", { lastActivityAt: "2026-05-12T17:00:00.000Z" }),
-        workspace("w-newer", { lastActivityAt: "2026-05-12T17:50:00.000Z" })
+        workspace("w-newer", { lastActivityAt: "2026-05-12T17:50:00.000Z" }),
       ],
       [
-        session("w-manual", "normal", { attentionChangedAt: undefined, lastActivityAt: "2026-05-12T17:55:00.000Z" }),
-        session("w-older", "normal", { state: "running", lastActivityAt: "2026-05-12T17:00:00.000Z" }),
-        session("w-newer", "normal", { state: "running", lastActivityAt: "2026-05-12T17:50:00.000Z" })
-      ]
+        session("w-manual", "normal", {
+          attentionChangedAt: undefined,
+          lastActivityAt: "2026-05-12T17:55:00.000Z",
+        }),
+        session("w-older", "normal", {
+          state: "running",
+          lastActivityAt: "2026-05-12T17:00:00.000Z",
+        }),
+        session("w-newer", "normal", {
+          state: "running",
+          lastActivityAt: "2026-05-12T17:50:00.000Z",
+        }),
+      ],
     );
     expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-newer", "w-older", "w-manual"]);
   });
@@ -238,7 +271,7 @@ describe("computePriorityEntries", () => {
   it("drops a working row the moment its turn ends", () => {
     const entries = computePriorityEntries(
       [workspace("w-live")],
-      [session("w-live", "normal", { state: "complete" })]
+      [session("w-live", "normal", { state: "complete" })],
     );
     expect(entries).toEqual([]);
   });
@@ -256,12 +289,12 @@ describe("computePriorityEntries", () => {
           id: "child",
           state: "running",
           launchKind: "multitask",
-          launchedBySessionId: parent.id
-        })
-      ]
+          launchedBySessionId: parent.id,
+        }),
+      ],
     );
     expect(entries.map((entry) => [entry.workspace.id, entry.working])).toEqual([
-      ["w-parent", true]
+      ["w-parent", true],
     ]);
   });
 
@@ -275,9 +308,9 @@ describe("computePriorityEntries", () => {
           id: "child",
           state: "complete",
           launchKind: "multitask",
-          launchedBySessionId: parent.id
-        })
-      ]
+          launchedBySessionId: parent.id,
+        }),
+      ],
     );
     expect(entries).toEqual([]);
   });
@@ -288,7 +321,7 @@ describe("computePriorityEntries", () => {
     // flooding Priority with historical sessions.
     const entries = computePriorityEntries(
       [workspace("w-1")],
-      [session("w-1", "review-ready", { attentionChangedAt: undefined })]
+      [session("w-1", "review-ready", { attentionChangedAt: undefined })],
     );
     expect(entries).toEqual([]);
   });
@@ -298,7 +331,7 @@ describe("priority reasons", () => {
   const OPEN_PR = {
     prState: "OPEN" as const,
     prNumber: 412,
-    prActivityAt: "2026-05-12T09:00:00.000Z"
+    prActivityAt: "2026-05-12T09:00:00.000Z",
   };
   // Old activity does not resolve a reason.
   const QUIET = { lastActivityAt: "2026-05-10T09:00:00.000Z" };
@@ -306,7 +339,7 @@ describe("priority reasons", () => {
   it("keeps a workspace with an open pull request even after its chat goes quiet", () => {
     const entries = computePriorityEntries(
       [workspace("w-pr", { ...QUIET, ...OPEN_PR })],
-      [session("w-pr", "normal", QUIET)]
+      [session("w-pr", "normal", QUIET)],
     );
     expect(entries.map((entry) => entry.reason)).toEqual(["pr-open"]);
   });
@@ -314,12 +347,9 @@ describe("priority reasons", () => {
   it("uses the aggregate PR summary instead of a stale primary scalar", () => {
     const projected: WorkspaceSummary = {
       ...workspace("w-pr", { ...QUIET, ...OPEN_PR, prState: "MERGED" }),
-      prSummaryState: "OPEN"
+      prSummaryState: "OPEN",
     };
-    const entries = computePriorityEntries(
-      [projected],
-      [session("w-pr", "normal", QUIET)]
-    );
+    const entries = computePriorityEntries([projected], [session("w-pr", "normal", QUIET)]);
 
     expect(entries.map((entry) => entry.reason)).toEqual(["pr-open"]);
   });
@@ -327,7 +357,7 @@ describe("priority reasons", () => {
   it("says the checks are failing when they are, and ranks that above the PR itself", () => {
     const entries = computePriorityEntries(
       [workspace("w-red", { ...QUIET, ...OPEN_PR, prCheckState: "failure" })],
-      [session("w-red", "normal", QUIET)]
+      [session("w-red", "normal", QUIET)],
     );
     expect(entries[0]?.reason).toBe("ci-red");
     expect(entries[0]?.reasons.map((reason) => reason.kind)).toEqual(["ci-red", "pr-open"]);
@@ -338,7 +368,7 @@ describe("priority reasons", () => {
   it("leaves a merged pull request alone", () => {
     const entries = computePriorityEntries(
       [workspace("w-merged", { ...QUIET, ...OPEN_PR, prState: "MERGED" })],
-      [session("w-merged", "normal", QUIET)]
+      [session("w-merged", "normal", QUIET)],
     );
     expect(entries).toEqual([]);
   });
@@ -346,7 +376,7 @@ describe("priority reasons", () => {
   it("holds an old unanswered question until it is resolved", () => {
     const entries = computePriorityEntries(
       [workspace("w-asked", QUIET)],
-      [session("w-asked", "question-asked", QUIET)]
+      [session("w-asked", "question-asked", QUIET)],
     );
     expect(entries.map((entry) => entry.reason)).toEqual(["question-asked"]);
   });
@@ -358,9 +388,9 @@ describe("priority reasons", () => {
       [
         session("w-read", "review-ready"),
         session("w-asked", "question-asked"),
-        session("w-pr", "review-ready")
+        session("w-pr", "review-ready"),
       ],
-      read
+      read,
     );
     // Reading resolves "there is a reply you have not seen" and nothing else.
     expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-asked", "w-pr"]);
@@ -370,7 +400,7 @@ describe("priority reasons", () => {
     const entries = computePriorityEntries(
       [workspace("w-unread")],
       [session("w-unread", "review-ready")],
-      new Set(["w-unread"])
+      new Set(["w-unread"]),
     );
     expect(entries.map((entry) => entry.reason)).toEqual(["review-ready"]);
   });
@@ -378,14 +408,11 @@ describe("priority reasons", () => {
   it("clears read review attention while keeping old failure attention", () => {
     const attention = computeWorkspaceAttention(
       [workspace("w-read"), workspace("w-failed")],
-      [
-        session("w-read", "review-ready", QUIET),
-        session("w-failed", "failed", QUIET)
-      ],
-      new Set()
+      [session("w-read", "review-ready", QUIET), session("w-failed", "failed", QUIET)],
+      new Set(),
     );
     expect([...attention].map(([id, state]) => [id, state.attention])).toEqual([
-      ["w-failed", "failed"]
+      ["w-failed", "failed"],
     ]);
   });
 
@@ -393,7 +420,7 @@ describe("priority reasons", () => {
     const dismissedAt = "2026-05-12T10:00:00.000Z";
     const stale = computePriorityEntries(
       [workspace("w-pr", { ...QUIET, ...OPEN_PR, priorityDismissedAt: dismissedAt })],
-      [session("w-pr", "normal", QUIET)]
+      [session("w-pr", "normal", QUIET)],
     );
     expect(stale).toEqual([]);
 
@@ -404,10 +431,10 @@ describe("priority reasons", () => {
           ...QUIET,
           ...OPEN_PR,
           prActivityAt: "2026-05-12T11:00:00.000Z",
-          priorityDismissedAt: dismissedAt
-        })
+          priorityDismissedAt: dismissedAt,
+        }),
       ],
-      [session("w-pr", "normal", QUIET)]
+      [session("w-pr", "normal", QUIET)],
     );
     expect(revived.map((entry) => entry.reason)).toEqual(["pr-open"]);
   });
@@ -416,12 +443,12 @@ describe("priority reasons", () => {
     const entries = computePriorityEntries(
       [
         workspace("w-pr", { lastActivityAt: "2026-05-12T17:59:00.000Z", ...OPEN_PR }),
-        workspace("w-approval", { lastActivityAt: "2026-05-12T17:30:00.000Z" })
+        workspace("w-approval", { lastActivityAt: "2026-05-12T17:30:00.000Z" }),
       ],
       [
         session("w-pr", "normal", { lastActivityAt: "2026-05-12T17:59:00.000Z" }),
-        session("w-approval", "approval-needed", { lastActivityAt: "2026-05-12T17:30:00.000Z" })
-      ]
+        session("w-approval", "approval-needed", { lastActivityAt: "2026-05-12T17:30:00.000Z" }),
+      ],
     );
     expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-approval", "w-pr"]);
   });

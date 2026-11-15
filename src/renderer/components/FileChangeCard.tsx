@@ -1,4 +1,5 @@
 import { FilePlus, FileX2, PanelRight, Pencil } from "lucide-react";
+import { systemActions } from "../data/bridgeActions.js";
 import { useMemo, type JSX } from "react";
 import type { FileChange } from "../lib/fileChange.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
@@ -10,16 +11,20 @@ import { showToast } from "../state/toast.js";
 export function FileChangeCard({
   change,
   workspaceCwd,
-  onOpenFile
+  onOpenFile,
 }: {
   change: FileChange;
   workspaceCwd?: string | null;
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
 }): JSX.Element {
-  const verb = change.kind === "create" ? "Created" : change.kind === "delete" ? "Deleted" : "Edited";
+  const verb =
+    change.kind === "create" ? "Created" : change.kind === "delete" ? "Deleted" : "Edited";
   const Icon = change.kind === "create" ? FilePlus : change.kind === "delete" ? FileX2 : Pencil;
   const noLineNumbers = change.kind === "edit" && change.noLineNumbers === true;
-  const shortPath = useMemo(() => displayPath(change.path, workspaceCwd), [change.path, workspaceCwd]);
+  const shortPath = useMemo(
+    () => displayPath(change.path, workspaceCwd),
+    [change.path, workspaceCwd],
+  );
 
   const onOpen = (): void => {
     if (onOpenFile) {
@@ -29,16 +34,16 @@ export function FileChangeCard({
       onOpenFile(shortPath);
       return;
     }
-    const api = window.argmax;
-    if (!api) return;
+    const system = systemActions();
+    if (!system) return;
     void withToast(
-      () => api.system.openPath({ path: change.path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) }),
+      () => system.openPath({ path: change.path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) }),
       showToast,
-      "Could not open this file."
+      "Could not open this file.",
     );
   };
 
-  const note = change.kind === "delete" ? null : change.note ?? null;
+  const note = change.kind === "delete" ? null : (change.note ?? null);
 
   return (
     <section
@@ -62,7 +67,7 @@ export function FileChangeCard({
           <span>Open</span>
         </button>
       </header>
-      <div className="file-change-card-body">
+      <div className="file-change-card-body" data-testid="file-change-card-body">
         {change.kind === "delete" ? (
           <p className="file-change-card-empty">File removed.</p>
         ) : change.hunks.length === 0 ? (
@@ -70,7 +75,11 @@ export function FileChangeCard({
         ) : (
           <>
             <DiffBlocks blocks={change.hunks} filePath={change.path} />
-            {note ? <p className="file-change-card-note">{note}</p> : null}
+            {note ? (
+              <p className="file-change-card-note" data-testid="file-change-card-note">
+                {note}
+              </p>
+            ) : null}
           </>
         )}
       </div>

@@ -8,11 +8,11 @@ let target: HTMLDivElement;
 
 function fire(
   type: "dragstart" | "dragenter" | "dragover" | "drop" | "dragend",
-  options: { accepted?: boolean; types?: string[]; files?: number } = {}
+  options: { accepted?: boolean; types?: string[]; files?: number } = {},
 ): void {
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperty(event, "dataTransfer", {
-    value: { types: options.types ?? [], files: { length: options.files ?? 0 } }
+    value: { types: options.types ?? [], files: { length: options.files ?? 0 } },
   });
   if (options.accepted === true) {
     target.addEventListener(type, (e) => e.preventDefault(), { once: true });

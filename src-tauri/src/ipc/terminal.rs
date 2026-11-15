@@ -1,12 +1,12 @@
 use super::inputs::*;
 use crate::{
-    error::{ArgmaxError, ArgmaxResult},
     ipc::system::SystemOk,
     state::AppState,
     terminal::service::{
         TerminalService, TerminalSpawnInput as ServiceTerminalSpawnInput, TerminalSpawnResult,
     },
 };
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use std::sync::Arc;
 use tauri::State;
 

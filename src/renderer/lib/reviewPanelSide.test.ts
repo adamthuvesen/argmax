@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  REVIEW_PANEL_SIDE_KEY,
-  readStoredReviewPanelSide
-} from "./reviewPanelSide.js";
+import { REVIEW_PANEL_SIDE_KEY, readStoredReviewPanelSide } from "./reviewPanelSide.js";
 
 afterEach(() => {
   window.localStorage.removeItem(REVIEW_PANEL_SIDE_KEY);

@@ -7,18 +7,16 @@ use std::sync::Arc;
 use chrono::Utc;
 use tauri::State;
 
-use super::{
-    inputs::{UsageRemainingInput, UsageRouterCostInput, UsageSummaryInput},
-    live_database, read_off_main,
-};
-use crate::error::ArgmaxResult;
+use super::inputs::{UsageRemainingInput, UsageRouterCostInput, UsageSummaryInput};
 use crate::routing::cost::{router_cost, RouterCostSummary};
 use crate::state::AppState;
+use crate::state::{live_database, read_off_main};
 use crate::usage::remaining::{
     fetch_remaining, LiveRemainingSource, RemainingSource, UsageRemaining,
 };
 use crate::usage::scanner::{spawn_sweep, ScanProgress};
 use crate::usage::{summary, UsageScanPhase, UsageScanState, UsageSummary, PRICING_AS_OF};
+use argmax_contracts::error::ArgmaxResult;
 
 #[tauri::command(rename = "usage:summary")]
 #[specta::specta]
@@ -75,7 +73,7 @@ pub async fn usage_remaining_impl() -> ArgmaxResult<UsageRemaining> {
 /// accounts (the live source fences itself in verification mode).
 fn remaining_source() -> Arc<dyn RemainingSource> {
     #[cfg(feature = "verification")]
-    if crate::providers::verification::requested() {
+    if argmax_process::environment::verification_requested() {
         return Arc::new(crate::usage::remaining::verification::VerificationRemainingSource::new());
     }
     Arc::new(LiveRemainingSource::new())

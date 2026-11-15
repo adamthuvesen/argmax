@@ -12,14 +12,31 @@ you are changing.
 
 [src-tauri/src/lib.rs](../src-tauri/src/lib.rs) initializes app state, SQLite, services, menus, and event channels. The desktop composition root stores services in [state.rs](../src-tauri/src/state.rs). Transport adapters resolve them through `tauri::State`. The scheduler receives explicit service dependencies.
 
-Key directories:
+## Layers
+
+The Rust code is a Cargo workspace rooted at `src-tauri/Cargo.toml`. Imports point down, and the compiler rejects an import that points up.
+
+| Crate | Holds | May import |
+|---|---|---|
+| `crates/argmax-contracts` | Errors, validated ids, enums, and wire types with specta derives. | Nothing else in Argmax. |
+| `crates/argmax-process` | The login-shell environment, provider environments, and the one git runner. | Contracts. |
+| `crates/argmax-store` | SQLite: migrations, every query, and the event normalization that reads depend on. | Contracts and process. |
+| `argmax` (`src-tauri/src`) | Services, providers, IPC, the remote bridge, and the Tauri shell. | All of the above. |
+
+Inside the `argmax` crate, `ipc/` and `remote/` are the transport edges. Nothing else imports them. `check:rust-boundaries` enforces that rule and the rules below, because one crate cannot state them to the compiler:
+
+- SQL text and `prepare` or `query_row` calls stay in `argmax-store`. Naming a `Connection` or a `Transaction` to pass it through is fine.
+- Only a person IPC handler mints a `PersonAttestation`. The type lives in the store, so this is a source check, and Rust visibility cannot do it across crates.
+
+Each item has one path. Import it from the crate and module that define it, for example `argmax_store::events` or `argmax_contracts::validation`, not through a re-export in the app crate. One name per thing means a search for a path finds every caller, and a move breaks the build at each caller instead of hiding behind an alias. Two kinds of `pub use` stay. A module may expose items from its private submodules, because that is still the only public path. `ipc::inputs` gathers every command's input type so each IPC handler imports one module.
+
+## Key directories
+
 
 - `application/`: Validated command values and transport-independent session launch.
 - `ipc/`: Request/response adapters and the typed command catalogue.
-- `persistence/`: SQLite connection, migrations, and repository queries.
 - `providers/`: Adapter CLIs (Claude, Codex, Cursor, OpenCode, Grok Build), PTY runtime, normalizers, and the event flush queue.
 - `session_control/`: Private socket transport for agent-initiated session launch, move, list, and message commands.
-- `sessions/`: Orchestration between IPC and providers.
 - `workspaces/`, `review/`, `files/`, `git/`: Worktree lifecycle, diffs, file operations, and git commands.
 - `approvals/`, `checks/`, `gh/`, `terminal/`, `attachments/`, `ide/`, `skills/`, `routines/`: Subsystem services.
 
@@ -54,6 +71,12 @@ Shell state that several surfaces move lives in `src/renderer/state/`, not in `A
 | [workspaceDrag.ts](../src/renderer/state/workspaceDrag.ts) | The sidebar row being dragged towards the grid | Shell, sidebar |
 | [sidebarChrome.ts](../src/renderer/state/sidebarChrome.ts) | Sidebar collapse (persisted) and peek | Shell, sidebar |
 
+Components reach the bridge through one layer. [useBridgeQuery](../src/renderer/data/useBridgeQuery.ts) owns reads and drops a reply whose key changed. [bridgeActions.ts](../src/renderer/data/bridgeActions.ts) owns writes. See [ipc.md](ipc.md#calling-a-channel-from-a-component). The spike chose a local hook over TanStack Query: the library added 33,212 eager bytes and put the desktop entry 13,395 bytes over the [bundle budget](performance.md#eager-bundle).
+
+An action on a project folder carries a required [ProjectTarget](../src/renderer/lib/projectTarget.ts), so a surface cannot leave the folder out.
+
+The saved appearance is painted before any module loads by a script inlined in `index.html`. [appearanceBootstrap.ts](../src/renderer/lib/appearanceBootstrap.ts) is its source, and `npm run build:appearance-bootstrap` writes it. Do not edit it in the HTML.
+
 Snapshot and selection stay in [useDashboardSession](../src/renderer/hooks/useDashboardSession.ts); [useAppGridSelection](../src/renderer/hooks/useAppGridSelection.ts) resolves grid moves against that snapshot and writes them to `paneGrid`.
 
 Shell policy has separate owners. [useAppMenuCommands](../src/renderer/hooks/useAppMenuCommands.ts) resolves native menu commands, and [useAppDestinations](../src/renderer/hooks/useAppDestinations.ts) applies explicit sidebar and session navigation. [useProjectActions](../src/renderer/hooks/useProjectActions.ts) and [useWorkspaceActions](../src/renderer/hooks/useWorkspaceActions.ts) own catalog and workspace mutations with their selection repair. `App` supplies current selection and renders surfaces. The grid lays out cells, while `SessionPane` owns review state and approval resolution. [useSessionComposerState](../src/renderer/hooks/useSessionComposerState.ts) owns each conversation's model choice, status, and attached annotations; the transcript reads timeline events independently.
@@ -67,7 +90,7 @@ Clicks inside a browser pane use that tab's web history instead.
 
 Dashboard React state contains metadata and approvals. Transcript events, raw output, and read cursors live together in [SessionTimelines](../src/renderer/lib/sessionTimelines.ts). Each conversation subscribes to its session through `useSessionTimeline`, so a token does not update unrelated panes or the dashboard shell. Agent traces use their parent session's history, while multitasks subscribe to their own session. Subscribed histories stay resident, and the store retains at most 12 inactive histories. Eviction drops the history and its cursors together so reopening a session fetches a complete tail.
 
-Rust owns timeline meaning in [timeline_semantics.rs](../src-tauri/src/persistence/timeline_semantics.rs).
+Rust owns timeline meaning in [timeline_semantics.rs](../src-tauri/crates/argmax-store/src/timeline_semantics.rs).
 Every event read carries a versioned semantic contract, including historical rows.
 Generated types serve both desktop and phone projections.
 The renderer's [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts) adds presentation models and caches them.

@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use chrono::Utc;
 use serde::Serialize;
 use specta::Type;

@@ -20,23 +20,20 @@ use super::super::{
     FOLLOWUP_MAX_SECONDS, FOLLOWUP_MIN_SECONDS, LEARNINGS_SEARCH_DEFAULT_LIMIT,
     LEARNINGS_SEARCH_MAX_LIMIT, SCHEDULE_LIST_LIMIT, SCHEDULE_PROMPT_CHARS,
 };
-use super::{
-    messaging::cap_chars, resolve_project, task_label, workspace_tools::resolve_session_workspace,
-};
-use crate::{
-    persistence::{
-        database::Database,
-        learnings::{
-            insert_learning, record_learning_hits, search_learnings, InsertLearningInput, Learning,
-        },
-        projects::list_projects,
-        routines::{
-            delete_routine, find_routine_by_id, list_routines, set_routine_enabled,
-            set_routine_last_session, upsert_routine, RoutineAuthor, RoutineRunTarget,
-            UpsertRoutineInput,
-        },
+use super::{messaging::cap_chars, resolve_project, workspace_tools::resolve_session_workspace};
+use crate::application::session_launch::task_label;
+use crate::routines::schedule;
+use argmax_store::{
+    database::Database,
+    learnings::{
+        insert_learning, record_learning_hits, search_learnings, InsertLearningInput, Learning,
     },
-    routines::schedule,
+    projects::list_projects,
+    routines::{
+        delete_routine, find_routine_by_id, list_routines, set_routine_enabled,
+        set_routine_last_session, upsert_routine, RoutineAuthor, RoutineRunTarget,
+        UpsertRoutineInput,
+    },
 };
 
 /// The three kinds the `learnings` table accepts. Rejecting a fourth here
@@ -137,7 +134,7 @@ pub(super) fn list_projects_action(
     let projects = list_projects(&connection).map_err(argmax_protocol_error)?;
     let entries = projects
         .into_iter()
-        .filter(|project| project.id != crate::workspaces::SCRATCH_PROJECT_ID)
+        .filter(|project| project.id != crate::workspaces::orchestration::SCRATCH_PROJECT_ID)
         .map(|project| ProjectEntry {
             project_id: project.id,
             name: project.name,
@@ -167,10 +164,10 @@ pub(super) fn schedule_followup(
     }
     let run_at = followup_time(&action, Utc::now())?;
     let target = resolve_session_workspace(&database, &parent.session_id, None)?;
-    if target.project.id == crate::workspaces::SCRATCH_PROJECT_ID {
+    if target.project.id == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
         return Err(protocol_error(
             "PROJECT_NOT_ALLOWED",
-            "A side chat has no repository to wake up in.",
+            "This chat has no repository to wake up in.",
         ));
     }
     let name = action
@@ -344,7 +341,7 @@ fn own_project_routine(
     database: &Database,
     parent: &ParentLaunchSettings,
     schedule_id: &str,
-) -> Result<crate::persistence::routines::Routine, SessionControlError> {
+) -> Result<argmax_store::routines::Routine, SessionControlError> {
     let own_project = resolve_session_workspace(database, &parent.session_id, None)?
         .project
         .id;

@@ -7,7 +7,8 @@ use std::fs;
 use std::path::Path;
 
 use super::reconcile::SYNTHETIC_LAUNCH_MARKER;
-use crate::persistence::{
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::{
     events::{
         list_imported_trace_events, list_session_agent_events, persist_timeline_event,
         PersistTimelineEventInput,
@@ -16,7 +17,6 @@ use crate::persistence::{
     sessions::{persist_session, PersistSessionInput},
     workspaces::{persist_workspace, PersistWorkspaceInput},
 };
-use crate::sessions::state::SessionState;
 
 pub(super) fn seed_session(connection: &Connection, provider: &str, session_id: &str) {
     persist_project(
@@ -194,10 +194,8 @@ pub(super) fn seed_real_launch(connection: &Connection, tool_use_id: &str, child
     }
 }
 
-pub(super) fn session_events(
-    connection: &Connection,
-) -> Vec<crate::persistence::events::TimelineEvent> {
-    crate::persistence::events::list_all_session_events(connection, "s1").expect("events")
+pub(super) fn session_events(connection: &Connection) -> Vec<argmax_store::events::TimelineEvent> {
+    argmax_store::events::list_all_session_events(connection, "s1").expect("events")
 }
 
 pub(super) fn synthetic_launch_completed(connection: &Connection) -> bool {

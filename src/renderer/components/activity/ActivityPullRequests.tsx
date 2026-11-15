@@ -5,7 +5,7 @@ import {
   formatCount,
   formatDuration,
   formatRemoved,
-  formatShortDate
+  formatShortDate,
 } from "./activityFormat.js";
 import { repositorySlots } from "./activityPresentation.js";
 import { ActivityGithubNotice } from "./ActivityGithubNotice.js";
@@ -23,7 +23,7 @@ const VISIBLE_ROWS = 8;
 const STATE_TITLE: Record<ActivityPullRequest["state"], string> = {
   merged: "Merged",
   open: "Open",
-  closed: "Closed without merging"
+  closed: "Closed without merging",
 };
 
 /**

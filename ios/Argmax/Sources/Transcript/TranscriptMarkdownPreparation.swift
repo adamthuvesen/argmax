@@ -84,6 +84,12 @@ struct TranscriptMarkdownPreparation {
         self.math = math
     }
 
+    /// `LATEX_ENV_REGEX`: other environments stay prose on the desktop.
+    private static let displayEnvironments: Set<String> = [
+        "equation", "equation*", "align", "align*", "alignat", "alignat*", "gather", "gather*",
+        "multline", "multline*", "cases", "matrix", "pmatrix", "bmatrix"
+    ]
+
     private static func fenceCharacter(_ line: String) -> Character? {
         guard let first = line.first, first == "`" || first == "~" else { return nil }
         return line.prefix { $0 == first }.count >= 3 ? first : nil
@@ -98,6 +104,9 @@ struct TranscriptMarkdownPreparation {
             if first.count > 4, first.hasSuffix("$$") {
                 return (String(first.dropFirst(2).dropLast(2)).trimmingCharacters(in: .whitespaces), index + 1)
             }
+            // `$$x$$ and more` closes on its own line: inline, not a block
+            // that runs on to the next `$$` below.
+            if first.dropFirst(2).contains("$$") { return nil }
             var body: [String] = first.count > 2 ? [String(first.dropFirst(2))] : []
             var cursor = index + 1
             while cursor < lines.count {
@@ -123,9 +132,17 @@ struct TranscriptMarkdownPreparation {
                 if cursor < lines.count { body.append(lines[cursor]) }
             }
         }
+        // `[ \frac{a}{b} ]`: a block with its brackets' backslashes lost.
+        if first.hasPrefix("["), first.hasSuffix("]"), first.count > 2 {
+            let body = String(first.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+            if body.hasPrefix("\\"), body.dropFirst().first?.isLetter == true, body.first?.isASCII == true {
+                return (body, index + 1)
+            }
+        }
         if first.hasPrefix("\\begin{") {
             guard let nameEnd = first.firstIndex(of: "}") else { return nil }
             let name = String(first[first.index(first.startIndex, offsetBy: 7)..<nameEnd])
+            guard displayEnvironments.contains(name) else { return nil }
             let close = "\\end{\(name)}"
             var body: [String] = []
             var cursor = index
@@ -202,6 +219,18 @@ struct TranscriptMarkdownPreparation {
                     continue
                 }
             }
+            // A line that opens with `\[` was lifted as a block. The desktop
+            // converts one anywhere in prose.
+            if line[cursor...].hasPrefix("\\[") {
+                let bodyStart = line.index(cursor, offsetBy: 2)
+                if let end = line[bodyStart...].range(of: "\\]")?.lowerBound {
+                    let key = marker()
+                    math[key] = TranscriptMath(source: String(line[bodyStart..<end]).trimmingCharacters(in: .whitespaces), display: false)
+                    output += key
+                    cursor = line.index(end, offsetBy: 2)
+                    continue
+                }
+            }
             if line[cursor] == "$", cursor == line.startIndex || line[line.index(before: cursor)] != "\\" {
                 if line[cursor...].hasPrefix("$$"),
                    let bodyStart = line.index(cursor, offsetBy: 2, limitedBy: line.endIndex),
@@ -256,17 +285,23 @@ struct TranscriptMarkdownPreparation {
     /// A digit-leading body closing against one of these is a bracketed aside, not an equation.
     private static let asideOpeners: Set<Character> = ["\\", "(", "[", "{"]
 
+    /// `/\d/`, which is ASCII. `Character.isNumber` also takes "٣" and "½".
+    private static func isASCIIDigit(_ character: Character) -> Bool {
+        character.isASCII && character.isNumber
+    }
+
     /// Whether `$body$` is an equation rather than a pair of unrelated dollar signs.
     ///
-    /// Mirrors `normalizeMathDelimiters.ts` on the desktop side; keep the two in step.
+    /// Mirrors `normalizeMathDelimiters.ts` on the desktop side.
+    /// `fixtures/parity/inline-math.json` holds the cases both run.
     /// A prose `$` is nearly always currency (`$1.25/1M in and $4.25`) or a shell
     /// variable (`$PATH and $HOME`), and pairing those swallows the text between them.
     private static func isInlineMath(body: String, after: Character?) -> Bool {
         guard let first = body.first, let last = body.last else { return false }
         guard body.rangeOfCharacter(from: CharacterSet.whitespaces.inverted) != nil else { return false }
         // "$5,$10": a closer running straight into another amount closes nothing.
-        if let after, after.isNumber { return false }
-        if first.isNumber {
+        if let after, isASCIIDigit(after) { return false }
+        if isASCIIDigit(first) {
             // "$1.25/1M in and $4.25" and "$50 ($x$ ...)": an amount, not an equation.
             if last.isWhitespace || Self.asideOpeners.contains(last) { return false }
             if let after, after.isLetter || after == "\\" { return false }
@@ -286,11 +321,23 @@ struct TranscriptMarkdownPreparation {
         "Gamma", "Delta", "Theta", "Lambda", "Xi", "Pi", "Sigma", "Upsilon", "Phi", "Psi", "Omega"
     ])
 
+    private static let greekSuffixes: Set<Character> = [".", ",", ";", ":", "!", "?", ")", "\""]
+
+    /// A bare Greek command stands alone in prose, as `GREEK_MATH_REGEX` asks:
+    /// `C:\tau` and `\tau2` are not math.
     private static func greekCommand(at start: String.Index, in text: String) -> (command: String, end: String.Index)? {
+        if start > text.startIndex {
+            let before = text[text.index(before: start)]
+            guard before.isWhitespace || before == "(" else { return nil }
+        }
         var end = text.index(after: start)
         while end < text.endIndex, text[end].isLetter { end = text.index(after: end) }
         let name = String(text[text.index(after: start)..<end])
         guard greek.contains(name) else { return nil }
+        if end < text.endIndex {
+            let after = text[end]
+            guard after.isWhitespace || greekSuffixes.contains(after) else { return nil }
+        }
         return ("\\" + name, end)
     }
 }

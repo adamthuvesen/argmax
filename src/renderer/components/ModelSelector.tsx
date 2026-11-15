@@ -8,26 +8,22 @@ import {
   REASONING_EFFORTS,
   reasoningEffortsForModel,
   type ProviderModelSelection,
-  type ReasoningEffort
+  type ReasoningEffort,
 } from "../../shared/providerModels.js";
 import type { ProviderId } from "../../shared/types.js";
 import {
   PICKER_MENU_EDGE_PADDING_PX,
   PICKER_MENU_MAX_HEIGHT_PX,
-  useAnchoredPopover
+  useAnchoredPopover,
 } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRouteSwitchElapsed } from "../hooks/useRouteSwitch.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
-import { postToNative } from "../mobile/nativeHost.js";
 import { EffortPixelField } from "./EffortPixelField.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
 import { PickerLead } from "./PickerLead.js";
 import { RollingText } from "./RollingText.js";
-import {
-  LAUNCH_MODEL_RECENCY_KEY,
-  readLaunchModelRecency
-} from "../lib/launchModelPreference.js";
+import { LAUNCH_MODEL_RECENCY_KEY, readLaunchModelRecency } from "../lib/launchModelPreference.js";
 import { touchIdRecency } from "../lib/recencyList.js";
 import { routeSwitchMotionMs, routeSwitchPace, type RouteSwitch } from "../lib/routeSwitch.js";
 import {
@@ -42,15 +38,16 @@ import {
   modelSupportsFastMode,
   providerModelKey,
   modelKey,
-  type ModelPickerSelection
+  type ModelPickerSelection,
 } from "../lib/models.js";
+import { useOpenInteraction } from "../lib/interactionTimings.js";
 
 const PROVIDER_GROUP_LABEL: Record<ProviderId, string> = {
   claude: "Claude",
   codex: "Codex",
   cursor: "Cursor",
   opencode: "OpenCode",
-  grok: "Grok Build"
+  grok: "Grok Build",
 };
 
 /** The header the recently used rows sit under, above the provider groups. */
@@ -74,9 +71,13 @@ function rowLabel(label: string, provider: ProviderId): string {
 
 /** "1M" / "200K": the trailing column of a model row. */
 function contextWindowLabel(provider: ProviderId, modelId: string): string | undefined {
-  const tokens = PROVIDER_MODELS[provider].find((model) => model.modelId === modelId)?.contextWindow;
+  const tokens = PROVIDER_MODELS[provider].find(
+    (model) => model.modelId === modelId,
+  )?.contextWindow;
   if (!tokens) return undefined;
-  return tokens >= 1_000_000 ? `${Math.round(tokens / 1_000_000)}M` : `${Math.round(tokens / 1000)}K`;
+  return tokens >= 1_000_000
+    ? `${Math.round(tokens / 1_000_000)}M`
+    : `${Math.round(tokens / 1000)}K`;
 }
 
 /** Per-provider install/auth state for picker gating. */
@@ -99,7 +100,7 @@ export type ProviderAvailability = Partial<Record<ProviderId, ProviderAvailabili
  */
 function availabilityAnnotation(
   availability: ProviderAvailability | undefined,
-  provider: ProviderId
+  provider: ProviderId,
 ): { disabled?: boolean; annotation?: string } {
   const entry = availability?.[provider];
   if (!entry) return {};
@@ -146,7 +147,10 @@ function orderOptionsByRecency<T>(options: Array<ChipModelOption<T>>): Array<Chi
   const recency = readLaunchModelRecency();
   if (recency.length === 0) return options;
   const optionByKey = new Map(options.map((option) => [optionRecencyKey(option), option]));
-  const recentKeys = [...new Set(recency.filter((id) => optionByKey.has(id)))].slice(0, MAX_RECENT_MODELS);
+  const recentKeys = [...new Set(recency.filter((id) => optionByKey.has(id)))].slice(
+    0,
+    MAX_RECENT_MODELS,
+  );
   if (recentKeys.length === 0) return options;
   // The recent prefix sits under one "Recent" header rather than each row's
   // provider, so mixed providers don't draw a header between every row.
@@ -158,7 +162,7 @@ function orderOptionsByRecency<T>(options: Array<ChipModelOption<T>>): Array<Chi
       key: `${option.key}:recent`,
       label: option.recentLabel ?? option.label,
       group: RECENT_GROUP_LABEL,
-      groupProvider: undefined
+      groupProvider: undefined,
     };
   });
   return [...recent, ...options];
@@ -178,7 +182,7 @@ export function ModelSelector({
   withEffortSlider = false,
   effortOpen,
   onEffortOpenChange,
-  value
+  value,
 }: {
   ariaLabel: string;
   chipLabel?: string;
@@ -195,21 +199,23 @@ export function ModelSelector({
   onEffortOpenChange?: (open: boolean) => void;
   value: ProviderModelSelection;
 }): JSX.Element {
-  const options: Array<ChipModelOption<ProviderModelSelection>> = PROVIDER_MODELS[provider].map((model) => ({
-    key: modelKey(model),
-    recencyKey: providerModelKey({ provider, modelId: model.modelId }),
-    label: rowLabel(model.label, provider),
-    fullLabel: model.label,
-    group: PROVIDER_GROUP_LABEL[provider],
-    groupProvider: provider,
-    meta: contextWindowLabel(provider, model.modelId),
-    supportsReasoningEffort: Boolean(model.supportsReasoningEffort),
-    value: {
-      label: model.label,
-      modelId: model.modelId,
-      ...(model.supportsReasoningEffort ? { reasoningEffort: DEFAULT_REASONING_EFFORT } : {})
-    }
-  }));
+  const options: Array<ChipModelOption<ProviderModelSelection>> = PROVIDER_MODELS[provider].map(
+    (model) => ({
+      key: modelKey(model),
+      recencyKey: providerModelKey({ provider, modelId: model.modelId }),
+      label: rowLabel(model.label, provider),
+      fullLabel: model.label,
+      group: PROVIDER_GROUP_LABEL[provider],
+      groupProvider: provider,
+      meta: contextWindowLabel(provider, model.modelId),
+      supportsReasoningEffort: Boolean(model.supportsReasoningEffort),
+      value: {
+        label: model.label,
+        modelId: model.modelId,
+        ...(model.supportsReasoningEffort ? { reasoningEffort: DEFAULT_REASONING_EFFORT } : {}),
+      },
+    }),
+  );
 
   return (
     <ChipModelPicker
@@ -230,7 +236,9 @@ export function ModelSelector({
       withEffortSlider={withEffortSlider}
       effortOpen={effortOpen}
       onEffortOpenChange={onEffortOpenChange}
-      supportsFastModeForValue={(model) => modelSupportsFastMode({ provider, modelId: model.modelId })}
+      supportsFastModeForValue={(model) =>
+        modelSupportsFastMode({ provider, modelId: model.modelId })
+      }
       routeSwitch={routeSwitch}
       value={value}
     />
@@ -257,7 +265,7 @@ export function LaunchModelSelector({
   withEffortSlider = false,
   effortOpen,
   onEffortOpenChange,
-  value
+  value,
 }: {
   ariaLabel: string;
   anchorClassName?: string;
@@ -303,26 +311,28 @@ export function LaunchModelSelector({
           description: AUTO_TIER_DESCRIPTIONS[autoTier],
           // The router picks the effort, so an Auto row never shows one.
           supportsReasoningEffort: false,
-          value: selection
+          value: selection,
         };
       })
     : [];
-  const catalogOptions: Array<ChipModelOption<ModelPickerSelection>> = allModelOptions.map((model) => ({
-    key: providerModelKey(model),
-    label: rowLabel(model.label, model.provider),
-    fullLabel: model.label,
-    group: PROVIDER_GROUP_LABEL[model.provider],
-    groupProvider: model.provider,
-    meta: contextWindowLabel(model.provider, model.modelId),
-    supportsReasoningEffort: model.supportsReasoningEffort,
-    ...availabilityAnnotation(availability, model.provider),
-    value: {
-      provider: model.provider,
-      label: model.label,
-      modelId: model.modelId,
-      ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
-    }
-  }));
+  const catalogOptions: Array<ChipModelOption<ModelPickerSelection>> = allModelOptions.map(
+    (model) => ({
+      key: providerModelKey(model),
+      label: rowLabel(model.label, model.provider),
+      fullLabel: model.label,
+      group: PROVIDER_GROUP_LABEL[model.provider],
+      groupProvider: model.provider,
+      meta: contextWindowLabel(model.provider, model.modelId),
+      supportsReasoningEffort: model.supportsReasoningEffort,
+      ...availabilityAnnotation(availability, model.provider),
+      value: {
+        provider: model.provider,
+        label: model.label,
+        modelId: model.modelId,
+        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+      },
+    }),
+  );
   const options = [...autoOptions, ...catalogOptions];
 
   return (
@@ -370,7 +380,7 @@ const EFFORT_HEAT_TIER: Partial<Record<ReasoningEffort, "high" | "xhigh" | "max"
   high: "high",
   xhigh: "xhigh",
   max: "max",
-  ultra: "ultra"
+  ultra: "ultra",
 };
 
 // Heat of a continuous thumb position over a provider's `efforts`, on the
@@ -393,7 +403,7 @@ const SHORT_EFFORT_LABELS: Record<ReasoningEffort, string> = {
   high: "High",
   xhigh: "XHigh",
   max: "Max",
-  ultra: "Ultra"
+  ultra: "Ultra",
 };
 
 /**
@@ -413,7 +423,7 @@ function EffortSlider({
   open: controlledOpen,
   onOpenChange,
   portaled = false,
-  routeSwitch
+  routeSwitch,
 }: {
   value: ReasoningEffort;
   efforts: readonly ReasoningEffort[];
@@ -430,6 +440,7 @@ function EffortSlider({
 }): JSX.Element {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
+  useOpenInteraction("picker.effort", open);
   const setOpen = (next: boolean): void => {
     if (controlledOpen === undefined) setInternalOpen(next);
     onOpenChange?.(next);
@@ -452,7 +463,7 @@ function EffortSlider({
           direction: routeSwitch.direction,
           elapsedMs: switchElapsed,
           delayMs: effortDelayMs,
-          durationMs: pace.rollMs
+          durationMs: pace.rollMs,
         }
       : null;
   // A stronger pick lands in the accent and cools back to chip ink, the way
@@ -472,7 +483,7 @@ function EffortSlider({
     open,
     placement: "bottom-start",
     strategy: portaled ? "fixed" : "absolute",
-    capHeight: portaled
+    capHeight: portaled,
   });
   const trackRef = useRef<HTMLDivElement | null>(null);
 
@@ -492,7 +503,7 @@ function EffortSlider({
     flyout.anchorRef,
     open,
     commitAndClose,
-    portaled ? flyout.popoverRef : undefined
+    portaled ? flyout.popoverRef : undefined,
   );
 
   useEffect(() => {
@@ -535,11 +546,6 @@ function EffortSlider({
     const clamped = Math.min(maxIndex, Math.max(0, next));
     const effort = efforts[clamped];
     if (!effort || effort === draft) return;
-    // Felt, not just seen. On the phone this control is a dial across the
-    // composer and the thumb dragging it covers the label it is moving to,
-    // so the snap has to arrive some other way. A no-op in every browser but
-    // the iPhone shell's, which is why there is no check for one here.
-    postToNative({ type: "haptic", kind: "light" });
     setDraft(effort);
   };
 
@@ -628,7 +634,9 @@ function EffortSlider({
             data-active={stop === index || undefined}
             data-lit={stop <= index || undefined}
             aria-label={`Set effort to ${effortLabel(effort)}`}
-            style={{ "--effort-pos": String(maxIndex === 0 ? 0 : stop / maxIndex) } as EffortPosStyle}
+            style={
+              { "--effort-pos": String(maxIndex === 0 ? 0 : stop / maxIndex) } as EffortPosStyle
+            }
             onClick={() => selectIndex(stop)}
           >
             <span className="effort-slider-stop-tick" aria-hidden="true" />
@@ -668,7 +676,7 @@ function EffortSlider({
               ? undefined
               : {
                   animationDelay: `${effortDelayMs - (switchElapsed ?? 0)}ms`,
-                  animationDuration: `${pace.inkMs}ms`
+                  animationDuration: `${pace.inkMs}ms`,
                 }
           }
         >
@@ -707,7 +715,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   onEffortOpenChange,
   supportsFastModeForValue,
   routeSwitch,
-  value
+  value,
 }: {
   ariaLabel: string;
   anchorClassName?: string;
@@ -755,10 +763,11 @@ function ChipModelPicker<T extends ProviderModelSelection>({
           direction: playing.direction,
           elapsedMs: switchElapsed ?? 0,
           delayMs: pace.delayMs,
-          durationMs: pace.rollMs
+          durationMs: pace.rollMs,
         }
       : null;
   const open = controlledOpen ?? internalOpen;
+  useOpenInteraction("picker.model", open);
   const setOpen = (next: boolean | ((open: boolean) => boolean)): void => {
     const nextValue = typeof next === "function" ? next(open) : next;
     if (controlledOpen === undefined) {
@@ -784,7 +793,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     strategy: portaled ? "fixed" : "absolute",
     capHeight: portaled || openBelow,
     edgePadding: openBelow ? PICKER_MENU_EDGE_PADDING_PX : undefined,
-    maxHeight: openBelow ? PICKER_MENU_MAX_HEIGHT_PX : undefined
+    maxHeight: openBelow ? PICKER_MENU_MAX_HEIGHT_PX : undefined,
   });
   // The Fast mode submenu hangs off its own row, so it tracks that row instead of
   // being nudged into place with margins measured against the list.
@@ -792,14 +801,14 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     open: fastModeMenuOpen,
     placement: "right-start",
     gutter: 6,
-    strategy: portaled ? "fixed" : "absolute"
+    strategy: portaled ? "fixed" : "absolute",
   });
 
   useDismissOnOutsideOrEscape(
     flyout.anchorRef,
     open,
     () => setOpen(false),
-    portaled ? flyout.popoverRef : undefined
+    portaled ? flyout.popoverRef : undefined,
   );
   const selectedSupportsFastMode = supportsFastModeForValue(value);
   // Fast mode is a submenu (Off / On) at the foot of the list. It is not called
@@ -811,7 +820,8 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   // Show the chosen effort whenever the selection carries one. Suppress it when
   // the selected model is known to be fast/no-effort.
   const selectedShowsEffort =
-    value.reasoningEffort != null && (selectedOption ? selectedOption.supportsReasoningEffort : true);
+    value.reasoningEffort != null &&
+    (selectedOption ? selectedOption.supportsReasoningEffort : true);
   const showEffortSlider = withEffortSlider && selectedShowsEffort;
   const orderedOptions = showRecent ? orderOptionsByRecency(options) : options;
 
@@ -834,7 +844,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     toLabel: (option: ChipModelOption<T>) => option.label,
     listRef: primaryListRef,
     initialIndex: selectedIndex >= 0 ? selectedIndex : 0,
-    onPick: (option: ChipModelOption<T>) => selectModel(option)
+    onPick: (option: ChipModelOption<T>) => selectModel(option),
   });
 
   const selectModel = (option: ChipModelOption<T>): void => {
@@ -855,6 +865,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   const modelPickerFlyout = (
     <div
       className={`model-picker-flyout${portaled ? " picker-popover-portaled" : ""}`}
+      data-testid="model-picker-flyout"
       // The menu reads at app-chrome size even when the chip that opened it
       // sits in a composer (one step up). See tokens.css.
       data-type-scale="chrome"
@@ -903,7 +914,9 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                 // Name-from-content on the option ignores the button's
                 // aria-label, so the full label goes on both.
                 aria-label={
-                  option.fullLabel && option.fullLabel !== option.label ? option.fullLabel : undefined
+                  option.fullLabel && option.fullLabel !== option.label
+                    ? option.fullLabel
+                    : undefined
                 }
                 className="model-picker-row"
                 data-disabled={option.disabled || undefined}
@@ -914,10 +927,16 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                   className="project-picker-item model-picker-item"
                   aria-pressed={selected}
                   aria-label={
-                    option.fullLabel && option.fullLabel !== option.label ? option.fullLabel : undefined
+                    option.fullLabel && option.fullLabel !== option.label
+                      ? option.fullLabel
+                      : undefined
                   }
                   disabled={option.disabled}
-                  title={option.disabled ? `${option.label} — provider CLI not installed` : option.description}
+                  title={
+                    option.disabled
+                      ? `${option.label} — provider CLI not installed`
+                      : option.description
+                  }
                   onClick={() => selectModel(option)}
                 >
                   <PickerLead selected={selected} />
@@ -1000,9 +1019,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   );
 
   return (
-    <div
-      className={`model-picker-cluster${withEffortSlider ? " model-picker-cluster--chip" : ""}`}
-    >
+    <div className={`model-picker-cluster${withEffortSlider ? " model-picker-cluster--chip" : ""}`}>
       {/* A stronger pick flushes the pill and blooms one halo out of it; a
           launch only flushes. Keyed on the switch so each one replays. */}
       {playing?.direction === "up" && withEffortSlider ? (
@@ -1010,10 +1027,12 @@ function ChipModelPicker<T extends ProviderModelSelection>({
           <span
             className="route-switch-flush"
             aria-hidden="true"
-            data-heat={playing.to.reasoningEffort ? EFFORT_HEAT_TIER[playing.to.reasoningEffort] : undefined}
+            data-heat={
+              playing.to.reasoningEffort ? EFFORT_HEAT_TIER[playing.to.reasoningEffort] : undefined
+            }
             style={{
               animationDelay: `${(pace?.delayMs ?? 0) - (switchElapsed ?? 0)}ms`,
-              animationDuration: `${pace?.flushMs ?? 0}ms`
+              animationDuration: `${pace?.flushMs ?? 0}ms`,
             }}
           />
           {/* The halo says "stepped up", which a launch hasn't. */}
@@ -1021,50 +1040,54 @@ function ChipModelPicker<T extends ProviderModelSelection>({
             <span
               className="route-switch-ring"
               aria-hidden="true"
-              data-heat={playing.to.reasoningEffort ? EFFORT_HEAT_TIER[playing.to.reasoningEffort] : undefined}
+              data-heat={
+                playing.to.reasoningEffort
+                  ? EFFORT_HEAT_TIER[playing.to.reasoningEffort]
+                  : undefined
+              }
               style={{
                 animationDelay: `${-(switchElapsed ?? 0)}ms`,
-                animationDuration: `${pace?.ringMs ?? 0}ms`
+                animationDuration: `${pace?.ringMs ?? 0}ms`,
               }}
             />
           ) : null}
         </Fragment>
       ) : null}
-    <div
-      className={`project-picker-anchor model-picker-anchor${anchorClassName ? ` ${anchorClassName}` : ""}`}
-      ref={flyout.setAnchor}
-    >
-      <button
-        type="button"
-        id={inputId}
-        className="composer-context-chip"
-        aria-label={ariaLabel}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        title={
-          chipTitle ?? (effectiveFastModeEnabled ? `${value.label} · Fast speed` : value.label)
-        }
-        onClick={() => setOpen((o) => !o)}
+      <div
+        className={`project-picker-anchor model-picker-anchor${anchorClassName ? ` ${anchorClassName}` : ""}`}
+        ref={flyout.setAnchor}
       >
-        {effectiveFastModeEnabled ? (
-          <Zap size={14} aria-hidden="true" className="model-picker-speed-icon" />
-        ) : null}
-        <span className="model-picker-label">
-          <RollingText text={chipLabel ?? value.label} roll={labelRoll} />
-        </span>
-        {/* In a composer the pill around model + effort is the affordance, the
+        <button
+          type="button"
+          id={inputId}
+          className="composer-context-chip"
+          aria-label={ariaLabel}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          title={
+            chipTitle ?? (effectiveFastModeEnabled ? `${value.label} · Fast speed` : value.label)
+          }
+          onClick={() => setOpen((o) => !o)}
+        >
+          {effectiveFastModeEnabled ? (
+            <Zap size={14} aria-hidden="true" className="model-picker-speed-icon" />
+          ) : null}
+          <span className="model-picker-label">
+            <RollingText text={chipLabel ?? value.label} roll={labelRoll} />
+          </span>
+          {/* In a composer the pill around model + effort is the affordance, the
             way the phone draws it — no caret on either half. Settings has no
             pill and no effort chip, so the model chip carries the caret. */}
-        {withEffortSlider ? null : (
-          <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
-        )}
-      </button>
-      {open
-        ? portaled && typeof document !== "undefined"
-          ? createPortal(modelPickerFlyout, document.body)
-          : modelPickerFlyout
-        : null}
-    </div>
+          {withEffortSlider ? null : (
+            <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
+          )}
+        </button>
+        {open
+          ? portaled && typeof document !== "undefined"
+            ? createPortal(modelPickerFlyout, document.body)
+            : modelPickerFlyout
+          : null}
+      </div>
       {showEffortSlider && value.reasoningEffort ? (
         <EffortSlider
           value={value.reasoningEffort}
@@ -1087,7 +1110,7 @@ export function CombinedModelSelector({
   availability,
   inputId,
   onChange,
-  value
+  value,
 }: {
   ariaLabel: string;
   autoRouting?: boolean;
@@ -1097,7 +1120,7 @@ export function CombinedModelSelector({
   value: ModelPickerSelection;
 }): JSX.Element {
   const matched = allModelOptions.find(
-    (model) => model.provider === value.provider && model.modelId === value.modelId
+    (model) => model.provider === value.provider && model.modelId === value.modelId,
   );
   const selectedReasoningEffort = value.reasoningEffort ?? matched?.reasoningEffort;
   const fallback = factoryLaunchModel();
@@ -1108,7 +1131,7 @@ export function CombinedModelSelector({
           provider: matched.provider,
           label: matched.label,
           modelId: matched.modelId,
-          ...(selectedReasoningEffort ? { reasoningEffort: selectedReasoningEffort } : {})
+          ...(selectedReasoningEffort ? { reasoningEffort: selectedReasoningEffort } : {}),
         }
       : fallback;
 

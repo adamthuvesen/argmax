@@ -12,19 +12,19 @@ describe("ChatBubble", () => {
     // taller than the clipped client box is what makes the toggle appear.
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(900);
     vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(300);
-    const { container } = render(
+    render(
       <ChatBubble kind="user" rawMarkdown="long">
         <p>long</p>
-      </ChatBubble>
+      </ChatBubble>,
     );
     const toggle = screen.getByRole("button", { name: "Show more" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(container.querySelector(".chat-bubble-body.expanded")).toBeNull();
+    expect(screen.getByTestId("chat-bubble-body")).not.toHaveClass("expanded");
 
     fireEvent.click(toggle);
     const collapse = screen.getByRole("button", { name: "Show less" });
     expect(collapse).toHaveAttribute("aria-expanded", "true");
-    expect(container.querySelector(".chat-bubble-body.expanded")).not.toBeNull();
+    expect(screen.getByTestId("chat-bubble-body")).toHaveClass("expanded");
 
     fireEvent.click(collapse);
     expect(screen.getByRole("button", { name: "Show more" })).toBeInTheDocument();
@@ -32,15 +32,15 @@ describe("ChatBubble", () => {
   });
 
   it("leaves a short message without a Show more toggle", () => {
-    const { container } = render(
+    render(
       <ChatBubble kind="user" rawMarkdown="and so on?">
         <p>and so on?</p>
-      </ChatBubble>
+      </ChatBubble>,
     );
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
     // `.clipped` is what turns on overflow:hidden. A short prompt must not
     // get that class — it was clipping the trailing `?` on one-line bubbles.
-    expect(container.querySelector(".chat-bubble-body.clipped")).toBeNull();
+    expect(screen.getByTestId("chat-bubble-body")).not.toHaveClass("clipped");
   });
 
   it("reveals the toggle when the prose grows after mount (late image or font)", () => {
@@ -56,23 +56,23 @@ describe("ChatBubble", () => {
         }
         observe(): void {}
         disconnect(): void {}
-      }
+      },
     );
-    const { container } = render(
+    render(
       <ChatBubble kind="user" rawMarkdown="grows">
         <p>grows</p>
-      </ChatBubble>
+      </ChatBubble>,
     );
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
 
     // Per-element, not on the prototype: the capped body keeps reporting the
     // cap it is pinned to, and only the content knows it outgrew it.
-    const body = container.querySelector(".chat-bubble-body") as HTMLElement;
+    const body = screen.getByTestId("chat-bubble-body");
     Object.defineProperty(body, "clientHeight", { configurable: true, value: 300 });
     Object.defineProperty(body, "scrollHeight", { configurable: true, value: 300 });
-    Object.defineProperty(body.firstElementChild as HTMLElement, "scrollHeight", {
+    Object.defineProperty(screen.getByTestId("chat-bubble-content"), "scrollHeight", {
       configurable: true,
-      value: 900
+      value: 900,
     });
     act(() => notify?.());
     expect(screen.getByRole("button", { name: "Show more" })).toBeInTheDocument();
@@ -80,24 +80,26 @@ describe("ChatBubble", () => {
   });
 
   it("does not wrap assistant messages (cap is user-only)", () => {
-    const { container } = render(
+    render(
       <ChatBubble kind="assistant" rawMarkdown="reply">
         <p>reply</p>
-      </ChatBubble>
+      </ChatBubble>,
     );
-    expect(container.querySelector(".chat-bubble-body")).toBeNull();
+    expect(screen.queryByTestId("chat-bubble-body")).toBeNull();
   });
 
   it("calls clipboard.writeText with the raw markdown on copy", async () => {
-    const writeText = vi.fn<(text: string) => Promise<void>>().mockImplementation(() => Promise.resolve());
+    const writeText = vi
+      .fn<(text: string) => Promise<void>>()
+      .mockImplementation(() => Promise.resolve());
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
-      value: { writeText }
+      value: { writeText },
     });
     render(
       <ChatBubble kind="assistant" rawMarkdown="**bold**">
         <p>**bold**</p>
-      </ChatBubble>
+      </ChatBubble>,
     );
     const button = screen.getByRole("button", { name: "Copy bubble" });
     fireEvent.click(button);

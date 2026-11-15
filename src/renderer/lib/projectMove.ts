@@ -21,7 +21,7 @@ export function projectMoveNoticeFor(event: TimelineEvent): ProjectMoveNotice {
       from: null,
       to: event.message,
       checkoutMode: null,
-      sourceArchiveState: null
+      sourceArchiveState: null,
     };
   }
   // A checkout move stays in one project, so the project name says nothing:
@@ -33,14 +33,14 @@ export function projectMoveNoticeFor(event: TimelineEvent): ProjectMoveNotice {
       from: null,
       to: directory ?? canonical.destinationPath ?? event.message,
       checkoutMode: canonical.checkoutMode,
-      sourceArchiveState: canonical.sourceArchiveState
+      sourceArchiveState: canonical.sourceArchiveState,
     };
   }
   return {
     from: canonical.sourceProjectName,
     to: canonical.destinationProjectName ?? event.message,
     checkoutMode: canonical.checkoutMode,
-    sourceArchiveState: canonical.sourceArchiveState
+    sourceArchiveState: canonical.sourceArchiveState,
   };
 }
 
@@ -59,6 +59,6 @@ export function sessionMoveDestination(event: TimelineEvent): SessionMoveDestina
   return {
     sourceSessionId: canonical.sourceSessionId,
     destinationSessionId: canonical.destinationSessionId,
-    destinationWorkspaceId: canonical.destinationWorkspaceId
+    destinationWorkspaceId: canonical.destinationWorkspaceId,
   };
 }

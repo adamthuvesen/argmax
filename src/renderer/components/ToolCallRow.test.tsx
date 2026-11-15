@@ -8,9 +8,10 @@ vi.mock("../lib/commandIcons.js", async (importOriginal) => {
   const actual = await importOriginal<typeof CommandIcons>();
   return {
     ...actual,
-    commandIconServer: (call: ToolCall) => actual.commandIconServer(call, [
-      { commandPattern: "^run_only_sql(?:\\s|$)", server: "snowflake" }
-    ])
+    commandIconServer: (call: ToolCall) =>
+      actual.commandIconServer(call, [
+        { commandPattern: "^run_only_sql(?:\\s|$)", server: "snowflake" },
+      ]),
   };
 });
 
@@ -30,37 +31,47 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
     createdAt: "2026-05-30T12:00:00.000Z",
     completedAt: "2026-05-30T12:00:01.000Z",
     error: null,
-    ...overrides
+    ...overrides,
   };
 }
 
 describe("ToolCallRow", () => {
-  it.each(["js", "js_reset"])("renders Codex computer use (%s) with a monitor and readable label", (action) => {
-    render(<ToolCallRow tool={tool({
-      name: `mcp__cua_repl__${action}`,
-      inputPreview: "",
-      inputFull: { code: "await cua.getState()" }
-    })} />);
+  it.each(["js", "js_reset"])(
+    "renders Codex computer use (%s) with a monitor and readable label",
+    (action) => {
+      render(
+        <ToolCallRow
+          tool={tool({
+            name: `mcp__cua_repl__${action}`,
+            inputPreview: "",
+            inputFull: { code: "await cua.getState()" },
+          })}
+        />,
+      );
 
-    expect(screen.getByRole("img", { name: "Computer use" })).toBeInTheDocument();
-    const row = screen.getByRole("button", { name: "Computer use" });
-    fireEvent.click(row);
-    expect(screen.getByText(/await cua\.getState\(\)/)).toBeInTheDocument();
-  });
+      expect(screen.getByRole("img", { name: "Computer use" })).toBeInTheDocument();
+      const row = screen.getByRole("button", { name: "Computer use" });
+      fireEvent.click(row);
+      expect(screen.getByText(/await cua\.getState\(\)/)).toBeInTheDocument();
+    },
+  );
 
-  it.each(["running", "error"] as const)("keeps %s tool failures collapsed until opened", (status) => {
-    const failed = tool({ status: "error", error: "Permission denied" });
-    const { rerender } = render(<ToolCallRow tool={tool({ status })} />);
-    rerender(<ToolCallRow tool={failed} />);
+  it.each(["running", "error"] as const)(
+    "keeps %s tool failures collapsed until opened",
+    (status) => {
+      const failed = tool({ status: "error", error: "Permission denied" });
+      const { rerender } = render(<ToolCallRow tool={tool({ status })} />);
+      rerender(<ToolCallRow tool={failed} />);
 
-    const row = screen.getByRole("button", { name: "Ran mkdir -p dist" });
-    expect(row).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("Permission denied")).not.toBeInTheDocument();
-    fireEvent.click(row);
-    expect(screen.getByText("Permission denied")).toBeInTheDocument();
-    fireEvent.click(row);
-    expect(screen.queryByText("Permission denied")).not.toBeInTheDocument();
-  });
+      const row = screen.getByRole("button", { name: "Ran mkdir -p dist" });
+      expect(row).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByText("Permission denied")).not.toBeInTheDocument();
+      fireEvent.click(row);
+      expect(screen.getByText("Permission denied")).toBeInTheDocument();
+      fireEvent.click(row);
+      expect(screen.queryByText("Permission denied")).not.toBeInTheDocument();
+    },
+  );
 
   it("marks a built-in web row with the globe though it has no MCP server", () => {
     render(<ToolCallRow tool={tool({ name: "WebSearch", inputPreview: "tauri 2 webview" })} />);
@@ -69,36 +80,48 @@ describe("ToolCallRow", () => {
   });
 
   it("gives skill activation its own semantic icon kind", () => {
-    const { container } = render(<ToolCallRow tool={tool({
-      name: "Skill",
-      activity: { version: 1, kind: "skill", evidence: "native", targets: [] }
-    })} />);
+    render(
+      <ToolCallRow
+        tool={tool({
+          name: "Skill",
+          activity: { version: 1, kind: "skill", evidence: "native", targets: [] },
+        })}
+      />,
+    );
 
-    const icon = container.querySelector(".tool-activity-icon");
+    const icon = screen.getByTestId("tool-activity-icon");
     expect(icon).toHaveAttribute("data-activity", "skill");
     expect(icon).not.toHaveAttribute("data-tone");
   });
 
   it("marks failed activity as danger and leaves a delete a file change", () => {
-    const { container, rerender } = render(<ToolCallRow tool={tool({
-      status: "error",
-      activity: { version: 1, kind: "command", evidence: "native", targets: [] }
-    })} />);
+    const { rerender } = render(
+      <ToolCallRow
+        tool={tool({
+          status: "error",
+          activity: { version: 1, kind: "command", evidence: "native", targets: [] },
+        })}
+      />,
+    );
 
-    expect(container.querySelector(".tool-activity-icon")).toHaveAttribute("data-tone", "danger");
+    expect(screen.getByTestId("tool-activity-icon")).toHaveAttribute("data-tone", "danger");
 
     // Red marks work that did not finish. A delete finished.
-    rerender(<ToolCallRow tool={tool({
-      activity: {
-        version: 1,
-        kind: "edit",
-        evidence: "native",
-        targets: ["old.ts"],
-        operation: "delete"
-      }
-    })} />);
+    rerender(
+      <ToolCallRow
+        tool={tool({
+          activity: {
+            version: 1,
+            kind: "edit",
+            evidence: "native",
+            targets: ["old.ts"],
+            operation: "delete",
+          },
+        })}
+      />,
+    );
 
-    expect(container.querySelector(".tool-activity-icon")).not.toHaveAttribute("data-tone");
+    expect(screen.getByTestId("tool-activity-icon")).not.toHaveAttribute("data-tone");
   });
 
   it("does not offer a disclosure when expanding would show nothing", () => {
@@ -114,9 +137,9 @@ describe("ToolCallRow", () => {
         tool={tool({
           inputPreview: "echo ok",
           inputFull: { command: "echo ok" },
-          output: "ok"
+          output: "ok",
         })}
-      />
+      />,
     );
 
     const row = screen.getByRole("button", { name: "Ran echo ok" });
@@ -135,14 +158,14 @@ describe("ToolCallRow", () => {
           name: "Read",
           inputPreview: "README.md",
           inputFull: { file_path: "/repo/README.md" },
-          output: null
+          output: null,
         })}
-      />
+      />,
     );
 
     expect(screen.getByRole("button", { name: "Read README.md" })).toHaveAttribute(
       "aria-expanded",
-      "false"
+      "false",
     );
   });
 });
@@ -164,9 +187,17 @@ describe("ToolCallRow server marks", () => {
 
   it("updates a nested mark when child input arrives with the same preview", () => {
     const parent = tool({ id: "parent", name: "Task", inputPreview: "Query data" });
-    const { rerender } = render(<ToolCallRow tool={parent} childTools={[tool()]} defaultExpanded />);
+    const { rerender } = render(
+      <ToolCallRow tool={parent} childTools={[tool()]} defaultExpanded />,
+    );
     expect(screen.queryByRole("img", { name: "Snowflake" })).toBeNull();
-    rerender(<ToolCallRow tool={parent} childTools={[tool({ inputFull: { command: "run_only_sql" } })]} defaultExpanded />);
+    rerender(
+      <ToolCallRow
+        tool={parent}
+        childTools={[tool({ inputFull: { command: "run_only_sql" } })]}
+        defaultExpanded
+      />,
+    );
     expect(screen.getByRole("img", { name: "Snowflake" })).toBeInTheDocument();
   });
 
@@ -176,9 +207,9 @@ describe("ToolCallRow server marks", () => {
         tool={tool({
           name: "mcp__claude_ai_Slack__slack_search_public",
           inputPreview: "PQL score",
-          inputFull: { query: "PQL score" }
+          inputFull: { query: "PQL score" },
         })}
-      />
+      />,
     );
     expect(screen.getByRole("img", { name: "Slack" })).toBeInTheDocument();
   });

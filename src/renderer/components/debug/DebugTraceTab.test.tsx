@@ -13,7 +13,7 @@ describe("DebugTraceTab", () => {
       type: "future.notice",
       message: "Future event",
       payload: { prompt: "large prompt", nested: { exact: true } },
-      createdAt: "2026-09-01T10:00:00.000Z"
+      createdAt: "2026-09-01T10:00:00.000Z",
     } as unknown as TimelineEvent;
 
     render(<DebugTraceTab events={[source]} rawOutputs={[]} />);
@@ -34,7 +34,7 @@ describe("DebugTraceTab", () => {
       type: "message.completed",
       message: "Malformed event",
       payload: null,
-      createdAt: "2026-09-01T10:00:00.000Z"
+      createdAt: "2026-09-01T10:00:00.000Z",
     } as unknown as TimelineEvent;
 
     render(<DebugTraceTab events={[source]} rawOutputs={[]} />);

@@ -39,7 +39,8 @@ describe("SessionPane history loading", () => {
   });
 
   it("quietly retries a transient failure and reveals the transcript on success", async () => {
-    const load = vi.fn()
+    const load = vi
+      .fn()
       .mockRejectedValueOnce(new Error("temporary read failure"))
       .mockResolvedValue(undefined);
     render(pane(baseSession({ state: "complete" }), load));
@@ -58,7 +59,8 @@ describe("SessionPane history loading", () => {
   });
 
   it("offers one inline retry after three failures, then recovers", async () => {
-    const load = vi.fn()
+    const load = vi
+      .fn()
       .mockRejectedValueOnce(new Error("first"))
       .mockRejectedValueOnce(new Error("second"))
       .mockRejectedValueOnce(new Error("third"))
@@ -80,9 +82,9 @@ describe("SessionPane history loading", () => {
   });
 
   it("cancels a pending retry when the pane switches sessions", async () => {
-    const load = vi.fn((sessionId: string) => sessionId === "session-a"
-      ? Promise.reject(new Error("read failure"))
-      : Promise.resolve());
+    const load = vi.fn((sessionId: string) =>
+      sessionId === "session-a" ? Promise.reject(new Error("read failure")) : Promise.resolve(),
+    );
     const { rerender } = render(pane(baseSession({ id: "session-a", state: "complete" }), load));
     await flushRead();
 

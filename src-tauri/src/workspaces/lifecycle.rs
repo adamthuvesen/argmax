@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use tokio::time::{sleep, timeout};
 
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::sync::LockOrRecover;
 
 #[derive(Default)]
 struct Entry {

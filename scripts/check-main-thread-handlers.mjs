@@ -7,7 +7,7 @@
 // The `async` flag is not a fix for blocking work: it is `tokio::spawn`, which
 // parks a worker that provider IO, the remote bridge, and the `dashboard:delta`
 // emit loop all share. Work that genuinely blocks belongs in `spawn_blocking`
-// (see `read_off_main` in src-tauri/src/ipc/mod.rs).
+// (see `read_off_main` in src-tauri/src/state.rs).
 //
 // Rather than guess which bodies block, this enforces the reviewable version of
 // the rule: every synchronous handler is named here with a reason. Adding one
@@ -23,7 +23,10 @@ const MAIN_THREAD_ALLOWLIST = new Map([
   ["health:ping", "returns a constant; no IO"],
   ["system:set-theme", "sets window appearance, which must happen on the main thread"],
   ["system:set-notifications-enabled", "in-memory setting update"],
-  ["system:set-keep-awake", "in-memory setting update; the assertion itself is driven from the delta publisher"],
+  [
+    "system:set-keep-awake",
+    "in-memory setting update; the assertion itself is driven from the delta publisher",
+  ],
   ["system:test-notification", "fires an in-memory desktop notification toast"],
   ["window:open-session", "creates a native window, which must happen on the main thread"],
   ["window:set-session", "in-memory registry update keyed by the calling window"],
@@ -47,7 +50,7 @@ const MAIN_THREAD_ALLOWLIST = new Map([
   ["terminal:resize", "in-memory PTY size update"],
   [
     "terminal:write",
-    "queues bytes for the terminal's writer thread; inline resolution is what keeps keystrokes in order"
+    "queues bytes for the terminal's writer thread; inline resolution is what keeps keystrokes in order",
   ],
   ["prs:list-for-session", "indexed read of one session's PR rows"],
   ["skills:list", "small read plus a cached registry lookup"],
@@ -65,7 +68,7 @@ const MAIN_THREAD_ALLOWLIST = new Map([
   ["workspaces:set-priority-dismissed", "single-row write"],
   ["workspaces:set-snoozed-until", "single-row write"],
   ["workspaces:set-label", "single-row write"],
-  ["workspaces:set-icon", "single-row write"]
+  ["workspaces:set-icon", "single-row write"],
 ]);
 
 const files = readdirSync(IPC_DIR).filter((name) => name.endsWith(".rs"));
@@ -75,7 +78,8 @@ const asynchronous = new Set();
 for (const file of files) {
   const source = readFileSync(join(IPC_DIR, file), "utf8");
   // `#[tauri::command(...)]`, optional `#[specta::specta]`, then the fn.
-  const pattern = /#\[tauri::command(\([^)]*\))?\]\s*(?:#\[[^\]]*\]\s*)*pub\s+(async\s+)?fn\s+(\w+)/g;
+  const pattern =
+    /#\[tauri::command(\([^)]*\))?\]\s*(?:#\[[^\]]*\]\s*)*pub\s+(async\s+)?fn\s+(\w+)/g;
   for (const match of source.matchAll(pattern)) {
     const [, args = "", isAsyncFn, fnName] = match;
     const renamed = /rename\s*=\s*"([^"]+)"/.exec(args);
@@ -91,7 +95,7 @@ for (const file of files) {
 
 const unlisted = synchronous.filter(({ channel }) => !MAIN_THREAD_ALLOWLIST.has(channel));
 const stale = [...MAIN_THREAD_ALLOWLIST.keys()].filter(
-  (channel) => asynchronous.has(channel) || !synchronous.some((entry) => entry.channel === channel)
+  (channel) => asynchronous.has(channel) || !synchronous.some((entry) => entry.channel === channel),
 );
 
 let failed = false;
@@ -99,7 +103,7 @@ let failed = false;
 if (unlisted.length > 0) {
   failed = true;
   console.error(
-    `\n${unlisted.length} synchronous #[tauri::command] handler(s) resolve on the macOS main thread and are not accounted for:\n`
+    `\n${unlisted.length} synchronous #[tauri::command] handler(s) resolve on the macOS main thread and are not accounted for:\n`,
   );
   for (const { channel, file } of unlisted) {
     console.error(`  ${channel}  (src-tauri/src/ipc/${file})`);
@@ -108,14 +112,14 @@ if (unlisted.length > 0) {
     "\nIf it touches SQLite, git, the filesystem, or a PTY, make it `pub async fn` and run the body\n" +
       "through `read_off_main` / `spawn_blocking`. The `async` flag alone is not enough — it parks a\n" +
       "shared tokio worker. If it genuinely belongs on the main thread, add it to\n" +
-      "MAIN_THREAD_ALLOWLIST in scripts/check-main-thread-handlers.mjs with a reason.\n"
+      "MAIN_THREAD_ALLOWLIST in scripts/check-main-thread-handlers.mjs with a reason.\n",
   );
 }
 
 if (stale.length > 0) {
   failed = true;
   console.error(
-    `\n${stale.length} MAIN_THREAD_ALLOWLIST entr(y/ies) no longer name a synchronous handler — remove them:\n`
+    `\n${stale.length} MAIN_THREAD_ALLOWLIST entr(y/ies) no longer name a synchronous handler. Remove them from MAIN_THREAD_ALLOWLIST in scripts/check-main-thread-handlers.mjs:\n`,
   );
   for (const channel of stale) {
     console.error(`  ${channel}`);
@@ -128,5 +132,5 @@ if (failed) {
 }
 
 console.log(
-  `ok: ${asynchronous.size} handlers resolve off the main thread; ${synchronous.length} are allowlisted.`
+  `ok: ${asynchronous.size} handlers resolve off the main thread; ${synchronous.length} are allowlisted.`,
 );

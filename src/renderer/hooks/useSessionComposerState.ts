@@ -7,7 +7,7 @@ import {
   createAnnotation,
   createDiffNoteAnnotation,
   type ComposerAnnotation,
-  type DiffNoteInput
+  type DiffNoteInput,
 } from "../lib/composerAnnotations.js";
 import type { ComposerStatus } from "../components/SessionComposer.js";
 import type { ComposerField } from "../components/composerEditor/composerField.js";
@@ -31,7 +31,7 @@ export function useSessionComposerState({
   session,
   isFocused,
   review,
-  registerAnnotationSink
+  registerAnnotationSink,
 }: SessionComposerStateOptions) {
   const sessionId = session?.id ?? null;
   const [status, setStatusState] = useState<ComposerStatus | null>(null);
@@ -49,21 +49,33 @@ export function useSessionComposerState({
       }, 4000);
     }
   }, []);
-  useEffect(() => () => {
-    if (statusTimerRef.current !== null) window.clearTimeout(statusTimerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (statusTimerRef.current !== null) window.clearTimeout(statusTimerRef.current);
+    },
+    [],
+  );
 
   const [selectedModel, setSelectedModel] = useState<ModelPickerSelection>(() => {
     const fallback = modelPickerSelectionFromSession(session);
     return session ? readStoredSessionModel(session.id, fallback) : fallback;
   });
-  const setSelectedModelForSession = useCallback((model: ModelPickerSelection): void => {
-    setSelectedModel(model);
-    if (sessionId) writeStoredSessionModel(sessionId, model);
-  }, [sessionId]);
+  const setSelectedModelForSession = useCallback(
+    (model: ModelPickerSelection): void => {
+      setSelectedModel(model);
+      if (sessionId) writeStoredSessionModel(sessionId, model);
+    },
+    [sessionId],
+  );
   // A routed session can change its model on a dashboard delta. Reseeding
   // during render prevents a stale chip from briefly appearing as a pin.
-  const seededModelKey = [sessionId, session?.provider, session?.modelId, session?.reasoningEffort].join("\n");
+  const seededModelKey = [
+    sessionId,
+    session?.provider,
+    // oxlint-disable-next-line argmax/no-raw-model-id -- a change key, not a read of the model.
+    session?.modelId,
+    session?.reasoningEffort,
+  ].join("\n");
   const [seededFor, setSeededFor] = useState(seededModelKey);
   if (seededFor !== seededModelKey) {
     setSeededFor(seededModelKey);
@@ -75,10 +87,13 @@ export function useSessionComposerState({
   const shouldRefocusInput = useRef(false);
   const [pendingAnnotations, setPendingAnnotations] = useState<ComposerAnnotation[]>([]);
   useEffect(() => setPendingAnnotations([]), [sessionId]);
-  const addAnnotation = useCallback((selection: ChatSelection): void => {
-    setPendingAnnotations((current) => [...current, createAnnotation(selection.text)]);
-    if (isFocused) inputRef.current?.focus();
-  }, [isFocused]);
+  const addAnnotation = useCallback(
+    (selection: ChatSelection): void => {
+      setPendingAnnotations((current) => [...current, createAnnotation(selection.text)]);
+      if (isFocused) inputRef.current?.focus();
+    },
+    [isFocused],
+  );
   const removeAnnotation = useCallback((id: string): void => {
     setPendingAnnotations((current) => current.filter((annotation) => annotation.id !== id));
   }, []);
@@ -92,10 +107,11 @@ export function useSessionComposerState({
     return () => registerAnnotationSink(null);
   }, [isFocused, registerAnnotationSink]);
   const openFilePaths = useMemo(
-    () => review.isPanelOpen
-      ? orderedOpenFilePaths(review.workspaceFiles.tabs, review.workspaceFiles.activeTabPath)
-      : [],
-    [review.isPanelOpen, review.workspaceFiles.tabs, review.workspaceFiles.activeTabPath]
+    () =>
+      review.isPanelOpen
+        ? orderedOpenFilePaths(review.workspaceFiles.tabs, review.workspaceFiles.activeTabPath)
+        : [],
+    [review.isPanelOpen, review.workspaceFiles.tabs, review.workspaceFiles.activeTabPath],
   );
 
   return {
@@ -109,6 +125,6 @@ export function useSessionComposerState({
     addAnnotation,
     removeAnnotation,
     clearAnnotations,
-    openFilePaths
+    openFilePaths,
   };
 }

@@ -11,9 +11,9 @@ use chrono::{Duration, Local, TimeZone, Utc};
 use rusqlite::{Connection, OpenFlags};
 use serde::Serialize;
 
-use crate::persistence::usage_scan;
-use crate::usage::records::UsageRecordTokens;
 use crate::usage::scanner::hour_start_secs;
+use argmax_contracts::usage::UsageRecordTokens;
+use argmax_store::usage_scan;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -132,13 +132,14 @@ fn run(days: i64, json: bool, scan: bool) -> i32 {
 
 /// Open (and migrate) the database at `path`, run one sweep, and report its
 /// wall time on stderr.
-fn sweep_in_place(path: &std::path::Path) -> crate::error::ArgmaxResult<()> {
+fn sweep_in_place(path: &std::path::Path) -> argmax_contracts::error::ArgmaxResult<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|error| {
-            crate::error::ArgmaxError::service("USAGE_SCAN_IO", error.to_string())
+            argmax_contracts::error::ArgmaxError::service("USAGE_SCAN_IO", error.to_string())
         })?;
     }
-    let database = std::sync::Arc::new(crate::persistence::Database::open(path)?);
+    let database = std::sync::Arc::new(argmax_store::Database::open(path)?);
+    crate::start_raw_output_prune(&database);
     let scanner = crate::usage::scanner::UsageScanner::new(database, crate::sync::home_dir());
     let started = std::time::Instant::now();
     let ran = scanner.sweep()?;
@@ -169,7 +170,10 @@ type ModelTotals = std::collections::BTreeMap<
 
 /// The last `days` local calendar days including today, oldest first, each
 /// with its models sorted by total tokens.
-fn daily_report(connection: &Connection, days: i64) -> crate::error::ArgmaxResult<Vec<DayReport>> {
+fn daily_report(
+    connection: &Connection,
+    days: i64,
+) -> argmax_contracts::error::ArgmaxResult<Vec<DayReport>> {
     let now = Utc::now();
     let today = now.with_timezone(&Local).date_naive();
     let day_starts: Vec<(String, i64)> = (0..days)

@@ -11,31 +11,34 @@ import { StreamingMarkdown } from "./StreamingMarkdown.js";
 
 const FRAME_MS = 16;
 
+function freshRuns(): Element[] {
+  // oxlint-disable-next-line argmax/no-node-access -- fresh runs are bare fading spans with no role, label, or text of their own
+  return [...document.querySelectorAll(".stream-fresh")];
+}
+
+function displayEquations(): HTMLElement[] {
+  return screen
+    .queryAllByRole("math", { hidden: true })
+    .filter((math) => math.getAttribute("display") === "block");
+}
+
 const renderMermaidDiagram = vi.hoisted(() =>
-  vi.fn(() => Promise.resolve({ svg: `<svg data-testid="mermaid-svg"><title>flow</title></svg>` }))
+  vi.fn(() => Promise.resolve({ svg: `<svg data-testid="mermaid-svg"><title>flow</title></svg>` })),
 );
 
 vi.mock("../lib/mermaidRuntime.js", async (importOriginal) => {
   const actual = await importOriginal<typeof MermaidRuntime>();
   return {
     ...actual,
-    renderMermaidDiagram
+    renderMermaidDiagram,
   };
 });
-
-// Installing the real bridge at import time would arm a WebSocket; the flag is
-// all this component reads from it.
-const remote = vi.hoisted(() => ({ bridge: false }));
-vi.mock("../lib/tauriBridge.js", () => ({
-  isRemoteBridge: () => remote.bridge
-}));
 
 afterEach(() => {
   resetDrawnMermaidDiagramsForTests();
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
-  remote.bridge = false;
   window.localStorage.removeItem(LINK_TARGET_KEY);
   Object.defineProperty(document, "hidden", { configurable: true, value: false });
 });
@@ -43,33 +46,41 @@ afterEach(() => {
 describe("<StreamingMarkdown />", () => {
   const workspace = {
     id: "workspace-1",
-    path: "/Users/me/repo"
+    path: "/Users/me/repo",
   } as Parameters<typeof StreamingMarkdown>[0]["workspace"];
 
   it("preserves code scroll elements across workspace and callback updates", () => {
     const text = "```\nlong output\n```";
     const { rerender } = render(
-      <StreamingMarkdown text={text} streaming={false} workspace={workspace} />
+      <StreamingMarkdown text={text} streaming={false} workspace={workspace} />,
     );
-    const code = screen.getByText("long output");
-    const pre = code.closest("pre")!;
+    const pre = screen.getByTestId("code-block-pre");
+    expect(pre).toContainElement(screen.getByText("long output"));
     pre.scrollLeft = 120;
 
     rerender(
-      <StreamingMarkdown text={text} streaming={false} workspace={{ ...workspace! }} onOpenFile={vi.fn()} />
+      <StreamingMarkdown
+        text={text}
+        streaming={false}
+        workspace={{ ...workspace! }}
+        onOpenFile={vi.fn()}
+      />,
     );
 
-    expect(screen.getByText("long output").closest("pre")).toBe(pre);
+    expect(screen.getByTestId("code-block-pre")).toBe(pre);
+    expect(pre).toContainElement(screen.getByText("long output"));
     expect(pre.scrollLeft).toBe(120);
   });
 
   it("promotes a bold-only line to a heading and leaves bold lead-ins alone", () => {
     render(
       <StreamingMarkdown
-        text={"**On both lists**\n\n**Trends:** horror is the story.\n\n**Trends:**\n\n**Empire's #1**\nNolan's follow-up."}
+        text={
+          "**On both lists**\n\n**Trends:** horror is the story.\n\n**Trends:**\n\n**Empire's #1**\nNolan's follow-up."
+        }
         streaming={false}
         workspace={workspace}
-      />
+      />,
     );
     expect(screen.getByRole("heading", { level: 3, name: "On both lists" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /Trends/ })).toBeNull();
@@ -81,11 +92,21 @@ describe("<StreamingMarkdown />", () => {
     const previous = vi.fn();
     const current = vi.fn();
     const { rerender } = render(
-      <StreamingMarkdown text={text} streaming={false} workspace={workspace} onOpenFile={previous} />
+      <StreamingMarkdown
+        text={text}
+        streaming={false}
+        workspace={workspace}
+        onOpenFile={previous}
+      />,
     );
     const link = screen.getByRole("button", { name: "Open src/renderer/App.tsx" });
     rerender(
-      <StreamingMarkdown text={text} streaming={false} workspace={workspace} onOpenFile={current} />
+      <StreamingMarkdown
+        text={text}
+        streaming={false}
+        workspace={workspace}
+        onOpenFile={current}
+      />,
     );
     expect(screen.getByRole("button", { name: "Open src/renderer/App.tsx" })).toBe(link);
     fireEvent.click(link);
@@ -94,10 +115,14 @@ describe("<StreamingMarkdown />", () => {
   });
 
   it.each([
-    ["/Users/adamthuvesen/dev/menti/dbt-transform-remove-pqa", "/Users/adamthuvesen/dev/menti/dbt-transform-remove-pqa", undefined],
+    [
+      "/Users/adamthuvesen/dev/menti/dbt-transform-remove-pqa",
+      "/Users/adamthuvesen/dev/menti/dbt-transform-remove-pqa",
+      undefined,
+    ],
     ["docs/", "docs/", "/Users/me/repo"],
     ["LICENSE", "LICENSE", "/Users/me/repo"],
-    ["/tmp/my%20worktree", "/tmp/my worktree", undefined]
+    ["/tmp/my%20worktree", "/tmp/my worktree", undefined],
   ])("opens local link %s without navigating the app", (href, expectedPath, cwd) => {
     const openPath = vi.fn().mockResolvedValue({ ok: true });
     (window as unknown as { argmax: unknown }).argmax = { system: { openPath } };
@@ -108,7 +133,7 @@ describe("<StreamingMarkdown />", () => {
         streaming={false}
         workspace={workspace}
         onOpenFile={onOpenFile}
-      />
+      />,
     );
     const link = screen.getByRole("link", { name: "its own worktree" });
     expect(fireEvent.click(link)).toBe(false);
@@ -120,25 +145,35 @@ describe("<StreamingMarkdown />", () => {
   });
 
   it("renders workspace and managed attachment images through guarded protocols", () => {
-    const { container } = render(
+    render(
       <StreamingMarkdown
         text={[
           "![workspace](scratch/lane.png)",
-          "![attachment](</Users/me/Library/Application Support/com.argmax.rs/local-state/attachments/s/shot.png>)"
+          "![attachment](</Users/me/Library/Application Support/com.argmax.rs/local-state/attachments/s/shot.png>)",
         ].join("\n\n")}
         streaming={false}
         workspace={workspace}
-      />
+      />,
     );
 
-    const sources = Array.from(container.querySelectorAll("img")).map((image) => image.src);
-    expect(sources.some((source) => source.startsWith(`${WORKSPACE_ASSET_PROTOCOL_SCHEME}://`))).toBe(true);
-    expect(sources.some((source) => source.startsWith(`${ATTACHMENT_PROTOCOL_SCHEME}://`))).toBe(true);
+    const sources = screen.getAllByRole("img").map((image) => image.getAttribute("src") ?? "");
+    expect(
+      sources.some((source) => source.startsWith(`${WORKSPACE_ASSET_PROTOCOL_SCHEME}://`)),
+    ).toBe(true);
+    expect(sources.some((source) => source.startsWith(`${ATTACHMENT_PROTOCOL_SCHEME}://`))).toBe(
+      true,
+    );
   });
 
   it("preserves an explicit managed attachment URL for image rendering", () => {
     const source = `${ATTACHMENT_PROTOCOL_SCHEME}://file/attachments/session/shot.png`;
-    render(<StreamingMarkdown text={`![attachment](${source})`} streaming={false} workspace={workspace} />);
+    render(
+      <StreamingMarkdown
+        text={`![attachment](${source})`}
+        streaming={false}
+        workspace={workspace}
+      />,
+    );
 
     expect(screen.getByRole("img", { name: "attachment" })).toHaveAttribute("src", source);
   });
@@ -149,20 +184,16 @@ describe("<StreamingMarkdown />", () => {
         text="[bad](javascript:alert(1)) ![bad image](javascript:alert(1))"
         streaming={false}
         workspace={workspace}
-      />
+      />,
     );
 
-    expect(screen.getByText("bad").closest("a")).toHaveAttribute("href", "");
+    expect(screen.getByText("bad")).toHaveAttribute("href", "");
     expect(screen.queryByRole("img", { name: "bad image" })).not.toBeInTheDocument();
   });
 
   it("falls back to a file chip when a local image cannot load", () => {
     render(
-      <StreamingMarkdown
-        text="![lane](/tmp/lane.png)"
-        streaming={false}
-        workspace={workspace}
-      />
+      <StreamingMarkdown text="![lane](/tmp/lane.png)" streaming={false} workspace={workspace} />,
     );
 
     fireEvent.error(screen.getByRole("img", { name: "lane" }));
@@ -171,18 +202,19 @@ describe("<StreamingMarkdown />", () => {
   });
 
   it("draws a remote image as a link instead of fetching it", () => {
-    const { container } = render(
+    render(
       <StreamingMarkdown
         text="![chart](https://tracker.example.com/p.png?secret=abc)"
         streaming={false}
         workspace={workspace}
-      />
+      />,
     );
 
-    expect(container.querySelector("img")).toBeNull();
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.queryByRole("presentation")).toBeNull();
     expect(screen.getByRole("link", { name: "tracker.example.com" })).toHaveAttribute(
       "href",
-      "https://tracker.example.com/p.png?secret=abc"
+      "https://tracker.example.com/p.png?secret=abc",
     );
   });
 
@@ -194,13 +226,13 @@ describe("<StreamingMarkdown />", () => {
         streaming={false}
         workspace={workspace}
         onOpenFile={onOpenFile}
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open src/renderer/App.tsx" }));
     expect(onOpenFile).toHaveBeenCalledWith("src/renderer/App.tsx", {
       line: null,
-      preferIde: false
+      preferIde: false,
     });
   });
 
@@ -208,8 +240,8 @@ describe("<StreamingMarkdown />", () => {
     vi.useFakeTimers();
     const text = "word ".repeat(60).trim();
 
-    const { container } = render(<StreamingMarkdown text={text} streaming />);
-    const markdown = container.querySelector(".markdown");
+    render(<StreamingMarkdown text={text} streaming />);
+    const markdown = screen.getByTestId("streaming-markdown");
     expect(markdown?.textContent).toBe("");
 
     const seen: string[] = [];
@@ -244,8 +276,8 @@ describe("<StreamingMarkdown />", () => {
     vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
     const text = "word ".repeat(60).trim();
-    const { container, rerender } = render(<StreamingMarkdown text={text} streaming />);
-    const markdown = container.querySelector(".markdown");
+    const { rerender } = render(<StreamingMarkdown text={text} streaming />);
+    const markdown = screen.getByTestId("streaming-markdown");
     expect(markdown?.textContent).toBe("");
 
     rerender(<StreamingMarkdown text={text} streaming={false} />);
@@ -264,8 +296,8 @@ describe("<StreamingMarkdown />", () => {
     vi.useFakeTimers();
     const words = Array.from({ length: 400 }, (_, index) => `w${index % 10}`);
     let text = "";
-    const { container, rerender } = render(<StreamingMarkdown text={text} streaming />);
-    const markdown = container.querySelector(".markdown");
+    const { rerender } = render(<StreamingMarkdown text={text} streaming />);
+    const markdown = screen.getByTestId("streaming-markdown");
     for (let tick = 0; tick < 40; tick += 1) {
       text = words.slice(0, (tick + 1) * 7).join(" ");
       rerender(<StreamingMarkdown text={text} streaming />);
@@ -284,12 +316,12 @@ describe("<StreamingMarkdown />", () => {
     vi.useFakeTimers();
     const text = "fade ".repeat(80).trim();
 
-    const { container } = render(<StreamingMarkdown text={text} streaming />);
+    render(<StreamingMarkdown text={text} streaming />);
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 3);
     });
 
-    const runs = [...container.querySelectorAll(".stream-fresh")];
+    const runs = freshRuns();
     // Reveals within one merge window share a run: a handful of fading spans,
     // not one per frame.
     expect(runs.length).toBeGreaterThan(0);
@@ -304,31 +336,29 @@ describe("<StreamingMarkdown />", () => {
     act(() => {
       vi.advanceTimersByTime(FRESH_RUN_FADE_MS + 100);
     });
-    expect(container.querySelectorAll(".stream-fresh")).toHaveLength(0);
+    expect(freshRuns()).toHaveLength(0);
   });
 
   it("leaves an unpaced block — a live thought — unmarked", () => {
     vi.useFakeTimers();
-    const { container, rerender } = render(
-      <StreamingMarkdown text={"A".repeat(120)} streaming paced={false} />
+    const { rerender } = render(
+      <StreamingMarkdown text={"A".repeat(120)} streaming paced={false} />,
     );
     rerender(<StreamingMarkdown text={"A".repeat(240)} streaming paced={false} />);
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 4);
     });
-    expect(container.querySelectorAll(".stream-fresh")).toHaveLength(0);
+    expect(freshRuns()).toHaveLength(0);
   });
 
   it("does not mark a block that is being restored into the pane", () => {
     vi.useFakeTimers();
-    const { container, rerender } = render(
-      <StreamingMarkdown text={"A".repeat(120)} streaming restoring />
-    );
+    const { rerender } = render(<StreamingMarkdown text={"A".repeat(120)} streaming restoring />);
     rerender(<StreamingMarkdown text={"A".repeat(240)} streaming restoring />);
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 4);
     });
-    expect(container.querySelectorAll(".stream-fresh")).toHaveLength(0);
+    expect(freshRuns()).toHaveLength(0);
   });
 
   it("drives every revealing block from one shared animation frame", () => {
@@ -345,8 +375,8 @@ describe("<StreamingMarkdown />", () => {
     });
     // One request per frame for both blocks.
     expect(requestSpy.mock.calls.length).toBeLessThanOrEqual(6);
-    expect(first.container.querySelector(".markdown")?.textContent).not.toBe("");
-    expect(second.container.querySelector(".markdown")?.textContent).not.toBe("");
+    expect(screen.getAllByTestId("streaming-markdown")[0]?.textContent).not.toBe("");
+    expect(screen.getAllByTestId("streaming-markdown")[1]?.textContent).not.toBe("");
 
     // The loop outlives one block and stops with the last.
     first.unmount();
@@ -360,8 +390,8 @@ describe("<StreamingMarkdown />", () => {
     const first = "😀".repeat(120);
     const grown = `${first}${"🧠".repeat(80)}`;
 
-    const { container, rerender } = render(<StreamingMarkdown text={first} streaming />);
-    const markdown = container.querySelector(".markdown");
+    const { rerender } = render(<StreamingMarkdown text={first} streaming />);
+    const markdown = screen.getByTestId("streaming-markdown");
     const wellFormed = (): boolean => {
       const value = markdown?.textContent ?? "";
       return value.length % 2 === 0 && [...value].every((char) => char === "😀" || char === "🧠");
@@ -392,8 +422,8 @@ describe("<StreamingMarkdown />", () => {
     vi.useFakeTimers();
     const text = "sweep ".repeat(400).trim();
 
-    const { container } = render(<StreamingMarkdown text={text} streaming />);
-    const markdown = container.querySelector(".markdown");
+    render(<StreamingMarkdown text={text} streaming />);
+    const markdown = screen.getByTestId("streaming-markdown");
     expect(markdown?.textContent).toBe("");
 
     act(() => {
@@ -413,8 +443,8 @@ describe("<StreamingMarkdown />", () => {
     vi.useFakeTimers();
     const text = "tail ".repeat(160).trim();
 
-    const { container, rerender } = render(<StreamingMarkdown text={text} streaming />);
-    const markdown = container.querySelector(".markdown");
+    const { rerender } = render(<StreamingMarkdown text={text} streaming />);
+    const markdown = screen.getByTestId("streaming-markdown");
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 6);
     });
@@ -447,9 +477,9 @@ describe("<StreamingMarkdown />", () => {
     vi.useFakeTimers();
     const text = "B".repeat(120);
 
-    const { container } = render(<StreamingMarkdown text={text} streaming paced={false} />);
+    render(<StreamingMarkdown text={text} streaming paced={false} />);
 
-    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(text);
     vi.useRealTimers();
   });
 
@@ -478,8 +508,10 @@ describe("<StreamingMarkdown />", () => {
 
       expect(screen.queryByRole("heading", { name: "This is code" })).not.toBeInTheDocument();
       expect(screen.getAllByRole("button", { name: "Copy code" })).toHaveLength(1);
-      expect(screen.getByText("Still code").closest("code")).not.toBeNull();
-    }
+      expect(screen.getByTestId("code-block-code")).toContainElement(
+        screen.getByText("Still code"),
+      );
+    },
   );
 
   it("resumes where it left off when the pane remounts mid-stream", () => {
@@ -490,43 +522,41 @@ describe("<StreamingMarkdown />", () => {
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 6);
     });
-    const shown = first.container.querySelector(".markdown")?.textContent ?? "";
+    const shown = screen.getByTestId("streaming-markdown").textContent ?? "";
     expect(shown.length).toBeGreaterThan(0);
     expect(shown.length).toBeLessThan(text.length);
     // Switching to another session unmounts the pane; coming back mounts a new one.
     first.unmount();
 
-    const second = render(<StreamingMarkdown text={text} streaming revealKey="session-a:t0:g0" />);
-    expect(second.container.querySelector(".markdown")?.textContent).toBe(shown);
+    render(<StreamingMarkdown text={text} streaming revealKey="session-a:t0:g0" />);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(shown);
   });
 
   it("shows already-arrived text in full when the pane is restoring", () => {
     const text = "R".repeat(120);
 
-    const { container } = render(
-      <StreamingMarkdown text={text} streaming restoring revealKey="session-restore:g0" />
-    );
+    render(<StreamingMarkdown text={text} streaming restoring revealKey="session-restore:g0" />);
 
-    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(text);
   });
 
   it("does not restart the reveal when restore ends", () => {
     vi.useFakeTimers();
     const text = "S".repeat(120);
 
-    const { container, rerender } = render(
-      <StreamingMarkdown text={text} streaming restoring revealKey="session-restore:g1" />
+    const { rerender } = render(
+      <StreamingMarkdown text={text} streaming restoring revealKey="session-restore:g1" />,
     );
-    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(text);
 
     rerender(
-      <StreamingMarkdown text={text} streaming restoring={false} revealKey="session-restore:g1" />
+      <StreamingMarkdown text={text} streaming restoring={false} revealKey="session-restore:g1" />,
     );
-    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(text);
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 16);
     });
-    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(text);
   });
 
   it("shows a streaming block in full when it mounts while the document is hidden", () => {
@@ -534,32 +564,30 @@ describe("<StreamingMarkdown />", () => {
     const text = "H".repeat(120);
     Object.defineProperty(document, "hidden", { configurable: true, value: true });
 
-    const { container } = render(
-      <StreamingMarkdown text={text} streaming revealKey="session-hidden:g0" />
-    );
+    render(<StreamingMarkdown text={text} streaming revealKey="session-hidden:g0" />);
 
-    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(text);
 
     Object.defineProperty(document, "hidden", { configurable: true, value: false });
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 16);
     });
-    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(text);
   });
 
   it("catches up a live block that grew while the document was hidden", () => {
     vi.useFakeTimers();
     const first = "hidden ".repeat(20).trim();
-    const { container, rerender } = render(
-      <StreamingMarkdown text={first} streaming revealKey="session-hidden:g1" />
+    const { rerender } = render(
+      <StreamingMarkdown text={first} streaming revealKey="session-hidden:g1" />,
     );
-    expect(container.querySelector(".markdown")?.textContent).toBe("");
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe("");
 
     Object.defineProperty(document, "hidden", { configurable: true, value: true });
     act(() => {
       vi.advanceTimersByTime(FRAME_MS);
     });
-    expect(container.querySelector(".markdown")?.textContent).toBe(first);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(first);
 
     const grown = `${first} ${"more ".repeat(20).trim()}`;
     rerender(<StreamingMarkdown text={grown} streaming revealKey="session-hidden:g1" />);
@@ -568,7 +596,7 @@ describe("<StreamingMarkdown />", () => {
       vi.advanceTimersByTime(FRAME_MS * 2);
     });
     // Already-arrived text stays; only the growth after becoming visible writes.
-    const shown = container.querySelector(".markdown")?.textContent ?? "";
+    const shown = screen.getByTestId("streaming-markdown").textContent ?? "";
     expect(shown.startsWith(first)).toBe(true);
     expect(shown.length).toBeLessThan(grown.length);
   });
@@ -578,25 +606,31 @@ describe("<StreamingMarkdown />", () => {
     // transcript's scroller, so the whole conversation slides sideways.
     const table = ["| a | b |", "| - | - |", "| 1 | 2 |"].join("\n");
 
-    const { container } = render(<StreamingMarkdown text={table} streaming={false} />);
+    render(<StreamingMarkdown text={table} streaming={false} />);
 
-    const scroller = container.querySelector(".markdown > .markdown-table-scroll");
-    expect(scroller?.firstElementChild?.tagName).toBe("TABLE");
+    const scroller = screen.getByTestId("markdown-table-scroll");
+    expect(screen.getByTestId("streaming-markdown")).toContainElement(scroller);
+    // oxlint-disable-next-line argmax/no-node-access -- a wrapper that is not the direct child of .markdown, or whose first child is not the table, lets a wide table widen the transcript
+    expect(scroller.parentElement).toHaveClass("markdown");
+    // oxlint-disable-next-line argmax/no-node-access -- same structural contract: the table must be the scroller's first child
+    expect(scroller.firstElementChild?.tagName).toBe("TABLE");
     expect(screen.getByRole("table")).toBeInTheDocument();
   });
 
   it("keeps reference link definitions in the same streaming markdown document", () => {
     render(
       <StreamingMarkdown
-        text={["Read [the documentation][docs].", "", "[docs]: https://example.com/docs"].join("\n")}
+        text={["Read [the documentation][docs].", "", "[docs]: https://example.com/docs"].join(
+          "\n",
+        )}
         streaming
         paced={false}
-      />
+      />,
     );
 
     expect(screen.getByRole("link", { name: "the documentation" })).toHaveAttribute(
       "href",
-      "https://example.com/docs"
+      "https://example.com/docs",
     );
   });
 
@@ -609,11 +643,11 @@ describe("<StreamingMarkdown />", () => {
           "  continuation paragraph",
           "  - nested item",
           "",
-          "    > nested quote"
+          "    > nested quote",
         ].join("\n")}
         streaming
         paced={false}
-      />
+      />,
     );
 
     expect(screen.getAllByRole("list")).toHaveLength(2);
@@ -623,21 +657,19 @@ describe("<StreamingMarkdown />", () => {
 
   it("keeps the code node stable when a stream becomes completed", () => {
     const text = ["```ts", "const answer = 42;", "```"].join("\n");
-    const { container, rerender } = render(
-      <StreamingMarkdown text={text} streaming paced={false} />
-    );
-    const code = container.querySelector("code");
+    const { rerender } = render(<StreamingMarkdown text={text} streaming paced={false} />);
+    const code = screen.getByTestId("code-block-code");
     expect(code).toBeInTheDocument();
 
     rerender(<StreamingMarkdown text={text} streaming={false} paced={false} />);
 
-    expect(container.querySelector("code")).toBe(code);
+    expect(screen.getByTestId("code-block-code")).toBe(code);
   });
 
   it.each([
     ["https://example.com/docs", "https://example.com/docs"],
     ["HTTPS://example.com/docs", "HTTPS://example.com/docs"],
-    ["//example.com/docs", "https://example.com/docs"]
+    ["//example.com/docs", "https://example.com/docs"],
   ])("routes web link %s through the configured browser", (href, expectedUrl) => {
     const openPath = vi.fn().mockResolvedValue({ ok: true });
     (window as unknown as { argmax: unknown }).argmax = { system: { openPath } };
@@ -660,29 +692,6 @@ describe("<StreamingMarkdown />", () => {
     fireEvent.click(link, { metaKey: true });
     expect(opened).toEqual([expectedUrl]);
     expect(openPath).toHaveBeenCalledTimes(1);
-    unsubscribe();
-    delete (window as { argmax?: unknown }).argmax;
-  });
-
-  it("leaves web links to the browser on the remote bridge", () => {
-    remote.bridge = true;
-    const openPath = vi.fn().mockResolvedValue({ ok: true });
-    (window as unknown as { argmax: unknown }).argmax = { system: { openPath } };
-    const opened: string[] = [];
-    const unsubscribe = subscribeBrowserRequest(() => {
-      const request = getBrowserRequest();
-      if (request) opened.push(request.url);
-    });
-
-    render(<StreamingMarkdown text="See [docs](https://example.com/docs)." streaming={false} />);
-    const link = screen.getByRole("link", { name: "docs" });
-    const clicked = fireEvent.click(link);
-
-    // Both desktop routes would open the link on the host, so the phone gets
-    // the anchor's own navigation: nothing intercepted, default not prevented.
-    expect(openPath).not.toHaveBeenCalled();
-    expect(opened).toHaveLength(0);
-    expect(clicked).toBe(true);
     unsubscribe();
     delete (window as { argmax?: unknown }).argmax;
   });
@@ -716,7 +725,7 @@ describe("<StreamingMarkdown />", () => {
       removeEventListener: vi.fn(),
       addListener: vi.fn(),
       removeListener: vi.fn(),
-      dispatchEvent: vi.fn()
+      dispatchEvent: vi.fn(),
     });
     const text = "B".repeat(120);
 
@@ -730,18 +739,18 @@ describe("<StreamingMarkdown />", () => {
       "Here is the abstention equation:",
       "\\[ \\text{margin} = P(\\text{best family}) - P(\\text{second-best family}) \\]",
       "And in double dollars:",
-      "$$E = mc^2$$"
+      "$$E = mc^2$$",
     ].join("\n\n");
 
-    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
+    render(<StreamingMarkdown text={text} streaming={false} />);
 
     // Math renders through the lazy KaTeX chunk (see MathMarkdown.tsx), so the
     // first paint is the plain fallback and the formatted equations land once
     // the chunk resolves.
     await waitFor(() => {
-      expect(container.querySelectorAll(".katex-display").length).toBe(2);
+      expect(displayEquations()).toHaveLength(2);
     });
-    const katexDisplays = container.querySelectorAll(".katex-display");
+    const katexDisplays = displayEquations();
     expect(katexDisplays[0]?.textContent).toContain("margin");
     expect(katexDisplays[1]?.textContent).toContain("E=mc");
   });
@@ -749,55 +758,57 @@ describe("<StreamingMarkdown />", () => {
   it.each([
     ["\\(\\tau\\) is the threshold and $x + y = z$ is the sum.", 2, "τ"],
     ["Price $50 ($2x + 1$ after adjustment).", 1, "$50"],
-    ["Price $50 ($x$ after adjustment).", 1, "$50"]
+    ["Price $50 ($x$ after adjustment).", 1, "$50"],
   ])("renders inline equations alongside prose: %s", async (text, count, prose) => {
-    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
+    render(<StreamingMarkdown text={text} streaming={false} />);
 
     await waitFor(() => {
-      expect(container.querySelectorAll(".katex").length).toBe(count);
+      expect(screen.queryAllByRole("math", { hidden: true }).length).toBe(count);
     });
-    expect(container.textContent).toContain(prose);
+    expect(screen.getByTestId("streaming-markdown").textContent).toContain(prose);
   });
 
   it("renders per-unit prices and shell variables as prose, not equations", async () => {
     const text = [
       "Standard pricing is $1.25/1M in and $4.25/1M out, vs ~$5/$25 for Opus 5.",
-      "Export $PATH and $HOME before running."
+      "Export $PATH and $HOME before running.",
     ].join("\n\n");
 
-    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
+    render(<StreamingMarkdown text={text} streaming={false} />);
 
     await waitFor(() => {
-      expect(container.textContent).toContain("$1.25/1M in and $4.25/1M out");
+      expect(screen.getByTestId("streaming-markdown").textContent).toContain(
+        "$1.25/1M in and $4.25/1M out",
+      );
     });
-    expect(container.querySelectorAll(".katex").length).toBe(0);
-    expect(container.textContent).toContain("~$5/$25 for Opus 5");
-    expect(container.textContent).toContain("Export $PATH and $HOME");
+    expect(screen.queryAllByRole("math", { hidden: true }).length).toBe(0);
+    expect(screen.getByTestId("streaming-markdown").textContent).toContain("~$5/$25 for Opus 5");
+    expect(screen.getByTestId("streaming-markdown").textContent).toContain(
+      "Export $PATH and $HOME",
+    );
   });
 
   it("preserves code blocks containing dollar signs and LaTeX slashes", () => {
-    const text = [
-      "```bash",
-      "PRICE=$50",
-      "echo \"\\[ preserved \\]\"",
-      "```"
-    ].join("\n");
+    const text = ["```bash", "PRICE=$50", 'echo "\\[ preserved \\]"', "```"].join("\n");
 
-    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
+    render(<StreamingMarkdown text={text} streaming={false} />);
 
-    expect(container.querySelectorAll(".katex").length).toBe(0);
-    expect(container.textContent).toContain("PRICE=$50");
-    expect(container.textContent).toContain("\\[ preserved \\]");
+    expect(screen.queryAllByRole("math", { hidden: true }).length).toBe(0);
+    expect(screen.getByTestId("streaming-markdown").textContent).toContain("PRICE=$50");
+    expect(screen.getByTestId("streaming-markdown").textContent).toContain("\\[ preserved \\]");
   });
 
   it("lifts glued tracing logs out of assistant prose into an Error block", () => {
-    const log = '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
+    const log =
+      '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
     const text = `After that PR-description correction, I would consider it ready for colleague review.\n${log}`;
 
     render(<StreamingMarkdown text={text} streaming={false} />);
 
     expect(
-      screen.getByText("After that PR-description correction, I would consider it ready for colleague review.")
+      screen.getByText(
+        "After that PR-description correction, I would consider it ready for colleague review.",
+      ),
     ).toBeInTheDocument();
     const block = screen.getByRole("status", { name: "Error" });
     expect(block).toBeInTheDocument();
@@ -812,7 +823,9 @@ describe("<StreamingMarkdown />", () => {
 
     render(<StreamingMarkdown text={text} streaming={false} />);
 
-    expect(screen.getByText("The other eight tasks were stable across both latest runs.")).toBeInTheDocument();
+    expect(
+      screen.getByText("The other eight tasks were stable across both latest runs."),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("status", { name: "Error" })).not.toBeInTheDocument();
     expect(screen.queryByText(/invalid_refresh_token/)).not.toBeInTheDocument();
   });

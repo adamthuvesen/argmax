@@ -1,40 +1,49 @@
 import { useMemo, useState, type JSX } from "react";
-import type { IpcChannelStats } from "../../../shared/types.js";
+import type { IpcChannelStats } from "../../lib/perfRegistry.js";
 import { formatLatency } from "../../lib/debugTrace.js";
 
 /** p99 thresholds. 16ms is one frame; past 100ms a channel is felt. */
 const WARN_MS = 16;
 const BAD_MS = 100;
 
-type SortKey = "channel" | "count" | "totalRecorded" | "p50" | "p99";
+type SortKey = "channel" | "count" | "totalRecorded" | "p50" | "p95" | "p99" | "max";
 
 const COLUMNS: ReadonlyArray<{ key: SortKey; label: string; title: string }> = [
   { key: "channel", label: "Channel", title: "IPC channel name" },
-  { key: "count", label: "n", title: "Samples in the 100-deep ring the percentiles are taken from" },
+  {
+    key: "count",
+    label: "n",
+    title: "Samples in the ring the percentiles are taken from",
+  },
   { key: "totalRecorded", label: "calls", title: "Total invocations since launch" },
   { key: "p50", label: "p50", title: "Median latency over the ring" },
-  { key: "p99", label: "p99", title: "99th percentile latency over the ring" }
+  { key: "p95", label: "p95", title: "95th percentile latency over the ring" },
+  { key: "p99", label: "p99", title: "99th percentile latency over the ring" },
+  { key: "max", label: "max", title: "Slowest call in the ring" },
 ];
 
-export function DebugIpcTab({ stats, error }: { stats: IpcChannelStats[]; error: string | null }): JSX.Element {
+export function DebugIpcTab({
+  stats,
+  error,
+}: {
+  stats: IpcChannelStats[];
+  error: string | null;
+}): JSX.Element {
   const [sort, setSort] = useState<SortKey>("p99");
   const [query, setQuery] = useState("");
 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const filtered = needle ? stats.filter((stat) => stat.channel.toLowerCase().includes(needle)) : stats;
+    const filtered = needle
+      ? stats.filter((stat) => stat.channel.toLowerCase().includes(needle))
+      : stats;
     return [...filtered].sort((left, right) =>
-      sort === "channel" ? left.channel.localeCompare(right.channel) : right[sort] - left[sort]
+      sort === "channel" ? left.channel.localeCompare(right.channel) : right[sort] - left[sort],
     );
   }, [stats, sort, query]);
 
   return (
-    <div
-      className="debug-tab"
-      role="tabpanel"
-      id="debug-panel-ipc"
-      aria-labelledby="debug-tab-ipc"
-    >
+    <div className="debug-tab" role="tabpanel" id="debug-panel-ipc" aria-labelledby="debug-tab-ipc">
       <div className="debug-filters">
         <input
           className="debug-search"
@@ -61,7 +70,11 @@ export function DebugIpcTab({ stats, error }: { stats: IpcChannelStats[]; error:
             <thead>
               <tr>
                 {COLUMNS.map((column) => (
-                  <th key={column.key} scope="col" aria-sort={sort === column.key ? "descending" : "none"}>
+                  <th
+                    key={column.key}
+                    scope="col"
+                    aria-sort={sort === column.key ? "descending" : "none"}
+                  >
                     <button type="button" title={column.title} onClick={() => setSort(column.key)}>
                       {column.label}
                     </button>
@@ -78,7 +91,9 @@ export function DebugIpcTab({ stats, error }: { stats: IpcChannelStats[]; error:
                   <td>{stat.count}</td>
                   <td>{stat.totalRecorded.toLocaleString()}</td>
                   <td>{formatLatency(stat.p50)}</td>
+                  <td>{formatLatency(stat.p95)}</td>
                   <td>{formatLatency(stat.p99)}</td>
+                  <td>{formatLatency(stat.max)}</td>
                 </tr>
               ))}
             </tbody>

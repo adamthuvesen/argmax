@@ -15,7 +15,7 @@ describe("errorMessage", () => {
 
   it("returns message fields from serialized command errors", () => {
     expect(errorMessage({ code: "SERVICE_ERROR", message: "object literal" })).toBe(
-      "object literal"
+      "object literal",
     );
   });
 

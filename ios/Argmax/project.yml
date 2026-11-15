@@ -141,6 +141,16 @@ targets:
       - path: ../../assets/visualization-runtime.json
         buildPhase: resources
         group: Shared
+      # The case tables the desktop's parityTables.test.ts runs too.
+      - path: ../../fixtures/parity/workspace-chat.json
+        buildPhase: resources
+        group: Shared
+      - path: ../../fixtures/parity/inline-math.json
+        buildPhase: resources
+        group: Shared
+      - path: ../../fixtures/parity/chat-detail.json
+        buildPhase: resources
+        group: Shared
     dependencies:
       - target: Argmax
     settings:

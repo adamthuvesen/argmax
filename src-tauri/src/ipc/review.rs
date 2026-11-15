@@ -1,12 +1,12 @@
 use super::inputs::*;
-use super::live_database;
+use crate::state::live_database;
 use crate::{
     checkpoints::service::CheckpointService,
-    error::ArgmaxResult,
     review::git_review::{self, ChangedFileSummary, WorkspaceDiff},
     state::AppState,
     workspaces::WorkspaceTargetKind,
 };
+use argmax_contracts::error::ArgmaxResult;
 use serde::Deserialize;
 use specta::Type;
 use tauri::State;
@@ -31,7 +31,7 @@ pub struct ReviewIndexHunkInput {
     pub file_path: String,
     pub revision: String,
     pub hunk_index: u32,
-    pub context_lines: Option<super::validation::DiffContextLines>,
+    pub context_lines: Option<argmax_contracts::validation::DiffContextLines>,
 }
 
 #[tauri::command(rename = "review:list-changed-files")]
@@ -168,7 +168,7 @@ pub(crate) async fn review_revert_file_impl(
     input: ReviewIndexFileInput,
 ) -> ArgmaxResult<()> {
     if input.kind != WorkspaceTargetKind::Workspace {
-        return Err(crate::error::ArgmaxError::service(
+        return Err(argmax_contracts::error::ArgmaxError::service(
             "REVIEW_REVERT_PROJECT_UNSUPPORTED",
             "Reverting from a project review is unavailable because it has no workspace checkpoint.",
         ));
@@ -207,7 +207,7 @@ pub(crate) async fn review_revert_hunk_impl(
     input: ReviewIndexHunkInput,
 ) -> ArgmaxResult<()> {
     if input.kind != WorkspaceTargetKind::Workspace {
-        return Err(crate::error::ArgmaxError::service(
+        return Err(argmax_contracts::error::ArgmaxError::service(
             "REVIEW_REVERT_PROJECT_UNSUPPORTED",
             "Reverting from a project review is unavailable because it has no workspace checkpoint.",
         ));
@@ -234,13 +234,10 @@ pub(crate) async fn review_revert_hunk_impl(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT},
-        persistence::projects::{persist_project, PersistProjectInput, ProjectSettings},
-        persistence::Database,
-        review::git_review::ReviewComparison,
-        workspaces::WorkspaceTargetKind,
-    };
+    use crate::{review::git_review::ReviewComparison, workspaces::WorkspaceTargetKind};
+    use argmax_process::git_exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
+    use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
+    use argmax_store::Database;
     use std::{path::Path, sync::Arc};
     use tempfile::tempdir;
 
@@ -269,7 +266,7 @@ mod tests {
 
     #[tokio::test]
     async fn project_folder_diff_reads_its_own_checkout_for_identical_paths() {
-        use crate::persistence::project_folders::{
+        use argmax_store::project_folders::{
             configure_project_folders, list_project_folders, PersistProjectFolderInput,
         };
 
@@ -287,7 +284,7 @@ mod tests {
         let database = live_database(&state).expect("database");
         let folder_id = {
             let connection = database.connection();
-            let project = crate::persistence::projects::require_project(&connection, "p1").unwrap();
+            let project = argmax_store::projects::require_project(&connection, "p1").unwrap();
             let folders =
                 [primary.path(), secondary.path()].map(|path| PersistProjectFolderInput {
                     root_path: path.to_string_lossy().into_owned(),

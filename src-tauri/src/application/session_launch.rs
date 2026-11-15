@@ -3,23 +3,22 @@
 
 use std::sync::Arc;
 
+use crate::workspaces::orchestration::WorkspaceService;
 use crate::{
-    application::validation::{
-        BaseRef, NonEmptyString, ProjectId, Prompt, TaskLabel, TerminalCols, TerminalRows,
-        WorkspaceId,
-    },
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::{
-        authorship::PromptAuthor, database::Database, launch_receipts, projects::ProjectSummary,
-    },
     providers::{inputs::ProvidersLaunchInput, session_service::ProviderSessionService},
     workspaces::{
         inputs::{
             WorkspacesArchiveInput, WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput,
         },
         orchestration::WorkspacesCreateAlongsideInput,
-        WorkspaceService,
     },
+};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::{
+    BaseRef, NonEmptyString, ProjectId, Prompt, TaskLabel, TerminalCols, TerminalRows, WorkspaceId,
+};
+use argmax_store::{
+    authorship::PromptAuthor, database::Database, launch_receipts, projects::ProjectSummary,
 };
 
 pub(crate) const DEFAULT_TASK_LABEL: &str = "Local agent task";
@@ -35,13 +34,13 @@ pub(crate) struct LaunchSpec {
     pub branch: Option<String>,
     pub prompt: String,
     pub worktree: bool,
-    pub provider: crate::providers::ProviderId,
+    pub provider: argmax_contracts::validation::ProviderId,
     pub model_label: String,
     pub model_id: String,
-    pub reasoning_effort: Option<crate::providers::ReasoningEffort>,
+    pub reasoning_effort: Option<argmax_contracts::validation::ReasoningEffort>,
     pub fast_mode: bool,
-    pub permission_mode: crate::providers::PermissionMode,
-    pub agent_mode: crate::providers::AgentMode,
+    pub permission_mode: argmax_contracts::validation::PermissionMode,
+    pub agent_mode: argmax_contracts::validation::AgentMode,
     pub task_label: Option<String>,
     pub arc_id: Option<String>,
     pub arc_is_coordinator_launch: bool,
@@ -232,6 +231,7 @@ pub(crate) async fn launch_with_receipt(
     let launch_result = providers
         .launch_with_session_id(
             ProvidersLaunchInput {
+                submitted_at_ms: None,
                 workspace_id,
                 provider: spec.provider,
                 prompt,
@@ -252,6 +252,7 @@ pub(crate) async fn launch_with_receipt(
             },
             receipt.map(|ticket| ticket.session_id),
             spec.author,
+            None,
         )
         .await;
     let session = match launch_result {
@@ -291,10 +292,12 @@ async fn discard_workspace(workspaces: &Arc<WorkspaceService>, workspace_id: &st
 /// parent's own mode is the answer to any request above it. Strictest first:
 /// ask each time, provider defaults, auto-approve.
 pub(crate) fn child_permission_mode(
-    parent: crate::providers::PermissionMode,
-    requested: Option<crate::providers::PermissionMode>,
-) -> crate::providers::PermissionMode {
-    use crate::providers::PermissionMode::{AskEachTime, AutoApprove, ProviderDefaults};
+    parent: argmax_contracts::validation::PermissionMode,
+    requested: Option<argmax_contracts::validation::PermissionMode>,
+) -> argmax_contracts::validation::PermissionMode {
+    use argmax_contracts::validation::PermissionMode::{
+        AskEachTime, AutoApprove, ProviderDefaults,
+    };
     let looseness = |mode| match mode {
         AskEachTime => 0,
         ProviderDefaults => 1,
@@ -332,7 +335,10 @@ pub(crate) fn task_label(prompt: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::child_permission_mode;
-    use crate::providers::PermissionMode::{self, AskEachTime, AutoApprove, ProviderDefaults};
+    use argmax_contracts::validation::PermissionMode;
+    use argmax_contracts::validation::PermissionMode::{
+        AskEachTime, AutoApprove, ProviderDefaults,
+    };
 
     const ALL: [PermissionMode; 3] = [AskEachTime, ProviderDefaults, AutoApprove];
 

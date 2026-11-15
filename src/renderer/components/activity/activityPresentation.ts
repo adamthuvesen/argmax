@@ -3,7 +3,7 @@ import type {
   ActivityRepository,
   ActivitySummary,
   ActivityTotals,
-  ActivityWindow
+  ActivityWindow,
 } from "./activityContract.js";
 
 /** The measure the page is showing: commits, or lines touched. */
@@ -11,7 +11,7 @@ export type ActivityMetric = "commits" | "lines";
 
 export const ACTIVITY_METRIC_OPTIONS = [
   { value: "commits", label: "Commits" },
-  { value: "lines", label: "Lines" }
+  { value: "lines", label: "Lines" },
 ];
 
 /**
@@ -52,14 +52,14 @@ export function metricValue(row: ActivityAmounts, metric: ActivityMetric): numbe
  * runs on a pinned date.
  */
 export function activityWindowOptions(
-  year: number
+  year: number,
 ): ReadonlyArray<{ value: ActivityWindow; label: string }> {
   return [
     { value: "24h", label: "Last 24 hours" },
     { value: "7d", label: "Last 7 days" },
     { value: "30d", label: "Last 30 days" },
     { value: "12m", label: "Last 12 months" },
-    { value: "year", label: String(year) }
+    { value: "year", label: String(year) },
   ];
 }
 
@@ -71,7 +71,7 @@ const PREVIOUS_LABEL: Record<ActivityWindow, string> = {
   "12m": "the previous 12 months",
   // The backend compares a part-year against the same number of days before
   // Jan 1, not against last year's same months.
-  year: "the same span before Jan 1"
+  year: "the same span before Jan 1",
 };
 
 export interface ActivityDelta {
@@ -87,7 +87,10 @@ export interface ActivityDelta {
  * recorded nothing is not a baseline — a first week would otherwise read as
  * an infinite rise off zero.
  */
-export function windowDelta(summary: ActivitySummary, metric: ActivityMetric): ActivityDelta | null {
+export function windowDelta(
+  summary: ActivitySummary,
+  metric: ActivityMetric,
+): ActivityDelta | null {
   const previous: ActivityTotals | null = summary.previous;
   if (!previous) return null;
   const before = metricValue(previous, metric);
@@ -108,13 +111,13 @@ export function windowDelta(summary: ActivitySummary, metric: ActivityMetric): A
  * position (docs/styling.md).
  */
 export function repositorySlots(
-  repositories: readonly ActivityRepository[]
+  repositories: readonly ActivityRepository[],
 ): Map<string, ActivitySlot> {
   const slots = new Map<string, ActivitySlot>();
   repositories.forEach((repo, index) => {
     slots.set(
       repo.projectId,
-      index < ACTIVITY_SERIES_SLOTS ? (String(index + 1) as ActivitySlot) : "tail"
+      index < ACTIVITY_SERIES_SLOTS ? (String(index + 1) as ActivitySlot) : "tail",
     );
   });
   return slots;
@@ -137,7 +140,7 @@ export interface ActivityChartSeries {
  */
 export function chartSeries(
   summary: ActivitySummary,
-  metric: ActivityMetric
+  metric: ActivityMetric,
 ): ActivityChartSeries[] {
   const slots = repositorySlots(summary.repositories);
   const named = summary.repositories.slice(0, ACTIVITY_SERIES_SLOTS);
@@ -148,14 +151,14 @@ export function chartSeries(
     key: repo.projectId,
     label: repo.name,
     slot: slots.get(repo.projectId) ?? "tail",
-    values: zeros()
+    values: zeros(),
   }));
   const byKey = new Map(series.map((entry) => [entry.key, entry]));
   const tail: ActivityChartSeries = {
     key: ACTIVITY_TAIL_KEY,
     label: "",
     slot: "tail",
-    values: zeros()
+    values: zeros(),
   };
   const tailProjects = new Set<string>();
 
@@ -188,7 +191,7 @@ const WEEKDAY_NAMES = [
   "Thursday",
   "Friday",
   "Saturday",
-  "Sunday"
+  "Sunday",
 ];
 
 export interface ActivityPeak {

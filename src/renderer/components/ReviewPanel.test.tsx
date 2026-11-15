@@ -5,10 +5,9 @@ import { fileURLToPath } from "node:url";
 
 // Stub the highlighter so this test never touches shiki.
 vi.mock("../lib/highlighter.js", () => ({
-  tokenizeLines: vi.fn(() => null),
-  useHighlighterReady: vi.fn(() => true),
+  requestHighlight: vi.fn(() => () => {}),
   useHighlightThemeAppearance: vi.fn(() => "light"),
-  langFromPath: vi.fn(() => null)
+  langFromPath: vi.fn(() => null),
 }));
 
 import type { ArgmaxApi } from "../../shared/types.js";
@@ -26,7 +25,12 @@ function reviewStub(): ReviewState {
   return baseReviewStub({
     files: [{ path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false }],
     selectedFilePath: "src/a.ts",
-    diff: { workspaceId: "workspace-1", filePath: "src/a.ts", content: "@@ -1,1 +1,1 @@\n-old\n+new\n", revision: "test-revision" },
+    diff: {
+      workspaceId: "workspace-1",
+      filePath: "src/a.ts",
+      content: "@@ -1,1 +1,1 @@\n-old\n+new\n",
+      revision: "test-revision",
+    },
     diffState: "ready",
     isPanelOpen: true,
     terminalWorkspaceId: "workspace-1",
@@ -45,7 +49,7 @@ function reviewStub(): ReviewState {
     setSplitRatio: vi.fn(),
     closePanel: vi.fn(),
     togglePanel: vi.fn(),
-    toggleChangesPanel: vi.fn()
+    toggleChangesPanel: vi.fn(),
   });
 }
 
@@ -58,16 +62,42 @@ describe("ReviewPanel changes layout", () => {
   it("shows supplementary diffs without offering the chat checkout's write actions", async () => {
     const original = window.argmax;
     const review = reviewStub();
-    review.projectChanges = { projectId: "project", workingFolderId: "working", workingRootPath: "/chat", refreshKey: null };
+    review.projectChanges = {
+      projectId: "project",
+      workingFolderId: "working",
+      workingRootPath: "/chat",
+      refreshKey: null,
+    };
     const loadDiff = vi.fn().mockResolvedValue({
-      workspaceId: "other", filePath: "src/a.ts", content: "@@ -1 +1 @@\n-old\n+other repository\n", revision: "other-revision"
+      workspaceId: "other",
+      filePath: "src/a.ts",
+      content: "@@ -1 +1 @@\n-old\n+other repository\n",
+      revision: "other-revision",
     });
     window.argmax = {
-      projects: { getFolders: vi.fn().mockResolvedValue([
-        { id: "working", projectId: "project", name: "working", rootPath: "/repo", isPrimary: true, enabled: true, summary: null },
-        { id: "other", projectId: "project", name: "other", rootPath: "/other", isPrimary: false, enabled: true, summary: null }
-      ]) },
-      review: { listChangedFiles: vi.fn().mockResolvedValue(review.files), loadDiff }
+      projects: {
+        getFolders: vi.fn().mockResolvedValue([
+          {
+            id: "working",
+            projectId: "project",
+            name: "working",
+            rootPath: "/repo",
+            isPrimary: true,
+            enabled: true,
+            summary: null,
+          },
+          {
+            id: "other",
+            projectId: "project",
+            name: "other",
+            rootPath: "/other",
+            isPrimary: false,
+            enabled: true,
+            summary: null,
+          },
+        ]),
+      },
+      review: { listChangedFiles: vi.fn().mockResolvedValue(review.files), loadDiff },
     } as unknown as ArgmaxApi;
     function PanelWithFolderChanges() {
       const projectFolderChanges = useProjectFolderChanges(review.projectChanges, true);
@@ -75,13 +105,24 @@ describe("ReviewPanel changes layout", () => {
     }
     try {
       render(<PanelWithFolderChanges />);
-      fireEvent.click(await within(await screen.findByRole("region", { name: "Other project folders" })).findByTitle("src/a.ts"));
+      fireEvent.click(
+        await within(
+          await screen.findByRole("region", { name: "Other project folders" }),
+        ).findByTitle("src/a.ts"),
+      );
       await screen.findByText("other repository");
-      expect(loadDiff).toHaveBeenCalledWith({ kind: "projectFolder", id: "other" }, "src/a.ts", "workingTree", undefined);
+      expect(loadDiff).toHaveBeenCalledWith(
+        { kind: "projectFolder", id: "other" },
+        "src/a.ts",
+        "workingTree",
+        undefined,
+      );
       expect(screen.queryByRole("button", { name: "Stage src/a.ts" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Revert/ })).not.toBeInTheDocument();
       expect(screen.queryByText(/These can include other chats/)).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "Back to chat changes" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Back to chat changes" }),
+      ).not.toBeInTheDocument();
       fireEvent.click(screen.getAllByTitle("src/a.ts")[0]);
       expect(screen.queryByRole("button", { name: "Stage src/a.ts" })).not.toBeInTheDocument();
     } finally {
@@ -110,24 +151,30 @@ describe("ReviewPanel changes layout", () => {
   it("renders changed files as a tree beside the selected file diff", () => {
     const review = reviewStub();
     review.files = [
-      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1 , staged: false },
-{ path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0 , staged: false },
-];
-    const { container } = render(<ReviewPanel review={review} />);
-    const body = container.querySelector(".review-body");
-    const leftCol = container.querySelector(".review-list-col");
+      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false },
+      { path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0, staged: false },
+    ];
+    render(<ReviewPanel review={review} />);
+    const body = screen.getByTestId("review-body");
+    const leftCol = screen.getByTestId("review-list-col");
     const resizeHandle = screen.getByRole("separator", { name: "Resize changed files width" });
     const changedFilesTree = screen.getByRole("tree", { name: "Changed files" });
-    const diff = container.querySelector(".review-diff");
+    const diff = screen.getByTestId("review-diff");
 
-    expect(body).not.toBeNull();
-    expect(diff).not.toBeNull();
-    expect(leftCol).not.toBeNull();
+    expect(body).toBeInTheDocument();
+    expect(diff).toBeInTheDocument();
+    expect(leftCol).toBeInTheDocument();
     expect(resizeHandle).toBeInTheDocument();
     expect(body).toHaveClass("review-body-changes");
-    expect(within(changedFilesTree).getByRole("treeitem", { name: "a.ts" })).toHaveAttribute("aria-selected", "true");
+    expect(within(changedFilesTree).getByRole("treeitem", { name: "a.ts" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     expect(within(changedFilesTree).getByRole("treeitem", { name: "b.ts" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Collapse src/a.ts diff" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Collapse src/a.ts diff" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     expect(screen.getByText("src/")).toBeVisible();
     expect(screen.getByText("a.ts", { selector: ".review-diff-heading strong" })).toBeVisible();
     expect(body?.contains(diff)).toBe(true);
@@ -138,9 +185,9 @@ describe("ReviewPanel changes layout", () => {
     const openFile = vi.fn();
     review.openFile = openFile;
     review.files = [
-      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1 , staged: false },
-{ path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0 , staged: false },
-];
+      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false },
+      { path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0, staged: false },
+    ];
 
     render(<ReviewPanel review={review} />);
 
@@ -158,7 +205,9 @@ describe("ReviewPanel changes layout", () => {
 
     // Both diff lines are numbered 1: the deletion carries the pre-change one.
     fireEvent.click(screen.getAllByRole("button", { name: "Comment on line 1 of src/a.ts" })[0]);
-    fireEvent.change(screen.getByLabelText("Comment text"), { target: { value: "why drop this?" } });
+    fireEvent.change(screen.getByLabelText("Comment text"), {
+      target: { value: "why drop this?" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Comment" }));
 
     expect(onAddDiffNote).toHaveBeenCalledWith({
@@ -167,7 +216,7 @@ describe("ReviewPanel changes layout", () => {
       side: "deletion",
       lineText: "old",
       comment: "why drop this?",
-      base: "the whole branch vs main"
+      base: "the whole branch vs main",
     });
   });
 
@@ -193,7 +242,7 @@ describe("ReviewPanel changes layout", () => {
     fireEvent.click(row);
 
     expect(row).toHaveAttribute("aria-expanded", "false");
-    expect(document.querySelector(".review-diff-scroll")).toBeNull();
+    expect(screen.queryByTestId("review-diff-scroll")).not.toBeInTheDocument();
     expect(review.openFile).not.toHaveBeenCalled();
   });
 
@@ -232,7 +281,7 @@ describe("ReviewPanel changes layout", () => {
     setReviewMode(review, "files");
     render(<ReviewPanel review={review} />);
 
-    expect(document.querySelector<HTMLElement>(".review-list-col")?.style.width).toBe("250px");
+    expect(screen.getByTestId("review-list-col").style.width).toBe("250px");
     clientWidth.mockRestore();
   });
 
@@ -266,12 +315,12 @@ describe("ReviewPanel file tabs", () => {
       ...review.workspaceFiles,
       tabs: [
         { path: "src/index.ts", isDirty: true, saveState: "idle", externalChange: false },
-        { path: "src/utils.ts", isDirty: false, saveState: "idle", externalChange: false }
+        { path: "src/utils.ts", isDirty: false, saveState: "idle", externalChange: false },
       ],
       activeTabPath: "src/index.ts",
       selectedPath: "src/index.ts",
       selectTab,
-      closeTab
+      closeTab,
     };
 
     render(<ReviewPanel review={review} />);
@@ -279,7 +328,7 @@ describe("ReviewPanel file tabs", () => {
     const tablist = screen.getByRole("tablist", { name: "Open files" });
     expect(within(tablist).getByRole("tab", { name: /index\.ts/ })).toHaveAttribute(
       "aria-selected",
-      "true"
+      "true",
     );
     fireEvent.click(within(tablist).getByRole("tab", { name: "utils.ts" }));
     expect(selectTab).toHaveBeenCalledWith("src/utils.ts");
@@ -302,14 +351,14 @@ describe("ReviewPanel file tabs", () => {
       dirtyClosePrompt: { path: "src/index.ts", saveError: null },
       saveDirtyTabAndClose,
       discardDirtyTabAndClose,
-      cancelDirtyTabClose
+      cancelDirtyTabClose,
     };
 
     render(<ReviewPanel review={review} />);
 
-    expect(screen.getByRole("alert", { name: "Unsaved changes in src/index.ts" })).toHaveTextContent(
-      "Save changes to index.ts?"
-    );
+    expect(
+      screen.getByRole("alert", { name: "Unsaved changes in src/index.ts" }),
+    ).toHaveTextContent("Save changes to index.ts?");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(saveDirtyTabAndClose).toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Discard" }));
@@ -329,15 +378,15 @@ describe("ReviewPanel file tabs", () => {
       tabs: [{ path: "src/index.ts", isDirty: false, saveState: "idle", externalChange: false }],
       activeTabPath: "src/index.ts",
       selectedPath: "src/index.ts",
-      closeTab
+      closeTab,
     };
 
     render(<ReviewPanel review={review} />);
 
-    const wasNotCanceled = fireEvent.keyDown(
-      screen.getByRole("tab", { name: /index\.ts/ }),
-      { key: "w", metaKey: true }
-    );
+    const wasNotCanceled = fireEvent.keyDown(screen.getByRole("tab", { name: /index\.ts/ }), {
+      key: "w",
+      metaKey: true,
+    });
 
     expect(wasNotCanceled).toBe(false);
     expect(closeTab).toHaveBeenCalledWith("src/index.ts");
@@ -354,7 +403,7 @@ describe("ReviewPanel file tabs", () => {
       tabs: [{ path: "index.ts", isDirty: false, saveState: "idle", externalChange: false }],
       activeTabPath: "index.ts",
       selectedPath: "index.ts",
-      closeTab
+      closeTab,
     };
 
     render(<ReviewPanel review={review} />);
@@ -375,7 +424,7 @@ describe("ReviewPanel file tabs", () => {
       tabs: [{ path: "src/index.ts", isDirty: false, saveState: "idle", externalChange: false }],
       activeTabPath: "src/index.ts",
       selectedPath: "src/index.ts",
-      closeTab
+      closeTab,
     };
 
     const { unmount } = render(<ReviewPanel review={review} />);
@@ -396,7 +445,7 @@ describe("ReviewPanel file tabs", () => {
       tabs: [{ path: "src/index.ts", isDirty: false, saveState: "idle", externalChange: false }],
       activeTabPath: "src/index.ts",
       selectedPath: "src/index.ts",
-      closeTab
+      closeTab,
     };
 
     render(<ReviewPanel review={review} isFocused={false} />);
@@ -416,7 +465,7 @@ describe("ReviewPanel file tabs", () => {
       activeTabPath: "src/index.ts",
       selectedPath: "src/index.ts",
       isDirty: true,
-      saveFile
+      saveFile,
     };
 
     render(<ReviewPanel review={review} />);
@@ -435,7 +484,7 @@ describe("ReviewPanel file tabs", () => {
       tabs: [{ path: "src/index.ts", isDirty: false, saveState: "idle", externalChange: false }],
       activeTabPath: "src/index.ts",
       selectedPath: "src/index.ts",
-      saveFile
+      saveFile,
     };
 
     render(<ReviewPanel review={review} />);
@@ -451,7 +500,7 @@ describe("ReviewPanel file tabs", () => {
     setReviewMode(review, "files");
     review.workspaceFiles = {
       ...review.workspaceFiles,
-      closeTab
+      closeTab,
     };
 
     render(<ReviewPanel review={review} />);
@@ -489,7 +538,7 @@ describe("ReviewPanel — drag listener cleanup on unmount", () => {
     // Start a drag: mousedown on the resize handle activates the cursor
     // grab and registers two document-level listeners.
     fireEvent.mouseDown(screen.getByRole("separator", { name: "Resize file list width" }), {
-      clientX: 120
+      clientX: 120,
     });
     expect(document.body.style.cursor).toBe("col-resize");
     expect(document.body.style.userSelect).toBe("none");
@@ -523,7 +572,7 @@ describe("ReviewPanel browser mode", () => {
     fillCredentials: vi.fn(() => Promise.resolve({ ok: true, itemTitle: "GitHub" })),
     onState: vi.fn(() => () => undefined),
     onNewTab: vi.fn(() => () => undefined),
-    onPageCommand: vi.fn(() => () => undefined)
+    onPageCommand: vi.fn(() => () => undefined),
   };
 
   beforeEach(() => {
@@ -551,13 +600,25 @@ describe("ReviewPanel browser mode", () => {
 
   it("shows Artifacts only when enabled and opens it in this panel", () => {
     const review = reviewStub();
-    const { rerender } = render(<ClaudeArtifactsContext.Provider value={false}><ReviewPanel review={review} /></ClaudeArtifactsContext.Provider>);
+    const { rerender } = render(
+      <ClaudeArtifactsContext.Provider value={false}>
+        <ReviewPanel review={review} />
+      </ClaudeArtifactsContext.Provider>,
+    );
     expect(screen.queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument();
-    rerender(<ClaudeArtifactsContext.Provider value><ReviewPanel review={review} /></ClaudeArtifactsContext.Provider>);
+    rerender(
+      <ClaudeArtifactsContext.Provider value>
+        <ReviewPanel review={review} />
+      </ClaudeArtifactsContext.Provider>,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Artifacts" }));
     expect(review.setPaneMode).toHaveBeenCalledWith(0, "browser");
     expect(review.openBrowser).toHaveBeenLastCalledWith("https://claude.ai/artifacts");
-    rerender(<ClaudeArtifactsContext.Provider value={false}><ReviewPanel review={review} /></ClaudeArtifactsContext.Provider>);
+    rerender(
+      <ClaudeArtifactsContext.Provider value={false}>
+        <ReviewPanel review={review} />
+      </ClaudeArtifactsContext.Provider>,
+    );
     expect(screen.queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument();
   });
 
@@ -574,12 +635,12 @@ describe("ReviewPanel browser mode", () => {
     setReviewMode(review, "browser");
     review.browserOwner = true;
     review.browserRequest = { url: "https://argmax.dev", seq: 1 };
-    const { container } = render(<ReviewPanel review={review} />);
+    render(<ReviewPanel review={review} />);
 
     expect(screen.getByRole("textbox", { name: "Address" })).toHaveValue("https://argmax.dev");
-    expect(container.querySelector(".review-body-browser")).not.toBeNull();
+    expect(screen.getByTestId("review-body")).toHaveClass("review-body-browser");
     // Files-mode furniture stays out of the way.
-    expect(container.querySelector(".review-list-col")).toBeNull();
+    expect(screen.queryByTestId("review-list-col")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("File status")).toBeNull();
   });
 
@@ -629,25 +690,25 @@ describe("ReviewPanel terminal mode", () => {
   it("gives Terminal mode the body to itself, with no Files or Changes furniture", async () => {
     const review = reviewStub();
     setReviewMode(review, "terminal");
-    const { container } = render(<ReviewPanel review={review} />);
+    render(<ReviewPanel review={review} />);
 
     await waitFor(() => {
-      expect(container.querySelector(".review-body-terminal")).not.toBeNull();
+      expect(screen.getByTestId("review-body")).toHaveClass("review-body-terminal");
     });
-    expect(container.querySelector(".review-list-col")).toBeNull();
-    expect(container.querySelector(".review-diff")).toBeNull();
+    expect(screen.queryByTestId("review-list-col")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("review-diff")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("File status")).toBeNull();
   });
 
   it("keeps a workspace's terminals mounted, and hidden, behind another mode", async () => {
     addTerminalTab("workspace-1", "zsh");
     const review = reviewStub();
-    const { container } = render(<ReviewPanel review={review} />);
+    render(<ReviewPanel review={review} />);
 
     await waitFor(() => {
-      expect(container.querySelector(".review-terminal-mount")).not.toBeNull();
+      expect(screen.getByTestId("review-terminal-mount")).toBeInTheDocument();
     });
-    expect(container.querySelector(".review-terminal-mount")).toHaveAttribute("hidden");
+    expect(screen.getByTestId("review-terminal-mount")).toHaveAttribute("hidden");
 
     // `hidden` alone would lose to the mount's own `display`, painting the
     // terminal over the Changes list.
@@ -660,9 +721,9 @@ describe("ReviewPanel terminal mode", () => {
     const review = reviewStub();
     setReviewMode(review, "terminal");
     review.terminalWorkspaceId = null;
-    const { container } = render(<ReviewPanel review={review} />);
+    render(<ReviewPanel review={review} />);
 
-    expect(container.querySelector(".review-body-changes")).not.toBeNull();
-    expect(container.querySelector(".review-terminal-mount")).toBeNull();
+    expect(screen.getByTestId("review-body")).toHaveClass("review-body-changes");
+    expect(screen.queryByTestId("review-terminal-mount")).not.toBeInTheDocument();
   });
 });

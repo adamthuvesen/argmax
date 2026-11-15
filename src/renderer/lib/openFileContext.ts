@@ -6,7 +6,7 @@
 /** Open-tab paths with the active tab first, preserving tab order otherwise. */
 export function orderedOpenFilePaths(
   tabs: readonly { path: string }[],
-  activeTabPath: string | null
+  activeTabPath: string | null,
 ): string[] {
   const paths = tabs.map((tab) => tab.path);
   if (activeTabPath === null || !paths.includes(activeTabPath)) return paths;

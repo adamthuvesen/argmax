@@ -16,7 +16,7 @@ import type { Element, Nodes, Parents, RootContent } from "hast";
  * `startTime` to the moment the text was revealed makes that handover invisible.
  */
 
-export const FRESH_RUN_CLASS = "stream-fresh";
+const FRESH_RUN_CLASS = "stream-fresh";
 
 /** How long a run takes to reach full ink: several runs are in flight at once,
     which reads as one soft gradient behind the writing head. */
@@ -55,7 +55,7 @@ export function trackFreshRuns(
   previous: readonly FreshRun[],
   lastEnd: number | null,
   end: number,
-  now: number
+  now: number,
 ): readonly FreshRun[] {
   if (lastEnd === null || end < lastEnd) return NO_FRESH_RUNS;
   if (end === lastEnd) return expireFreshRuns(previous, now);
@@ -86,7 +86,7 @@ function freshElement(value: string, run: FreshRun): Element {
     type: "element",
     tagName: "span",
     properties: { className: [FRESH_RUN_CLASS], dataAt: String(Math.round(run.at)) },
-    children: [{ type: "text", value }]
+    children: [{ type: "text", value }],
   };
 }
 
@@ -189,7 +189,11 @@ export function paintFreshRuns(root: HTMLElement | null): void {
     if (typeof node.animate !== "function") return;
     const animation = node.animate(
       [{ opacity: String(FRESH_RUN_FROM_OPACITY) }, { opacity: "1" }],
-      { duration: FRESH_RUN_FADE_MS, easing: "ease-out", fill: "both" }
+      {
+        duration: FRESH_RUN_FADE_MS,
+        easing: "ease-out",
+        fill: "both",
+      },
     );
     animation.startTime = startedAt(at);
     // Cancelling on finish drops the held value and the animation with it; the

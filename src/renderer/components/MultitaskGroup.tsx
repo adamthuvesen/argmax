@@ -22,7 +22,14 @@ const OPEN_GROUP_MAX_ROWS = 3;
  * opens unless it holds more than three. The launch turns keep the history, each chat supplies its live
  * state, and the head counts them so the group still says something folded.
  */
-export function MultitaskGroup({ notices, live, onOpen, onStop, onDismiss, onLoadSessionEvents }: {
+export function MultitaskGroup({
+  notices,
+  live,
+  onOpen,
+  onStop,
+  onDismiss,
+  onLoadSessionEvents,
+}: {
   notices: readonly MultitaskNotice[];
   live?: ReadonlyMap<string, MultitaskLive>;
   onOpen?: (sessionId: string) => void;
@@ -45,8 +52,10 @@ export function MultitaskGroup({ notices, live, onOpen, onStop, onDismiss, onLoa
     counts["needs-you"] ? `${counts["needs-you"]} needs you` : null,
     counts.failed ? `${counts.failed} failed` : null,
     counts.stopped ? `${counts.stopped} stopped` : null,
-    counts.done ? `${counts.done} finished` : null
-  ].filter(Boolean).join(" · ");
+    counts.done ? `${counts.done} finished` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <section className="multitask-card" data-expanded={expanded} aria-label="Multitasks">

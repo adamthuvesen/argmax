@@ -9,10 +9,12 @@ would mislead a reader of the snapshot.
 
 ## Snapshots
 
+- [agent-excellence.md](agent-excellence.md)
 - [agent-tools.md](agent-tools.md)
 - [auto-model-routing.md](auto-model-routing.md)
 - [browser-agent-reads.md](browser-agent-reads.md)
 - [hybrid-native-phone.md](hybrid-native-phone.md)
+- [latency.md](latency.md)
 - [pr-watch.md](pr-watch.md)
 - [subagent-emblems.md](subagent-emblems.md)
 - [todo-list-surface.md](todo-list-surface.md)

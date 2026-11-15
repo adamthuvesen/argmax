@@ -7,7 +7,7 @@ function ComposerTextarea({
   maxHeight = 140,
   minHeight,
   value = "",
-  selection
+  selection,
 }: {
   maxHeight?: number;
   minHeight: number;
@@ -80,7 +80,7 @@ describe("useAutoGrowTextArea", () => {
   it.each([
     { name: "an earlier caret", selection: [2, 2] as [number, number], focused: true },
     { name: "a selection through the end", selection: [2, 6] as [number, number], focused: true },
-    { name: "an unfocused draft", selection: [6, 6] as [number, number], focused: false }
+    { name: "an unfocused draft", selection: [6, 6] as [number, number], focused: false },
   ])("preserves the scroll position for $name", ({ selection, focused }) => {
     setScrollHeight(220);
     const { rerender } = render(<ComposerTextarea minHeight={56} value="draft" />);

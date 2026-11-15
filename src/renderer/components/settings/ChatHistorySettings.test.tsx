@@ -7,18 +7,18 @@ import { ChatHistorySettings } from "./ChatHistorySettings.js";
 const previewPayload = {
   cleanupId: "cleanup-1",
   cutoffAt: "2026-09-04T00:00:00Z",
-  chatCount: 3
+  chatCount: 3,
 };
 
 const deletePayload = {
   deletedChatCount: 2,
   skippedRecentCount: 1,
-  skippedRunningCount: 0
+  skippedRunningCount: 0,
 };
 
 const settingsStub = {
   previewChatCleanup: vi.fn(() => Promise.resolve(previewPayload)),
-  deleteOldChats: vi.fn(() => Promise.resolve(deletePayload))
+  deleteOldChats: vi.fn(() => Promise.resolve(deletePayload)),
 };
 
 beforeEach(() => {
@@ -54,7 +54,9 @@ describe("ChatHistorySettings", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
 
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Delete 3 chats" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Delete 3 chats" })).not.toBeInTheDocument(),
+    );
     expect(settingsStub.deleteOldChats).not.toHaveBeenCalled();
   });
 
@@ -66,7 +68,7 @@ describe("ChatHistorySettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete 3 chats" }));
 
     await waitFor(() =>
-      expect(settingsStub.deleteOldChats).toHaveBeenCalledWith({ cleanupId: "cleanup-1" })
+      expect(settingsStub.deleteOldChats).toHaveBeenCalledWith({ cleanupId: "cleanup-1" }),
     );
     const status = await screen.findByRole("status");
     expect(status).toHaveTextContent("Deleted 2 chats.");
@@ -93,7 +95,7 @@ describe("ChatHistorySettings", () => {
   it("zero count needs no confirmation", async () => {
     settingsStub.previewChatCleanup.mockResolvedValue({
       ...previewPayload,
-      chatCount: 0
+      chatCount: 0,
     });
     render(<ChatHistorySettings />);
     fireEvent.click(await screen.findByRole("button", { name: /delete old chats/i }));
@@ -129,7 +131,7 @@ describe("ChatHistorySettings", () => {
       () =>
         new Promise((resolve) => {
           resolveDelete = resolve;
-        })
+        }),
     );
     render(<ChatHistorySettings />);
     fireEvent.click(await screen.findByRole("button", { name: /delete old chats/i }));

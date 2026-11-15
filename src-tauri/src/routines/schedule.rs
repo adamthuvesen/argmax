@@ -12,8 +12,8 @@ use std::str::FromStr;
 use chrono::{DateTime, Local, NaiveDateTime, SecondsFormat, TimeZone, Utc};
 use cron::Schedule;
 
-use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
-use crate::persistence::routines::Routine;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
+use argmax_store::routines::Routine;
 
 /// How long a failed recurring routine waits before its next attempt. A
 /// one-shot never retries: it is marked disabled with the error surfaced.

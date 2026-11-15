@@ -6,11 +6,10 @@
 // path between this machine and Apple. Both sinks read the same trigger table
 // in `signal.rs`, so a chat that buzzes one buzzes the other.
 //
-// Apple requires HTTP/2 here; `ureq` (the ntfy sink's client) speaks 1.1 only,
-// so this rides the `reqwest` client already in the tree. Sends happen on the
-// Tokio runtime rather than the caller's thread, the same way the ntfy sink
-// fires its POST off a throwaway thread — the dashboard-delta path must never
-// wait on Apple.
+// Apple requires HTTP/2 here, which reqwest's `http2` feature provides. Sends
+// happen on the Tokio runtime rather than the caller's thread, the same way
+// the ntfy sink fires its POST off a throwaway thread — the dashboard-delta
+// path must never wait on Apple.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -22,10 +21,10 @@ use ring::rand::SystemRandom;
 use ring::signature::{EcdsaKeyPair, ECDSA_P256_SHA256_FIXED_SIGNING};
 use serde_json::json;
 
-use crate::persistence::sessions::SessionSummary;
 use crate::remote::signal::{signal_for, PushSignal, SignalDedupe};
 use crate::remote::{ApnsConfig, PushDevice};
-use crate::util::sync::LockOrRecover;
+use argmax_store::sessions::SessionSummary;
+use argmax_store::sync::LockOrRecover;
 
 /// The native remote app's bundle id, which is also the `apns-topic` the auth
 /// key must be provisioned for.
@@ -85,6 +84,7 @@ impl ApnsClient {
 
     pub fn from_pem(pem: &str, key_id: &str, team_id: &str, sandbox: bool) -> Result<Self, String> {
         let token = ProviderToken::new(pem, key_id, team_id)?;
+        crate::util::tls::install_crypto_provider();
         let http = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
             .build()
@@ -542,8 +542,8 @@ mod tests {
     #[test]
     fn the_publisher_fans_out_once_per_transition() {
         use crate::remote::signal::fixtures::session;
-        use crate::sessions::attention::AttentionState;
-        use crate::sessions::state::SessionState;
+        use argmax_contracts::sessions::attention::AttentionState;
+        use argmax_contracts::sessions::state::SessionState;
         use std::sync::mpsc;
 
         let (tx, rx) = mpsc::channel();

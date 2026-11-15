@@ -1,12 +1,11 @@
 use tauri::State;
 
-use super::{inputs::*, live_database, read_off_main};
-use crate::{
-    error::ArgmaxResult,
-    persistence::learnings::{
-        delete_learning, list_learnings, update_learning, Learning, UpdateLearningInput,
-    },
-    state::AppState,
+use super::inputs::*;
+use crate::state::AppState;
+use crate::state::{live_database, read_off_main};
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::learnings::{
+    delete_learning, list_learnings, update_learning, Learning, UpdateLearningInput,
 };
 
 const DEFAULT_LEARNINGS_LIMIT: u16 = 50;

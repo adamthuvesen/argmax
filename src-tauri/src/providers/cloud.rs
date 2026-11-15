@@ -3,15 +3,12 @@ use std::{
     time::Duration,
 };
 
-use tokio::process::Command;
-
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::events::PersistTimelineEventInput,
-};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::git_exec::{run_git_text_with_options, GitExecOptions};
+use argmax_store::events::PersistTimelineEventInput;
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(30);
 /// A shallow clone of a large repository legitimately takes minutes. Nothing
@@ -229,44 +226,31 @@ async fn run_git(
     step: &str,
     timeout: Duration,
 ) -> ArgmaxResult<Result<String, String>> {
-    let run = async {
-        let mut command = Command::new("git");
-        command
-            .args(args)
-            .current_dir(path)
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .kill_on_drop(true);
-        command.output().await
-    };
-    let output = tokio::time::timeout(timeout, run)
-        .await
-        .map_err(|_| {
-            ArgmaxError::service(
+    let options = GitExecOptions {
+        timeout,
+        ..GitExecOptions::default()
+    }
+    .remote_access();
+    match run_git_text_with_options(path, args, options).await {
+        Ok(stdout) => Ok(Ok(stdout.trim().to_string())),
+        Err(ArgmaxError::ServiceError { sub_code, message }) if sub_code == "GIT_NON_ZERO_EXIT" => {
+            let detail = message.strip_prefix("git failed: ").unwrap_or(&message);
+            Ok(Err(detail.lines().last().unwrap_or(detail).trim().to_string()))
+        }
+        Err(ArgmaxError::ServiceError { sub_code, .. }) if sub_code == "GIT_TIMEOUT" => {
+            Err(ArgmaxError::service(
                 "CLOUD_GIT_TIMEOUT",
                 format!(
                     "Git timed out after {} seconds while {step}. Check your network connection and try again.",
                     timeout.as_secs()
                 ),
-            )
-        })?
-        .map_err(|error| {
-            ArgmaxError::service("CLOUD_GIT_FAILED", format!("Could not run git: {error}"))
-        })?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let detail = stderr.lines().last().map(str::trim).unwrap_or_default();
-        return Ok(Err(if detail.is_empty() {
-            format!(
-                "git exited with status {}",
-                output.status.code().unwrap_or(-1)
-            )
-        } else {
-            detail.to_string()
-        }));
+            ))
+        }
+        Err(error) => Err(ArgmaxError::service(
+            "CLOUD_GIT_FAILED",
+            format!("Could not run git: {error}"),
+        )),
     }
-    Ok(Ok(String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .to_string()))
 }
 
 fn required_git_value(

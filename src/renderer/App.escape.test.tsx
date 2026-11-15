@@ -28,7 +28,9 @@ it("closes the command palette and sidebar before stopping the focused chat", as
   fireEvent.keyDown(document, { key: "k", metaKey: true });
   const palette = await screen.findByRole("dialog", { name: "Command palette" });
 
-  fireEvent.keyDown(within(palette).getByRole("searchbox", { name: "Command palette query" }), { key: "Escape" });
+  fireEvent.keyDown(within(palette).getByRole("searchbox", { name: "Command palette query" }), {
+    key: "Escape",
+  });
   expect(screen.getByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
   expect(terminateProvider).not.toHaveBeenCalled();
   fireEvent.keyDown(prompt, { key: "Escape" });

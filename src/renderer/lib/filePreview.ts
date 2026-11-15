@@ -29,7 +29,7 @@ async function fetchFilePreview({
   path,
   line,
   contextLines = 5,
-  maxLines = 14
+  maxLines = 14,
 }: FetchPreviewArgs): Promise<FilePreviewData> {
   const cacheKey = `${workspaceId}|${path}|${line ?? "?"}`;
   const cached = previewCache.get(cacheKey);
@@ -66,7 +66,7 @@ async function fetchFilePreview({
     startLine,
     endLine,
     totalLines,
-    targetLine: typeof line === "number" && Number.isFinite(line) ? line : null
+    targetLine: typeof line === "number" && Number.isFinite(line) ? line : null,
   };
   previewCache.set(cacheKey, data);
   return data;
@@ -85,7 +85,12 @@ interface UseFilePreviewResult {
   error: string | null;
 }
 
-export function useFilePreview({ workspaceId, path, line, active }: UseFilePreviewArgs): UseFilePreviewResult {
+export function useFilePreview({
+  workspaceId,
+  path,
+  line,
+  active,
+}: UseFilePreviewArgs): UseFilePreviewResult {
   const [data, setData] = useState<FilePreviewData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -1,16 +1,14 @@
-import type { GrammarState } from "shiki/core";
 import type { ParsedDiffLine } from "./diff.js";
-import { tokenizeLines, type HighlightAppearance, type HighlightToken } from "./highlighter.js";
+import { requestHighlight, type HighlightAppearance, type HighlightToken } from "./highlighter.js";
 
 /**
- * Syntax colors for diff hunks, computed off the render path in small slices.
+ * Syntax colors for diff hunks, computed off the render path.
  *
  * Highlighting each line with its own synchronous call froze the window for
- * three quarters of a second on a 2,800-line diff. Each hunk is now tokenized
- * as its two sides — the new file (context and additions) and the old one
+ * three quarters of a second on a 2,800-line diff. Each hunk is tokenized as
+ * its two sides — the new file (context and additions) and the old one
  * (context and deletions) — so a string or comment that spans lines colors
- * correctly, in chunks that carry the grammar state forward, a few
- * milliseconds at a time. Lines render plain until their chunk lands.
+ * correctly. Lines render plain until their side lands.
  */
 
 type HunkTokens = {
@@ -21,8 +19,6 @@ type HunkTokens = {
 };
 
 const hunks = new WeakMap<readonly ParsedDiffLine[], HunkTokens>();
-const SLICE_MS = 6;
-const CHUNK_LINES = 200;
 
 function entryFor(lines: readonly ParsedDiffLine[]): HunkTokens {
   let entry = hunks.get(lines);
@@ -33,7 +29,10 @@ function entryFor(lines: readonly ParsedDiffLine[]): HunkTokens {
   return entry;
 }
 
-export function subscribeHunkTokens(lines: readonly ParsedDiffLine[], listener: () => void): () => void {
+export function subscribeHunkTokens(
+  lines: readonly ParsedDiffLine[],
+  listener: () => void,
+): () => void {
   const entry = entryFor(lines);
   entry.listeners.add(listener);
   return () => entry.listeners.delete(listener);
@@ -48,76 +47,71 @@ export function hunkTokensVersion(lines: readonly ParsedDiffLine[]): number {
 export function hunkLineTokens(
   lines: readonly ParsedDiffLine[],
   key: string,
-  index: number
+  index: number,
 ): HighlightToken[] | undefined {
   const entry = hunks.get(lines);
   return entry && entry.key === key ? entry.tokens[index] : undefined;
 }
 
-function* tokenizeHunk(
+function highlightHunk(
   lines: readonly ParsedDiffLine[],
   lang: string,
   appearance: HighlightAppearance,
-  key: string
-): Generator<void, void, void> {
+  key: string,
+): (() => void)[] {
   const entry = entryFor(lines);
-  if (entry.key === key && entry.tokens.length === lines.length && !entry.tokens.includes(undefined)) return;
+  if (
+    entry.key === key &&
+    entry.tokens.length === lines.length &&
+    !entry.tokens.includes(undefined)
+  )
+    return [];
   entry.key = key;
   entry.tokens = new Array<HighlightToken[] | undefined>(lines.length);
   // Context lines take their colors from the new side; the old side runs
   // through them only to keep its grammar state honest.
   const sides: { indices: number[]; owns: (line: ParsedDiffLine) => boolean }[] = [
     { indices: [], owns: (line) => line.kind !== "deletion" },
-    { indices: [], owns: (line) => line.kind === "deletion" }
+    { indices: [], owns: (line) => line.kind === "deletion" },
   ];
   lines.forEach((line, index) => {
     if (line.kind !== "deletion") sides[0].indices.push(index);
     if (line.kind !== "addition") sides[1].indices.push(index);
   });
-  for (const side of sides) {
-    if (!side.indices.some((index) => side.owns(lines[index]))) continue;
-    let state: GrammarState | undefined;
-    for (let start = 0; start < side.indices.length; start += CHUNK_LINES) {
-      const chunk = side.indices.slice(start, start + CHUNK_LINES);
-      const result = tokenizeLines(chunk.map((index) => lines[index].content).join("\n"), lang, appearance, state);
-      if (!result || entry.key !== key) return;
-      state = result.grammarState;
-      chunk.forEach((index, offset) => {
-        if (side.owns(lines[index])) entry.tokens[index] = result.lines[offset] ?? [{ content: lines[index].content }];
-      });
-      entry.version += 1;
-      for (const listener of entry.listeners) listener();
-      yield;
-    }
-  }
+  const tokens = entry.tokens;
+  return sides
+    .filter((side) => side.indices.some((index) => side.owns(lines[index])))
+    .map((side) =>
+      requestHighlight(
+        side.indices.map((index) => lines[index].content).join("\n"),
+        lang,
+        appearance,
+        (result) => {
+          if (!result || entry.tokens !== tokens) return;
+          side.indices.forEach((index, offset) => {
+            if (side.owns(lines[index]))
+              tokens[index] = result[offset] ?? [{ content: lines[index].content }];
+          });
+          entry.version += 1;
+          for (const listener of entry.listeners) listener();
+        },
+        { keep: false },
+      ),
+    );
 }
 
 /**
- * Colors every hunk in `blocks`, a slice at a time between frames, in
- * document order. Returns a cancel for when the diff or theme changes.
+ * Colors every hunk in `hunkLines`, in document order. Returns a cancel for
+ * when the diff or theme changes.
  */
-export function highlightHunksInSlices(
+export function highlightHunks(
   hunkLines: readonly (readonly ParsedDiffLine[])[],
   lang: string,
-  appearance: HighlightAppearance
+  appearance: HighlightAppearance,
 ): () => void {
   const key = `${lang}:${appearance}`;
-  let cancelled = false;
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const work = (function* () {
-    for (const lines of hunkLines) yield* tokenizeHunk(lines, lang, appearance, key);
-  })();
-  const slice = (): void => {
-    timer = null;
-    const deadline = performance.now() + SLICE_MS;
-    while (!cancelled && performance.now() < deadline) {
-      if (work.next().done) return;
-    }
-    if (!cancelled) timer = setTimeout(slice, 0);
-  };
-  timer = setTimeout(slice, 0);
+  const cancels = hunkLines.flatMap((lines) => highlightHunk(lines, lang, appearance, key));
   return () => {
-    cancelled = true;
-    if (timer !== null) clearTimeout(timer);
+    for (const cancel of cancels) cancel();
   };
 }

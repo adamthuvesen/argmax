@@ -53,7 +53,7 @@ export function noteChatVisited(workspaceId: string): void {
 export function stepChatCycle(
   step: 1 | -1,
   visibleIds: readonly string[],
-  currentId: string | null
+  currentId: string | null,
 ): string | null {
   const order = hold
     ? hold.order.filter((id) => visibleIds.includes(id))
@@ -101,7 +101,7 @@ export function commitChatCycle(): void {
 export function jumpToAdjacentChat(
   step: 1 | -1,
   visibleIds: readonly string[],
-  currentId: string | null
+  currentId: string | null,
 ): string | null {
   commitChatCycle();
   const landedId = stepChatCycle(step, visibleIds, currentId);

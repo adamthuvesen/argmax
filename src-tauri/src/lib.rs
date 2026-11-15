@@ -1,12 +1,8 @@
 // Argmax library crate — Rust/Tauri runtime, services, and IPC handlers.
 
-use std::path::{Path, PathBuf};
-use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc,
-};
+use std::sync::Arc;
 
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
 pub mod activity;
 pub mod application;
@@ -19,7 +15,7 @@ pub mod checks;
 pub mod connections;
 pub mod default_agent;
 pub mod dock;
-pub mod error;
+mod event_delivery;
 pub mod files;
 pub mod gh;
 pub mod git;
@@ -31,7 +27,6 @@ pub mod mcp;
 pub mod menu;
 pub mod multitask;
 pub mod notifications;
-pub mod persistence;
 pub mod providers;
 pub mod questions;
 pub mod remote;
@@ -39,7 +34,6 @@ pub mod review;
 pub mod routines;
 pub mod routing;
 pub mod session_control;
-pub mod sessions;
 pub mod skills;
 pub mod state;
 pub mod sync;
@@ -54,299 +48,14 @@ pub mod windows;
 pub mod workspace_assets;
 pub mod workspaces;
 
-use serde_json::json;
-use specta_typescript::{BigIntExportBehavior, Typescript};
 use util::startup_timer::StartupTimer;
 
-/// If one emit cycle has to conflate at least this many queued `dashboard:delta`
-/// messages, the main-thread event loop is lagging behind producers — log it so
-/// the backpressure is visible rather than silently growing the channel.
-const DELTA_CONFLATE_WARN: usize = 256;
-
-/// Maximum number and exact serialized bytes waiting behind the main thread.
-/// Producers never block on this queue because some of them publish while
-/// finishing database work. Overflow becomes a recoverable resync marker.
-const DASHBOARD_DELIVERY_ITEMS: usize = 512;
-const DASHBOARD_DELIVERY_BYTES: usize = 4 * 1024 * 1024;
-
-/// PTY reads are at most 8 KiB before UTF-8 decoding and use dedicated OS
-/// threads, so bounded lossless backpressure is safe here. Invalid UTF-8 can
-/// expand to replacement characters, making the byte ceiling about 1.5 MiB.
-const TERMINAL_DELIVERY_ITEMS: usize = 64;
-
-/// How much event text one `dashboard:delta` push may carry.
-///
-/// The emit path evals a JS source string containing the serialized payload, so
-/// this is really a cap on how long JavaScriptCore parses on the main thread.
-/// 256 KB keeps that in the low milliseconds while still coalescing an ordinary
-/// token burst into a single push.
-const MAX_CONFLATED_DELTA_BYTES: usize = 256 * 1024;
-
-/// How much terminal text one main-thread emit cycle may carry, for the same
-/// reason as `MAX_CONFLATED_DELTA_BYTES`: the payload becomes a JS source
-/// string the main thread evals, so this caps how long JavaScriptCore parses
-/// per hop. Whatever does not fit stays queued for the next cycle, in order.
-const MAX_CONFLATED_TERMINAL_BYTES: usize = 256 * 1024;
-
-/// One queued terminal push. Data and exit share a queue so a `terminal:exit`
-/// can never overtake output still queued for the same terminal.
-#[derive(Debug)]
-enum TerminalPush {
-    Data(terminal::service::TerminalChunk),
-    Exit(terminal::service::TerminalExitInfo),
-}
-
-struct QueuedDashboardDelta {
-    delta: providers::flush_queue::DashboardDelta,
-    serialized_bytes: usize,
-    generation: u64,
-    _byte_permit: tokio::sync::OwnedSemaphorePermit,
-}
-
-// `Wake` is the rare variant, so the size gap costs padding on almost no
-// queue slot, and boxing `Delta` would put an allocation on the streaming path.
-#[allow(clippy::large_enum_variant)]
-enum DashboardDeliveryItem {
-    Delta(QueuedDashboardDelta),
-    Wake,
-}
-
-#[derive(Clone)]
-struct DashboardDelivery {
-    sender: tokio::sync::mpsc::Sender<DashboardDeliveryItem>,
-    byte_budget: Arc<tokio::sync::Semaphore>,
-    resync_required: Arc<AtomicBool>,
-    generation: Arc<AtomicU64>,
-}
-
-impl DashboardDelivery {
-    fn new() -> (Self, tokio::sync::mpsc::Receiver<DashboardDeliveryItem>) {
-        let (sender, receiver) = tokio::sync::mpsc::channel(DASHBOARD_DELIVERY_ITEMS);
-        (
-            Self {
-                sender,
-                byte_budget: Arc::new(tokio::sync::Semaphore::new(DASHBOARD_DELIVERY_BYTES)),
-                resync_required: Arc::new(AtomicBool::new(false)),
-                generation: Arc::new(AtomicU64::new(0)),
-            },
-            receiver,
-        )
-    }
-
-    /// Queue a delta without blocking its producer. Once either bound is hit,
-    /// the worker discards the incomplete window and delivers one resync marker.
-    fn send(&self, mut delta: providers::flush_queue::DashboardDelta) {
-        if self.resync_required.load(Ordering::Acquire) {
-            return;
-        }
-        let generation = self.generation.load(Ordering::Acquire);
-        delta
-            .changed_session_ids
-            .extend(delta.events.iter().map(|event| event.session_id.clone()));
-        delta.changed_session_ids.extend(
-            delta
-                .raw_outputs
-                .iter()
-                .map(|output| output.session_id.clone()),
-        );
-        delta
-            .changed_session_ids
-            .extend(delta.sessions.iter().map(|session| session.id.clone()));
-        delta.changed_session_ids.sort_unstable();
-        delta.changed_session_ids.dedup();
-        delta.dashboard_changed |= !delta.projects.is_empty()
-            || !delta.workspaces.is_empty()
-            || !delta.sessions.is_empty()
-            || !delta.approvals.is_empty()
-            || delta.pending_messages.is_some()
-            || !delta.removed_session_ids.is_empty()
-            || !delta.removed_workspace_ids.is_empty();
-        // Transcript rows are already durable before publish. Sending their
-        // session ids turns bursts into cheap revision-feed pulls and avoids a
-        // delayed payload overwriting a newer update or resurrecting a delete.
-        // Move seams remain inline because desktop navigation consumes them
-        // before the source session is necessarily subscribed.
-        delta.events.retain(|event| event.r#type == "session.moved");
-        delta.events.shrink_to_fit();
-        // Clearing retains the original allocations, which can dwarf the
-        // serialized hint and defeat the queue's byte accounting.
-        delta.raw_outputs = Vec::new();
-        delta.projects = Vec::new();
-        delta.workspaces = Vec::new();
-        delta.sessions = Vec::new();
-        delta.approvals = Vec::new();
-        delta.pending_messages = None;
-        delta.removed_session_ids = Vec::new();
-        delta.removed_workspace_ids = Vec::new();
-        delta.changed_session_ids.shrink_to_fit();
-        let serialized_bytes = match delta.serialized_payload_bytes() {
-            Ok(bytes) if bytes <= DASHBOARD_DELIVERY_BYTES => bytes,
-            Ok(bytes) => {
-                tracing::warn!(
-                    bytes,
-                    "dashboard delta exceeds the delivery byte budget; requesting resync"
-                );
-                self.require_resync();
-                return;
-            }
-            Err(error) => {
-                tracing::warn!(?error, "failed to size dashboard delta; requesting resync");
-                self.require_resync();
-                return;
-            }
-        };
-        let Ok(byte_permit) =
-            Arc::clone(&self.byte_budget).try_acquire_many_owned(serialized_bytes as u32)
-        else {
-            self.require_resync();
-            return;
-        };
-        let queued = DashboardDeliveryItem::Delta(QueuedDashboardDelta {
-            delta,
-            serialized_bytes,
-            generation,
-            _byte_permit: byte_permit,
-        });
-        // An overflow may have raced the serialization above. Tagging every
-        // item with its queue generation lets the consumer reject this stale
-        // payload even if it lands after the resync marker was drained.
-        if self.resync_required.load(Ordering::Acquire)
-            || self.generation.load(Ordering::Acquire) != generation
-        {
-            return;
-        }
-        if let Err(error) = self.sender.try_send(queued) {
-            match error {
-                tokio::sync::mpsc::error::TrySendError::Full(_) => self.require_resync(),
-                tokio::sync::mpsc::error::TrySendError::Closed(_) => {
-                    tracing::warn!("dashboard delta channel closed")
-                }
-            }
-        }
-    }
-
-    fn require_resync(&self) {
-        let was_required = self.resync_required.swap(true, Ordering::AcqRel);
-        if !was_required {
-            self.generation.fetch_add(1, Ordering::AcqRel);
-            tracing::warn!(
-                max_items = DASHBOARD_DELIVERY_ITEMS,
-                max_bytes = DASHBOARD_DELIVERY_BYTES,
-                "dashboard delivery queue overflowed; queued window will be replaced by resync"
-            );
-        }
-        // An oversized delta can overflow an otherwise empty queue. Wake the
-        // receiver in that case. A full queue already guarantees a wake.
-        let _ = self.sender.try_send(DashboardDeliveryItem::Wake);
-    }
-}
-
-fn prepare_dashboard_batch(
-    first: DashboardDeliveryItem,
-    receiver: &mut tokio::sync::mpsc::Receiver<DashboardDeliveryItem>,
-    resync_required: &AtomicBool,
-    generation: &AtomicU64,
-    deferred: &mut Option<DashboardDeliveryItem>,
-) -> Option<providers::flush_queue::DashboardDelta> {
-    let mut first = first;
-    if resync_required.swap(false, Ordering::AcqRel) {
-        while receiver.try_recv().is_ok() {}
-        first = DashboardDeliveryItem::Wake;
-    }
-    let current_generation = generation.load(Ordering::Acquire);
-    let (mut delta, mut pending_bytes) = match first {
-        DashboardDeliveryItem::Delta(queued) if queued.generation == current_generation => {
-            (queued.delta, queued.serialized_bytes)
-        }
-        DashboardDeliveryItem::Delta(_) => return None,
-        DashboardDeliveryItem::Wake => (
-            providers::flush_queue::DashboardDelta {
-                dashboard_changed: true,
-                resync_required: true,
-                ..Default::default()
-            },
-            0,
-        ),
-    };
-    let mut conflated = 1usize;
-    while pending_bytes < MAX_CONFLATED_DELTA_BYTES {
-        let Ok(next) = receiver.try_recv() else {
-            break;
-        };
-        match next {
-            DashboardDeliveryItem::Delta(next) => {
-                if next.generation != current_generation {
-                    continue;
-                }
-                if pending_bytes > 0
-                    && pending_bytes + next.serialized_bytes > MAX_CONFLATED_DELTA_BYTES
-                {
-                    *deferred = Some(DashboardDeliveryItem::Delta(next));
-                    break;
-                }
-                pending_bytes += next.serialized_bytes;
-                delta.merge_from(next.delta);
-                conflated += 1;
-            }
-            DashboardDeliveryItem::Wake => {}
-        }
-    }
-    if resync_required.swap(false, Ordering::AcqRel) {
-        *deferred = None;
-        while receiver.try_recv().is_ok() {}
-        return Some(providers::flush_queue::DashboardDelta {
-            dashboard_changed: true,
-            resync_required: true,
-            ..Default::default()
-        });
-    }
-    if conflated >= DELTA_CONFLATE_WARN {
-        tracing::warn!(
-            conflated,
-            "coalesced a large dashboard:delta burst; main-thread emit may be lagging"
-        );
-    }
-    Some(delta)
-}
-
-impl TerminalPush {
-    fn approx_payload_bytes(&self) -> usize {
-        match self {
-            TerminalPush::Data(chunk) => chunk.data.len(),
-            TerminalPush::Exit(_) => 0,
-        }
-    }
-}
-
-/// Merge a drained batch down to one `terminal:data` per terminal, in order.
-///
-/// PTY chunk text concatenates trivially, so a burst for one terminal becomes a
-/// single push. An exit closes its terminal's open chunk: output that arrived
-/// before it still goes out first, and anything that arrives after is not
-/// folded back in front of it.
-fn coalesce_terminal_pushes(batch: Vec<TerminalPush>) -> Vec<TerminalPush> {
-    let mut coalesced: Vec<TerminalPush> = Vec::with_capacity(batch.len());
-    let mut open: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    for push in batch {
-        match push {
-            TerminalPush::Data(chunk) => match open.get(&chunk.terminal_id) {
-                Some(&index) => {
-                    if let Some(TerminalPush::Data(existing)) = coalesced.get_mut(index) {
-                        existing.data.push_str(&chunk.data);
-                    }
-                }
-                None => {
-                    open.insert(chunk.terminal_id.clone(), coalesced.len());
-                    coalesced.push(TerminalPush::Data(chunk));
-                }
-            },
-            TerminalPush::Exit(info) => {
-                open.remove(&info.terminal_id);
-                coalesced.push(TerminalPush::Exit(info));
-            }
-        }
-    }
-    coalesced
+/// `tauri::async_runtime` rather than `tokio::spawn`: the setup hook that opens
+/// the database runs on the main thread with no current runtime handle, so a
+/// `tokio` spawn there would panic.
+pub(crate) fn start_raw_output_prune(database: &argmax_store::Database) {
+    let task = tauri::async_runtime::spawn(database.raw_output_prune_loop());
+    database.track_prune_task(task.inner().abort_handle());
 }
 
 /// Construct and run the Tauri app.
@@ -358,11 +67,8 @@ pub fn run() {
     text_substitutions::disable();
 
     // rustls 0.23 needs a crypto provider picked explicitly once ring and
-    // aws-lc-rs are both reachable in the dependency tree; reqwest's client
-    // builder panics instead of erroring when none is installed yet. Nothing
-    // else in the tree installs one, so the first `reqwest::Client` built at
-    // runtime (APNs, today) is where that panic actually surfaced.
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    // aws-lc-rs are both reachable in the dependency tree.
+    util::tls::install_crypto_provider();
 
     if let Err(error) = providers::verification::validate_configuration() {
         eprintln!("argmax: verification configuration invalid: {error}");
@@ -372,7 +78,7 @@ pub fn run() {
     let timer = Arc::new(StartupTimer::new());
     timer.mark("boot");
 
-    let specta_builder = ipc::specta_builder();
+    let specta_builder = ipc::catalogue::specta_builder();
     timer.mark("specta.builder");
 
     // Codegen: emit `src/shared/bindings.d.ts` on every debug startup so
@@ -381,7 +87,7 @@ pub fn run() {
     // rest of the crate is even type-checked, so they can't import
     // command functions), so the export lives here instead.
     #[cfg(all(debug_assertions, not(feature = "verification")))]
-    if let Err(e) = export_bindings("../src/shared/bindings.d.ts") {
+    if let Err(e) = ipc::bindings_export::export_bindings("../src/shared/bindings.d.ts") {
         eprintln!("argmax: tauri-specta export failed: {e}");
     }
     #[cfg(all(debug_assertions, not(feature = "verification")))]
@@ -402,73 +108,24 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        // Serve `argmax-attachment://file/<abs-path>` image URLs from the
-        // on-disk attachment store. Without this, pasted-image previews in the
-        // composer/chat 404. The store dir depends on `app_data_dir` (only
-        // known after setup), so it's resolved per request; serving happens
-        // off-thread so the webview's IO isn't blocked.
         .register_asynchronous_uri_scheme_protocol(
             attachments::protocol::ATTACHMENT_PROTOCOL_SCHEME,
             |ctx, request, responder| {
-                let app = ctx.app_handle().clone();
-                let uri = request.uri().to_string();
-                tauri::async_runtime::spawn(async move {
-                    let built = match util::data_dir::app_data_dir(&app) {
-                        Ok(app_data) => {
-                            let base_dir = app_data.join("local-state").join("attachments");
-                            let response =
-                                attachments::protocol::serve_attachment(&base_dir, &uri).await;
-                            let mut builder =
-                                tauri::http::Response::builder().status(response.http_status());
-                            if let Some(content_type) = response.content_type {
-                                builder = builder
-                                    .header(tauri::http::header::CONTENT_TYPE, content_type);
-                            }
-                            builder.body(response.bytes)
-                        }
-                        Err(error) => {
-                            tracing::warn!(?error, "attachment protocol: app_data_dir unavailable");
-                            tauri::http::Response::builder().status(500).body(Vec::new())
-                        }
-                    };
-                    match built {
-                        Ok(response) => responder.respond(response),
-                        Err(error) => {
-                            tracing::warn!(?error, "attachment protocol: failed to build response")
-                        }
-                    }
-                });
+                attachments::protocol::respond(
+                    ctx.app_handle().clone(),
+                    request.uri().to_string(),
+                    responder,
+                )
             },
         )
-        // Serve `argmax-asset://file/<abs-path>` image URLs referenced from
-        // rendered workspace files (e.g. relative `<img>` in a previewed
-        // README.md). Without this, those images 404. Serving is confined to
-        // known project/workspace roots (resolved per request from AppState)
-        // and runs off-thread so the webview's IO isn't blocked.
         .register_asynchronous_uri_scheme_protocol(
             workspace_assets::protocol::WORKSPACE_ASSET_PROTOCOL_SCHEME,
             |ctx, request, responder| {
-                let app = ctx.app_handle().clone();
-                let uri = request.uri().to_string();
-                tauri::async_runtime::spawn(async move {
-                    // Resolved inside the task, not in the callback: the
-                    // callback runs on the webview's thread, and the root
-                    // lookup is a SQLite read.
-                    let roots = workspace_assets::protocol::known_roots(&app);
-                    let response =
-                        workspace_assets::protocol::serve_workspace_asset(&roots, &uri).await;
-                    let mut builder =
-                        tauri::http::Response::builder().status(response.http_status());
-                    if let Some(content_type) = response.content_type {
-                        builder = builder.header(tauri::http::header::CONTENT_TYPE, content_type);
-                    }
-                    match builder.body(response.bytes) {
-                        Ok(response) => responder.respond(response),
-                        Err(error) => {
-                            tracing::warn!(?error, "asset protocol: failed to build response")
-                        }
-                    }
-                });
+                workspace_assets::protocol::respond(
+                    ctx.app_handle().clone(),
+                    request.uri().to_string(),
+                    responder,
+                )
             },
         )
         .manage(state::AppState::with_startup_timer(timer.clone()))
@@ -497,774 +154,7 @@ pub fn run() {
             dock::clear_badge_on_focus(window, event);
             windows::track_window_event(window, event);
         })
-        .setup(move |app| {
-            timer.mark("setup.enter");
-            // Tracing init is deferred to setup() because `app.path()` is
-            // only valid here — that's how we resolve the user_data_dir
-            // the release-mode rolling-file appender writes into.
-            let user_data = util::data_dir::app_data_dir(app).ok();
-            if let Err(e) = util::tracing_init::init(user_data.as_deref()) {
-                eprintln!("argmax: tracing init failed: {e}");
-            }
-            timer.mark("tracing.init");
-            // Resolve the profile once, here, where `app.path()` is finally
-            // valid. Handlers the remote bridge dispatches have no AppHandle
-            // to resolve it from, so `remote.json` and everything else keyed
-            // to the profile is read through AppState from now on.
-            if let Some(app_data_dir) = util::data_dir::ensure_app_data_dir(app) {
-                let state = tauri::Manager::state::<state::AppState>(app);
-                let _ = state.app_data_dir.set(app_data_dir);
-            }
-            // Keep macOS App Nap from suspending the webview while the window is
-            // backgrounded — otherwise emitted `dashboard:delta` events don't
-            // reach the renderer until the user refocuses, so finished turns
-            // look stuck on the thinking bubble.
-            util::app_nap::prevent_app_nap();
-            // Resolving the login shell runs `zsh -lic`, which costs whatever
-            // the user's rc files cost. Every git command needs its PATH, so
-            // pay it here on a plain thread rather than letting the first
-            // status poll block a runtime worker on someone else's `.zshrc`.
-            std::thread::spawn(util::login_shell::warm);
-            // Warm provider discovery in the background so the first surface
-            // that needs it (WelcomePane, settings, launcher availability)
-            // reads cached reports instead of paying the cold probe cost
-            // (`cursor-agent --version` alone runs ~350ms).
-            let provider_discovery = Arc::clone(
-                &tauri::Manager::state::<state::AppState>(app).provider_discovery,
-            );
-            tauri::async_runtime::spawn(async move {
-                provider_discovery.discover_all().await;
-            });
-            if let Some(user_data) = user_data.as_ref() {
-                let data_dir = user_data.join("local-state");
-                if let Err(e) = std::fs::create_dir_all(&data_dir) {
-                    tracing::warn!(error = ?e, path = %data_dir.display(), "failed to create data directory");
-                    // No data directory means the database will never open, so
-                    // record the reason: without one every handler reports
-                    // "startup may still be in progress" forever.
-                    let state = tauri::Manager::state::<state::AppState>(app);
-                    let _ = state.db_open_error.set(format!(
-                        "could not create the data directory {}: {e}",
-                        data_dir.display()
-                    ));
-                } else {
-                    let state = tauri::Manager::state::<state::AppState>(app);
-                    let _ = state
-                        .attachments
-                        .set(Arc::new(attachments::store::AttachmentStore::from_data_dir(
-                            &data_dir,
-                        )));
-                    // Refuse to run against local state another live instance
-                    // owns: the boot recovery below would mark that instance's
-                    // running sessions failed (they look orphaned from here).
-                    match util::instance_lock::acquire(&data_dir) {
-                        Ok(Some(lock)) => {
-                            // Held until process exit; nothing reads it back.
-                            std::mem::forget(lock);
-                        }
-                        Ok(None) => {
-                            tracing::error!(
-                                path = %data_dir.display(),
-                                "another Argmax instance owns the local state; exiting \
-                                 (a second instance needs its own ARGMAX_DATA_DIR, \
-                                 e.g. `npm run tauri:dev:isolated`)"
-                            );
-                            // Tauri builds the config's `main` window before the
-                            // setup hook runs; hide it so the doomed instance
-                            // doesn't flash a dead UI behind the dialog.
-                            if let Some(window) = app.get_window("main") {
-                                let _ = window.hide();
-                            }
-                            use tauri_plugin_dialog::DialogExt;
-                            app.dialog()
-                                .message(
-                                    "Argmax is already running. Use the existing window, or \
-                                     start a second instance on its own profile with \
-                                     ARGMAX_DATA_DIR (npm run tauri:dev:isolated).",
-                                )
-                                .title("Argmax is already running")
-                                .kind(tauri_plugin_dialog::MessageDialogKind::Warning)
-                                .show(|_| std::process::exit(0));
-                            // The process idles (window hidden) until the
-                            // dialog's exit callback fires.
-                            return Ok(());
-                        }
-                        Err(error) => {
-                            // A missing lock only loses the double-launch
-                            // guard; the app itself still works.
-                            tracing::warn!(?error, "could not create the instance lock; continuing unlocked");
-                        }
-                    }
-                    match persistence::Database::open(data_dir.join("argmax.sqlite")) {
-                        Ok(database) => {
-                            timer.mark("db.open");
-                            let database = Arc::new(database);
-                            let state = tauri::Manager::state::<state::AppState>(app);
-                            let _ = state.db.set(Arc::clone(&database));
-                            providers::opencode_gateway::load(&database.read_connection());
-                            // Off by default; registers the saved chord only if
-                            // the user turned window snapshots on.
-                            window_snapshot::shortcut::install(
-                                app.handle(),
-                                &database.read_connection(),
-                            );
-                            let usage_scanner = Arc::new(usage::scanner::UsageScanner::new(
-                                Arc::clone(&database),
-                                sync::home_dir(),
-                            ));
-                            // A ledger that has completed before is refreshed
-                            // in the background so the page opens fresh. The
-                            // first cold sweep reads gigabytes and waits for
-                            // the user to ask for it.
-                            if usage_scanner.has_completed_once() {
-                                usage::scanner::spawn_sweep(&usage_scanner);
-                            }
-                            let _ = state.usage_scanner.set(usage_scanner);
-                            let activity_scanner = Arc::new(
-                                activity::scanner::ActivityScanner::new(Arc::clone(&database)),
-                            );
-                            // Same split as the usage ledger: one that has
-                            // completed before is refreshed in the background so
-                            // the page opens fresh, while the first cold sweep
-                            // walks every repository's history and waits to be
-                            // asked for.
-                            if activity_scanner.has_completed_once() {
-                                activity::scanner::spawn_sweep(&activity_scanner);
-                            }
-                            let _ = state.activity_scanner.set(activity_scanner);
-                            let dock_badge = Arc::new(dock::DockBadgeService::new(
-                                dock::TauriDockBadgeSink::new(app.handle().clone()),
-                                {
-                                    let database = Arc::clone(&database);
-                                    Arc::new(move || {
-                                        persistence::dashboard::count_attention(
-                                            &database.read_connection(),
-                                        )
-                                        .map(|counts| counts.total)
-                                    })
-                                },
-                            ));
-                            let _ = state.dock_badge.set(Arc::clone(&dock_badge));
-                            // Approvals left pending by the previous run badge
-                            // the dock from the first frame.
-                            if let Err(error) = dock_badge.update() {
-                                tracing::warn!(?error, "failed to set the dock badge at boot");
-                            }
-                            // Warm the FTS5 message index on the blocking pool so the
-                            // user's first ⌘K message search skips the cold-start cost:
-                            // FTS5 module init, compiling the `session:search` statement
-                            // (cached and reused for every search after), and paging in
-                            // the index structure. The throwaway term matches nothing, so
-                            // it reads few pages and won't contend with startup reads; a
-                            // failure (empty/fresh DB) is traced, never fatal.
-                            let warm_db = Arc::clone(&database);
-                            tauri::async_runtime::spawn_blocking(move || {
-                                let connection = warm_db.connection();
-                                if let Err(error) =
-                                    persistence::learnings::search_events(&connection, "warmup", 1)
-                                {
-                                    tracing::trace!(?error, "fts warm-up query failed");
-                                }
-                            });
-                            let notifications = Arc::new(notifications::NotificationService::new(
-                                notifications::main_window_focus_probe(app.handle().clone()),
-                                notifications::desktop_sink(app.handle().clone()),
-                            ));
-                            let _ = state.notifications.set(Arc::clone(&notifications));
-                            // Single bounded FIFO for every dashboard
-                            // invalidation (providers + gh poller + workspaces).
-                            // One worker task pulls from it and emits in order.
-                            // Order matters: a `session.completed` must not
-                            // overtake its preceding `message.completed`.
-                            let (delta_tx, mut delta_rx) = DashboardDelivery::new();
-                            let delta_resync_required = Arc::clone(&delta_tx.resync_required);
-                            let delta_generation = Arc::clone(&delta_tx.generation);
-                            let emit_handle = app.handle().clone();
-                            let remote_events = state.remote_events.clone();
-                            let dock_badge_for_delta = Arc::clone(&dock_badge);
-                            tauri::async_runtime::spawn(async move {
-                                let mut deferred = None;
-                                loop {
-                                    let first = match deferred.take() {
-                                        Some(item) => item,
-                                        None => match delta_rx.recv().await {
-                                            Some(item) => item,
-                                            None => break,
-                                        },
-                                    };
-                                    // Conflate hints that piled up while the previous emit ran.
-                                    // `Emitter::emit` renders the payload into a JS source string,
-                                    // so exact serialized bytes bound each batch. The deferred item
-                                    // keeps the remainder ordered for the next acknowledged hop.
-                                    let Some(delta) = prepare_dashboard_batch(
-                                        first,
-                                        &mut delta_rx,
-                                        &delta_resync_required,
-                                        &delta_generation,
-                                        &mut deferred,
-                                    ) else {
-                                        continue;
-                                    };
-                                    // Emit on the main thread. On macOS, an event emitted
-                                    // from a background thread does not reliably wake the
-                                    // NSApp event loop, so `dashboard:delta` pushes can sit
-                                    // undelivered until some unrelated UI event pumps the
-                                    // loop — mid-turn streaming then stalls and the chat
-                                    // only fills in when the turn ends (process exit pumps
-                                    // the loop). Hopping onto the main thread via
-                                    // `run_on_main_thread` dispatches the webview eval as a
-                                    // main-thread task the loop processes promptly, so the
-                                    // chat streams live. See tao#625 / winit#219 and
-                                    // docs/runtime.md "Event delivery".
-                                    //
-                                    // Remote clients are fed before the hop: a WebSocket
-                                    // write needs no NSApp event loop.
-                                    // Session state and approval changes are the
-                                    // only inputs to the attention count, so an
-                                    // events-only streaming delta skips the read.
-                                    if delta.dashboard_changed {
-                                        if let Err(error) = dock_badge_for_delta.update() {
-                                            tracing::warn!(?error, "failed to update dock badge");
-                                        }
-                                    }
-                                    remote::publish(&remote_events, "dashboard:delta", &delta);
-                                    let handle = emit_handle.clone();
-                                    let (emitted_tx, emitted_rx) = tokio::sync::oneshot::channel();
-                                    // Diagnostic for the "stream freezes, then everything
-                                    // bursts at once" symptom: if the main-thread hop parks
-                                    // (tao#625-style missed wake-up), the closure runs long
-                                    // after it was scheduled. Log the parking so the next
-                                    // occurrence attributes the stall to this hop rather
-                                    // than the renderer.
-                                    let scheduled_at = std::time::Instant::now();
-                                    if let Err(error) = emit_handle.run_on_main_thread(move || {
-                                        let parked = scheduled_at.elapsed();
-                                        if parked > std::time::Duration::from_millis(500) {
-                                            tracing::warn!(
-                                                parked_ms = parked.as_millis() as u64,
-                                                changed_sessions = delta.changed_session_ids.len(),
-                                                dashboard_changed = delta.dashboard_changed,
-                                                "dashboard:delta emit sat scheduled on the main thread; event-loop wake lagged"
-                                            );
-                                        }
-                                        if let Err(error) = handle.emit("dashboard:delta", delta) {
-                                            tracing::warn!(?error, "failed to emit dashboard delta");
-                                        }
-                                        let _ = emitted_tx.send(());
-                                    }) {
-                                        tracing::warn!(?error, "failed to schedule dashboard delta emit");
-                                        continue;
-                                    }
-                                    // Do not dequeue another batch until the scheduled closure
-                                    // actually ran. This leaves at most one main-thread emit
-                                    // outstanding while the bounded queue absorbs producers.
-                                    let _ = emitted_rx.await;
-                                }
-                            });
-                            let notifications_for_delta = Arc::clone(&notifications);
-                            let push_database = Arc::clone(&database);
-                            let ntfy_app = app.handle().clone();
-                            let provider_delta_tx = delta_tx.clone();
-                            let publish_delta = move |delta: providers::flush_queue::DashboardDelta| {
-                                let app_state =
-                                    tauri::Manager::state::<state::AppState>(&ntfy_app);
-                                let ntfy = app_state
-                                    .ntfy
-                                    .read()
-                                    .ok()
-                                    .and_then(|publisher| publisher.clone());
-                                let apns = app_state
-                                    .apns
-                                    .read()
-                                    .ok()
-                                    .and_then(|publisher| publisher.clone());
-                                let keep_awake = Arc::clone(&app_state.keep_awake);
-                                for session in &delta.sessions {
-                                    if let Err(error) = notifications_for_delta.notify(session) {
-                                        tracing::warn!(
-                                            ?error,
-                                            session_id = %session.id,
-                                            "failed to fire terminal-state notification"
-                                        );
-                                    }
-                                    // The push body leads with what the agent
-                                    // last said, so read it once for both sinks
-                                    // — and only for a row that will actually
-                                    // push, since a streaming turn walks
-                                    // through here on every chunk.
-                                    let pushes = (ntfy.is_some() || apns.is_some())
-                                        && remote::signal::signals(session);
-                                    let latest_answer = pushes
-                                        .then(|| {
-                                            persistence::events::latest_agent_message(
-                                                &push_database.read_connection(),
-                                                &session.id,
-                                            )
-                                            .unwrap_or_else(|error| {
-                                                tracing::warn!(
-                                                    ?error,
-                                                    session_id = %session.id,
-                                                    "failed to read the latest agent message for a push"
-                                                );
-                                                None
-                                            })
-                                        })
-                                        .flatten();
-                                    if let Some(ntfy) = ntfy.as_ref() {
-                                        ntfy.observe(session, latest_answer.as_deref());
-                                    }
-                                    if let Some(apns) = apns.as_ref() {
-                                        apns.observe(session, latest_answer.as_deref());
-                                    }
-                                    keep_awake.observe(&session.id, session.state.is_active());
-                                }
-                                tracing::trace!(
-                                    sessions = delta.sessions.len(),
-                                    events = delta.events.len(),
-                                    raw_outputs = delta.raw_outputs.len(),
-                                    workspaces = delta.workspaces.len(),
-                                    "queuing dashboard:delta"
-                                );
-                                provider_delta_tx.send(delta);
-                            };
-                            let approval_delta_tx = delta_tx.clone();
-                            let approvals = approvals::service::ApprovalService::with_publisher(
-                                Arc::clone(&database),
-                                move |delta| {
-                                    approval_delta_tx.send(delta);
-                                },
-                            );
-                            let _ = state.approvals.set(Arc::clone(&approvals));
-                            let question_delta_tx = delta_tx.clone();
-                            let questions = questions::service::QuestionService::with_publisher(
-                                Arc::clone(&database),
-                                move |delta| {
-                                    question_delta_tx.send(delta);
-                                },
-                            );
-                            let _ = state.questions.set(Arc::clone(&questions));
-                            let (session_launch_server, session_launch_registry) =
-                                match session_control::SessionLaunchServer::bind(Arc::clone(
-                                    &database,
-                                )) {
-                                    Ok((server, registry)) => (Some(server), Some(registry)),
-                                    Err(error) => {
-                                        tracing::warn!(?error, "session launch control unavailable");
-                                        (None, None)
-                                    }
-                                };
-                            let lifecycle = workspaces::lifecycle::WorkspaceLifecycle::new();
-                            // Share the boot-warmed discovery cache so the first
-                            // launch per provider skips the version/auth probe
-                            // (`cursor-agent status` alone runs ~800 ms).
-                            let cursor_acp =
-                                Arc::new(providers::cursor_acp::CursorAcpSessions::new());
-                            let _ = state.cursor_acp.set(Arc::clone(&cursor_acp));
-                            let grok_acp = Arc::new(providers::grok_acp::GrokAcpSessions::new());
-                            let _ = state.grok_acp.set(Arc::clone(&grok_acp));
-                            let provider_launcher: Arc<dyn providers::runtime::ProviderProcessLauncher> =
-                                Arc::new(providers::runtime::RealProviderProcessLauncher::with_discovery(
-                                    (*state.provider_discovery).clone(),
-                                    session_launch_registry.clone(),
-                                    Arc::clone(&cursor_acp),
-                                ).with_approvals(Arc::clone(&approvals)).with_questions(Arc::clone(&questions)).with_grok_acp(Arc::clone(&grok_acp)));
-                            let providers = providers::session_service::ProviderSessionService::with_launcher_and_lifecycle_and_approvals(
-                                Arc::clone(&database),
-                                provider_launcher,
-                                publish_delta,
-                                Arc::clone(&lifecycle),
-                                Some(Arc::clone(&approvals)),
-                            );
-                            providers.set_question_service(Arc::clone(&questions));
-                            providers.set_provider_discovery(Arc::clone(&state.provider_discovery));
-                            // Kept for the boot-recovery pass below, which needs
-                            // the same registry the socket hands out.
-                            let after_turn_registry = session_launch_registry.clone();
-                            if let Some(registry) = session_launch_registry {
-                                providers.set_session_control(registry);
-                            }
-                            if let Err(error) = providers.recover_orphaned_sessions() {
-                                tracing::warn!(?error, "failed to recover orphaned sessions");
-                            }
-                            timer.mark("sessions.recover");
-                            let checkpoints = checkpoints::service::CheckpointService::new(Arc::clone(&database));
-                            if let Err(error) = checkpoints.recover_interrupted_rewinds() {
-                                tracing::warn!(?error, "failed to recover interrupted rewinds");
-                            }
-                            providers.set_checkpoint_service(checkpoints);
-                            let _ = state.providers.set(Arc::clone(&providers));
-                            // Last of the boot recovery: a recovered wake starts a
-                            // turn, which must find the checkpoint service (the
-                            // pre-turn mark) and the session-control registry
-                            // already in place, and rewinds already settled.
-                            if let Err(error) = providers.recover_completion_wakes() {
-                                tracing::warn!(?error, "failed to recover completion wakes");
-                            }
-                            // Terminal pushes take the same shape as
-                            // `dashboard:delta`: a FIFO queue and one worker
-                            // that conflates what piled up into a single
-                            // main-thread hop. The PTY reader thread produces
-                            // an 8 KiB chunk at a time, at MB/s, with no
-                            // backpressure — one `run_on_main_thread` +
-                            // `Emitter::emit` per chunk is what makes a `cat`
-                            // of a large file freeze the window.
-                            let (terminal_tx, mut terminal_rx) =
-                                tokio::sync::mpsc::channel::<TerminalPush>(TERMINAL_DELIVERY_ITEMS);
-                            let emit_handle = app.handle().clone();
-                            let remote_terminal_events = state.remote_terminal_events.clone();
-                            tauri::async_runtime::spawn(async move {
-                                while let Some(first) = terminal_rx.recv().await {
-                                    let mut pending_bytes = first.approx_payload_bytes();
-                                    let mut batch = vec![first];
-                                    while pending_bytes < MAX_CONFLATED_TERMINAL_BYTES {
-                                        let Ok(next) = terminal_rx.try_recv() else {
-                                            break;
-                                        };
-                                        pending_bytes += next.approx_payload_bytes();
-                                        batch.push(next);
-                                    }
-                                    let pushes = coalesce_terminal_pushes(batch);
-                                    // Remote clients are fed before the hop: a
-                                    // WebSocket write needs no NSApp event loop.
-                                    for push in &pushes {
-                                        match push {
-                                            TerminalPush::Data(chunk) => remote::publish(
-                                                &remote_terminal_events,
-                                                "terminal:data",
-                                                chunk,
-                                            ),
-                                            TerminalPush::Exit(info) => remote::publish(
-                                                &remote_terminal_events,
-                                                "terminal:exit",
-                                                info,
-                                            ),
-                                        }
-                                    }
-                                    let handle = emit_handle.clone();
-                                    let (emitted_tx, emitted_rx) = tokio::sync::oneshot::channel();
-                                    if let Err(error) = emit_handle.run_on_main_thread(move || {
-                                        for push in pushes {
-                                            let emitted = match push {
-                                                TerminalPush::Data(chunk) => {
-                                                    handle.emit("terminal:data", chunk)
-                                                }
-                                                TerminalPush::Exit(info) => {
-                                                    handle.emit("terminal:exit", info)
-                                                }
-                                            };
-                                            if let Err(error) = emitted {
-                                                tracing::warn!(?error, "failed to emit terminal event");
-                                            }
-                                        }
-                                        let _ = emitted_tx.send(());
-                                    }) {
-                                        tracing::warn!(?error, "failed to schedule terminal event emit");
-                                        continue;
-                                    }
-                                    let _ = emitted_rx.await;
-                                }
-                            });
-                            let terminal_data_tx = terminal_tx.clone();
-                            let on_terminal_data = Arc::new(move |chunk: terminal::service::TerminalChunk| {
-                                if let Err(error) = terminal_data_tx.blocking_send(TerminalPush::Data(chunk)) {
-                                    tracing::warn!(?error, "terminal event channel closed");
-                                }
-                            });
-                            let on_terminal_exit = Arc::new(move |info: terminal::service::TerminalExitInfo| {
-                                if let Err(error) = terminal_tx.blocking_send(TerminalPush::Exit(info)) {
-                                    tracing::warn!(?error, "terminal event channel closed");
-                                }
-                            });
-                            let terminals = terminal::service::TerminalService::with_lifecycle(
-                                Arc::clone(&database),
-                                on_terminal_data,
-                                on_terminal_exit,
-                                Arc::clone(&lifecycle),
-                            );
-                            let _ = state.terminals.set(terminals);
-                            let _ = state
-                                .checks
-                                .set(checks::service::CheckService::with_lifecycle(
-                                    Arc::clone(&database),
-                                    Arc::clone(&lifecycle),
-                                ));
-                            let gh_service = gh::service::GhService::new(Arc::clone(&database));
-                            match goals::service::GoalService::new(
-                                Arc::clone(&database),
-                                Arc::clone(&providers),
-                            ) {
-                                Ok(goals) => {
-                                    let _ = state.goals.set(goals);
-                                }
-                                Err(error) => tracing::error!(?error, "goal service failed to initialize"),
-                            }
-                            let poller_database = Arc::clone(&database);
-                            let poller_providers = Arc::clone(&providers);
-                            let poller_notifications = Arc::clone(&notifications);
-                            // The fix chat launches on the app-wide default
-                            // agent, mirrored into the app data dir by the
-                            // renderer (see crate::default_agent).
-                            let poller_data_dir = user_data.clone();
-                            let failure_hook = Arc::new(move |context: gh::poller::CheckFailureContext| {
-                                let database = Arc::clone(&poller_database);
-                                let providers = Arc::clone(&poller_providers);
-                                let notifications = Arc::clone(&poller_notifications);
-                                let data_dir = poller_data_dir.clone();
-                                tauri::async_runtime::spawn(async move {
-                                    if let Err(error) =
-                                        handle_gh_check_failure(database, providers, notifications, data_dir, context)
-                                            .await
-                                    {
-                                        tracing::warn!(?error, "failed to handle gh check failure");
-                                    }
-                                });
-                            });
-                            // The workspace service is built further down, so
-                            // the hook resolves it from app state at fire time
-                            // rather than capturing it here.
-                            let merged_app = app.handle().clone();
-                            let merged_database = Arc::clone(&database);
-                            let merged_hook = Arc::new(move |context: gh::poller::MergedPrContext| {
-                                let app = merged_app.clone();
-                                let database = Arc::clone(&merged_database);
-                                tauri::async_runtime::spawn(async move {
-                                    let workspaces = tauri::Manager::state::<state::AppState>(&app)
-                                        .workspaces
-                                        .get()
-                                        .cloned();
-                                    let Some(workspaces) = workspaces else {
-                                        tracing::warn!(
-                                            "workspace service unavailable; skipping archive on merge"
-                                        );
-                                        return;
-                                    };
-                                    archive_merged_workspace(workspaces, database, context).await;
-                                });
-                            });
-                            let arc_event_database = Arc::clone(&database);
-                            let arc_event_providers = Arc::clone(&providers);
-                            let arc_event_hook =
-                                Arc::new(move |context: gh::poller::ArcEventContext| {
-                                    let database = Arc::clone(&arc_event_database);
-                                    let providers = Arc::clone(&arc_event_providers);
-                                    tauri::async_runtime::spawn(async move {
-                                        let arc_id = context.arc_id.clone();
-                                        let kind = context.kind;
-                                        if let Err(error) =
-                                            handle_gh_arc_event(database, providers, context).await
-                                        {
-                                            // A failed send leaves no row in
-                                            // `session_messages` (see
-                                            // `send_system_notice`), so the
-                                            // poller's own next-tick
-                                            // re-evaluation falls through to
-                                            // the ordinary check-failure
-                                            // follow-up for a `ChecksFailing`
-                                            // kind — nothing else to do here
-                                            // beyond logging.
-                                            tracing::warn!(
-                                                %arc_id,
-                                                ?kind,
-                                                ?error,
-                                                "failed to handle gh arc event"
-                                            );
-                                        }
-                                    });
-                                });
-                            // Awaited inside the tick: the watch pass moves
-                            // its cursors only once the message row exists.
-                            let watch_providers = Arc::clone(&providers);
-                            let watch_notice_hook: gh::watch::PrWatchNoticeHook =
-                                Arc::new(move |notice: gh::watch::PrWatchNotice| {
-                                    let providers = Arc::clone(&watch_providers);
-                                    Box::pin(async move {
-                                        providers
-                                            .send_system_notice(
-                                                notice.message_id,
-                                                &notice.session_id,
-                                                notice.session_id.clone(),
-                                                format!("PR #{} watch", notice.pr_number),
-                                                notice.body,
-                                            )
-                                            .await
-                                    })
-                                });
-                            let gh_delta_tx = delta_tx.clone();
-                            let publish_delta = move |delta| {
-                                gh_delta_tx.send(delta);
-                            };
-                            let gh_poller = gh::poller::GhPoller::new(
-                                gh::poller::GhPollerConfig::new(
-                                    Arc::clone(&database),
-                                    gh_service,
-                                )
-                                .with_delta_publisher(Arc::new(publish_delta))
-                                .with_check_failure_hook(failure_hook)
-                                .with_pr_merged_hook(merged_hook)
-                                .with_arc_event_hook(arc_event_hook)
-                                .with_watch_notice_hook(watch_notice_hook),
-                            );
-                            // Defer start() onto the Tauri runtime — calling it
-                            // synchronously here panics with "there is no
-                            // reactor running" because Tauri's Tokio runtime
-                            // is not yet alive during setup().
-                            let gh_poller_for_start = Arc::clone(&gh_poller);
-                            tauri::async_runtime::spawn(async move {
-                                gh_poller_for_start.start();
-                            });
-                            let _ = state.gh_poller.set(gh_poller);
-                            let workspace_delta_tx = delta_tx.clone();
-                            let publish_delta = move |delta| {
-                                workspace_delta_tx.send(delta);
-                            };
-                            let workspaces = workspaces::WorkspaceService::with_services(
-                                Arc::clone(&database),
-                                publish_delta,
-                                lifecycle,
-                                Some(Arc::clone(&providers)),
-                                state.checks.get().cloned(),
-                                state.terminals.get().cloned(),
-                                Some(Arc::clone(&approvals)),
-                                Some(data_dir.join("side-chats")),
-                                Some(data_dir.join(workspaces::orchestration::ARCHIVE_RECOVERY_DIR)),
-                            );
-                            // Archive and project teardown evict the workspace's
-                            // warm `cursor-agent acp` process; without the pool
-                            // here that eviction is a no-op and the child
-                            // outlives its removed worktree.
-                            workspaces.set_cursor_acp(cursor_acp);
-                            workspaces.set_grok_acp(grok_acp);
-                            let workspaces_for_watchers = Arc::clone(&workspaces);
-                            let _ = state.workspaces.set(workspaces);
-                            tauri::async_runtime::spawn(routines::scheduler::run(routines::scheduler::SchedulerDependencies {
-                                database: Arc::clone(&database),
-                                workspaces: Arc::clone(&workspaces_for_watchers),
-                                providers: Arc::clone(&providers),
-                                runs: Arc::clone(&state.routine_runs),
-                                app_data_dir: user_data.clone(),
-                            }));
-                            if let Some(server) = session_launch_server {
-                                match server.start(
-                                    Some(app.handle().clone()),
-                                    Arc::clone(&database),
-                                    Arc::clone(&workspaces_for_watchers),
-                                    Arc::clone(&providers),
-                                ) {
-                                    Ok(server) => {
-                                        let _ = state.session_launch_server.set(server);
-                                    }
-                                    Err(error) => {
-                                        tracing::warn!(?error, "session launch server failed to start")
-                                    }
-                                }
-                            }
-                            // Watcher refresh loops use tokio::spawn. Setup runs
-                            // during the synchronous macOS launch callback, so
-                            // defer restoration until Tauri's runtime is alive.
-                            let archive_timer = timer.clone();
-                            let after_turn_database = Arc::clone(&database);
-                            let after_turn_providers = Arc::clone(&providers);
-                            tauri::async_runtime::spawn(async move {
-                                // Archive recovery runs up to five blocking git
-                                // calls per interrupted row, each with a 30s
-                                // bound, so it gets a blocking thread rather
-                                // than the launch callback — and it lands
-                                // before the watchers, which is the order setup
-                                // ran it in.
-                                let recovery = Arc::clone(&workspaces_for_watchers);
-                                match tauri::async_runtime::spawn_blocking(move || {
-                                    recovery.recover_interrupted_archives()
-                                })
-                                .await
-                                {
-                                    Ok(Ok(_)) => {}
-                                    Ok(Err(error)) => tracing::warn!(?error, "failed to recover interrupted workspace archives"),
-                                    Err(error) => tracing::warn!(?error, "archive recovery task failed to join"),
-                                }
-                                archive_timer.mark("archives.recover");
-                                // A move or archive an agent scheduled for the
-                                // end of its turn, in a run that ended first.
-                                // After archive recovery, so a half-finished
-                                // archive is whole again before this decides
-                                // whether another one still has work to do.
-                                if let Some(registry) = after_turn_registry {
-                                    session_control::resume_after_turn_actions(
-                                        after_turn_database,
-                                        Arc::clone(&workspaces_for_watchers),
-                                        after_turn_providers,
-                                        registry,
-                                    )
-                                    .await;
-                                }
-                                match workspaces_for_watchers.start_open_watchers() {
-                                    // Workspaces sharing a checkout share its
-                                    // watch, so the two counts diverge sharply
-                                    // once a repo has many sessions.
-                                    Ok(watched) => tracing::info!(
-                                        watched,
-                                        os_watches =
-                                            workspaces_for_watchers.watched_checkout_count(),
-                                        "restored workspace watchers"
-                                    ),
-                                    Err(error) => {
-                                        tracing::warn!(?error, "failed to start workspace watchers")
-                                    }
-                                }
-                            });
-                            // Mark services as constructed only on the success
-                            // path — otherwise a failed DB open still reported a
-                            // healthy boot while every handler returned
-                            // SERVICE_ERROR.
-                            timer.mark("services.construct");
-                        }
-                        Err(e) => {
-                            tracing::warn!(error = ?e, "failed to open database");
-                            let state = tauri::Manager::state::<state::AppState>(app);
-                            let _ = state.db_open_error.set(e.to_string());
-                        }
-                    }
-                }
-            } else {
-                tracing::warn!("no app data dir; the database cannot be opened");
-                let state = tauri::Manager::state::<state::AppState>(app);
-                let _ = state
-                    .db_open_error
-                    .set("the app data directory could not be resolved".to_string());
-            }
-            if let Err(e) = menu::install_app_menu(app.handle(), cfg!(debug_assertions)) {
-                tracing::warn!(error = ?e, "failed to install app menu");
-            }
-            timer.mark("ipc.register");
-            // Deferred like the discovery warm-up: reading remote.json and
-            // binding a socket must never sit on the boot path, and the bridge
-            // stays off entirely unless the config enables it.
-            let remote_app = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                remote::start(remote_app).await;
-            });
-            // Session sync polls the provider transcript stores on a timer.
-            // Deliberately not a filesystem watcher: those stores churn on
-            // every keystroke of every running CLI.
-            let sync_app = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                sync_sweep_loop(sync_app).await;
-            });
-            // Archived worktrees past their recovery window are removed on the
-            // raw output prune's daily cadence, off the boot path.
-            let archive_expiry_app = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                archive_expiry_loop(archive_expiry_app).await;
-            });
-            if app.get_window("main").is_some() {
-                timer.mark("window.create");
-            }
-            tracing::info!(
-                boot_ms = timer.boot_to_now_ms() as u64,
-                phases = ?timer.snapshot(),
-                "tracing online"
-            );
-            Ok(())
-        })
+        .setup(move |app| setup(app, &timer))
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
@@ -1289,941 +179,531 @@ pub fn run() {
         });
 }
 
-/// Remove archive recovery checkouts older than `ARCHIVE_RECOVERY_EXPIRY`, once
-/// a day. Services are read from state per tick, like the sync sweep, so the
-/// loop holds no service alive and skips a tick the database never opened for.
-async fn archive_expiry_loop(app: tauri::AppHandle) {
-    use tauri::Manager;
-
-    let mut interval = tokio::time::interval_at(
-        tokio::time::Instant::now() + persistence::database::PRUNE_STARTUP_DELAY,
-        persistence::database::PRUNE_INTERVAL,
-    );
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    loop {
-        interval.tick().await;
-        let Some(workspaces) = app
-            .state::<crate::state::AppState>()
-            .workspaces
-            .get()
-            .cloned()
-        else {
-            continue;
-        };
-        let archived_before =
-            std::time::SystemTime::now() - workspaces::orchestration::ARCHIVE_RECOVERY_EXPIRY;
-        match tauri::async_runtime::spawn_blocking(move || {
-            workspaces.expire_archive_recoveries(archived_before)
-        })
-        .await
-        {
-            Ok(removed) => tracing::info!(removed, "archive recovery expiry sweep finished"),
-            Err(error) => tracing::warn!(?error, "archive recovery expiry task failed to join"),
-        }
+/// The Tauri setup hook: tracing, the profile, the database, and every
+/// service. Runs once, on the main thread, before the first window shows.
+fn setup(
+    app: &mut tauri::App,
+    timer: &Arc<StartupTimer>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    timer.mark("setup.enter");
+    // Tracing init is deferred to setup() because `app.path()` is
+    // only valid here — that's how we resolve the user_data_dir
+    // the release-mode rolling-file appender writes into.
+    let user_data = util::data_dir::app_data_dir(app).ok();
+    if let Err(e) = util::tracing_init::init(user_data.as_deref()) {
+        eprintln!("argmax: tracing init failed: {e}");
     }
-}
-
-/// How often the provider transcript stores are re-scanned. Slow on purpose:
-/// an import is a convenience, and a sweep stats every transcript file.
-const SYNC_SWEEP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
-
-/// Poll for sessions started outside Argmax. The first sweep is also the
-/// catch-up for everything that happened while the app was closed.
-async fn sync_sweep_loop(app: tauri::AppHandle) {
-    use crate::util::sync::LockOrRecover;
-    use tauri::Manager;
-
-    let Ok(app_data_dir) = crate::util::data_dir::app_data_dir(&app) else {
-        tracing::warn!("session sync disabled: no app data dir");
-        return;
-    };
-    let mut interval = tokio::time::interval(SYNC_SWEEP_INTERVAL);
-    // A sweep that overran its tick must not be followed by a burst of
-    // catch-up sweeps: they would all scan the same unchanged files.
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    loop {
-        interval.tick().await;
-        let config = crate::sync::load_or_create_config(&app_data_dir);
-        // Clone the handles out and drop the `State` borrow before awaiting.
-        let (database, workspaces, sweep_lock) = {
-            let state = app.state::<crate::state::AppState>();
-            let (Some(database), Some(workspaces)) = (state.db.get(), state.workspaces.get())
-            else {
-                continue;
-            };
-            (
-                Arc::clone(database),
-                Arc::clone(workspaces),
-                Arc::clone(&state.sync_sweep),
-            )
-        };
-        // The sweep stats every transcript file under the provider store and
-        // writes SQLite, so it belongs on the blocking pool, not on a worker.
-        let outcome = tauri::async_runtime::spawn_blocking(move || {
-            let _serialized = sweep_lock.lock_or_recover("sync sweep");
-            crate::sync::run_sync(
-                &database,
-                &workspaces,
-                &config,
-                &crate::sync::home_dir(),
-                crate::sync::now_ms(),
-            )
-        })
-        .await;
-        let outcome = match outcome {
-            Ok(outcome) => outcome,
-            Err(error) => {
-                tracing::warn!(?error, "session sync sweep task failed to join");
-                continue;
-            }
-        };
-        let report = match outcome {
-            Ok(outcome) => {
-                if outcome.imported > 0 || outcome.pruned > 0 || outcome.extended > 0 {
-                    tracing::info!(
-                        imported = outcome.imported,
-                        extended = outcome.extended,
-                        pruned = outcome.pruned,
-                        "session sync sweep"
+    timer.mark("tracing.init");
+    // Resolve the profile once, here, where `app.path()` is finally
+    // valid. Handlers the remote bridge dispatches have no AppHandle
+    // to resolve it from, so `remote.json` and everything else keyed
+    // to the profile is read through AppState from now on.
+    if let Some(app_data_dir) = util::data_dir::ensure_app_data_dir(app) {
+        let state = tauri::Manager::state::<state::AppState>(app);
+        let _ = state.app_data_dir.set(app_data_dir);
+    }
+    // Keep macOS App Nap from suspending the webview while the window is
+    // backgrounded — otherwise emitted `dashboard:delta` events don't
+    // reach the renderer until the user refocuses, so finished turns
+    // look stuck on the thinking bubble.
+    util::app_nap::prevent_app_nap();
+    // Resolving the login shell runs `zsh -lic`, which costs whatever
+    // the user's rc files cost. Every git command needs its PATH, so
+    // pay it here on a plain thread rather than letting the first
+    // status poll block a runtime worker on someone else's `.zshrc`.
+    std::thread::spawn(argmax_process::login_shell::warm);
+    // Warm provider discovery in the background so the first surface
+    // that needs it (WelcomePane, settings, launcher availability)
+    // reads cached reports instead of paying the cold probe cost
+    // (`cursor-agent --version` alone runs ~350ms).
+    let provider_discovery =
+        Arc::clone(&tauri::Manager::state::<state::AppState>(app).provider_discovery);
+    tauri::async_runtime::spawn(async move {
+        provider_discovery.discover_all().await;
+    });
+    if let Some(user_data) = user_data.as_ref() {
+        let data_dir = user_data.join("local-state");
+        if let Err(e) = std::fs::create_dir_all(&data_dir) {
+            tracing::warn!(error = ?e, path = %data_dir.display(), "failed to create data directory");
+            // No data directory means the database will never open, so
+            // record the reason: without one every handler reports
+            // "startup may still be in progress" forever.
+            let state = tauri::Manager::state::<state::AppState>(app);
+            let _ = state.db_open_error.set(format!(
+                "could not create the data directory {}: {e}",
+                data_dir.display()
+            ));
+        } else {
+            let state = tauri::Manager::state::<state::AppState>(app);
+            let _ = state.attachments.set(Arc::new(
+                attachments::store::AttachmentStore::from_data_dir(&data_dir),
+            ));
+            // Refuse to run against local state another live instance
+            // owns: the boot recovery below would mark that instance's
+            // running sessions failed (they look orphaned from here).
+            match util::instance_lock::acquire(&data_dir) {
+                Ok(Some(lock)) => {
+                    // Held until process exit; nothing reads it back.
+                    std::mem::forget(lock);
+                }
+                Ok(None) => {
+                    tracing::error!(
+                        path = %data_dir.display(),
+                        "another Argmax instance owns the local state; exiting \
+                         (a second instance needs its own ARGMAX_DATA_DIR, \
+                         e.g. `npm run tauri:dev:isolated`)"
+                    );
+                    // Tauri builds the config's `main` window before the
+                    // setup hook runs; hide it so the doomed instance
+                    // doesn't flash a dead UI behind the dialog.
+                    if let Some(window) = app.get_window("main") {
+                        let _ = window.hide();
+                    }
+                    use tauri_plugin_dialog::DialogExt;
+                    app.dialog()
+                        .message(
+                            "Argmax is already running. Use the existing window, or \
+                             start a second instance on its own profile with \
+                             ARGMAX_DATA_DIR (npm run tauri:dev:isolated).",
+                        )
+                        .title("Argmax is already running")
+                        .kind(tauri_plugin_dialog::MessageDialogKind::Warning)
+                        .show(|_| std::process::exit(0));
+                    // The process idles (window hidden) until the
+                    // dialog's exit callback fires.
+                    return Ok(());
+                }
+                Err(error) => {
+                    // A missing lock only loses the double-launch
+                    // guard; the app itself still works.
+                    tracing::warn!(
+                        ?error,
+                        "could not create the instance lock; continuing unlocked"
                     );
                 }
-                crate::sync::SyncReport::ok(outcome)
             }
-            Err(error) => {
-                tracing::warn!(?error, "session sync sweep failed");
-                crate::sync::SyncReport::failed(error.to_string())
+            match argmax_store::Database::open(data_dir.join("argmax.sqlite")) {
+                Ok(database) => start_services(app, timer, user_data, &data_dir, database),
+                Err(e) => {
+                    tracing::warn!(error = ?e, "failed to open database");
+                    let state = tauri::Manager::state::<state::AppState>(app);
+                    let _ = state.db_open_error.set(e.to_string());
+                }
             }
-        };
-        *app.state::<crate::state::AppState>()
-            .sync_report
-            .lock_or_recover("sync report") = Some(report);
-    }
-}
-
-async fn handle_gh_check_failure(
-    database: Arc<persistence::Database>,
-    providers: Arc<providers::session_service::ProviderSessionService>,
-    notifications: Arc<state::LiveNotificationService>,
-    app_data_dir: std::path::PathBuf,
-    context: gh::poller::CheckFailureContext,
-) -> error::ArgmaxResult<()> {
-    let (session, pr, input) = {
-        let connection = database.connection();
-        let session = persistence::sessions::find_session_by_id(&connection, &context.session_id)?;
-        let workspace =
-            persistence::workspaces::find_workspace_by_id(&connection, &context.workspace_id)?;
-        persistence::projects::require_project(&connection, &workspace.project_id)?;
-        let pr = persistence::gh::list_gh_pr_for_session(&connection, &context.session_id)?
-            .into_iter()
-            .find(|row| row.pr_number == context.pr_number && row.head_sha == context.head_sha)
-            .unwrap_or_else(|| persistence::gh::GhPrRecord {
-                session_id: context.session_id.clone(),
-                pr_number: context.pr_number,
-                head_sha: context.head_sha.clone(),
-                last_seen_check_state: "failure".to_string(),
-                updated_at: persistence::time::now_iso(),
-                pr_state: Some("OPEN".to_string()),
-                notified_at: None,
-                pr_created_at: None,
-                pr_merged_at: None,
-                // Display-only fallback for a row that went missing between
-                // poll and notify; never persisted, so leave the branch unset
-                // rather than guessing it from the workspace's current one.
-                head_ref_name: None,
-            });
-        let agent = default_agent::read_default_agent(&app_data_dir);
-        let input = build_check_failure_follow_up_input(&workspace.id, &agent, &context)?;
-        (session, pr, input)
-    };
-
-    if let Err(error) = notifications.notify_check_failure(&session, &pr) {
-        tracing::warn!(?error, session_id = %session.id, "failed to fire check-failure notification");
-    }
-    providers.launch(input).await?;
-    let connection = database.connection();
-    persistence::gh::mark_gh_pr_notified(
-        &connection,
-        &context.session_id,
-        context.pr_number,
-        &context.head_sha,
-        &persistence::time::now_iso(),
-    )
-}
-
-/// Notifies a live Arc's coordinator that a member's PR changed state.
-/// Delivered on the same path `session_message` and the completion notice
-/// use — `send_system_notice` — so an idle coordinator wakes with it and a
-/// busy one collects it from its inbox. `context.message_id` is the poller's
-/// own deterministic id (`gh::poller::arc_event_message_id`): stable for this
-/// exact transition across a restart, and identical for every session in the
-/// Arc observing the same PR in the same tick, so `INSERT OR IGNORE`
-/// collapses concurrent observers into one delivery.
-///
-/// For a `ChecksFailing` kind this does *not* suppress the ordinary
-/// check-failure follow-up by itself — the poller decides that at delivery
-/// time. `send_system_notice` rolls its insert back and returns `Err` when
-/// the send genuinely fails, so a failure here leaves no
-/// `session_messages` row, and the poller's own next-tick re-evaluation (see
-/// `gh::poller::detect_transition`) falls through to the ordinary follow-up
-/// because it finds nothing to suppress on. Only a successful delivery keeps
-/// it suppressed.
-async fn handle_gh_arc_event(
-    database: Arc<persistence::Database>,
-    providers: Arc<providers::session_service::ProviderSessionService>,
-    context: gh::poller::ArcEventContext,
-) -> error::ArgmaxResult<()> {
-    let (member_label, project_id, project_name, pr_title, pr_url) = {
-        let connection = database.connection();
-        let workspace =
-            persistence::workspaces::find_workspace_by_id(&connection, &context.workspace_id)?;
-        let project = persistence::projects::require_project(&connection, &workspace.project_id)?;
-        let pr = persistence::gh::list_session_prs(&connection, &context.session_id)?
-            .into_iter()
-            .find(|pr| pr.pr_number == context.pr_number);
-        (
-            workspace.task_label,
-            workspace.project_id,
-            project.name,
-            pr.as_ref().and_then(|pr| pr.title.clone()),
-            pr.as_ref().and_then(|pr| pr.url.clone()),
-        )
-    };
-    let title = pr_title.unwrap_or_else(|| "untitled".to_string());
-    let url = pr_url.clone().unwrap_or_default();
-    let head7: String = context.head_sha.chars().take(7).collect();
-    let status = match context.kind {
-        gh::poller::ArcEventKind::ChecksFailing => format!("checks failing on {head7}"),
-        gh::poller::ArcEventKind::ChecksPassing => format!("checks passing on {head7}"),
-        gh::poller::ArcEventKind::Merged => "merged".to_string(),
-    };
-    let body = format!(
-        "Arc \"{}\": PR #{} ({}) in {} — {}. Member session {} ({}). {}",
-        context.arc_name,
-        context.pr_number,
-        title,
-        project_name,
-        status,
-        context.session_id,
-        member_label,
-        url,
-    );
-    providers
-        .send_system_notice(
-            context.message_id.clone(),
-            &context.coordinator_session_id,
-            context.session_id.clone(),
-            member_label,
-            body,
-        )
-        .await?;
-    // Recorded once the coordinator has the message, so the timeline never
-    // shows an event the coordinator was not told about.
-    let kind = match context.kind {
-        gh::poller::ArcEventKind::ChecksFailing => {
-            persistence::arc_events::ArcEventKind::PrChecksFailing
         }
-        gh::poller::ArcEventKind::ChecksPassing => {
-            persistence::arc_events::ArcEventKind::PrChecksPassing
-        }
-        gh::poller::ArcEventKind::Merged => persistence::arc_events::ArcEventKind::PrMerged,
-    };
-    let connection = database.connection();
-    let mut event = persistence::arc_events::NewArcEvent::new(
-        format!("pr:{}", context.message_id),
-        &context.arc_id,
-        kind,
-        title,
+    } else {
+        tracing::warn!("no app data dir; the database cannot be opened");
+        let state = tauri::Manager::state::<state::AppState>(app);
+        let _ = state
+            .db_open_error
+            .set("the app data directory could not be resolved".to_string());
+    }
+    if let Err(e) = menu::install_app_menu(app.handle(), cfg!(debug_assertions)) {
+        tracing::warn!(error = ?e, "failed to install app menu");
+    }
+    timer.mark("ipc.register");
+    // Deferred like the discovery warm-up: reading remote.json and
+    // binding a socket must never sit on the boot path, and the bridge
+    // stays off entirely unless the config enables it.
+    let remote_app = app.handle().clone();
+    tauri::async_runtime::spawn(async move {
+        remote::start(remote_app).await;
+    });
+    // Session sync polls the provider transcript stores on a timer.
+    // Deliberately not a filesystem watcher: those stores churn on
+    // every keystroke of every running CLI.
+    let sync_app = app.handle().clone();
+    tauri::async_runtime::spawn(async move {
+        sync::sweep::run(sync_app).await;
+    });
+    // Archived worktrees past their recovery window are removed on the
+    // raw output prune's daily cadence, off the boot path.
+    let archive_expiry_app = app.handle().clone();
+    tauri::async_runtime::spawn(async move {
+        workspaces::archive_expiry::run(archive_expiry_app).await;
+    });
+    if app.get_window("main").is_some() {
+        timer.mark("window.create");
+    }
+    tracing::info!(
+        boot_ms = timer.boot_to_now_ms() as u64,
+        phases = ?timer.snapshot(),
+        "tracing online"
     );
-    event.session_id = Some(&context.session_id);
-    event.project_id = Some(&project_id);
-    event.status = (!matches!(context.kind, gh::poller::ArcEventKind::Merged)).then_some(head7);
-    event.pr_number = Some(context.pr_number);
-    event.pr_url = pr_url.as_deref();
-    persistence::arc_events::record_arc_event(&connection, &event)?;
     Ok(())
 }
 
-/// Disposes of a workspace whose PR has merged, for projects that asked for
-/// it. Never forced: a dirty worktree returns to `kept` instead of being
-/// deleted, and uncommitted work outliving a merged PR is exactly the case
-/// worth keeping.
-async fn archive_merged_workspace(
-    workspaces: Arc<workspaces::WorkspaceService>,
-    database: Arc<persistence::database::Database>,
-    context: gh::poller::MergedPrContext,
+/// Builds every service on an open database and starts the background work
+/// that depends on them. The order is load-bearing: see the comments on each
+/// recovery pass.
+fn start_services(
+    app: &mut tauri::App,
+    timer: &Arc<StartupTimer>,
+    user_data: &std::path::Path,
+    data_dir: &std::path::Path,
+    database: argmax_store::Database,
 ) {
-    use persistence::projects::MergeCleanup;
-    let result = match context.cleanup {
-        MergeCleanup::Off => return,
-        MergeCleanup::Archive => {
-            let workspace_id = match ipc::validation::WorkspaceId::try_from(
-                context.workspace_id.clone(),
-            ) {
-                Ok(workspace_id) => workspace_id,
-                Err(error) => {
-                    tracing::warn!(workspace_id = %context.workspace_id, ?error, "archive on merge: invalid workspace id");
-                    return;
-                }
-            };
-            workspaces
-                .archive(ipc::inputs::WorkspacesArchiveInput {
-                    workspace_id,
-                    force: Some(false),
-                })
-                .await
-        }
-        MergeCleanup::RemoveCheckout => {
-            workspaces
-                .remove_merged_checkout(&context.workspace_id, &context.merged_head)
-                .await
-        }
-    };
-    match result {
-        Ok(result) if result.workspace.state == "kept" => tracing::info!(
-            workspace_id = %result.workspace.id,
-            pr_number = context.pr_number,
-            changed_files = result.workspace.changed_files,
-            "merge cleanup: kept the workspace and its worktree",
-        ),
-        Ok(result) => {
-            tracing::info!(
-                workspace_id = %result.workspace.id,
-                pr_number = context.pr_number,
-                cleanup = context.cleanup.as_wire(),
-                "merge cleanup: the PR merged, so the workspace was archived",
-            );
-            // With the checkout gone, nothing has the branch checked out, so
-            // PR cleanup can delete it when its tip is the merged head.
-            if result.workspace.checkout_removed_at.is_some() {
-                let service = gh::service::GhService::new(Arc::clone(&database));
-                match git::pr_cleanup::cleanup_merged_pr(
-                    &database,
-                    &service,
-                    &context.session_id,
-                    context.pr_number,
-                )
-                .await
-                {
-                    Ok(report) => tracing::info!(
-                        pr_number = context.pr_number,
-                        report = %report.text,
-                        "merge cleanup: PR cleanup after removing the checkout",
-                    ),
-                    Err(error) => tracing::warn!(
-                        pr_number = context.pr_number,
-                        ?error,
-                        "merge cleanup: PR cleanup after removing the checkout failed",
-                    ),
-                }
-            }
-        }
-        Err(error) => tracing::warn!(
-            workspace_id = %context.workspace_id,
-            pr_number = context.pr_number,
-            ?error,
-            "merge cleanup failed",
-        ),
+    timer.mark("db.open");
+    let database = Arc::new(database);
+    start_raw_output_prune(&database);
+    let state = tauri::Manager::state::<state::AppState>(app);
+    let _ = state.db.set(Arc::clone(&database));
+    providers::opencode_gateway::load(&database.read_connection());
+    // Off by default; registers the saved chord only if
+    // the user turned window snapshots on.
+    window_snapshot::shortcut::install(app.handle(), &database.read_connection());
+    let usage_scanner = Arc::new(usage::scanner::UsageScanner::new(
+        Arc::clone(&database),
+        sync::home_dir(),
+    ));
+    // A ledger that has completed before is refreshed
+    // in the background so the page opens fresh. The
+    // first cold sweep reads gigabytes and waits for
+    // the user to ask for it.
+    if usage_scanner.has_completed_once() {
+        usage::scanner::spawn_sweep(&usage_scanner);
     }
-}
-
-fn build_check_failure_follow_up_input(
-    workspace_id: &str,
-    agent: &default_agent::DefaultAgent,
-    context: &gh::poller::CheckFailureContext,
-) -> error::ArgmaxResult<ipc::inputs::ProvidersLaunchInput> {
-    let provider = providers::runtime::parse_provider(&agent.provider)?;
-    serde_json::from_value(json!({
-        "workspaceId": workspace_id,
-        "provider": agent.provider,
-        "prompt": format!(
-            "Checks on PR #{} (commit {}) are failing. Run `gh pr checks {}` to see which checks failed, then investigate and fix.",
-            context.pr_number,
-            context.head_sha.chars().take(12).collect::<String>(),
-            context.pr_number
-        ),
-        "modelLabel": agent.model_label,
-        "modelId": agent.model_id,
-        "reasoningEffort": agent.reasoning_effort,
-        "permissionMode": agent.permission_mode_for(provider),
-        "cols": 120,
-        "rows": 36
-    }))
-    .map_err(|error| error::ArgmaxError::service("GH_FOLLOW_UP_INPUT_INVALID", error.to_string()))
-}
-
-/// Per-provider catalog default, mirroring PROVIDER_MODEL_DEFAULTS in
-/// src/shared/providerModels.ts. Used where a provider is already fixed and
-/// only its model needs filling in (session control, imported sessions); the
-/// app-wide default agent lives in [`default_agent`].
-#[derive(Clone, Copy)]
-pub struct ProviderDefaults {
-    pub model_label: &'static str,
-    pub model_id: &'static str,
-    pub reasoning_effort: Option<&'static str>,
-}
-
-pub fn provider_defaults(provider: &str) -> ProviderDefaults {
-    match provider {
-        "codex" => ProviderDefaults {
-            model_label: "GPT-6.1 Sol",
-            model_id: "gpt-6.1-sol",
-            reasoning_effort: Some("medium"),
-        },
-        "cursor" => ProviderDefaults {
-            model_label: "Grok 4.7 (Cursor)",
-            model_id: "grok-4.7-medium",
-            reasoning_effort: Some("medium"),
-        },
-        "opencode" => ProviderDefaults {
-            model_label: "GLM-5.3-Flash",
-            model_id: "openrouter/z-ai/glm-5.3-flash",
-            reasoning_effort: Some("high"),
-        },
-        "grok" => ProviderDefaults {
-            model_label: "Grok 4.7",
-            model_id: "grok-4.7",
-            reasoning_effort: Some("medium"),
-        },
-        _ => ProviderDefaults {
-            model_label: "Opus 5.5",
-            model_id: "claude-opus-5-5",
-            reasoning_effort: Some("medium"),
-        },
+    let _ = state.usage_scanner.set(usage_scanner);
+    let activity_scanner = Arc::new(activity::scanner::ActivityScanner::new(Arc::clone(
+        &database,
+    )));
+    // Same split as the usage ledger: one that has
+    // completed before is refreshed in the background so
+    // the page opens fresh, while the first cold sweep
+    // walks every repository's history and waits to be
+    // asked for.
+    if activity_scanner.has_completed_once() {
+        activity::scanner::spawn_sweep(&activity_scanner);
     }
-}
-
-/// Sidebar label for a model id the catalog may not list. Rust has no label
-/// catalog (labels live in `src/shared/providerModels.ts`), so a Claude API id
-/// is read as `claude-<family>-<version…>` ("claude-opus-5" → "Opus 5",
-/// "claude-haiku-4-5-20251001" → "Haiku 4.5"); any other id is its own label.
-/// Clients prefer the catalog's label whenever it knows the id.
-pub fn fallback_model_label(model_id: &str) -> String {
-    let Some(rest) = model_id.strip_prefix("claude-") else {
-        return model_id.to_string();
-    };
-    let mut parts = rest.split('-');
-    let family = parts.next().unwrap_or_default();
-    // A date suffix is eight digits; a version segment is one or two.
-    let version: Vec<&str> = parts
-        .take_while(|part| {
-            (1..=2).contains(&part.len()) && part.bytes().all(|b| b.is_ascii_digit())
-        })
-        .collect();
-    let mut chars = family.chars();
-    match chars.next() {
-        Some(first) if first.is_ascii_alphabetic() => {
-            let name = format!("{}{}", first.to_ascii_uppercase(), chars.as_str());
-            if version.is_empty() {
-                name
-            } else {
-                format!("{name} {}", version.join("."))
-            }
+    let _ = state.activity_scanner.set(activity_scanner);
+    let dock_badge = Arc::new(dock::DockBadgeService::new(
+        dock::TauriDockBadgeSink::new(app.handle().clone()),
+        {
+            let database = Arc::clone(&database);
+            Arc::new(move || {
+                argmax_store::dashboard::count_attention(&database.read_connection())
+                    .map(|counts| counts.total)
+            })
+        },
+    ));
+    let _ = state.dock_badge.set(Arc::clone(&dock_badge));
+    // Approvals left pending by the previous run badge
+    // the dock from the first frame.
+    if let Err(error) = dock_badge.update() {
+        tracing::warn!(?error, "failed to set the dock badge at boot");
+    }
+    // Warm the FTS5 message index on the blocking pool so the
+    // user's first ⌘K message search skips the cold-start cost:
+    // FTS5 module init, compiling the `session:search` statement
+    // (cached and reused for every search after), and paging in
+    // the index structure. The throwaway term matches nothing, so
+    // it reads few pages and won't contend with startup reads; a
+    // failure (empty/fresh DB) is traced, never fatal.
+    let warm_db = Arc::clone(&database);
+    tauri::async_runtime::spawn_blocking(move || {
+        let connection = warm_db.connection();
+        if let Err(error) = argmax_store::learnings::search_events(&connection, "warmup", 1) {
+            tracing::trace!(?error, "fts warm-up query failed");
         }
-        _ => model_id.to_string(),
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BindingsExportChange {
-    Unchanged,
-    WouldCreate,
-    WouldUpdate,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BindingsExportPlan {
-    pub path: PathBuf,
-    pub change: BindingsExportChange,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BindingsExportTargets {
-    pub bindings: PathBuf,
-    pub channels: PathBuf,
-    pub schemas: PathBuf,
-}
-
-impl Default for BindingsExportTargets {
-    fn default() -> Self {
-        Self {
-            bindings: PathBuf::from("src/shared/bindings.d.ts"),
-            channels: PathBuf::from("src-tauri/tests/fixtures/channels.txt"),
-            schemas: PathBuf::from("src/shared/ipcSchemas.ts"),
-        }
-    }
-}
-
-pub fn render_bindings() -> Result<String, String> {
-    let generated = ipc::specta_builder()
-        .export_str(specta_typescript())
-        .map_err(|error| error.to_string())?;
-    Ok(normalize_generated_bindings(&generated))
-}
-
-pub fn render_ipc_channels() -> String {
-    ipc::REGISTERED_CHANNELS.join("\n") + "\n"
-}
-
-pub fn render_ipc_schemas() -> String {
-    let mut schemas = String::from(
-        "// Generated from `ipc::catalogue` by `export-bindings`.\n\
-         // Rust owns channel names, signatures, and transport availability.\n\n\
-         import type { commands } from './bindings.js';\n\n\
-         export const IPC_CHANNELS = [\n",
+    });
+    let notifications = Arc::new(notifications::NotificationService::new(
+        notifications::main_window_focus_probe(app.handle().clone()),
+        notifications::desktop_sink(app.handle().clone()),
+    ));
+    let _ = state.notifications.set(Arc::clone(&notifications));
+    let delta_tx = event_delivery::spawn_dashboard_delivery(
+        app.handle(),
+        state.remote_events.clone(),
+        Arc::clone(&dock_badge),
     );
-    for channel in ipc::REGISTERED_CHANNELS {
-        schemas.push_str("  \"");
-        schemas.push_str(channel);
-        schemas.push_str("\",\n");
-    }
-    schemas.push_str("] as const;\n\nexport type IpcChannel = (typeof IPC_CHANNELS)[number];\n");
-    schemas.push_str("\ntype Commands = typeof commands;\nexport interface IpcCommands {\n");
-    for contract in ipc::catalogue::COMMAND_CONTRACTS {
-        let mut parts = contract.method.split('_');
-        let mut method = parts.next().unwrap_or_default().to_owned();
-        for part in parts {
-            let mut chars = part.chars();
-            if let Some(first) = chars.next() {
-                method.extend(first.to_uppercase());
-                method.extend(chars);
+    let notifications_for_delta = Arc::clone(&notifications);
+    let push_database = Arc::clone(&database);
+    let ntfy_app = app.handle().clone();
+    let provider_delta_tx = delta_tx.clone();
+    let publish_delta = move |delta: providers::flush_queue::DashboardDelta| {
+        let app_state = tauri::Manager::state::<state::AppState>(&ntfy_app);
+        let ntfy = app_state
+            .ntfy
+            .read()
+            .ok()
+            .and_then(|publisher| publisher.clone());
+        let apns = app_state
+            .apns
+            .read()
+            .ok()
+            .and_then(|publisher| publisher.clone());
+        let keep_awake = Arc::clone(&app_state.keep_awake);
+        for session in &delta.sessions {
+            if let Err(error) = notifications_for_delta.notify(session) {
+                tracing::warn!(
+                    ?error,
+                    session_id = %session.id,
+                    "failed to fire terminal-state notification"
+                );
             }
+            // The push body leads with what the agent
+            // last said, so read it once for both sinks
+            // — and only for a row that will actually
+            // push, since a streaming turn walks
+            // through here on every chunk.
+            let pushes = (ntfy.is_some() || apns.is_some()) && remote::signal::signals(session);
+            let latest_answer = pushes
+                .then(|| {
+                    argmax_store::events::latest_agent_message(
+                        &push_database.read_connection(),
+                        &session.id,
+                    )
+                    .unwrap_or_else(|error| {
+                        tracing::warn!(
+                            ?error,
+                            session_id = %session.id,
+                            "failed to read the latest agent message for a push"
+                        );
+                        None
+                    })
+                })
+                .flatten();
+            if let Some(ntfy) = ntfy.as_ref() {
+                ntfy.observe(session, latest_answer.as_deref());
+            }
+            if let Some(apns) = apns.as_ref() {
+                apns.observe(session, latest_answer.as_deref());
+            }
+            keep_awake.observe(&session.id, session.state.is_active());
         }
-        schemas.push_str(&format!(
-            "  \"{}\": Commands[\"{method}\"];\n",
-            contract.channel
+        tracing::trace!(
+            sessions = delta.sessions.len(),
+            events = delta.events.len(),
+            raw_outputs = delta.raw_outputs.len(),
+            workspaces = delta.workspaces.len(),
+            "queuing dashboard:delta"
+        );
+        provider_delta_tx.send(delta);
+    };
+    let approval_delta_tx = delta_tx.clone();
+    let approvals =
+        approvals::service::ApprovalService::with_publisher(Arc::clone(&database), move |delta| {
+            approval_delta_tx.send(delta);
+        });
+    let _ = state.approvals.set(Arc::clone(&approvals));
+    let question_delta_tx = delta_tx.clone();
+    let questions =
+        questions::service::QuestionService::with_publisher(Arc::clone(&database), move |delta| {
+            question_delta_tx.send(delta);
+        });
+    let _ = state.questions.set(Arc::clone(&questions));
+    let (session_launch_server, session_launch_registry) =
+        match session_control::SessionLaunchServer::bind(Arc::clone(&database)) {
+            Ok((server, registry)) => (Some(server), Some(registry)),
+            Err(error) => {
+                tracing::warn!(?error, "session launch control unavailable");
+                (None, None)
+            }
+        };
+    let lifecycle = workspaces::lifecycle::WorkspaceLifecycle::new();
+    // Share the boot-warmed discovery cache so the first
+    // launch per provider skips the version/auth probe
+    // (`cursor-agent status` alone runs ~800 ms).
+    let cursor_acp = Arc::new(providers::cursor_acp::CursorAcpSessions::new());
+    let _ = state.cursor_acp.set(Arc::clone(&cursor_acp));
+    let grok_acp = Arc::new(providers::grok_acp::GrokAcpSessions::new());
+    let _ = state.grok_acp.set(Arc::clone(&grok_acp));
+    let provider_launcher: Arc<dyn providers::runtime::ProviderProcessLauncher> = Arc::new(
+        providers::runtime::RealProviderProcessLauncher::with_discovery(
+            (*state.provider_discovery).clone(),
+            session_launch_registry.clone(),
+            Arc::clone(&cursor_acp),
+        )
+        .with_approvals(Arc::clone(&approvals))
+        .with_questions(Arc::clone(&questions))
+        .with_grok_acp(Arc::clone(&grok_acp)),
+    );
+    // Kept for the boot-recovery pass below, which needs
+    // the same registry the socket hands out.
+    let after_turn_registry = session_launch_registry.clone();
+    let providers = providers::session_service::ProviderSessionService::new(
+        providers::session_service::ProviderSessionDeps {
+            database: Arc::clone(&database),
+            launcher: provider_launcher,
+            publish_delta: Arc::new(publish_delta),
+            lifecycle: Arc::clone(&lifecycle),
+            approvals: Some(Arc::clone(&approvals)),
+            questions: Some(Arc::clone(&questions)),
+            provider_discovery: Some(Arc::clone(&state.provider_discovery)),
+            session_control: session_launch_registry,
+        },
+    );
+    if let Err(error) = providers.recover_orphaned_sessions() {
+        tracing::warn!(?error, "failed to recover orphaned sessions");
+    }
+    timer.mark("sessions.recover");
+    let checkpoints = checkpoints::service::CheckpointService::new(Arc::clone(&database));
+    if let Err(error) = checkpoints.recover_interrupted_rewinds() {
+        tracing::warn!(?error, "failed to recover interrupted rewinds");
+    }
+    providers.set_checkpoint_service(checkpoints);
+    let _ = state.providers.set(Arc::clone(&providers));
+    // Last of the boot recovery: a recovered wake starts a
+    // turn, which must find the checkpoint service (the
+    // pre-turn mark) and the session-control registry
+    // already in place, and rewinds already settled.
+    if let Err(error) = providers.recover_completion_wakes() {
+        tracing::warn!(?error, "failed to recover completion wakes");
+    }
+    let (on_terminal_data, on_terminal_exit) =
+        event_delivery::spawn_terminal_delivery(app.handle(), state.remote_terminal_events.clone());
+    let terminals = terminal::service::TerminalService::with_lifecycle(
+        Arc::clone(&database),
+        on_terminal_data,
+        on_terminal_exit,
+        Arc::clone(&lifecycle),
+    );
+    let _ = state.terminals.set(terminals);
+    let _ = state
+        .checks
+        .set(checks::service::CheckService::with_lifecycle(
+            Arc::clone(&database),
+            Arc::clone(&lifecycle),
         ));
-    }
-    schemas.push_str("}\n\n\
-        type OptionalNullable<T> = { [K in keyof T as null extends T[K] ? never : K]: T[K] } &\n\
-          { [K in keyof T as null extends T[K] ? K : never]?: T[K] };\n\
-        export type IpcInput<C extends IpcChannel> = Parameters<IpcCommands[C]> extends [] ? Record<string, never> : OptionalNullable<Parameters<IpcCommands[C]>[0]>;\n\
-        type UnwrapResult<T> = T extends { status: 'ok'; data: infer D } ? D :\n\
-          T extends { status: 'error'; error: unknown } ? never : T;\n\
-        export type IpcOutput<C extends IpcChannel> = UnwrapResult<Awaited<ReturnType<IpcCommands[C]>>>;\n\
-        export type IpcArguments<C extends IpcChannel> = Record<string, never> extends IpcInput<C> ? [input?: IpcInput<C>] : [input: IpcInput<C>];\n");
-    schemas
-}
-
-pub fn plan_bindings_export(
-    targets: &BindingsExportTargets,
-) -> Result<Vec<BindingsExportPlan>, String> {
-    let rendered = [
-        (targets.bindings.clone(), render_bindings()?),
-        (targets.channels.clone(), render_ipc_channels()),
-        (targets.schemas.clone(), render_ipc_schemas()),
-    ];
-    rendered
-        .into_iter()
-        .map(|(path, content)| {
-            Ok(BindingsExportPlan {
-                change: file_export_change(&path, &content)?,
-                path,
-            })
-        })
-        .collect()
-}
-
-pub fn write_bindings_export(targets: &BindingsExportTargets) -> Result<(), String> {
-    std::fs::write(&targets.bindings, render_bindings()?).map_err(|error| error.to_string())?;
-    std::fs::write(&targets.channels, render_ipc_channels()).map_err(|error| error.to_string())?;
-    std::fs::write(&targets.schemas, render_ipc_schemas()).map_err(|error| error.to_string())
-}
-
-pub fn export_bindings(path: impl AsRef<Path>) -> Result<(), String> {
-    std::fs::write(path, render_bindings()?).map_err(|error| error.to_string())
-}
-
-pub fn export_ipc_inventory(
-    channels_path: impl AsRef<Path>,
-    schemas_path: impl AsRef<Path>,
-) -> Result<(), String> {
-    std::fs::write(channels_path, render_ipc_channels()).map_err(|error| error.to_string())?;
-    std::fs::write(schemas_path, render_ipc_schemas()).map_err(|error| error.to_string())
-}
-
-fn normalize_generated_bindings(generated: &str) -> String {
-    // Specta leaves spaces before newlines in documented object fields.
-    // Normalize its output so generated bindings pass the whitespace gate.
-    generated
-        .lines()
-        .map(str::trim_end)
-        .collect::<Vec<_>>()
-        .join("\n")
-        + "\n"
-}
-
-fn file_export_change(path: &Path, rendered: &str) -> Result<BindingsExportChange, String> {
-    match std::fs::read_to_string(path) {
-        Ok(existing) if existing == rendered => Ok(BindingsExportChange::Unchanged),
-        Ok(_) => Ok(BindingsExportChange::WouldUpdate),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            Ok(BindingsExportChange::WouldCreate)
+    let gh_service = gh::service::GhService::new(Arc::clone(&database));
+    match goals::service::GoalService::new(Arc::clone(&database), Arc::clone(&providers)) {
+        Ok(goals) => {
+            let _ = state.goals.set(goals);
         }
-        Err(error) => Err(error.to_string()),
+        Err(error) => tracing::error!(?error, "goal service failed to initialize"),
     }
-}
-
-fn specta_typescript() -> Typescript {
-    Typescript::default().bigint(BigIntExportBehavior::Number)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn fallback_model_label_reads_claude_api_ids() {
-        assert_eq!(fallback_model_label("claude-opus-5"), "Opus 5");
-        assert_eq!(fallback_model_label("claude-opus-5-5"), "Opus 5.5");
-        assert_eq!(
-            fallback_model_label("claude-haiku-4-5-20251001"),
-            "Haiku 4.5"
-        );
-        assert_eq!(fallback_model_label("claude-3-opus"), "claude-3-opus");
-        assert_eq!(fallback_model_label("gpt-6.1-sol"), "gpt-6.1-sol");
-    }
-
-    fn chunk(terminal_id: &str, data: &str) -> TerminalPush {
-        TerminalPush::Data(terminal::service::TerminalChunk {
-            terminal_id: terminal_id.to_string(),
-            data: data.to_string(),
-        })
-    }
-
-    fn exit(terminal_id: &str) -> TerminalPush {
-        TerminalPush::Exit(terminal::service::TerminalExitInfo {
-            terminal_id: terminal_id.to_string(),
-            exit_code: 0,
-            signal: None,
-        })
-    }
-
-    fn timeline_event(
-        id: &str,
-        session_id: &str,
-        event_type: &str,
-    ) -> persistence::events::TimelineEvent {
-        let payload = serde_json::json!({ "text": "payload" });
-        persistence::events::TimelineEvent {
-            id: id.to_string(),
-            session_id: session_id.to_string(),
-            r#type: event_type.to_string(),
-            message: "payload".to_string(),
-            semantic: persistence::timeline_semantics::derive(event_type, id, &payload),
-            payload,
-            created_at: "2026-01-01T00:00:00Z".to_string(),
-            row_cursor: Some(1),
-        }
-    }
-
-    fn raw_output(id: &str, session_id: &str) -> persistence::events::RawProviderOutput {
-        persistence::events::RawProviderOutput {
-            id: id.to_string(),
-            session_id: session_id.to_string(),
-            stream: "stdout".to_string(),
-            content: "raw payload".to_string(),
-            created_at: "2026-01-01T00:00:00Z".to_string(),
-            row_cursor: Some(1),
-        }
-    }
-
-    #[tokio::test]
-    async fn dashboard_delivery_replaces_an_overflowed_window_with_resync() {
-        let (delivery, mut receiver) = DashboardDelivery::new();
-        for index in 0..=DASHBOARD_DELIVERY_ITEMS {
-            delivery.send(providers::flush_queue::DashboardDelta {
-                removed_session_ids: vec![format!("session-{index}")],
-                ..Default::default()
-            });
-        }
-        assert!(delivery.resync_required.load(Ordering::Acquire));
-
-        let first = receiver.recv().await.expect("queued delivery");
-        let mut deferred = None;
-        let delta = prepare_dashboard_batch(
-            first,
-            &mut receiver,
-            &delivery.resync_required,
-            &delivery.generation,
-            &mut deferred,
-        )
-        .expect("resync delta");
-        assert!(delta.resync_required);
-        assert!(delta.dashboard_changed);
-        assert!(delta.removed_session_ids.is_empty());
-        assert!(
-            receiver.try_recv().is_err(),
-            "overflowed backlog was discarded"
-        );
-        assert_eq!(
-            delivery.byte_budget.available_permits(),
-            DASHBOARD_DELIVERY_BYTES,
-            "discarding the backlog releases its exact byte reservations"
-        );
-    }
-
-    #[tokio::test]
-    async fn dashboard_delivery_sends_transcript_hints_without_heavy_rows() {
-        let (delivery, mut receiver) = DashboardDelivery::new();
-        let mut events = Vec::with_capacity(10_000);
-        events.extend([
-            timeline_event("e1", "s1", "message.delta"),
-            timeline_event("e2", "s2", "session.moved"),
-        ]);
-        let mut outputs = Vec::with_capacity(10_000);
-        outputs.push(raw_output("r1", "s3"));
-        delivery.send(providers::flush_queue::DashboardDelta {
-            events,
-            raw_outputs: outputs,
-            removed_workspace_ids: vec!["w1".to_string()],
-            ..Default::default()
-        });
-
-        let DashboardDeliveryItem::Delta(queued) = receiver.recv().await.expect("queued") else {
-            panic!("expected a delta");
-        };
-        assert_eq!(queued.delta.changed_session_ids, vec!["s1", "s2", "s3"]);
-        assert_eq!(queued.delta.events.len(), 1);
-        assert_eq!(queued.delta.events[0].r#type, "session.moved");
-        assert!(queued.delta.raw_outputs.is_empty());
-        assert!(queued.delta.dashboard_changed);
-        assert!(queued.delta.removed_workspace_ids.is_empty());
-        assert_eq!(queued.delta.events.capacity(), queued.delta.events.len());
-        assert_eq!(queued.delta.raw_outputs.capacity(), 0);
-        assert_eq!(queued.delta.removed_workspace_ids.capacity(), 0);
-        assert_eq!(
-            queued.serialized_bytes,
-            serde_json::to_vec(&queued.delta).unwrap().len()
-        );
-    }
-
-    #[tokio::test]
-    async fn an_oversized_dashboard_delta_wakes_the_worker_with_resync() {
-        let (delivery, mut receiver) = DashboardDelivery::new();
-        let mut oversized_move = timeline_event("move", "s1", "session.moved");
-        oversized_move.message = "x".repeat(DASHBOARD_DELIVERY_BYTES + 1);
-        delivery.send(providers::flush_queue::DashboardDelta {
-            events: vec![oversized_move],
-            ..Default::default()
-        });
-
-        let first = receiver.recv().await.expect("resync wake");
-        let mut deferred = None;
-        let delta = prepare_dashboard_batch(
-            first,
-            &mut receiver,
-            &delivery.resync_required,
-            &delivery.generation,
-            &mut deferred,
-        )
-        .expect("resync delta");
-        assert!(delta.resync_required);
-    }
-
-    #[tokio::test]
-    async fn a_pre_overflow_sender_cannot_land_stale_metadata_after_resync() {
-        let (delivery, mut receiver) = DashboardDelivery::new();
-        delivery.require_resync();
-        let wake = receiver.recv().await.expect("wake");
-        let mut deferred = None;
-        let marker = prepare_dashboard_batch(
-            wake,
-            &mut receiver,
-            &delivery.resync_required,
-            &delivery.generation,
-            &mut deferred,
-        )
-        .expect("marker");
-        assert!(marker.resync_required);
-
-        let stale_delta = providers::flush_queue::DashboardDelta {
-            removed_session_ids: vec!["stale".to_string()],
-            ..Default::default()
-        };
-        let bytes = stale_delta.serialized_payload_bytes().unwrap();
-        let permit = Arc::clone(&delivery.byte_budget)
-            .try_acquire_many_owned(bytes as u32)
-            .unwrap();
-        delivery
-            .sender
-            .try_send(DashboardDeliveryItem::Delta(QueuedDashboardDelta {
-                delta: stale_delta,
-                serialized_bytes: bytes,
-                generation: 0,
-                _byte_permit: permit,
-            }))
-            .expect("inject delayed old-generation send");
-        let stale = receiver.recv().await.expect("stale item");
-        assert!(
-            prepare_dashboard_batch(
-                stale,
-                &mut receiver,
-                &delivery.resync_required,
-                &delivery.generation,
-                &mut deferred,
-            )
-            .is_none(),
-            "old-generation metadata must not follow a completed resync"
-        );
-    }
-
-    #[tokio::test]
-    async fn terminal_delivery_applies_lossless_backpressure_at_its_item_bound() {
-        let (sender, mut receiver) =
-            tokio::sync::mpsc::channel::<TerminalPush>(TERMINAL_DELIVERY_ITEMS);
-        let (filled_tx, filled_rx) = std::sync::mpsc::channel();
-        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
-        let producer = std::thread::spawn(move || {
-            for _ in 0..TERMINAL_DELIVERY_ITEMS {
-                sender
-                    .blocking_send(chunk("t1", "12345678"))
-                    .expect("queue open");
+    let failure_hook = gh::hooks::check_failure_hook(
+        &database,
+        &providers,
+        &notifications,
+        user_data.to_path_buf(),
+    );
+    let merged_hook = gh::hooks::merged_pr_hook(app.handle(), &database);
+    let arc_event_hook = gh::hooks::arc_event_hook(&database, &providers);
+    let watch_notice_hook = gh::hooks::watch_notice_hook(&providers);
+    let gh_delta_tx = delta_tx.clone();
+    let publish_delta = move |delta| {
+        gh_delta_tx.send(delta);
+    };
+    let gh_poller = gh::poller::GhPoller::new(
+        gh::poller::GhPollerConfig::new(Arc::clone(&database), gh_service)
+            .with_delta_publisher(Arc::new(publish_delta))
+            .with_check_failure_hook(failure_hook)
+            .with_pr_merged_hook(merged_hook)
+            .with_arc_event_hook(arc_event_hook)
+            .with_watch_notice_hook(watch_notice_hook),
+    );
+    // Defer start() onto the Tauri runtime — calling it
+    // synchronously here panics with "there is no
+    // reactor running" because Tauri's Tokio runtime
+    // is not yet alive during setup().
+    let gh_poller_for_start = Arc::clone(&gh_poller);
+    tauri::async_runtime::spawn(async move {
+        gh_poller_for_start.start();
+    });
+    let _ = state.gh_poller.set(gh_poller);
+    let workspace_delta_tx = delta_tx.clone();
+    let publish_delta = move |delta| {
+        workspace_delta_tx.send(delta);
+    };
+    let workspaces = workspaces::orchestration::WorkspaceService::with_services(
+        Arc::clone(&database),
+        publish_delta,
+        lifecycle,
+        Some(Arc::clone(&providers)),
+        state.checks.get().cloned(),
+        state.terminals.get().cloned(),
+        Some(Arc::clone(&approvals)),
+        Some(data_dir.join("side-chats")),
+        Some(data_dir.join(workspaces::orchestration::ARCHIVE_RECOVERY_DIR)),
+    );
+    // Archive and project teardown evict the workspace's
+    // warm `cursor-agent acp` process; without the pool
+    // here that eviction is a no-op and the child
+    // outlives its removed worktree.
+    workspaces.set_cursor_acp(cursor_acp);
+    workspaces.set_grok_acp(grok_acp);
+    let workspaces_for_watchers = Arc::clone(&workspaces);
+    let _ = state.workspaces.set(workspaces);
+    tauri::async_runtime::spawn(routines::scheduler::run(
+        routines::scheduler::SchedulerDependencies {
+            database: Arc::clone(&database),
+            workspaces: Arc::clone(&workspaces_for_watchers),
+            providers: Arc::clone(&providers),
+            runs: Arc::clone(&state.routine_runs),
+            app_data_dir: user_data.to_path_buf(),
+        },
+    ));
+    if let Some(server) = session_launch_server {
+        match server.start(
+            Some(app.handle().clone()),
+            Arc::clone(&database),
+            Arc::clone(&workspaces_for_watchers),
+            Arc::clone(&providers),
+        ) {
+            Ok(server) => {
+                let _ = state.session_launch_server.set(server);
             }
-            filled_tx.send(()).unwrap();
-            sender
-                .blocking_send(chunk("t1", "last"))
-                .expect("queue resumes");
-            finished_tx.send(()).unwrap();
-        });
-
-        filled_rx
-            .recv_timeout(std::time::Duration::from_secs(1))
-            .expect("producer filled queue");
-        assert_eq!(receiver.len(), TERMINAL_DELIVERY_ITEMS);
-        assert!(
-            finished_rx.try_recv().is_err(),
-            "producer must block instead of dropping output"
-        );
-        receiver.recv().await.expect("free one slot");
-        finished_rx
-            .recv_timeout(std::time::Duration::from_secs(1))
-            .expect("producer resumed after consumer made room");
-        drop(receiver);
-        producer.join().expect("producer thread");
-    }
-
-    #[test]
-    fn terminal_pushes_conflate_per_terminal_without_reordering_an_exit() {
-        let coalesced = coalesce_terminal_pushes(vec![
-            chunk("a", "one"),
-            chunk("b", "B1"),
-            chunk("a", "-two"),
-            exit("a"),
-            // Output that lands after the shell exited must stay behind the
-            // exit rather than being folded into the chunk in front of it.
-            chunk("a", "-late"),
-            chunk("b", "-B2"),
-        ]);
-
-        let rendered: Vec<(String, String)> = coalesced
-            .iter()
-            .map(|push| match push {
-                TerminalPush::Data(chunk) => {
-                    (chunk.terminal_id.clone(), format!("data:{}", chunk.data))
-                }
-                TerminalPush::Exit(info) => (info.terminal_id.clone(), "exit".to_string()),
-            })
-            .collect();
-
-        assert_eq!(
-            rendered,
-            vec![
-                ("a".to_string(), "data:one-two".to_string()),
-                ("b".to_string(), "data:B1-B2".to_string()),
-                ("a".to_string(), "exit".to_string()),
-                ("a".to_string(), "data:-late".to_string()),
-            ]
-        );
-    }
-
-    fn follow_up_context() -> gh::poller::CheckFailureContext {
-        gh::poller::CheckFailureContext {
-            session_id: "s1".to_string(),
-            workspace_id: "w1".to_string(),
-            pr_number: 7,
-            head_sha: "abcdef1234567890".to_string(),
+            Err(error) => {
+                tracing::warn!(?error, "session launch server failed to start")
+            }
         }
     }
-
-    #[test]
-    fn check_failure_follow_up_launches_on_the_app_default_agent() {
-        let agent = default_agent::DefaultAgent {
-            provider: "codex".to_string(),
-            model_label: "GPT-5.6 Luna".to_string(),
-            model_id: "gpt-5.6-luna".to_string(),
-            reasoning_effort: Some("high".to_string()),
-            permission_mode: providers::PermissionMode::AskEachTime,
-            permission_modes: std::collections::HashMap::from([(
-                providers::ProviderId::Codex,
-                providers::PermissionMode::ProviderDefaults,
-            )]),
-        };
-        let input = build_check_failure_follow_up_input("w1", &agent, &follow_up_context())
-            .expect("follow-up input");
-        assert_eq!(
-            input.permission_mode,
-            Some(providers::PermissionMode::ProviderDefaults)
-        );
-        assert_eq!(input.model_label.as_str(), "GPT-5.6 Luna");
-        assert_eq!(input.model_id.as_str(), "gpt-5.6-luna");
-        assert_eq!(
-            input.reasoning_effort.map(|effort| effort.as_str()),
-            Some("high")
-        );
-    }
-
-    #[test]
-    fn check_failure_follow_up_falls_back_to_the_factory_agent() {
-        // Nothing mirrored yet — a fresh install launches the fix chat on the
-        // same agent the launcher shows: Opus 5.5 at Medium.
-        let input = build_check_failure_follow_up_input(
-            "w1",
-            &default_agent::DefaultAgent::factory(),
-            &follow_up_context(),
-        )
-        .expect("follow-up input");
-        assert_eq!(input.model_label.as_str(), "Opus 5.5");
-        assert_eq!(input.model_id.as_str(), "claude-opus-5-5");
-        assert_eq!(
-            input.reasoning_effort.map(|effort| effort.as_str()),
-            Some("medium")
-        );
-    }
-
-    #[test]
-    fn bindings_export_dry_run_leaves_committed_files_unchanged() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let targets = BindingsExportTargets {
-            bindings: root.join("../src/shared/bindings.d.ts"),
-            channels: root.join("tests/fixtures/channels.txt"),
-            schemas: root.join("../src/shared/ipcSchemas.ts"),
-        };
-        let plan = plan_bindings_export(&targets).expect("plan export");
-        assert!(
-            plan.iter()
-                .all(|entry| entry.change == BindingsExportChange::Unchanged),
-            "expected committed IPC exports to be current: {plan:?}"
-        );
-    }
-
-    #[test]
-    fn bindings_export_dry_run_reports_changes_without_writing() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let bindings_path = dir.path().join("bindings.d.ts");
-        std::fs::write(&bindings_path, "stale\n").expect("write stale bindings");
-
-        let targets = BindingsExportTargets {
-            bindings: bindings_path.clone(),
-            channels: dir.path().join("channels.txt"),
-            schemas: dir.path().join("ipcSchemas.ts"),
-        };
-        let plan = plan_bindings_export(&targets).expect("plan export");
-        assert_eq!(plan[0].change, BindingsExportChange::WouldUpdate);
-        assert_eq!(plan[1].change, BindingsExportChange::WouldCreate);
-        assert_eq!(plan[2].change, BindingsExportChange::WouldCreate);
-        assert_eq!(
-            std::fs::read_to_string(&bindings_path).expect("read bindings"),
-            "stale\n"
-        );
-    }
+    // Watcher refresh loops use tokio::spawn. Setup runs
+    // during the synchronous macOS launch callback, so
+    // defer restoration until Tauri's runtime is alive.
+    let archive_timer = timer.clone();
+    let after_turn_database = Arc::clone(&database);
+    let after_turn_providers = Arc::clone(&providers);
+    tauri::async_runtime::spawn(async move {
+        // Archive recovery runs up to five blocking git
+        // calls per interrupted row, each with a 30s
+        // bound, so it gets a blocking thread rather
+        // than the launch callback — and it lands
+        // before the watchers, which is the order setup
+        // ran it in.
+        let recovery = Arc::clone(&workspaces_for_watchers);
+        match tauri::async_runtime::spawn_blocking(move || recovery.recover_interrupted_archives())
+            .await
+        {
+            Ok(Ok(_)) => {}
+            Ok(Err(error)) => {
+                tracing::warn!(?error, "failed to recover interrupted workspace archives")
+            }
+            Err(error) => tracing::warn!(?error, "archive recovery task failed to join"),
+        }
+        archive_timer.mark("archives.recover");
+        // A move or archive an agent scheduled for the
+        // end of its turn, in a run that ended first.
+        // After archive recovery, so a half-finished
+        // archive is whole again before this decides
+        // whether another one still has work to do.
+        if let Some(registry) = after_turn_registry {
+            session_control::resume_after_turn_actions(
+                after_turn_database,
+                Arc::clone(&workspaces_for_watchers),
+                after_turn_providers,
+                registry,
+            )
+            .await;
+        }
+        match workspaces_for_watchers.start_open_watchers() {
+            // Workspaces sharing a checkout share its
+            // watch, so the two counts diverge sharply
+            // once a repo has many sessions.
+            Ok(watched) => tracing::info!(
+                watched,
+                os_watches = workspaces_for_watchers.watched_checkout_count(),
+                "restored workspace watchers"
+            ),
+            Err(error) => {
+                tracing::warn!(?error, "failed to start workspace watchers")
+            }
+        }
+    });
+    // Mark services as constructed only on the success
+    // path — otherwise a failed DB open still reported a
+    // healthy boot while every handler returned
+    // SERVICE_ERROR.
+    timer.mark("services.construct");
 }

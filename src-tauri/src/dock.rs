@@ -2,8 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use tauri::{AppHandle, Manager, Runtime, Window, WindowEvent};
 
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::sync::LockOrRecover;
 
 pub trait DockBadgeSink: Send + Sync + 'static {
     fn set_badge(&self, text: &str) -> ArgmaxResult<()>;

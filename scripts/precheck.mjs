@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The pre-push gate: the same checks CI runs, scoped to what the branch
 // changed so the whole thing stays under a couple of minutes. `git push`
-// runs it through `.githooks/pre-push`; `npm run precheck` runs it by hand.
+// runs it through `.githooks/pre-push`; `npm run push-gate` runs it by hand.
 //
 //   node scripts/precheck.mjs            # scope from the diff against main
 //   node scripts/precheck.mjs --all      # every lane, whatever changed
@@ -21,19 +21,12 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// `git push` exports GIT_DIR / GIT_INDEX_FILE into the hook. Cargo tests that
-// seed a temp repo with `git init` then inherit those and lock this checkout's
-// config instead of the fixture. Drop them so merge-base still uses cwd
-// discovery, and the tests get a clean git.
-for (const key of [
-  "GIT_DIR",
-  "GIT_WORK_TREE",
-  "GIT_INDEX_FILE",
-  "GIT_OBJECT_DIRECTORY",
-  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-  "GIT_PREFIX"
-]) {
-  delete process.env[key];
+// `git push` exports GIT_DIR / GIT_INDEX_FILE into the hook, and `git -c`
+// adds GIT_CONFIG_PARAMETERS. Every check runs as a child of this process, so
+// tests that seed a temp repo would inherit them and write to this checkout
+// instead. Drop every GIT_* once here; merge-base still uses cwd discovery.
+for (const key of Object.keys(process.env)) {
+  if (key.startsWith("GIT_")) delete process.env[key];
 }
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -70,7 +63,11 @@ function parsePushStdin() {
     // with 0 refs (e.g. non-fast-forward rejected ref updates or empty push).
     return targetRemote ? [] : null;
   }
-  const lines = input.trim().split("\n").map((line) => line.trim()).filter(Boolean);
+  const lines = input
+    .trim()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
   const entries = [];
   for (const line of lines) {
     const parts = line.split(/\s+/);
@@ -79,7 +76,7 @@ function parsePushStdin() {
         localRef: parts[0],
         localSha: parts[1],
         remoteRef: parts[2],
-        remoteSha: parts[3]
+        remoteSha: parts[3],
       });
     }
   }
@@ -115,27 +112,28 @@ function changedFiles(base) {
   return new Set(`${tracked}${untracked}`.split("\0").filter(Boolean));
 }
 
-const IOS_PATHS = [/^ios\//];
+const IOS_PATHS = [/^ios\//, /^fixtures\/parity\//, /^scripts\/ios-tests\.mjs$/];
 const RUST_PATHS = [
   /^src-tauri\/(?!target\/)/,
   /^assets\/browser-blocking\//,
   /^\.cargo\//,
   /^rust-toolchain\.toml$/,
-  /^\.github\/workflows\//
+  /^\.github\/workflows\//,
 ];
 const JS_PATHS = [
   /^src\//,
   /^src-tauri\/(?!target\/)/,
   /^ios\//,
+  /^fixtures\/parity\//,
   /^assets\//,
   /^public\//,
   /^(index|mobile)\.html$/,
   /^package(-lock)?\.json$/,
   /^tsconfig\.json$/,
   /^vite(st)?(\.[\w-]+)?\.config\.ts$/,
-  /^eslint\.config\.js$/,
+  /^\.ox(lint|fmt)rc\.json$/,
   /^scripts\//,
-  /^\.github\/workflows\//
+  /^\.github\/workflows\//,
 ];
 const INERT_PATHS = [
   /^docs\//,
@@ -143,7 +141,7 @@ const INERT_PATHS = [
   /^[^/]*\.md$/,
   /^LICENSE$/,
   /^\.gitignore$/,
-  /^\.gitattributes$/
+  /^\.gitattributes$/,
 ];
 
 function touches(files, patterns) {
@@ -154,9 +152,11 @@ function touches(files, patterns) {
 }
 
 function scopeForFiles(files, reason, vitestBase) {
-  const hasUnclassifiedPath = files.size === 0 || [...files].some((file) =>
-    !touches([file], [...RUST_PATHS, ...JS_PATHS, ...IOS_PATHS, ...INERT_PATHS])
-  );
+  const hasUnclassifiedPath =
+    files.size === 0 ||
+    [...files].some(
+      (file) => !touches([file], [...RUST_PATHS, ...JS_PATHS, ...IOS_PATHS, ...INERT_PATHS]),
+    );
   const rust = hasUnclassifiedPath || touches(files, RUST_PATHS);
   const js = hasUnclassifiedPath || touches(files, JS_PATHS);
   return {
@@ -165,7 +165,7 @@ function scopeForFiles(files, reason, vitestBase) {
     bundle: js,
     ios: touches(files, IOS_PATHS),
     reason: hasUnclassifiedPath ? `${reason}; unclassified path` : reason,
-    vitestBase
+    vitestBase,
   };
 }
 
@@ -217,7 +217,7 @@ function decideScope() {
           bundle: true,
           ios: true,
           reason: `cannot find merge base for ${entry.localRef}`,
-          vitestBase: null
+          vitestBase: null,
         };
       }
     }
@@ -225,13 +225,20 @@ function decideScope() {
     return scopeForFiles(
       files,
       `${files.size} file(s) differ across ${activeEntries.length} push ref(s)`,
-      vitestBase
+      vitestBase,
     );
   }
 
   const base = mergeBase("HEAD", targetRemote);
   if (!base) {
-    return { rust: true, js: true, bundle: true, ios: true, reason: "no main to diff against", vitestBase: null };
+    return {
+      rust: true,
+      js: true,
+      bundle: true,
+      ios: true,
+      reason: "no main to diff against",
+      vitestBase: null,
+    };
   }
   const files = changedFiles(base);
   return scopeForFiles(files, `${files.size} file(s) differ from ${base.ref}`, base.sha);
@@ -240,82 +247,87 @@ function decideScope() {
 function step(label, command, commandArgs) {
   const started = Date.now();
   process.stdout.write(`\n▶ ${label}\n`);
-  const run = spawnSync(command, commandArgs, { cwd: ROOT, stdio: ["ignore", "inherit", "inherit"] });
+  const run = spawnSync(command, commandArgs, {
+    cwd: ROOT,
+    stdio: ["ignore", "inherit", "inherit"],
+  });
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   if (run.status !== 0) {
-    console.error(`\nerror: ${label} failed after ${seconds}s (${command} ${commandArgs.join(" ")})`);
+    console.error(
+      `\nerror: ${label} failed after ${seconds}s (${command} ${commandArgs.join(" ")})`,
+    );
     process.exit(run.status ?? 1);
   }
   process.stdout.write(`✓ ${label} (${seconds}s)\n`);
 }
 
 const scope = decideScope();
-const lanes = [scope.js && "js", scope.rust && "rust", scope.bundle && "bundle", scope.ios && "ios"].filter(
-  Boolean
-);
+const lanes = [
+  scope.js && "js",
+  scope.rust && "rust",
+  scope.bundle && "bundle",
+  scope.ios && "ios",
+].filter(Boolean);
 console.log(`precheck: ${lanes.length ? lanes.join(" + ") : "docs only"} (${scope.reason})`);
 const vitestBase = runEverything ? null : scope.vitestBase;
 
-// Contract checks are sub-second and cross the Rust/TS boundary, so they run
-// whenever either side changed.
-step("IPC channel parity", "node", ["scripts/check-tauri-bridge.mjs"]);
-// Sub-second, and the only gate that runs on a docs-only push: docs are
-// inert for every lane above, so without this step a broken link or a
-// stale count would pass unchecked.
-step("docs integrity", "node", ["scripts/check-docs.mjs"]);
-step("Architecture boundaries", "node", ["scripts/check-architecture.mjs"]);
-step("Remote contracts", "node", ["scripts/export-remote-contracts.mjs", "--check"]);
-step("Swift contracts", "node", ["scripts/export-swift-contracts.mjs", "--check"]);
-step("main-thread handler allowlist", "node", ["scripts/check-main-thread-handlers.mjs"]);
+// Sub-second to seconds, and they run on every push, docs-only included. CI
+// runs the same list.
+step("static checks", "node", ["scripts/static-checks.mjs"]);
 
 // One second, and the likeliest check to fail on a push: run it before the
 // minutes-long suites so a formatting slip does not cost a whole cycle.
 if (scope.rust) {
-  step("cargo fmt", "cargo", ["fmt", "--manifest-path", CARGO_MANIFEST, "--check"]);
+  step("cargo fmt", "cargo", ["fmt", "--all", "--manifest-path", CARGO_MANIFEST, "--check"]);
 }
 
 if (scope.js) {
-  step("eslint", "npx", ["eslint", ".", "--cache", "--cache-location", "node_modules/.cache/eslint/"]);
-  // TypeScript 7 (the `typescript-7` alias); see docs/testing.md.
-  step("tsc", "node", ["node_modules/typescript-7/bin/tsc", "--noEmit"]);
+  // oxlint runs the TypeScript 7 type check too; see docs/testing.md.
+  step("oxlint", "node", ["scripts/lint.mjs"]);
+  step("oxfmt", "npx", ["oxfmt", "--check"]);
   // `--changed` runs only the test files whose import graph reaches a
   // changed file; a config or setup change widens it to the full suite.
   step(
     "vitest",
     "npx",
-    vitestBase ? ["vitest", "run", "--changed", vitestBase] : ["vitest", "run"]
+    vitestBase ? ["vitest", "run", "--changed", vitestBase] : ["vitest", "run"],
   );
-  step("perf budgets", "npx", ["vitest", "run", "--config", "vitest.perf.config.ts", "--no-file-parallelism"]);
+  step("perf budgets", "npx", [
+    "vitest",
+    "run",
+    "--config",
+    "vitest.perf.config.ts",
+    "--no-file-parallelism",
+  ]);
 }
 
 if (scope.rust) {
-  step("cargo test", "cargo", ["test", "--manifest-path", CARGO_MANIFEST]);
+  step("cargo test", "cargo", [
+    "test",
+    "--manifest-path",
+    CARGO_MANIFEST,
+    "--workspace",
+    "--no-fail-fast",
+  ]);
   step("cargo clippy", "cargo", [
     "clippy",
     "--manifest-path",
     CARGO_MANIFEST,
+    "--workspace",
     "--all-targets",
     "--",
     "-D",
-    "warnings"
+    "warnings",
   ]);
-}
-
-// Seconds, and no Xcode: the phone app's whole build is not a pre-push gate,
-// but a font named outside the type roles is caught by reading the source.
-if (scope.ios) {
-  step("iOS typography", "node", ["scripts/check-ios-fonts.mjs"]);
-}
-
-// The phone's model catalogue is generated from src/shared/providerModels.ts,
-// so a change on either side can leave it stale.
-if (scope.ios || scope.js) {
-  step("iOS model catalogue", "node", ["scripts/export-provider-models.mjs", "--check"]);
 }
 
 if (scope.bundle) {
   step("renderer build", "npx", ["vite", "build"]);
   step("bundle budget", "node", ["scripts/check-bundle.mjs"]);
+}
+
+if (scope.ios) {
+  step("iOS tests", "node", ["scripts/ios-tests.mjs"]);
 }
 
 console.log("\nprecheck: all checks passed.");

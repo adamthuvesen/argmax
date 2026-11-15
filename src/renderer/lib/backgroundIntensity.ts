@@ -1,3 +1,5 @@
+import { APPEARANCE_LEVEL_PATTERN } from "./appearanceLevel.js";
+
 /**
  * How strongly the app background follows the active theme, a whole number
  * from 0 to 100. Dark mode runs from a lifted charcoal at 0 through the shipped
@@ -12,35 +14,48 @@ export const BACKGROUND_INTENSITY_MAX = 100;
 export const DEFAULT_BACKGROUND_INTENSITY = 100;
 export const BACKGROUND_INTENSITY_STORAGE_KEY = "argmax.background.level";
 /** The former 1–10 scale. Level n carried over as n × 10, so a saved 7 remains 70. */
-const LEGACY_BACKGROUND_INTENSITY_STORAGE_KEY = "argmax.background.intensity";
+export const LEGACY_BACKGROUND_INTENSITY_STORAGE_KEY = "argmax.background.intensity";
+export const LEGACY_BACKGROUND_INTENSITY_PATTERN = /^(?:[1-9]|10)$/;
 
 /** Named stops offered in the command palette. */
-export const BACKGROUND_INTENSITY_PRESETS: readonly BackgroundIntensity[] = [0, 25, 50, 70, 85, 100];
+export const BACKGROUND_INTENSITY_PRESETS: readonly BackgroundIntensity[] = [
+  0, 25, 50, 70, 85, 100,
+];
 
 export function backgroundIntensityHint(intensity: BackgroundIntensity): string {
-  if (intensity === BACKGROUND_INTENSITY_MIN) return "Lightest: light gray in dark mode, soft gray in light mode.";
-  if (intensity === BACKGROUND_INTENSITY_MAX) return "Deepest near-black in dark mode, pure white in light mode.";
-  return intensity < DEFAULT_BACKGROUND_INTENSITY ? "Softer than default." : "Stronger than default.";
+  if (intensity === BACKGROUND_INTENSITY_MIN)
+    return "Lightest: light gray in dark mode, soft gray in light mode.";
+  if (intensity === BACKGROUND_INTENSITY_MAX)
+    return "Deepest near-black in dark mode, pure white in light mode.";
+  return intensity < DEFAULT_BACKGROUND_INTENSITY
+    ? "Softer than default."
+    : "Stronger than default.";
 }
 
 export function toBackgroundIntensity(
-  raw: string | number | null | undefined
+  raw: string | number | null | undefined,
 ): BackgroundIntensity | null {
   if (typeof raw === "number") {
-    return Number.isInteger(raw) && raw >= BACKGROUND_INTENSITY_MIN && raw <= BACKGROUND_INTENSITY_MAX
+    return Number.isInteger(raw) &&
+      raw >= BACKGROUND_INTENSITY_MIN &&
+      raw <= BACKGROUND_INTENSITY_MAX
       ? raw
       : null;
   }
-  if (typeof raw !== "string" || !/^(?:100|[1-9]?\d)$/.test(raw)) return null;
+  if (typeof raw !== "string" || !APPEARANCE_LEVEL_PATTERN.test(raw)) return null;
   return Number(raw);
 }
 
 export function readStoredBackgroundIntensity(): BackgroundIntensity {
   if (typeof window === "undefined") return DEFAULT_BACKGROUND_INTENSITY;
-  const stored = toBackgroundIntensity(window.localStorage.getItem(BACKGROUND_INTENSITY_STORAGE_KEY));
+  const stored = toBackgroundIntensity(
+    window.localStorage.getItem(BACKGROUND_INTENSITY_STORAGE_KEY),
+  );
   if (stored !== null) return stored;
   const legacy = window.localStorage.getItem(LEGACY_BACKGROUND_INTENSITY_STORAGE_KEY);
-  const legacyLevel = /^(?:[1-9]|10)$/.test(legacy ?? "") ? Number(legacy) : null;
+  const legacyLevel = LEGACY_BACKGROUND_INTENSITY_PATTERN.test(legacy ?? "")
+    ? Number(legacy)
+    : null;
   return legacyLevel === null ? DEFAULT_BACKGROUND_INTENSITY : legacyLevel * 10;
 }
 

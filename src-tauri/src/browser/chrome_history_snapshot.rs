@@ -11,7 +11,7 @@ use std::time::SystemTime;
 use rusqlite::Connection;
 use tempfile::TempDir;
 
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 const SQLITE_READONLY_ROLLBACK: i32 = 776;
 const CHANGED_SET_RETRIES: usize = 2;

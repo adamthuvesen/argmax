@@ -5,9 +5,10 @@ use specta::Type;
 use tokio::{process::Command, sync::Mutex};
 
 use super::{
-    adapters::get_provider_definition, environment::build_provider_environment,
-    opencode_isolation::IsolatedOpenCodeData, ApprovalSupport, ProviderId,
+    adapters::get_provider_definition, opencode_isolation::IsolatedOpenCodeData, ApprovalSupport,
 };
+use argmax_contracts::validation::ProviderId;
+use argmax_process::environment::build_provider_environment;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -79,6 +80,23 @@ pub struct ProviderCapabilityReport {
     pub goal_support: ProviderGoalSupport,
 }
 
+/// A provider the availability probe reported as installed and not logged out.
+/// The field is private and only [`ProviderDiscovery`] builds one, so a route
+/// function cannot be handed a provider that nothing probed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AvailableProvider(ProviderId);
+
+impl AvailableProvider {
+    pub fn id(self) -> ProviderId {
+        self.0
+    }
+
+    #[cfg(test)]
+    pub(crate) fn assumed_for_test(provider: ProviderId) -> Self {
+        Self(provider)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ProviderDiscovery {
     cache: Arc<Mutex<HashMap<ProviderId, ProviderCapabilityReport>>>,
@@ -106,12 +124,12 @@ impl ProviderDiscovery {
 
     /// Providers whose CLI is installed and not known to be logged out: the
     /// ones a route may land on. Empty means discovery learned nothing.
-    pub async fn available_providers(&self) -> Vec<ProviderId> {
+    pub async fn available_providers(&self) -> Vec<AvailableProvider> {
         self.discover_all()
             .await
             .into_iter()
             .filter(|report| report.installed && report.authenticated != Some(false))
-            .map(|report| report.provider)
+            .map(|report| AvailableProvider(report.provider))
             .collect()
     }
 
@@ -164,7 +182,7 @@ async fn discover_uncached(provider_id: ProviderId) -> ProviderCapabilityReport 
     };
 
     let setup_guidance = match (binary_path.is_some(), authenticated) {
-        (false, _) if super::verification::requested() => Some(
+        (false, _) if argmax_process::environment::verification_requested() => Some(
             super::verification::validate_configuration()
                 .err()
                 .unwrap_or_else(|| {
@@ -243,7 +261,7 @@ fn env_from_isolation(isolation: Option<&IsolatedOpenCodeData>) -> Vec<(String, 
 }
 
 async fn resolve_binary(provider_id: ProviderId, binary_name: &str) -> Option<String> {
-    if super::verification::requested() {
+    if argmax_process::environment::verification_requested() {
         return super::verification::binary_path(provider_id);
     }
     command_output("which", &[binary_name], Vec::new()).await

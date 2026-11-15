@@ -8,9 +8,12 @@ import {
   recordBrowserVisit,
   setBrowserHistoryStorageForTests,
   suggestBrowserHistory,
-  type BrowserHistoryEntry
+  type BrowserHistoryEntry,
 } from "./browserHistory.js";
 import type { BrowserHistoryStorage } from "./browserHistoryStorage.js";
+import { FIXED_NOW_MS, freezeClock } from "../../test/fixedClock.js";
+
+freezeClock();
 
 let saved: BrowserHistoryEntry[] | undefined;
 let failLoad = false;
@@ -26,7 +29,7 @@ const storage: BrowserHistoryStorage = {
     if (failSave) return Promise.reject(new Error("disk full"));
     saved = structuredClone(entries);
     return Promise.resolve();
-  })
+  }),
 };
 
 beforeEach(() => {
@@ -47,8 +50,10 @@ afterEach(() => {
 describe("browser history", () => {
   it("retains imported pages beyond the old cap after browsing and reloading", async () => {
     const imported = Array.from({ length: 250 }, (_, index) => ({
-      url: `https://example.com/page-${index}/`, title: `Page ${index}`,
-      visitedAt: 1_700_000_000_000 + index, visitCount: 3
+      url: `https://example.com/page-${index}/`,
+      title: `Page ${index}`,
+      visitedAt: 1_700_000_000_000 + index,
+      visitCount: 3,
     }));
     expect(await mergeBrowserHistory(imported)).toBe(250);
     await recordBrowserVisit("https://new.example.com", "New");
@@ -60,7 +65,9 @@ describe("browser history", () => {
   });
 
   it("migrates legacy localStorage only after IndexedDB saves it", async () => {
-    const legacy = [{ url: "https://legacy.example.com", title: "Legacy", visitedAt: 10, visitCount: 2 }];
+    const legacy = [
+      { url: "https://legacy.example.com", title: "Legacy", visitedAt: 10, visitCount: 2 },
+    ];
     window.localStorage.setItem(BROWSER_HISTORY_KEY, JSON.stringify(legacy));
 
     expect(suggestBrowserHistory("")).toEqual(legacy);
@@ -91,27 +98,32 @@ describe("browser history", () => {
 
   it("does not lose visits that arrive while IndexedDB is loading", async () => {
     let finishLoad: ((entries: BrowserHistoryEntry[]) => void) | undefined;
-    loadHistory = () => new Promise((resolve) => { finishLoad = resolve; });
+    loadHistory = () =>
+      new Promise((resolve) => {
+        finishLoad = resolve;
+      });
 
     const visit = recordBrowserVisit("https://new.example.com", "New");
-    finishLoad?.([{ url: "https://stored.example.com", title: "Stored", visitedAt: 1, visitCount: 2 }]);
+    finishLoad?.([
+      { url: "https://stored.example.com", title: "Stored", visitedAt: 1, visitCount: 2 },
+    ]);
     await visit;
 
     expect(saved?.map((entry) => entry.url)).toEqual([
       "https://new.example.com",
-      "https://stored.example.com"
+      "https://stored.example.com",
     ]);
   });
 
   it("orders concurrent visit writes so neither update is overwritten", async () => {
     await Promise.all([
       recordBrowserVisit("https://first.example.com", "First"),
-      recordBrowserVisit("https://second.example.com", "Second")
+      recordBrowserVisit("https://second.example.com", "Second"),
     ]);
 
     expect(saved?.map((entry) => entry.url).sort()).toEqual([
       "https://first.example.com",
-      "https://second.example.com"
+      "https://second.example.com",
     ]);
   });
 
@@ -119,26 +131,34 @@ describe("browser history", () => {
     vi.useFakeTimers();
     vi.setSystemTime(5_000);
     await recordBrowserVisit("https://example.com", "Local title");
-    const imported = [{ url: "https://example.com", title: "Old title", visitedAt: 1_000, visitCount: 12 }];
+    const imported = [
+      { url: "https://example.com", title: "Old title", visitedAt: 1_000, visitCount: 12 },
+    ];
     expect(await mergeBrowserHistory(imported)).toBe(0);
     expect(await mergeBrowserHistory(imported)).toBe(0);
     expect(suggestBrowserHistory("")[0]).toEqual({
-      url: "https://example.com", title: "Local title", visitedAt: 5_000, visitCount: 12
+      url: "https://example.com",
+      title: "Local title",
+      visitedAt: 5_000,
+      visitCount: 12,
     });
   });
 
   it("ranks address prefixes first, then rewards frequent and recent visits", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_700_000_000_000);
-    const visitedAt = Date.now();
+    const visitedAt = FIXED_NOW_MS;
     await mergeBrowserHistory([
       { url: "https://other.com", title: "GitHub", visitedAt, visitCount: 30 },
       { url: "https://github.com/once", title: "Once", visitedAt, visitCount: 1 },
       { url: "https://github.com/often", title: "Often", visitedAt, visitCount: 8 },
-      { url: "https://github.com/old", title: "Old", visitedAt: 1_000, visitCount: 8 }
+      { url: "https://github.com/old", title: "Old", visitedAt: 1_000, visitCount: 8 },
     ]);
     expect(suggestBrowserHistory("github").map((entry) => entry.url)).toEqual([
-      "https://github.com/often", "https://github.com/once", "https://github.com/old", "https://other.com"
+      "https://github.com/often",
+      "https://github.com/once",
+      "https://github.com/old",
+      "https://other.com",
     ]);
     expect(suggestBrowserHistory("github often")[0]?.url).toBe("https://github.com/often");
   });
@@ -147,17 +167,24 @@ describe("browser history", () => {
     const entries: BrowserHistoryEntry[] = [
       // Leads the list on a substring match; completing it would rewrite "you".
       { url: "https://about.youtube.com/press", title: "Press", visitedAt: 2, visitCount: 9 },
-      { url: "https://www.youtube.com/", title: "YouTube", visitedAt: 1, visitCount: 3 }
+      { url: "https://www.youtube.com/", title: "YouTube", visitedAt: 1, visitCount: 3 },
     ];
 
-    expect(completeBrowserAddress("you", entries)).toEqual({ entry: entries[1], completed: "youtube.com" });
-    expect(completeBrowserAddress("https://ab", entries)?.completed).toBe("https://about.youtube.com/press");
-    expect(completeBrowserAddress("About.YouTube.com/p", entries)?.completed).toBe("About.YouTube.com/press");
+    expect(completeBrowserAddress("you", entries)).toEqual({
+      entry: entries[1],
+      completed: "youtube.com",
+    });
+    expect(completeBrowserAddress("https://ab", entries)?.completed).toBe(
+      "https://about.youtube.com/press",
+    );
+    expect(completeBrowserAddress("About.YouTube.com/p", entries)?.completed).toBe(
+      "About.YouTube.com/press",
+    );
   });
 
   it("leaves the input alone when no suggestion extends it", () => {
     const entries: BrowserHistoryEntry[] = [
-      { url: "https://www.youtube.com/", title: "YouTube", visitedAt: 1, visitCount: 3 }
+      { url: "https://www.youtube.com/", title: "YouTube", visitedAt: 1, visitCount: 3 },
     ];
 
     for (const typed of ["", "youtube.com", "tube", "you tube"]) {
@@ -168,18 +195,22 @@ describe("browser history", () => {
   it("reports persistence failure without replacing existing history", async () => {
     await recordBrowserVisit("https://kept.com", "Kept");
     failSave = true;
-    await expect(mergeBrowserHistory([
-      { url: "https://new.com", title: null, visitedAt: Date.now(), visitCount: 1 }
-    ])).rejects.toThrow("Could not save imported history");
+    await expect(
+      mergeBrowserHistory([
+        { url: "https://new.com", title: null, visitedAt: FIXED_NOW_MS, visitCount: 1 },
+      ]),
+    ).rejects.toThrow("Could not save imported history");
     expect(suggestBrowserHistory("").map((entry) => entry.url)).toEqual(["https://kept.com"]);
   });
 
   it("rejects malformed import data atomically", async () => {
     await recordBrowserVisit("https://kept.com", "Kept");
-    await expect(mergeBrowserHistory([
-      { url: "https://valid.com", title: null, visitedAt: 1_000 },
-      { url: "file:///private", title: null, visitedAt: 1_000 }
-    ])).rejects.toThrow("invalid browser history");
+    await expect(
+      mergeBrowserHistory([
+        { url: "https://valid.com", title: null, visitedAt: 1_000 },
+        { url: "file:///private", title: null, visitedAt: 1_000 },
+      ]),
+    ).rejects.toThrow("invalid browser history");
     expect(suggestBrowserHistory("").map((entry) => entry.url)).toEqual(["https://kept.com"]);
   });
 
@@ -191,7 +222,7 @@ describe("browser history", () => {
     const suggestions = suggestBrowserHistory("");
     expect(suggestions.map((entry) => entry.url)).toEqual([
       "https://github.com",
-      "https://example.com"
+      "https://example.com",
     ]);
     expect(suggestions[0]?.title).toBe("GitHub");
   });
@@ -201,10 +232,10 @@ describe("browser history", () => {
     await recordBrowserVisit("https://example.com", "Example");
 
     expect(suggestBrowserHistory("ARGMAX").map((entry) => entry.url)).toEqual([
-      "https://github.com/argmax"
+      "https://github.com/argmax",
     ]);
     expect(suggestBrowserHistory("example.com").map((entry) => entry.url)).toEqual([
-      "https://example.com"
+      "https://example.com",
     ]);
     expect(suggestBrowserHistory("nothing")).toEqual([]);
   });

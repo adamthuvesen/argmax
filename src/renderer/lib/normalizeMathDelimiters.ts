@@ -10,10 +10,7 @@ const LATEX_ENV_REGEX =
 const GREEK_MATH_SYMBOLS =
   "alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega";
 
-const GREEK_MATH_REGEX = new RegExp(
-  `(^|[\\s(])\\\\(${GREEK_MATH_SYMBOLS})([\\s.,;:!?)"]|$)`,
-  "g"
-);
+const GREEK_MATH_REGEX = new RegExp(`(^|[\\s(])\\\\(${GREEK_MATH_SYMBOLS})([\\s.,;:!?)"]|$)`, "g");
 
 /**
  * A private-use sentinel: markdown never contains it, and unlike NUL it is not a
@@ -30,8 +27,8 @@ const ASIDE_OPENERS = "\\([{";
  * Whether `text.slice(open, close + 1)` is an equation rather than a pair of
  * unrelated dollar signs.
  *
- * Mirrors `isInlineMath` in `TranscriptMarkdownPreparation.swift` on iOS; keep the
- * two in step. A prose `$` is nearly always currency (`$1.25/1M in and $4.25`) or
+ * Mirrors `isInlineMath` in `TranscriptMarkdownPreparation.swift` on iOS.
+ * fixtures/parity/inline-math.json holds the cases both run. A prose `$` is nearly always currency (`$1.25/1M in and $4.25`) or
  * a shell variable (`$PATH and $HOME`), and pairing those swallows the text
  * between them.
  */
@@ -116,7 +113,7 @@ function transformProseMath(text: string): string {
     /(?:^|\n)\s*\[\s*(\\[a-zA-Z]+[\s\S]*?)\]\s*(?:\n|$)/g,
     (_match, equation: string) => {
       return `\n\n$$\n${equation.trim()}\n$$\n\n`;
-    }
+    },
   );
 
   // 2. Convert LaTeX inline math: \( equation \) -> $equation$
@@ -130,9 +127,12 @@ function transformProseMath(text: string): string {
   });
 
   // 4. Normalize single-line standalone $$equation$$ on its own line into block display math
-  result = result.replace(/(?:^|\n)\s*\$\$(?!\$)([^\n]+?)\$\$\s*(?:\n|$)/g, (_match, equation: string) => {
-    return `\n\n$$\n${equation.trim()}\n$$\n\n`;
-  });
+  result = result.replace(
+    /(?:^|\n)\s*\$\$(?!\$)([^\n]+?)\$\$\s*(?:\n|$)/g,
+    (_match, equation: string) => {
+      return `\n\n$$\n${equation.trim()}\n$$\n\n`;
+    },
+  );
 
   // 5. Mask every math region — the ones above just created and any the author
   // already wrote — so the currency and bare-symbol passes below only ever see
@@ -150,13 +150,10 @@ function transformProseMath(text: string): string {
     GREEK_MATH_REGEX,
     (_match, prefix: string, symbol: string, suffix: string) => {
       return `${prefix}$\\${symbol}$${suffix}`;
-    }
+    },
   );
 
-  return result.replace(
-    /\uE000(\d+)\uE000/g,
-    (_match, index: string) => mathSpans[Number(index)]
-  );
+  return result.replace(/\uE000(\d+)\uE000/g, (_match, index: string) => mathSpans[Number(index)]);
 }
 
 /**

@@ -6,9 +6,10 @@ import { importChunk } from "../lib/importChunk.js";
 // it drags the Usage page's formatting helpers with it. It loads as its own
 // chunk, so the entry stays inside its size budget (scripts/check-bundle.mjs).
 const ComposerUsageChip = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./ComposerUsageChip.js")).ComposerUsageChip
-  }))
+  importChunk(
+    async () => ({ default: (await import("./ComposerUsageChip.js")).ComposerUsageChip }),
+    "composer-usage",
+  ),
 );
 
 export function ComposerUsageSlot({ provider }: { provider: ProviderId }): JSX.Element {

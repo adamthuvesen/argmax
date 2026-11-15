@@ -16,7 +16,7 @@ const VISIBLE_ROWS = 5;
 const STATE_LABEL: Record<ActivityReviewState, string> = {
   approved: "approved",
   changes_requested: "changes requested",
-  commented: "commented"
+  commented: "commented",
 };
 
 /** The order the split bar and its key both read in. */
@@ -30,7 +30,7 @@ const STATE_ORDER: readonly ActivityReviewState[] = ["approved", "changes_reques
  */
 function splitBars(
   counts: Record<ActivityReviewState, number>,
-  total: number
+  total: number,
 ): Array<{ state: ActivityReviewState; x: number; width: number }> {
   const present = STATE_ORDER.filter((state) => counts[state] > 0);
   const bars: Array<{ state: ActivityReviewState; x: number; width: number }> = [];
@@ -49,11 +49,12 @@ export function ActivityReviews({ summary }: { summary: ActivitySummary }): JSX.
   const counts: Record<ActivityReviewState, number> = {
     approved: totals.reviewApprovals,
     changes_requested: totals.reviewChangesRequested,
-    commented: totals.reviewComments
+    commented: totals.reviewComments,
   };
   const total = STATE_ORDER.reduce((sum, state) => sum + counts[state], 0);
   const repositories = new Set(reviews.map((review) => review.repository)).size;
-  const pullRequests = new Set(reviews.map((review) => `${review.repository}#${review.number}`)).size;
+  const pullRequests = new Set(reviews.map((review) => `${review.repository}#${review.number}`))
+    .size;
 
   return (
     <section className="activity-card activity-reviews" aria-label="Reviews given">
@@ -70,8 +71,7 @@ export function ActivityReviews({ summary }: { summary: ActivitySummary }): JSX.
           <p className="activity-reviews-count">
             <span className="activity-reviews-figure">{formatCount(totals.reviewsGiven)}</span>
             <span className="activity-reviews-label">
-              {totals.reviewsGiven === 1 ? "review" : "reviews"} on{" "}
-              {formatCount(pullRequests)} pull{" "}
+              {totals.reviewsGiven === 1 ? "review" : "reviews"} on {formatCount(pullRequests)} pull{" "}
               {pullRequests === 1 ? "request" : "requests"}
             </span>
           </p>

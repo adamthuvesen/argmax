@@ -7,7 +7,7 @@ import {
   chatChipEnvironment,
   promptExtensions,
   skillTokenPredicate,
-  type PromptCallbacks
+  type PromptCallbacks,
 } from "./composerEditor/extensions.js";
 import type { ComposerEditorProps } from "./composerEditor/props.js";
 
@@ -44,7 +44,7 @@ export function ComposerEditorView({
   dataRouteCaption = false,
   fieldRef,
   documentKey = null,
-  handoff
+  handoff,
 }: ComposerEditorProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -73,7 +73,7 @@ export function ComposerEditorView({
     ...(controls ? { "aria-controls": controls } : {}),
     ...(disabled ? { "aria-disabled": "true" } : {}),
     spellcheck: "true",
-    autocapitalize: "sentences"
+    autocapitalize: "sentences",
   });
 
   // The editor's configuration, as it stands for the props now. Used to make
@@ -91,7 +91,7 @@ export function ComposerEditorView({
       if (update.docChanged || update.selectionSet) {
         latest.current.onCaretChange?.(update.state.selection.main.head);
       }
-    })
+    }),
   ];
 
   /** A fresh state for `text`: no undo history, the caret at the end. */
@@ -99,7 +99,7 @@ export function ComposerEditorView({
     EditorState.create({
       doc: text,
       selection: { anchor: text.length },
-      extensions: configuration()
+      extensions: configuration(),
     });
 
   useLayoutEffect(() => {
@@ -114,8 +114,8 @@ export function ComposerEditorView({
       view.dispatch({
         selection: {
           anchor: Math.min(handoff.selectionStart, length),
-          head: Math.min(handoff.selectionEnd, length)
-        }
+          head: Math.min(handoff.selectionEnd, length),
+        },
       });
       if (handoff.focused) view.focus();
     }
@@ -125,7 +125,7 @@ export function ComposerEditorView({
     };
     // The view is created once; every prop it reads afterwards arrives through
     // the compartments and the value effect below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, []);
 
   // `setState` starts a new document without an update, so nothing tells the
@@ -141,14 +141,14 @@ export function ComposerEditorView({
         attributes.current.reconfigure(EditorView.contentAttributes.of(contentAttributes())),
         editable.current.reconfigure(editability(disabled)),
         chatSlot.current.reconfigure(chatChipEnvironment.of(chats)),
-        skillSlot.current.reconfigure(skillTokenPredicate.of(isSkill ?? (() => false)))
-      ]
+        skillSlot.current.reconfigure(skillTokenPredicate.of(isSkill ?? (() => false))),
+      ],
     });
   };
 
   useEffect(() => {
     reconfigure();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [ariaLabel, expanded, controls, disabled, placeholder, chats, isSkill]);
 
   // A different draft is a different document: its undo history must not
@@ -168,7 +168,7 @@ export function ComposerEditorView({
     }
     reconfigure();
     reportCaret(view);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [documentKey]);
 
   // Follow `value` after every commit, not only when it changes. The editor
@@ -216,13 +216,14 @@ export function ComposerEditorView({
     // textarea whose value is set from outside (the slash menu completing
     // `/ski` to `/skill `, a restored draft). A caret anywhere else keeps its
     // place in the text around the change.
-    const caretWasAtEnd = view.state.selection.main.empty && view.state.selection.main.head === current.length;
+    const caretWasAtEnd =
+      view.state.selection.main.empty && view.state.selection.main.head === current.length;
     applyingValue.current = true;
     try {
       view.dispatch({
         changes: { from: start, to: endCurrent, insert: value.slice(start, endValue) },
         ...(caretWasAtEnd ? { selection: { anchor: value.length } } : {}),
-        userEvent: "input.complete"
+        userEvent: "input.complete",
       });
     } finally {
       applyingValue.current = false;
@@ -252,13 +253,13 @@ export function ComposerEditorView({
         const length = view.state.doc.length;
         view.dispatch({
           selection: { anchor: Math.min(start, length), head: Math.min(end, length) },
-          scrollIntoView: true
+          scrollIntoView: true,
         });
       },
       contains: (other) => viewRef.current?.dom.contains(other) ?? false,
-      closest: (selector) => viewRef.current?.dom.closest(selector) ?? null
+      closest: (selector) => viewRef.current?.dom.closest(selector) ?? null,
     }),
-    []
+    [],
   );
 
   return (

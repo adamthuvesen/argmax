@@ -32,29 +32,29 @@ use serde_json::json;
 use specta::Type;
 use uuid::Uuid;
 
-use crate::arcs::member_preamble;
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::arcs;
-use crate::persistence::authorship::PromptAuthor;
-use crate::persistence::events::{
+use crate::application::session_launch::{task_label, AlongsideCheckout, LaunchSpec};
+use crate::arcs::preamble::member_preamble;
+use crate::providers::flush_queue::DashboardDelta;
+use crate::providers::session_service::ProviderSessionService;
+use crate::session_control::launch_with_spec;
+use crate::workspaces::orchestration::WorkspaceService;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::ProviderId;
+use argmax_store::arcs;
+use argmax_store::authorship::PromptAuthor;
+use argmax_store::events::{
     latest_agent_message, persist_timeline_event, without_chat_link_brackets,
     PersistTimelineEventInput, TimelineEvent,
 };
-use crate::persistence::session_messages::{
+use argmax_store::pending_messages::PendingMessage;
+use argmax_store::session_messages::{
     insert_session_message, list_undelivered_messages_of_kind, mark_message_delivered,
     NewSessionMessage,
 };
-use crate::persistence::sessions::{
-    find_session_by_id, record_session_launch, LAUNCH_KIND_MULTITASK,
-};
-use crate::persistence::workspaces::find_workspace_by_id;
-use crate::persistence::Database;
-use crate::providers::flush_queue::{DashboardDelta, PendingMessage};
-use crate::providers::session_service::ProviderSessionService;
-use crate::providers::ProviderId;
-use crate::session_control::{launch_with_spec, task_label, AlongsideCheckout, LaunchSpec};
-use crate::sessions::state::SessionState;
-use crate::workspaces::orchestration::WorkspaceService;
+use argmax_store::sessions::{find_session_by_id, record_session_launch, LAUNCH_KIND_MULTITASK};
+use argmax_store::workspaces::find_workspace_by_id;
+use argmax_store::Database;
 
 /// Written into the parent's timeline the moment a multitask is dispatched.
 /// The card the chat renders hangs off this row, which is why it is persisted
@@ -227,9 +227,9 @@ pub async fn dispatch(
             // keeps the choice it was queued with.
             fast_mode: queued.is_some_and(|settings| settings.fast_mode),
             permission_mode: parse_json_enum(Some(parent.permission_mode.as_str()))
-                .unwrap_or(crate::providers::PermissionMode::ProviderDefaults),
+                .unwrap_or(argmax_contracts::validation::PermissionMode::ProviderDefaults),
             agent_mode: parse_json_enum(parent.agent_mode.as_deref())
-                .unwrap_or(crate::providers::AgentMode::Auto),
+                .unwrap_or(argmax_contracts::validation::AgentMode::Auto),
             task_label: Some(label.clone()),
             arc_id: parent_arc.as_ref().map(|arc| arc.id.clone()),
             arc_is_coordinator_launch: false,
@@ -538,7 +538,7 @@ mod tests {
 
     #[test]
     fn the_preamble_cannot_carry_a_chat_link_but_the_typed_prompt_keeps_its_own() {
-        use crate::persistence::events::chat_reference_ids;
+        use argmax_store::events::chat_reference_ids;
 
         let typed = "compare with [Billing](argmax://chat/chat-y?v=1)";
         let prompt = prompt_with_preamble(

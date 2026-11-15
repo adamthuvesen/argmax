@@ -11,8 +11,9 @@ describe("useStableFilter", () => {
     const c = { id: "c", sessionId: "s1" };
 
     const { result, rerender } = renderHook(
-      ({ items }: { items: Row[] }) => useStableFilter(items, "s1", (row) => row.sessionId === "s1"),
-      { initialProps: { items: [a, b, c] } }
+      ({ items }: { items: Row[] }) =>
+        useStableFilter(items, "s1", (row) => row.sessionId === "s1"),
+      { initialProps: { items: [a, b, c] } },
     );
     const first = result.current;
     expect(first).toEqual([a, c]);
@@ -26,8 +27,9 @@ describe("useStableFilter", () => {
     const a = { id: "a", sessionId: "s1" };
     const b = { id: "b", sessionId: "s1" };
     const { result, rerender } = renderHook(
-      ({ items }: { items: Row[] }) => useStableFilter(items, "s1", (row) => row.sessionId === "s1"),
-      { initialProps: { items: [a] } }
+      ({ items }: { items: Row[] }) =>
+        useStableFilter(items, "s1", (row) => row.sessionId === "s1"),
+      { initialProps: { items: [a] } },
     );
     const first = result.current;
     rerender({ items: [a, b] });

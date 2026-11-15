@@ -1,9 +1,16 @@
 import { ChevronRight, ClipboardCopy, ExternalLink, FolderOpen } from "lucide-react";
-import { useEffect, useState, type JSX } from "react";
-import type { DiagnosticsReport, PerformanceStatus, ProjectSummary } from "../../../shared/types.js";
+import { systemActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
+import { useEffect, useMemo, useState, type JSX } from "react";
+import type {
+  DiagnosticsReport,
+  PerformanceStatus,
+  ProjectSummary,
+} from "../../../shared/types.js";
 import { APP_VERSION_LABEL } from "../../../shared/appVersion.js";
 import { ISSUES_URL, REPO_URL } from "../../../shared/appLinks.js";
 import { formatBytes } from "../../lib/formatBytes.js";
+import { ipcLatencySnapshot, RING_CAPACITY } from "../../lib/ipcLatency.js";
 import { saveLogsFile } from "../../lib/logDownload.js";
 import { savePerformanceCapture } from "../../lib/performanceDownload.js";
 import { showErrorToast } from "../../state/toast.js";
@@ -11,6 +18,7 @@ import { LoadingLine } from "../LoadingLine.js";
 import { ProjectKnowledgePanel } from "../ProjectKnowledgePanel.js";
 import { WebLink } from "../WebLink.js";
 import { ChatHistorySettings } from "./ChatHistorySettings.js";
+import { TurnWaterfallsCard } from "./TurnWaterfallsCard.js";
 import {
   COLD_START_BUDGET_MS,
   ColdStartSummary,
@@ -19,7 +27,7 @@ import {
   SettingNote,
   SettingRow,
   SettingValueRow,
-  Toggle
+  Toggle,
 } from "./settingsPrimitives.js";
 
 export function AdvancedSettings({
@@ -32,7 +40,7 @@ export function AdvancedSettings({
   openArchiveRecovery,
   vacuumDatabase,
   developerToolsEnabled,
-  onDeveloperToolsEnabledChange
+  onDeveloperToolsEnabledChange,
 }: {
   projects: ProjectSummary[];
   diagnostics: DiagnosticsReport | null;
@@ -48,68 +56,85 @@ export function AdvancedSettings({
   const [performanceOpen, setPerformanceOpen] = useState(false);
   const [performanceStatus, setPerformanceStatus] = useState<PerformanceStatus | null>(null);
   const stats = diagnostics?.databaseStats;
-  const readyPhase = diagnostics?.startupPhases.find((phase) => phase.phase === "window.ready-to-show");
+  // The registry is not reactive: reading again when the report or the
+  // details panel changes is what "refreshes when this page re-opens" means.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const ipcStats = useMemo(() => ipcLatencySnapshot(), [diagnostics, performanceOpen]);
+  const readyPhase = diagnostics?.startupPhases.find(
+    (phase) => phase.phase === "window.ready-to-show",
+  );
 
+  const { refetch: refetchPerformanceStatus } = useBridgeQuery({
+    key: ["system.performanceStatus"],
+    enabled: performanceOpen,
+    read: (api) => api.system.performanceStatus(),
+    onData: setPerformanceStatus,
+    onError: (error) =>
+      setDiagnosticsStatus(
+        error instanceof Error ? error.message : "Could not read performance status.",
+      ),
+  });
   useEffect(() => {
     if (!performanceOpen) return undefined;
-    let alive = true;
-    const refresh = async (): Promise<void> => {
-      try {
-        const api = window.argmax;
-        if (!api) return;
-        const status = await api.system.performanceStatus();
-        if (alive) setPerformanceStatus(status);
-      } catch (error) {
-        if (alive) {
-          setDiagnosticsStatus(error instanceof Error ? error.message : "Could not read performance status.");
-        }
-      }
-    };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 1_000);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
-  }, [performanceOpen, setDiagnosticsStatus]);
+    // A read slower than the tick must still land, so a tick never replaces one.
+    let reading = false;
+    const timer = window.setInterval(() => {
+      if (reading) return;
+      reading = true;
+      void refetchPerformanceStatus().finally(() => {
+        reading = false;
+      });
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [performanceOpen, refetchPerformanceStatus]);
 
   const startPerformanceRecording = async (): Promise<void> => {
     try {
-      const api = window.argmax;
-      if (!api) throw new Error("Argmax runtime is unavailable.");
-      const status = await api.system.performanceStart();
+      const system = systemActions();
+      if (!system) throw new Error("Argmax runtime is unavailable.");
+      const status = await system.performanceStart();
       setPerformanceStatus(status);
       setDiagnosticsStatus("Performance recording started. Samples stay in memory only.");
     } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : "Could not start performance recording.");
+      showErrorToast(
+        error instanceof Error ? error.message : "Could not start performance recording.",
+      );
     }
   };
 
   const stopPerformanceRecording = async (): Promise<void> => {
     try {
-      const api = window.argmax;
-      if (!api) throw new Error("Argmax runtime is unavailable.");
-      const capture = await api.system.performanceStop();
+      const system = systemActions();
+      if (!system) throw new Error("Argmax runtime is unavailable.");
+      const capture = await system.performanceStop();
       setPerformanceStatus({
         recording: capture.recording,
         startedAt: capture.startedAt,
         sampleCount: capture.samples.length,
         droppedSamples: capture.droppedSamples,
-        latest: capture.samples.at(-1) ?? null
+        latest: capture.samples.at(-1) ?? null,
       });
       setDiagnosticsStatus(`Performance recording stopped with ${capture.samples.length} samples.`);
     } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : "Could not stop performance recording.");
+      showErrorToast(
+        error instanceof Error ? error.message : "Could not stop performance recording.",
+      );
     }
   };
 
   const downloadPerformanceRecording = async (): Promise<void> => {
     try {
-      const api = window.argmax;
-      if (!api) throw new Error("Argmax runtime is unavailable.");
-      savePerformanceCapture(await api.system.performanceCapture(), setDiagnosticsStatus, showErrorToast);
+      const system = systemActions();
+      if (!system) throw new Error("Argmax runtime is unavailable.");
+      savePerformanceCapture(
+        await system.performanceCapture(),
+        setDiagnosticsStatus,
+        showErrorToast,
+      );
     } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : "Could not load performance capture.");
+      showErrorToast(
+        error instanceof Error ? error.message : "Could not load performance capture.",
+      );
     }
   };
 
@@ -199,7 +224,9 @@ export function AdvancedSettings({
             <button
               type="button"
               className="settings-button"
-              onClick={() => saveLogsFile(diagnostics?.recentLogs ?? [], setDiagnosticsStatus, showErrorToast)}
+              onClick={() =>
+                saveLogsFile(diagnostics?.recentLogs ?? [], setDiagnosticsStatus, showErrorToast)
+              }
               disabled={!diagnostics || diagnostics.recentLogs.length === 0}
               aria-label="Save log file"
             >
@@ -209,25 +236,29 @@ export function AdvancedSettings({
         />
 
         {developerToolsEnabled ? (
-        <SettingRow
-          label="Performance"
-          description={
-            readyPhase
-              ? `Started in ${readyPhase.elapsedMs.toFixed(0)} ms of a ${COLD_START_BUDGET_MS.toLocaleString()} ms budget.`
-              : "Startup timings, request latency, and stored row counts for this launch."
-          }
-          control={
-            <button
-              type="button"
-              className="settings-button settings-button-quiet"
-              aria-expanded={performanceOpen}
-              onClick={() => setPerformanceOpen((open) => !open)}
-            >
-              <span>{performanceOpen ? "Hide details" : "Show details"}</span>
-              <ChevronRight size={13} aria-hidden="true" data-rotated={performanceOpen ? "true" : undefined} />
-            </button>
-          }
-        />
+          <SettingRow
+            label="Performance"
+            description={
+              readyPhase
+                ? `Started in ${readyPhase.elapsedMs.toFixed(0)} ms of a ${COLD_START_BUDGET_MS.toLocaleString()} ms budget.`
+                : "Startup timings, request latency, and stored row counts for this launch."
+            }
+            control={
+              <button
+                type="button"
+                className="settings-button settings-button-quiet"
+                aria-expanded={performanceOpen}
+                onClick={() => setPerformanceOpen((open) => !open)}
+              >
+                <span>{performanceOpen ? "Hide details" : "Show details"}</span>
+                <ChevronRight
+                  size={13}
+                  aria-hidden="true"
+                  data-rotated={performanceOpen ? "true" : undefined}
+                />
+              </button>
+            }
+          />
         ) : null}
 
         <SettingRow
@@ -339,7 +370,7 @@ export function AdvancedSettings({
                       ["Approvals", stats.rowCounts.approvals],
                       ["Checks", stats.rowCounts.checks],
                       ["Learnings", stats.rowCounts.learnings],
-                      ["Usage events", stats.rowCounts.usageEvents]
+                      ["Usage events", stats.rowCounts.usageEvents],
                     ] as const
                   ).map(([label, count]) => (
                     <div key={label}>
@@ -353,7 +384,8 @@ export function AdvancedSettings({
               <div className="settings-card">
                 <h4 className="settings-card-title">SQLite readers</h4>
                 <p className="settings-note">
-                  {stats.readers.active} active of {stats.readers.maxConcurrent} · peak {stats.readers.peakActive} · {stats.readers.idle} idle
+                  {stats.readers.active} active of {stats.readers.maxConcurrent} · peak{" "}
+                  {stats.readers.peakActive} · {stats.readers.idle} idle
                 </p>
                 <dl className="settings-metric-grid">
                   <div>
@@ -381,6 +413,8 @@ export function AdvancedSettings({
             </>
           ) : null}
 
+          <TurnWaterfallsCard />
+
           {diagnostics?.startupPhases.length ? (
             <div className="settings-card">
               <h4 className="settings-card-title">Startup phases</h4>
@@ -396,7 +430,8 @@ export function AdvancedSettings({
                 <tbody>
                   {diagnostics.startupPhases.map((phase) => {
                     const overBudget =
-                      phase.phase === "window.ready-to-show" && phase.elapsedMs > COLD_START_BUDGET_MS;
+                      phase.phase === "window.ready-to-show" &&
+                      phase.elapsedMs > COLD_START_BUDGET_MS;
                     return (
                       <tr key={phase.phase} data-over-budget={overBudget || undefined}>
                         <td>
@@ -418,12 +453,12 @@ export function AdvancedSettings({
             </div>
           ) : null}
 
-          {diagnostics?.ipcStats.length ? (
+          {ipcStats.length ? (
             <div className="settings-card">
               <h4 className="settings-card-title">IPC latency</h4>
               <p className="settings-note">
-                Per-channel p50 / p99 across the last 100 invocations. Refreshes when this page
-                re-opens.
+                Round trip from this window (invoke to result), per channel, over the last{" "}
+                {RING_CAPACITY} calls. Refreshes when this page re-opens.
               </p>
               <table className="settings-startup-table" aria-label="IPC channel latency">
                 <thead>
@@ -431,18 +466,22 @@ export function AdvancedSettings({
                     <th scope="col">Channel</th>
                     <th scope="col">Count</th>
                     <th scope="col">p50</th>
+                    <th scope="col">p95</th>
                     <th scope="col">p99</th>
+                    <th scope="col">Max</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {diagnostics.ipcStats.map((stat) => (
+                  {ipcStats.map((stat) => (
                     <tr key={stat.channel}>
                       <td>
                         <code>{stat.channel}</code>
                       </td>
-                      <td>{stat.count.toLocaleString()}</td>
+                      <td>{stat.totalRecorded.toLocaleString()}</td>
                       <td>{stat.p50.toFixed(2)} ms</td>
+                      <td>{stat.p95.toFixed(2)} ms</td>
                       <td>{stat.p99.toFixed(2)} ms</td>
+                      <td>{stat.max.toFixed(2)} ms</td>
                     </tr>
                   ))}
                 </tbody>
@@ -455,7 +494,11 @@ export function AdvancedSettings({
               <h4 className="settings-card-title">Recent logs</h4>
               <ul className="settings-logs-list" aria-label="Recent log entries">
                 {diagnostics.recentLogs.map((entry, index) => (
-                  <li key={`${entry.timestamp}-${index}`} data-log-level={entry.level} className="settings-logs-entry">
+                  <li
+                    key={`${entry.timestamp}-${index}`}
+                    data-log-level={entry.level}
+                    className="settings-logs-entry"
+                  >
                     <span className="settings-logs-dot" aria-hidden="true" />
                     <span className="settings-logs-timestamp">{entry.timestamp}</span>
                     <span className="settings-logs-level">{entry.level}</span>

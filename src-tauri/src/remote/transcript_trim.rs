@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use serde_json::{json, Map, Value};
 
-use crate::persistence::events::{SessionEventsSinceResult, TimelineEvent};
+use argmax_store::events::{SessionEventsSinceResult, TimelineEvent};
 
 /// Slim a `session:events-since` page for the bridge: payload weight plus the
 /// answer deltas the renderer would prune anyway.
@@ -287,7 +287,7 @@ mod tests {
 
     fn event(cursor: i64, kind: &str, message: &str, payload: Value) -> TimelineEvent {
         let id = format!("event-{cursor}");
-        let semantic = crate::persistence::timeline_semantics::derive(kind, &id, &payload);
+        let semantic = argmax_store::timeline_semantics::derive(kind, &id, &payload);
         TimelineEvent {
             id,
             session_id: "session-1".to_owned(),
@@ -366,8 +366,8 @@ mod tests {
         assert!(result.has_more);
     }
 
-    fn raw_output(cursor: i64, content: &str) -> crate::persistence::events::RawProviderOutput {
-        crate::persistence::events::RawProviderOutput {
+    fn raw_output(cursor: i64, content: &str) -> argmax_store::events::RawProviderOutput {
+        argmax_store::events::RawProviderOutput {
             id: format!("raw-{cursor}"),
             session_id: "session-1".to_owned(),
             stream: "stdout".to_owned(),
@@ -434,11 +434,11 @@ mod tests {
     /// row arrives once, in order, and the last page carries the change cursor.
     #[test]
     fn a_backfill_larger_than_the_budget_pages_without_losing_or_repeating_a_row() {
-        use crate::persistence::events::{
+        use argmax_store::events::{
             list_session_changes_since, list_session_events_since, persist_raw_output,
             persist_timeline_event, PersistRawOutputInput, PersistTimelineEventInput,
         };
-        let database = crate::persistence::Database::open_in_memory().expect("database");
+        let database = argmax_store::Database::open_in_memory().expect("database");
         seed_session(&database);
         let connection = database.connection();
         let filler = "é漢".repeat(7_000); // ~70 KB per row, multi-byte on purpose
@@ -521,10 +521,10 @@ mod tests {
         );
     }
 
-    fn seed_session(database: &crate::persistence::Database) {
-        use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
-        use crate::persistence::sessions::{persist_session, PersistSessionInput};
-        use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
+    fn seed_session(database: &argmax_store::Database) {
+        use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
+        use argmax_store::sessions::{persist_session, PersistSessionInput};
+        use argmax_store::workspaces::{persist_workspace, PersistWorkspaceInput};
         let connection = database.connection();
         persist_project(
             &connection,
@@ -572,7 +572,7 @@ mod tests {
                 permission_mode: None,
                 agent_mode: None,
                 prompt: "p".to_owned(),
-                state: crate::sessions::state::SessionState::Running,
+                state: argmax_contracts::sessions::state::SessionState::Running,
             },
         )
         .expect("session");
@@ -714,5 +714,65 @@ mod tests {
         ]);
         trim_for_remote(&mut result);
         assert_eq!(ids(&result), vec!["event-3", "event-1"]);
+    }
+
+    /// What one worst-case first page may weigh once trimmed, in bytes. A new
+    /// heavy field on a timeline event grows every page the phone reads, and no
+    /// timing test sees that.
+    const TRIMMED_HEAVY_PAGE_BUDGET_BYTES: usize = 1_900_000;
+
+    /// The phone's first backfill page: the most rows a page holds, each a
+    /// tool result with a raw provider copy, a duplicate output, and some with
+    /// an inline screenshot, plus a full page of raw output.
+    fn heavy_first_page() -> SessionEventsSinceResult {
+        use argmax_store::events::{SESSION_EVENT_PAGE_LIMIT, SESSION_RAW_OUTPUT_PAGE_LIMIT};
+        let events = (1..=SESSION_EVENT_PAGE_LIMIT as i64)
+            .map(|cursor| match cursor % 5 {
+                0 => event(cursor, "user.message", &"q".repeat(300), json!({})),
+                1 | 2 => event(cursor, "message.completed", &"a".repeat(3_000), json!({})),
+                _ => {
+                    let mut content = vec![json!({ "type": "text", "text": "t".repeat(4_000) })];
+                    if cursor % 10 == 3 {
+                        content.push(json!({ "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "i".repeat(200_000) } }));
+                    }
+                    event(
+                        cursor,
+                        "command.completed",
+                        "tool_result",
+                        json!({
+                            "name": "Read",
+                            "raw": { "item": { "text": "r".repeat(6_000) } },
+                            "aggregated_output": "o".repeat(10_000),
+                            "content": content,
+                        }),
+                    )
+                }
+            })
+            .collect();
+        let mut result = page(events);
+        result.raw_outputs = (1..=SESSION_RAW_OUTPUT_PAGE_LIMIT as i64)
+            .map(|cursor| raw_output(cursor, &"s".repeat(20_000)))
+            .collect();
+        result
+    }
+
+    #[test]
+    fn the_heaviest_first_page_stays_inside_the_trim_and_wire_budgets() {
+        let mut result = heavy_first_page();
+        trim_for_remote(&mut result);
+        let trimmed_bytes: usize = result.events.iter().map(json_len).sum();
+        assert!(
+            trimmed_bytes <= TRIMMED_HEAVY_PAGE_BUDGET_BYTES,
+            "trimmed events weigh {trimmed_bytes} bytes"
+        );
+
+        fit_to_budget(&mut result, REMOTE_PAGE_BUDGET_BYTES);
+        let frame = json!({ "type": "response", "id": 1, "ok": &result }).to_string();
+        assert!(
+            frame.len() <= REMOTE_PAGE_BUDGET_BYTES,
+            "the wire frame is {} bytes",
+            frame.len()
+        );
+        assert!(result.events.len() <= argmax_store::events::SESSION_EVENT_PAGE_LIMIT);
     }
 }

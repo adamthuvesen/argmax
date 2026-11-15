@@ -8,7 +8,7 @@ import {
   useState,
   type ChangeEvent,
   type JSX,
-  type KeyboardEvent
+  type KeyboardEvent,
 } from "react";
 import {
   formatAnswer,
@@ -16,7 +16,7 @@ import {
   otherOptionIndex,
   structuredAnswers,
   type Question,
-  type QuestionAnswers
+  type QuestionAnswers,
 } from "../lib/questions.js";
 import { showErrorToast } from "../state/toast.js";
 
@@ -48,7 +48,7 @@ function QuestionDockInner({
   questions,
   onAnswer,
   onDismiss,
-  dismissLabel = "Answer in your own words"
+  dismissLabel = "Answer in your own words",
 }: QuestionDockProps): JSX.Element | null {
   const [selected, setSelected] = useState<number[][]>(() => questions.map(() => []));
   const [otherText, setOtherText] = useState<string[]>(() => questions.map(() => ""));
@@ -70,7 +70,11 @@ function QuestionDockInner({
   useEffect(() => {
     const active = document.activeElement;
     const tag = active instanceof HTMLElement ? active.tagName : "";
-    if (tag === "INPUT" || tag === "TEXTAREA" || (active instanceof HTMLElement && active.isContentEditable)) {
+    if (
+      tag === "INPUT" ||
+      tag === "TEXTAREA" ||
+      (active instanceof HTMLElement && active.isContentEditable)
+    ) {
       return;
     }
     optionsRef.current?.focus({ preventScroll: true });
@@ -92,12 +96,12 @@ function QuestionDockInner({
         (otherText[index] ?? "").trim().length > 0;
       return typedOk && (q.multiSelect ? row.length > 0 : row.length === 1);
     },
-    [otherText, questions, selected]
+    [otherText, questions, selected],
   );
 
   const answered = useMemo(
     () => questions.every((_, index) => questionAnswered(index)),
-    [questionAnswered, questions]
+    [questionAnswered, questions],
   );
 
   const goToPage = useCallback((next: number): void => {
@@ -118,8 +122,8 @@ function QuestionDockInner({
       void Promise.resolve(
         onAnswer(
           formatAnswer(questions, selected, otherText),
-          structuredAnswers(questions, selected, otherText)
-        )
+          structuredAnswers(questions, selected, otherText),
+        ),
       ).then((ok) => {
         if (ok === false) failed();
       }, failed);
@@ -174,7 +178,7 @@ function QuestionDockInner({
       // "Other" waits too: it is settled by what gets typed, not by the pick.
       if (!question.multiSelect && page < lastPage) goToPage(page + 1);
     },
-    [goToPage, lastPage, otherIndex, page, question, sending]
+    [goToPage, lastPage, otherIndex, page, question, sending],
   );
 
   const handleKeyDown = useCallback(
@@ -223,7 +227,19 @@ function QuestionDockInner({
         else pick(focusedOption);
       }
     },
-    [answered, dismiss, focusedOption, goToPage, lastPage, optionCount, page, pick, question, sending, submit]
+    [
+      answered,
+      dismiss,
+      focusedOption,
+      goToPage,
+      lastPage,
+      optionCount,
+      page,
+      pick,
+      question,
+      sending,
+      submit,
+    ],
   );
 
   const handleOtherChange = useCallback(
@@ -235,7 +251,7 @@ function QuestionDockInner({
         return next;
       });
     },
-    [page]
+    [page],
   );
 
   // Enter on the line does what a pick does: settles this question and moves
@@ -254,7 +270,7 @@ function QuestionDockInner({
       if (page < lastPage) goToPage(page + 1);
       else if (answered) submit();
     },
-    [answered, goToPage, lastPage, page, questionAnswered, submit]
+    [answered, goToPage, lastPage, page, questionAnswered, submit],
   );
 
   if (!question) return null;
@@ -265,7 +281,11 @@ function QuestionDockInner({
   const rows = hasOtherOption(question) ? [...question.options, null] : [...question.options];
 
   return (
-    <div className="session-input question-dock" data-type-scale="composer" aria-label="Question from agent">
+    <div
+      className="session-input question-dock"
+      data-type-scale="composer"
+      aria-label="Question from agent"
+    >
       <div className="question-dock-head">
         <p className="question-dock-prompt">{question.question}</p>
         <div className="question-dock-nav">
@@ -371,7 +391,9 @@ function QuestionDockInner({
       </ul>
 
       <div className="question-dock-foot">
-        {question.multiSelect ? <span className="question-dock-hint">Pick as many as apply</span> : null}
+        {question.multiSelect ? (
+          <span className="question-dock-hint">Pick as many as apply</span>
+        ) : null}
         <button
           type="button"
           className="question-dock-send"

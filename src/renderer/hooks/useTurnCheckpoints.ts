@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import { objectValue, stringValue } from "../../shared/typeGuards.js";
 
 /**
@@ -9,42 +9,50 @@ import { objectValue, stringValue } from "../../shared/typeGuards.js";
  * is what lets a turn in the transcript find its own checkpoint instead of the
  * user picking from a list of identically named rows.
  */
-export function useTurnCheckpoints(workspaceId: string | undefined, sessionState: string | undefined): {
+export function useTurnCheckpoints(
+  workspaceId: string | undefined,
+  sessionState: string | undefined,
+  workspaceActivityAt: string | undefined,
+): {
   checkpointIds: ReadonlyMap<string, string>;
   refresh: () => void;
 } {
-  const [checkpointIds, setCheckpointIds] = useState<ReadonlyMap<string, string>>(() => new Map());
+  // Re-read when a turn settles, which is when a new before-turn checkpoint
+  // has appeared and the previous turn became revertable, and when the
+  // workspace moves, which is when a turn in another chat on the same checkout
+  // took one. Kept across chat switches: the key says when it is stale.
+  const { data, refetch } = useBridgeQuery<ReadonlyMap<string, string>>({
+    key: ["checkpoints.list", workspaceId, sessionState, workspaceActivityAt],
+    enabled: workspaceId !== undefined,
+    read: (api) =>
+      workspaceId === undefined
+        ? undefined
+        : api.checkpoints?.list({ workspaceId, limit: 200 }).then(checkpointsByTurn),
+    retain: true,
+  });
 
-  const load = useCallback(async (): Promise<void> => {
-    const api = window.argmax?.checkpoints;
-    if (!api || !workspaceId) {
-      setCheckpointIds(new Map());
-      return;
+  // A checkout with no readable checkpoints simply offers no revert. The
+  // failure is not kept, so the next mount reads again.
+  return {
+    checkpointIds: workspaceId === undefined ? NO_CHECKPOINTS : (data ?? NO_CHECKPOINTS),
+    refresh: () => void refetch(),
+  };
+}
+
+const NO_CHECKPOINTS: ReadonlyMap<string, string> = new Map();
+
+function checkpointsByTurn(
+  rows: readonly { id: string; turnBoundary?: string | null; worktreeTree?: string | null }[],
+): ReadonlyMap<string, string> {
+  const byTurn = new Map<string, string>();
+  // Newest first, so the first row for a boundary wins if a turn was ever
+  // checkpointed twice.
+  for (const row of rows) {
+    if (row.turnBoundary && row.worktreeTree && !byTurn.has(row.turnBoundary)) {
+      byTurn.set(row.turnBoundary, row.id);
     }
-    try {
-      const rows = await api.list({ workspaceId, limit: 200 });
-      const next = new Map<string, string>();
-      // Newest first, so the first row for a boundary wins if a turn was ever
-      // checkpointed twice.
-      for (const row of rows) {
-        if (row.turnBoundary && row.worktreeTree && !next.has(row.turnBoundary)) {
-          next.set(row.turnBoundary, row.id);
-        }
-      }
-      setCheckpointIds(next);
-    } catch {
-      // A checkout with no readable checkpoints simply offers no revert.
-      setCheckpointIds(new Map());
-    }
-  }, [workspaceId]);
-
-  // Re-read when a turn settles: that is when a new before-turn checkpoint
-  // has appeared and the previous turn became revertable.
-  useEffect(() => {
-    void load();
-  }, [load, sessionState]);
-
-  return { checkpointIds, refresh: () => void load() };
+  }
+  return byTurn;
 }
 
 /** Why Revert is unavailable for a turn whose before-turn checkpoint failed. */

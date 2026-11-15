@@ -20,7 +20,7 @@ import {
   Pin,
   PinOff,
   RefreshCw,
-  Workflow
+  Workflow,
 } from "lucide-react";
 import {
   memo,
@@ -32,7 +32,7 @@ import {
   type CSSProperties,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import type { DetectedIde, IdeId, WorkspaceSummary } from "../../shared/types.js";
@@ -44,16 +44,13 @@ import type { PriorityReasonKind } from "../lib/priority.js";
 import {
   verifiedWorkspacePrs,
   workspacePrCountLabel,
-  workspacePrimaryPrState
+  workspacePrimaryPrState,
 } from "../lib/sessionPrs.js";
 import { resolveSessionIcon, resolveSessionIconColor } from "../lib/sessionIcons.js";
 import { snoozeChoices } from "../lib/snooze.js";
 import { formatRowAge } from "../lib/rowAge.js";
 import { stableHash32 } from "../lib/stableHash.js";
-import {
-  beginWorkspacePointerDrag,
-  consumeWorkspaceDragClick
-} from "../state/workspaceDrag.js";
+import { beginWorkspacePointerDrag, consumeWorkspaceDragClick } from "../state/workspaceDrag.js";
 import { MenuSections } from "./MenuSections.js";
 import { SessionIconPicker } from "./SessionIconPicker.js";
 import { WorkingNest } from "./WorkingNest.js";
@@ -68,7 +65,7 @@ const PRIORITY_TITLE: Record<PriorityReasonKind, string> = {
   failed: "failed",
   "ci-red": "checks failing",
   "review-ready": "ready for review",
-  "pr-open": "pull request open"
+  "pr-open": "pull request open",
 };
 
 // The reasons that read as "the agent stopped and is waiting on you". They
@@ -146,7 +143,6 @@ export type SidebarSessionRowProps = {
   onSyncNow?: () => void;
 };
 
-
 // Leading glyph for a session row, rendered only when the row carries a live
 // signal (see statusOverlayFor). A turn in flight takes precedence over
 // everything: the marker becomes a nest of four dots cycling out of phase so
@@ -158,7 +154,7 @@ function StatusMarker({
   working,
   prState,
   priorityReason,
-  phaseKey
+  phaseKey,
 }: {
   working: boolean;
   prState?: string | null;
@@ -172,7 +168,15 @@ function StatusMarker({
   // mid-turn. It keeps the default muted marker color on purpose — the
   // fallback check ring would read "done", but this isn't a warning either.
   if (isAwaitingReply(priorityReason)) {
-    return <CircleEllipsis size={14} aria-hidden className="status-marker" data-attention={priorityReason} />;
+    return (
+      <CircleEllipsis
+        size={14}
+        aria-hidden
+        className="status-marker"
+        data-testid="status-marker"
+        data-attention={priorityReason}
+      />
+    );
   }
   if (working) {
     // The shared working nest, sized to the 14px marker box. It is the same mark
@@ -180,15 +184,39 @@ function StatusMarker({
     return <WorkingNest active className="status-marker" size={14} phaseKey={phaseKey} />;
   }
   if (prState === "MERGED") {
-    return <GitMerge size={14} aria-hidden className="status-marker" data-pr="merged" />;
+    return (
+      <GitMerge
+        size={14}
+        aria-hidden
+        className="status-marker"
+        data-testid="status-marker"
+        data-pr="merged"
+      />
+    );
   }
   if (prState === "OPEN") {
-    return <GitPullRequest size={14} aria-hidden className="status-marker" data-pr="open" />;
+    return (
+      <GitPullRequest
+        size={14}
+        aria-hidden
+        className="status-marker"
+        data-testid="status-marker"
+        data-pr="open"
+      />
+    );
   }
   if (prState === "CLOSED") {
-    return <GitPullRequestClosed size={14} aria-hidden className="status-marker" data-pr="closed" />;
+    return (
+      <GitPullRequestClosed
+        size={14}
+        aria-hidden
+        className="status-marker"
+        data-testid="status-marker"
+        data-pr="closed"
+      />
+    );
   }
-  return <CircleX size={14} aria-hidden className="status-marker" />;
+  return <CircleX size={14} aria-hidden className="status-marker" data-testid="status-marker" />;
 }
 
 /**
@@ -202,7 +230,7 @@ function statusOverlayFor({
   working,
   state,
   prState,
-  priorityReason
+  priorityReason,
 }: {
   working: boolean;
   state: WorkspaceSummary["state"];
@@ -229,7 +257,7 @@ function statusOverlayFor({
 function CustomIconMarker({
   icon,
   iconColor,
-  overlay
+  overlay,
 }: {
   icon: string;
   iconColor: string | null | undefined;
@@ -240,12 +268,17 @@ function CustomIconMarker({
   return (
     <span
       className="session-custom-icon"
+      data-testid="session-custom-icon"
       data-icon-color={resolveSessionIconColor(iconColor)}
       aria-hidden="true"
     >
-      <Glyph size={14} />
+      <Glyph size={14} data-testid="session-custom-icon-glyph" />
       {overlay ? (
-        <span className="session-custom-icon-overlay" data-overlay={overlay} />
+        <span
+          className="session-custom-icon-overlay"
+          data-testid="session-custom-icon-overlay"
+          data-overlay={overlay}
+        />
       ) : null}
     </span>
   );
@@ -283,7 +316,7 @@ function SidebarSessionRowInner({
   onUnsnooze,
   onSetIcon,
   onSyncNow,
-  copyableIds
+  copyableIds,
 }: SidebarSessionRowProps): JSX.Element {
   // Right-click "Rename" → inline edit. The context menu is portaled at the
   // cursor; committing writes the new label through onRename.
@@ -294,7 +327,7 @@ function SidebarSessionRowInner({
   const contextMenu = useAnchoredPopover({
     open: contextMenuPoint !== null,
     gutter: 0,
-    capHeight: true
+    capHeight: true,
   });
   const { anchorToPoint: anchorContextMenu } = contextMenu;
   const closeContextMenu = (): void => setContextMenuPoint(null);
@@ -331,7 +364,7 @@ function SidebarSessionRowInner({
   const hasPath = Boolean(workspace.path);
   const guiIdes = useMemo(
     () => detectedIdes.filter((entry) => entry.id !== "terminal" && entry.id !== "iterm"),
-    [detectedIdes]
+    [detectedIdes],
   );
   const hasIdes = detectedIdes.length > 0;
   const effectiveDefault: IdeId | null =
@@ -341,19 +374,21 @@ function SidebarSessionRowInner({
         ? guiIdes[0].id
         : null;
 
-  const ideDisabled = workspace.state === "archived" || !hasPath || !hasIdes || effectiveDefault === null;
+  const ideDisabled =
+    workspace.state === "archived" || !hasPath || !hasIdes || effectiveDefault === null;
   // Surfaced on the (disabled) menu item so the user learns why it's inert.
-  const disabledReason = workspace.state === "archived"
-    ? workspace.checkoutRemovedAt
-      ? "This chat's PR merged and its worktree was removed"
-      : "This chat is archived"
-    : !hasPath
-      ? "Worktree not ready yet"
-      : !hasIdes
-        ? "No supported IDEs found. Install VS Code, Cursor, Windsurf, or Zed."
-        : effectiveDefault === null
-          ? "Set a default IDE in Settings → Handoff"
-          : null;
+  const disabledReason =
+    workspace.state === "archived"
+      ? workspace.checkoutRemovedAt
+        ? "This chat's PR merged and its worktree was removed"
+        : "This chat is archived"
+      : !hasPath
+        ? "Worktree not ready yet"
+        : !hasIdes
+          ? "No supported IDEs found. Install VS Code, Cursor, Windsurf, or Zed."
+          : effectiveDefault === null
+            ? "Set a default IDE in Settings → Handoff"
+            : null;
   const defaultIdeLabel =
     effectiveDefault != null
       ? (detectedIdes.find((entry) => entry.id === effectiveDefault)?.label ?? effectiveDefault)
@@ -448,7 +483,12 @@ function SidebarSessionRowInner({
   };
 
   const handleSessionLinkKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") {
+    if (
+      event.key !== "ArrowDown" &&
+      event.key !== "ArrowUp" &&
+      event.key !== "Home" &&
+      event.key !== "End"
+    ) {
       return;
     }
     event.preventDefault();
@@ -456,9 +496,7 @@ function SidebarSessionRowInner({
     // parent. ".session-link" is the per-row button across every project
     // group; ordering follows visual order. Hidden (collapsed-project) rows
     // are not in the DOM so they're naturally skipped.
-    const allLinks = Array.from(
-      document.querySelectorAll<HTMLButtonElement>(".session-link")
-    );
+    const allLinks = Array.from(document.querySelectorAll<HTMLButtonElement>(".session-link"));
     const currentIndex = allLinks.indexOf(event.currentTarget);
     if (currentIndex === -1 || allLinks.length === 0) return;
     let nextIndex = currentIndex;
@@ -486,32 +524,36 @@ function SidebarSessionRowInner({
     working,
     state: workspace.state,
     prState: primaryPrState,
-    priorityReason
+    priorityReason,
   });
   const hasCustomIcon = workspace.icon ? resolveSessionIcon(workspace.icon) !== null : false;
-  const leadingGlyph =
-    unread ? (
-      <span className="session-unread-marker" aria-hidden="true" />
-    ) : workspace.icon && hasCustomIcon && statusOverlay !== "working" ? (
-      <CustomIconMarker
-        icon={workspace.icon}
-        iconColor={workspace.iconColor}
-        overlay={statusOverlay}
-      />
-    ) : statusOverlay ? (
-      <StatusMarker
-        working={working}
-        prState={primaryPrState}
-        priorityReason={priorityReason}
-        phaseKey={workspace.id}
-      />
-    ) : null;
+  const leadingGlyph = unread ? (
+    <span
+      className="session-unread-marker"
+      data-testid="session-unread-marker"
+      aria-hidden="true"
+    />
+  ) : workspace.icon && hasCustomIcon && statusOverlay !== "working" ? (
+    <CustomIconMarker
+      icon={workspace.icon}
+      iconColor={workspace.iconColor}
+      overlay={statusOverlay}
+    />
+  ) : statusOverlay ? (
+    <StatusMarker
+      working={working}
+      prState={primaryPrState}
+      priorityReason={priorityReason}
+      phaseKey={workspace.id}
+    />
+  ) : null;
 
   return (
     // The workspace id is on the row so ⌘1..9 can read the on-screen order
     // straight off the list (lib/sidebarOrder.ts).
     <div
       className="session-row"
+      data-testid="session-row"
       data-workspace-id={workspace.id}
       data-active={isSelected ? "true" : undefined}
       data-open={isOpenInGrid ? "true" : undefined}
@@ -524,7 +566,7 @@ function SidebarSessionRowInner({
           if (consumeWorkspaceDragClick(workspace.id)) return;
           onOpenWorkspaceChat(workspace.id, {
             ctrlOrMeta: event.metaKey || event.ctrlKey,
-            alt: event.altKey
+            alt: event.altKey,
           });
         }
       }}
@@ -538,7 +580,13 @@ function SidebarSessionRowInner({
           className={`session-link session-link-renaming${subtitle ? " session-link-stacked" : ""}${prCountBadge ? " session-link-has-pr-count" : ""}`}
           data-status={workspace.state}
         >
-          {leadingGlyph ?? <span className="session-link-lead-dot" aria-hidden="true" />}
+          {leadingGlyph ?? (
+            <span
+              className="session-link-lead-dot"
+              data-testid="session-lead-dot"
+              aria-hidden="true"
+            />
+          )}
           <span className={subtitle ? "session-link-text" : undefined}>
             <input
               ref={renameInputRef}
@@ -559,7 +607,9 @@ function SidebarSessionRowInner({
           <button
             aria-current={isSelected ? "true" : undefined}
             className={`session-link${isSelected ? " active" : ""}${
-              subtitle || importedProvider || launchedByLabel || arcLabel ? " session-link-stacked" : ""
+              subtitle || importedProvider || launchedByLabel || arcLabel
+                ? " session-link-stacked"
+                : ""
             }${prCountBadge ? " session-link-has-pr-count" : ""}`}
             data-open={isOpenInGrid ? "true" : undefined}
             data-status={workspace.state}
@@ -577,7 +627,7 @@ function SidebarSessionRowInner({
               if (consumeWorkspaceDragClick(workspace.id)) return;
               onOpenWorkspaceChat(workspace.id, {
                 ctrlOrMeta: event.metaKey || event.ctrlKey,
-                alt: event.altKey
+                alt: event.altKey,
               });
             }}
             onPointerDown={(event) => {
@@ -598,18 +648,27 @@ function SidebarSessionRowInner({
                 button: event.button,
                 clientX: event.clientX,
                 clientY: event.clientY,
-                onFinish: restoreWrapperDrag
+                onFinish: restoreWrapperDrag,
               });
             }}
           >
-            {leadingGlyph ?? <span className="session-link-lead-dot" aria-hidden="true" />}
+            {leadingGlyph ?? (
+              <span
+                className="session-link-lead-dot"
+                data-testid="session-lead-dot"
+                aria-hidden="true"
+              />
+            )}
             {subtitle || importedProvider || launchedByLabel || arcLabel ? (
               <span className="session-link-text">
                 <span>{displayLabel}</span>
                 <span className="session-link-subtitle">
                   {subtitle}
                   {importedProvider ? (
-                    <span className="session-imported-badge" title={`Synced from ${importedProvider}`}>
+                    <span
+                      className="session-imported-badge"
+                      title={`Synced from ${importedProvider}`}
+                    >
                       {importedProvider}
                     </span>
                   ) : null}
@@ -639,7 +698,7 @@ function SidebarSessionRowInner({
               </span>
             ) : null}
           </button>
-          <div className="session-row-actions">
+          <div className="session-row-actions" data-testid="session-row-actions">
             {onTogglePin ? (
               <button
                 className="session-row-action session-pin-btn"
@@ -721,7 +780,7 @@ function SidebarSessionRowInner({
                           Detach to Top Level
                         </button>
                       </li>
-                    ) : null
+                    ) : null,
                   ],
                   [
                     onRename ? (
@@ -755,7 +814,7 @@ function SidebarSessionRowInner({
                           Edit Icon
                         </button>
                       </li>
-                    ) : null
+                    ) : null,
                   ],
                   [
                     onFork ? (
@@ -807,7 +866,7 @@ function SidebarSessionRowInner({
                           Open in New Window
                         </button>
                       </li>
-                    ) : null
+                    ) : null,
                   ],
                   [
                     copyableIds ? (
@@ -843,7 +902,7 @@ function SidebarSessionRowInner({
                           Sync Now
                         </button>
                       </li>
-                    ) : null
+                    ) : null,
                   ],
                   [
                     onRemoveFromPriority ? (
@@ -915,12 +974,12 @@ function SidebarSessionRowInner({
                             </button>
                           </li>
                         ))
-                      : null
-                  ]
+                      : null,
+                  ],
                 ]}
               />
             </ul>,
-            document.body
+            document.body,
           )
         : null}
       {iconPickerPoint && onSetIcon
@@ -932,7 +991,7 @@ function SidebarSessionRowInner({
               onApply={(icon, iconColor) => onSetIcon(workspace.id, icon, iconColor)}
               onClose={closeIconPicker}
             />,
-            document.body
+            document.body,
           )
         : null}
     </div>
@@ -948,10 +1007,10 @@ function SidebarSessionRowInner({
 // useCallback so === holds across renders unless the dep list shifts.
 // `detectedIdes` and `defaultIde` are state values in App that only
 // change when discovery runs, so === also holds during normal use.
-// eslint-disable-next-line react-refresh/only-export-components
+// oxlint-disable-next-line react/only-export-components
 export function sidebarSessionRowEqual(
   prev: SidebarSessionRowProps,
-  next: SidebarSessionRowProps
+  next: SidebarSessionRowProps,
 ): boolean {
   if (prev.childrenExpanded !== next.childrenExpanded) return false;
   if (prev.childCount !== next.childCount) return false;
@@ -1010,7 +1069,7 @@ export function sidebarSessionRowEqual(
 
 function sidebarPrsEqual(
   prev: ReturnType<typeof verifiedWorkspacePrs>,
-  next: ReturnType<typeof verifiedWorkspacePrs>
+  next: ReturnType<typeof verifiedWorkspacePrs>,
 ): boolean {
   if (prev === next) return true;
   if (prev.length !== next.length) return false;
@@ -1018,10 +1077,10 @@ function sidebarPrsEqual(
     const candidate = next[index];
     return Boolean(
       candidate &&
-        pr.prNumber === candidate.prNumber &&
-        pr.prState === candidate.prState &&
-        pr.relationship === candidate.relationship &&
-        pr.isPrimary === candidate.isPrimary
+      pr.prNumber === candidate.prNumber &&
+      pr.prState === candidate.prState &&
+      pr.relationship === candidate.relationship &&
+      pr.isPrimary === candidate.isPrimary,
     );
   });
 }

@@ -1,7 +1,12 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
-import type { EventType, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
+import type {
+  EventType,
+  SessionSummary,
+  TimelineEvent,
+  WorkspaceSummary,
+} from "../../shared/types.js";
 import { AgentActivity } from "./AgentActivity.js";
 import { __liveTimerTickForTest } from "../lib/liveTimer.js";
 
@@ -10,7 +15,7 @@ function event(
   type: EventType,
   createdAt: string,
   message = id,
-  payload: Record<string, unknown> = {}
+  payload: Record<string, unknown> = {},
 ): TimelineEvent {
   return {
     id,
@@ -18,7 +23,7 @@ function event(
     type,
     message,
     payload,
-    createdAt
+    createdAt,
   };
 }
 
@@ -40,7 +45,7 @@ const session: SessionSummary = {
   tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextTokens: 0,
   imported: false,
-  launchKind: "agent"
+  launchKind: "agent",
 };
 
 const workspace: WorkspaceSummary = {
@@ -66,7 +71,7 @@ const workspace: WorkspaceSummary = {
   prCreatedAt: null,
   prMergedAt: null,
   prCheckState: null,
-  prActivityAt: null
+  prActivityAt: null,
 };
 
 describe("AgentActivity", () => {
@@ -75,17 +80,25 @@ describe("AgentActivity", () => {
     vi.setSystemTime(new Date("2026-05-12T15:00:55.000Z"));
     const events = [
       event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
-        id: "task-1", name: "Task", input: { description: "Explore repo" }
+        id: "task-1",
+        name: "Task",
+        input: { description: "Explore repo" },
       }),
       event("note", "message.completed", "2026-05-12T15:00:02.000Z", "I'll inspect the data.", {
-        parent_tool_use_id: "task-1"
+        parent_tool_use_id: "task-1",
       }),
       event("thought", "message.delta", "2026-05-12T15:00:10.000Z", "Checking the evidence.", {
-        parent_tool_use_id: "task-1", thinking: true
-      })
+        parent_tool_use_id: "task-1",
+        thinking: true,
+      }),
     ];
     const pane = (rows: TimelineEvent[]) => (
-      <AgentActivity events={rows} parentSession={session} parentToolUseId="task-1" workspace={workspace} />
+      <AgentActivity
+        events={rows}
+        parentSession={session}
+        parentToolUseId="task-1"
+        workspace={workspace}
+      />
     );
     const { rerender } = render(pane(events.slice(0, 2)));
     expect(screen.getByRole("article", { name: "Thinking" })).toHaveTextContent("53s");
@@ -100,25 +113,46 @@ describe("AgentActivity", () => {
       expect(thinking).toHaveTextContent(second < 60 ? `${second}s` : `1m ${second - 60}s`);
     }
     const label = thinking.textContent;
-    rerender(pane([...events, event("thought-more", "message.delta", "2026-05-12T15:01:11.000Z", "Still checking.", {
-      parent_tool_use_id: "task-1", thinking: true
-    })]));
+    rerender(
+      pane([
+        ...events,
+        event("thought-more", "message.delta", "2026-05-12T15:01:11.000Z", "Still checking.", {
+          parent_tool_use_id: "task-1",
+          thinking: true,
+        }),
+      ]),
+    );
     expect(screen.getByRole("article", { name: "Thinking" }).textContent).toBe(label);
     const toolStarted = event("child-tool", "command.started", "2026-05-12T15:01:12.000Z", "Bash", {
-      id: "child-tool", name: "Bash", parent_tool_use_id: "task-1", input: { command: "git status" }
+      id: "child-tool",
+      name: "Bash",
+      parent_tool_use_id: "task-1",
+      input: { command: "git status" },
     });
     rerender(pane([...events, toolStarted]));
     expect(screen.queryByRole("article", { name: "Thinking" })).toBeNull();
     act(() => {
       vi.setSystemTime(new Date("2026-05-12T15:01:20.000Z"));
     });
-    rerender(pane([...events, toolStarted, event("child-tool-done", "command.completed", "2026-05-12T15:01:16.000Z", "Bash", {
-      tool_use_id: "child-tool", output: "clean"
-    })]));
+    rerender(
+      pane([
+        ...events,
+        toolStarted,
+        event("child-tool-done", "command.completed", "2026-05-12T15:01:16.000Z", "Bash", {
+          tool_use_id: "child-tool",
+          output: "clean",
+        }),
+      ]),
+    );
     expect(screen.getByRole("article", { name: "Thinking" })).toHaveTextContent("4s");
-    rerender(pane([...events, event("answer", "message.delta", "2026-05-12T15:01:12.000Z", "Here is the result.", {
-      parent_tool_use_id: "task-1"
-    })]));
+    rerender(
+      pane([
+        ...events,
+        event("answer", "message.delta", "2026-05-12T15:01:12.000Z", "Here is the result.", {
+          parent_tool_use_id: "task-1",
+        }),
+      ]),
+    );
     expect(screen.queryByRole("article", { name: "Thinking" })).toBeNull();
   });
 
@@ -127,35 +161,64 @@ describe("AgentActivity", () => {
     vi.setSystemTime(new Date("2026-05-12T15:01:45.000Z"));
     const firstRun = [
       event("spawn", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
-        id: "task-1", name: "spawn_agent", providerInvocationId: "invoke-1",
-        input: { sender_thread_id: "parent", receiver_thread_ids: ["child-native"], prompt: "Inspect the repo." }
+        id: "task-1",
+        name: "spawn_agent",
+        providerInvocationId: "invoke-1",
+        input: {
+          sender_thread_id: "parent",
+          receiver_thread_ids: ["child-native"],
+          prompt: "Inspect the repo.",
+        },
       }),
       event("first-start", "agent.started", "2026-05-12T15:00:01.100Z", "Agent started", {
-        providerInvocationId: "invoke-1", providerChildSessionId: "child-native",
-        providerParentConversationId: "parent", agentRootToolUseId: "task-1", agentRunId: "task-1"
+        providerInvocationId: "invoke-1",
+        providerChildSessionId: "child-native",
+        providerParentConversationId: "parent",
+        agentRootToolUseId: "task-1",
+        agentRunId: "task-1",
       }),
       event("first-done", "agent.completed", "2026-05-12T15:00:03.000Z", "First result", {
-        providerInvocationId: "invoke-1", providerChildSessionId: "child-native",
-        providerParentConversationId: "parent", agentRootToolUseId: "task-1", agentRunId: "task-1", status: "completed"
-      })
+        providerInvocationId: "invoke-1",
+        providerChildSessionId: "child-native",
+        providerParentConversationId: "parent",
+        agentRootToolUseId: "task-1",
+        agentRunId: "task-1",
+        status: "completed",
+      }),
     ];
     const resumedRun = [
       ...firstRun,
       event("resume", "command.completed", "2026-05-12T15:00:59.000Z", "resume_agent", {
-        id: "resume", name: "resume_agent", providerInvocationId: "invoke-2",
-        input: { sender_thread_id: "parent", receiver_thread_ids: ["child-native"] }
+        id: "resume",
+        name: "resume_agent",
+        providerInvocationId: "invoke-2",
+        input: { sender_thread_id: "parent", receiver_thread_ids: ["child-native"] },
       }),
       event("send", "command.started", "2026-05-12T15:01:00.000Z", "send_input", {
-        id: "send-2", name: "send_input", providerInvocationId: "invoke-2",
-        input: { sender_thread_id: "parent", receiver_thread_ids: ["child-native"], prompt: "Continue the inspection." }
+        id: "send-2",
+        name: "send_input",
+        providerInvocationId: "invoke-2",
+        input: {
+          sender_thread_id: "parent",
+          receiver_thread_ids: ["child-native"],
+          prompt: "Continue the inspection.",
+        },
       }),
       event("second-start", "agent.started", "2026-05-12T15:01:00.100Z", "Agent started", {
-        providerInvocationId: "invoke-2", providerChildSessionId: "child-native",
-        providerParentConversationId: "parent", agentRootToolUseId: "task-1", agentRunId: "send-2"
-      })
+        providerInvocationId: "invoke-2",
+        providerChildSessionId: "child-native",
+        providerParentConversationId: "parent",
+        agentRootToolUseId: "task-1",
+        agentRunId: "send-2",
+      }),
     ];
     const pane = (rows: TimelineEvent[]) => (
-      <AgentActivity events={rows} parentSession={session} parentToolUseId="task-1" workspace={workspace} />
+      <AgentActivity
+        events={rows}
+        parentSession={session}
+        parentToolUseId="task-1"
+        workspace={workspace}
+      />
     );
     const { rerender } = render(pane(resumedRun));
 
@@ -166,14 +229,31 @@ describe("AgentActivity", () => {
 
     const reasoning = [
       ...resumedRun,
-      event("second-note", "message.completed", "2026-05-12T15:01:02.000Z", "I found the relevant files.", {
-        parent_tool_use_id: "task-1", providerInvocationId: "invoke-2", agentRunId: "send-2",
-        providerChildSessionId: "child-native"
-      }),
-      event("second-thought", "message.delta", "2026-05-12T15:01:10.000Z", "Checking the lifecycle path.", {
-        parent_tool_use_id: "task-1", providerInvocationId: "invoke-2", agentRunId: "send-2",
-        providerChildSessionId: "child-native", thinking: true
-      })
+      event(
+        "second-note",
+        "message.completed",
+        "2026-05-12T15:01:02.000Z",
+        "I found the relevant files.",
+        {
+          parent_tool_use_id: "task-1",
+          providerInvocationId: "invoke-2",
+          agentRunId: "send-2",
+          providerChildSessionId: "child-native",
+        },
+      ),
+      event(
+        "second-thought",
+        "message.delta",
+        "2026-05-12T15:01:10.000Z",
+        "Checking the lifecycle path.",
+        {
+          parent_tool_use_id: "task-1",
+          providerInvocationId: "invoke-2",
+          agentRunId: "send-2",
+          providerChildSessionId: "child-native",
+          thinking: true,
+        },
+      ),
     ];
     rerender(pane(reasoning));
     const thinking = screen.getByRole("article", { name: "Thinking" });
@@ -184,16 +264,39 @@ describe("AgentActivity", () => {
     });
     expect(thinking).toHaveTextContent("36s");
     const label = thinking.textContent;
-    rerender(pane([...reasoning, event("second-thought-more", "message.delta", "2026-05-12T15:01:46.000Z", "Tracing the resumed run.", {
-      parent_tool_use_id: "task-1", providerInvocationId: "invoke-2", agentRunId: "send-2",
-      providerChildSessionId: "child-native", thinking: true
-    })]));
+    rerender(
+      pane([
+        ...reasoning,
+        event(
+          "second-thought-more",
+          "message.delta",
+          "2026-05-12T15:01:46.000Z",
+          "Tracing the resumed run.",
+          {
+            parent_tool_use_id: "task-1",
+            providerInvocationId: "invoke-2",
+            agentRunId: "send-2",
+            providerChildSessionId: "child-native",
+            thinking: true,
+          },
+        ),
+      ]),
+    );
     expect(screen.getByRole("article", { name: "Thinking" }).textContent).toBe(label);
 
-    rerender(pane([...reasoning, event("second-done", "agent.completed", "2026-05-12T15:01:47.000Z", "Second result", {
-      providerInvocationId: "invoke-2", providerChildSessionId: "child-native",
-      providerParentConversationId: "parent", agentRootToolUseId: "task-1", agentRunId: "send-2", status: "completed"
-    })]));
+    rerender(
+      pane([
+        ...reasoning,
+        event("second-done", "agent.completed", "2026-05-12T15:01:47.000Z", "Second result", {
+          providerInvocationId: "invoke-2",
+          providerChildSessionId: "child-native",
+          providerParentConversationId: "parent",
+          agentRootToolUseId: "task-1",
+          agentRunId: "send-2",
+          status: "completed",
+        }),
+      ]),
+    );
     expect(screen.queryByRole("article", { name: "Thinking" })).toBeNull();
   });
 
@@ -202,25 +305,33 @@ describe("AgentActivity", () => {
       <AgentActivity
         events={[
           event("second-done", "agent.completed", "2026-05-12T15:01:03.000Z", "Second result", {
-            providerChildSessionId: "child-native", agentRootToolUseId: "task-1",
-            agentRunId: "send-2", status: "completed"
+            providerChildSessionId: "child-native",
+            agentRootToolUseId: "task-1",
+            agentRunId: "send-2",
+            status: "completed",
           }),
           event("second-start", "agent.started", "2026-05-12T15:01:01.000Z", "Agent started", {
-            providerChildSessionId: "child-native", agentRootToolUseId: "task-1", agentRunId: "send-2"
+            providerChildSessionId: "child-native",
+            agentRootToolUseId: "task-1",
+            agentRunId: "send-2",
           }),
           event("first-done", "agent.completed", "2026-05-12T15:00:03.000Z", "First result", {
-            providerChildSessionId: "child-native", agentRootToolUseId: "task-1",
-            agentRunId: "task-1", status: "completed"
+            providerChildSessionId: "child-native",
+            agentRootToolUseId: "task-1",
+            agentRunId: "task-1",
+            status: "completed",
           }),
           event("first-start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
-            providerChildSessionId: "child-native", agentRootToolUseId: "task-1", agentRunId: "task-1"
-          })
+            providerChildSessionId: "child-native",
+            agentRootToolUseId: "task-1",
+            agentRunId: "task-1",
+          }),
         ]}
         codename="Curie"
         parentSession={{ ...session, state: "complete" }}
         parentToolUseId="task-1"
         workspace={workspace}
-      />
+      />,
     );
 
     expect(screen.getAllByRole("region", { name: /Agent result/ })).toHaveLength(2);
@@ -233,51 +344,54 @@ describe("AgentActivity", () => {
       success: true,
       message: "Resuming agent a5c5b27",
       resumedAgentId: "a5c5b27a1557fa19e",
-      pin: { id: "a5c5b27a1557fa19e", name: "a5c5b27a1557fa19e", ref: "eeee52" }
+      pin: { id: "a5c5b27a1557fa19e", name: "a5c5b27a1557fa19e", ref: "eeee52" },
     });
     render(
       <AgentActivity
         events={[
           event("resume-end", "command.completed", "2026-05-12T15:01:02.000Z", "tool_result", {
             tool_use_id: "send-2",
-            content: resume
+            content: resume,
           }),
           event("second-start", "agent.started", "2026-05-12T15:01:01.000Z", "Agent started", {
             providerChildSessionId: "a5c5b27a1557fa19e",
             providerParentConversationId: "parent-native",
             agentRootToolUseId: "task-1",
             agentRunId: "send-2",
-            description: "Build /next/brain Ask on live stream"
+            description: "Build /next/brain Ask on live stream",
           }),
           event("send", "command.started", "2026-05-12T15:01:00.000Z", "SendMessage", {
             id: "send-2",
             name: "SendMessage",
             providerInvocationId: "invoke-2",
-            input: { to: "a5c5b27a1557fa19e", message: "Continue." }
+            input: { to: "a5c5b27a1557fa19e", message: "Continue." },
           }),
           event("first-done", "agent.completed", "2026-05-12T15:00:03.000Z", "First result", {
             providerChildSessionId: "a5c5b27a1557fa19e",
             providerParentConversationId: "parent-native",
             agentRootToolUseId: "task-1",
             agentRunId: "task-1",
-            status: "completed"
+            status: "completed",
           }),
           event("first-start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
             providerChildSessionId: "a5c5b27a1557fa19e",
             providerParentConversationId: "parent-native",
             agentRootToolUseId: "task-1",
-            agentRunId: "task-1"
+            agentRunId: "task-1",
           }),
           event("task-start", "command.started", "2026-05-12T15:00:00.000Z", "Task", {
             id: "task-1",
             name: "Task",
-            input: { description: "Build /next/brain Ask on live stream", subagent_type: "implementer" }
-          })
+            input: {
+              description: "Build /next/brain Ask on live stream",
+              subagent_type: "implementer",
+            },
+          }),
         ]}
         parentSession={session}
         parentToolUseId="task-1"
         workspace={workspace}
-      />
+      />,
     );
 
     expect(screen.queryByText(/resumedAgentId/)).not.toBeInTheDocument();
@@ -299,7 +413,7 @@ describe("AgentActivity", () => {
     const taskStart = event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
       id: "task-1",
       name: "Task",
-      input: { description: "Explore repo", prompt: "Map the repo." }
+      input: { description: "Explore repo", prompt: "Map the repo." },
     });
     let settleLoad = (): void => {};
     const agentEventsLoad = new Promise<void>((resolve) => {
@@ -331,9 +445,9 @@ describe("AgentActivity", () => {
       pane([
         taskStart,
         event("child-note", "message.completed", "2026-05-12T15:00:02.000Z", narration, {
-          parent_tool_use_id: "task-1"
-        })
-      ])
+          parent_tool_use_id: "task-1",
+        }),
+      ]),
     );
 
     expect(screen.getByText(narration)).toBeInTheDocument();
@@ -343,7 +457,7 @@ describe("AgentActivity", () => {
     const taskStart = event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
       id: "task-1",
       name: "Task",
-      input: { description: "Explore repo", prompt: "Map the repo." }
+      input: { description: "Explore repo", prompt: "Map the repo." },
     });
     let settleLoad = (): void => {};
     const agentEventsLoad = new Promise<void>((resolve) => {
@@ -353,19 +467,27 @@ describe("AgentActivity", () => {
     const runShells = [
       taskStart,
       event("first-done", "agent.completed", "2026-05-12T15:00:03.000Z", "First result", {
-        providerChildSessionId: "child-native", agentRootToolUseId: "task-1",
-        agentRunId: "task-1", status: "completed"
+        providerChildSessionId: "child-native",
+        agentRootToolUseId: "task-1",
+        agentRunId: "task-1",
+        status: "completed",
       }),
       event("first-start", "agent.started", "2026-05-12T15:00:01.000Z", "Agent started", {
-        providerChildSessionId: "child-native", agentRootToolUseId: "task-1", agentRunId: "task-1"
+        providerChildSessionId: "child-native",
+        agentRootToolUseId: "task-1",
+        agentRunId: "task-1",
       }),
       event("second-done", "agent.completed", "2026-05-12T15:01:03.000Z", "Second result", {
-        providerChildSessionId: "child-native", agentRootToolUseId: "task-1",
-        agentRunId: "send-2", status: "completed"
+        providerChildSessionId: "child-native",
+        agentRootToolUseId: "task-1",
+        agentRunId: "send-2",
+        status: "completed",
       }),
       event("second-start", "agent.started", "2026-05-12T15:01:01.000Z", "Agent started", {
-        providerChildSessionId: "child-native", agentRootToolUseId: "task-1", agentRunId: "send-2"
-      })
+        providerChildSessionId: "child-native",
+        agentRootToolUseId: "task-1",
+        agentRunId: "send-2",
+      }),
     ];
     const pane = (events: TimelineEvent[]): JSX.Element => (
       <AgentActivity
@@ -386,33 +508,41 @@ describe("AgentActivity", () => {
       settleLoad();
       await agentEventsLoad;
     });
-    rerender(pane([
-      ...runShells,
-      event("first-note", "message.completed", "2026-05-12T15:00:02.000Z", "First history", {
-        parent_tool_use_id: "task-1", agentRunId: "task-1"
-      }),
-      event("second-note", "message.completed", "2026-05-12T15:01:02.000Z", "Second history", {
-        parent_tool_use_id: "task-1", agentRunId: "send-2"
-      })
-    ]));
+    rerender(
+      pane([
+        ...runShells,
+        event("first-note", "message.completed", "2026-05-12T15:00:02.000Z", "First history", {
+          parent_tool_use_id: "task-1",
+          agentRunId: "task-1",
+        }),
+        event("second-note", "message.completed", "2026-05-12T15:01:02.000Z", "Second history", {
+          parent_tool_use_id: "task-1",
+          agentRunId: "send-2",
+        }),
+      ]),
+    );
 
     expect(onLoadAgentEvents).toHaveBeenCalledTimes(1);
     const runRegions = screen.getAllByRole("region", { name: /Agent activity/ });
     expect(runRegions).toHaveLength(2);
     for (const region of runRegions) {
-      expect(region.querySelector('[data-restoring="true"]')).not.toBeNull();
+      expect(within(region).getByLabelText("Agent messages")).toHaveAttribute(
+        "data-restoring",
+        "true",
+      );
     }
     act(() => {
       vi.advanceTimersByTime(320);
     });
     for (const region of runRegions) {
-      expect(region.querySelector('[data-restoring="true"]')).toBeNull();
+      expect(within(region).getByLabelText("Agent messages")).not.toHaveAttribute("data-restoring");
     }
   });
 
   it("shows a running agent load failure and clears it after a successful retry", async () => {
     vi.useFakeTimers();
-    const onLoadAgentEvents = vi.fn()
+    const onLoadAgentEvents = vi
+      .fn()
       .mockRejectedValueOnce(new Error("trace unavailable"))
       .mockResolvedValue(undefined);
 
@@ -422,14 +552,14 @@ describe("AgentActivity", () => {
           event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
             id: "task-1",
             name: "Task",
-            input: { description: "Explore repo", prompt: "Map the repo." }
-          })
+            input: { description: "Explore repo", prompt: "Map the repo." },
+          }),
         ]}
         onLoadAgentEvents={onLoadAgentEvents}
         parentSession={session}
         parentToolUseId="task-1"
         workspace={workspace}
-      />
+      />,
     );
 
     await act(async () => {
@@ -453,24 +583,33 @@ describe("AgentActivity", () => {
           event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
             id: "task-1",
             name: "task",
-            input: { description: "Advisor", prompt: "Decide." }
+            input: { description: "Advisor", prompt: "Decide." },
           }),
           event("agent-start", "agent.started", "2026-05-12T15:00:01.000Z", "Advisor", {
             agentRootToolUseId: "task-1",
-            agentRunId: "task-1"
+            agentRunId: "task-1",
           }),
-          event("cancel", "session.cancelled", "2026-05-12T15:00:05.000Z", "Provider chat cancelled."),
+          event(
+            "cancel",
+            "session.cancelled",
+            "2026-05-12T15:00:05.000Z",
+            "Provider chat cancelled.",
+          ),
           event("follow-up", "user.message", "2026-05-12T15:00:06.000Z", "Go on"),
-          event("streaming", "session.streaming", "2026-05-12T15:00:07.000Z", "")
+          event("streaming", "session.streaming", "2026-05-12T15:00:07.000Z", ""),
         ]}
         parentSession={{ ...session, provider: "opencode" }}
         parentToolUseId="task-1"
         workspace={workspace}
-      />
+      />,
     );
 
     expect(screen.queryByRole("article", { name: "Thinking" })).toBeNull();
-    expect(screen.getByText("This provider reported the agent launch, but did not stream child activity.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This provider reported the agent launch, but did not stream child activity.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("folds a run into collapsed group headers, the same shape as the chat", () => {
@@ -481,24 +620,24 @@ describe("AgentActivity", () => {
             id: "child-bash",
             name: "Bash",
             parent_tool_use_id: "task-1",
-            input: { command: "git status --short" }
+            input: { command: "git status --short" },
           }),
           event("child-bash-2", "command.started", "2026-05-12T15:00:03.000Z", "Bash", {
             id: "child-bash-2",
             name: "Bash",
             parent_tool_use_id: "task-1",
-            input: { command: "git log --oneline" }
+            input: { command: "git log --oneline" },
           }),
           event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
             id: "task-1",
             name: "Task",
-            input: { description: "Explore repo", prompt: "Map the repo." }
-          })
+            input: { description: "Explore repo", prompt: "Map the repo." },
+          }),
         ]}
         parentSession={session}
         parentToolUseId="task-1"
         workspace={workspace}
-      />
+      />,
     );
 
     const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
@@ -508,69 +647,84 @@ describe("AgentActivity", () => {
     expect(within(pane).queryByText("Command")).toBeNull();
   });
 
-  it.each(["collapsed", "inline"] as const)("folds tools independently of %s thoughts from the run's chip", (thinkingDisplay) => {
-    render(
-      <AgentActivity
-        events={[
-          event("child-think", "message.delta", "2026-05-12T15:00:02.000Z", "Weighing options.", {
-            parent_tool_use_id: "task-1",
-            thinking: true
-          }),
-          event("child-bash", "command.started", "2026-05-12T15:00:03.000Z", "Bash", {
-            id: "child-bash",
-            name: "Bash",
-            parent_tool_use_id: "task-1",
-            input: { command: "git status --short" }
-          }),
-          event("child-bash-done", "command.completed", "2026-05-12T15:00:04.000Z", "Bash", {
-            tool_use_id: "child-bash",
-            output: "clean"
-          }),
-          event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
-            id: "task-1",
-            name: "Task",
-            input: { description: "Explore repo", prompt: "Map the repo." }
-          })
-        ]}
-        parentSession={{ ...session, state: "complete" }}
-        parentToolUseId="task-1"
-        workspace={workspace}
-        thinkingDisplay={thinkingDisplay}
-      />
-    );
+  it.each(["collapsed", "inline"] as const)(
+    "folds tools independently of %s thoughts from the run's chip",
+    (thinkingDisplay) => {
+      render(
+        <AgentActivity
+          events={[
+            event("child-think", "message.delta", "2026-05-12T15:00:02.000Z", "Weighing options.", {
+              parent_tool_use_id: "task-1",
+              thinking: true,
+            }),
+            event("child-bash", "command.started", "2026-05-12T15:00:03.000Z", "Bash", {
+              id: "child-bash",
+              name: "Bash",
+              parent_tool_use_id: "task-1",
+              input: { command: "git status --short" },
+            }),
+            event("child-bash-done", "command.completed", "2026-05-12T15:00:04.000Z", "Bash", {
+              tool_use_id: "child-bash",
+              output: "clean",
+            }),
+            event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+              id: "task-1",
+              name: "Task",
+              input: { description: "Explore repo", prompt: "Map the repo." },
+            }),
+          ]}
+          parentSession={{ ...session, state: "complete" }}
+          parentToolUseId="task-1"
+          workspace={workspace}
+          thinkingDisplay={thinkingDisplay}
+        />,
+      );
 
-    const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
-    const chip = within(pane).getByRole("button", { name: /^Worked/ });
-    expect(chip).toHaveAttribute("aria-expanded", "false");
-    expect(within(pane).getByRole("button", { name: "Ran git status --short" })).toBeInTheDocument();
-    expect(within(pane).queryByText("clean")).toBeNull();
-    if (thinkingDisplay === "inline") {
+      const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
+      const chip = within(pane).getByRole("button", { name: /^Worked/ });
+      expect(chip).toHaveAttribute("aria-expanded", "false");
+      expect(
+        within(pane).getByRole("button", { name: "Ran git status --short" }),
+      ).toBeInTheDocument();
+      expect(within(pane).queryByText("clean")).toBeNull();
+      if (thinkingDisplay === "inline") {
+        expect(within(pane).getByText("Weighing options.")).toBeInTheDocument();
+        expect(within(pane).queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
+      } else {
+        // Folded: the thought's first line rides in its header, nothing more.
+        expect(within(pane).getAllByText("Weighing options.")).toHaveLength(1);
+        expect(
+          within(within(pane).getByRole("button", { name: "Thought" })).getByText(
+            "Weighing options.",
+          ),
+        ).toBeInTheDocument();
+      }
+
+      fireEvent.click(chip);
+
+      expect(chip).toHaveAttribute("aria-expanded", "true");
+      expect(within(pane).getByText("clean")).toBeInTheDocument();
       expect(within(pane).getByText("Weighing options.")).toBeInTheDocument();
-      expect(within(pane).queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
-    } else {
-      // Folded: the thought's first line rides in its header, nothing more.
-      expect(within(pane).getAllByText("Weighing options.")).toHaveLength(1);
-      expect(within(within(pane).getByRole("button", { name: "Thought" })).getByText("Weighing options.")).toBeInTheDocument();
-    }
 
-    fireEvent.click(chip);
+      fireEvent.click(chip);
 
-    expect(chip).toHaveAttribute("aria-expanded", "true");
-    expect(within(pane).getByText("clean")).toBeInTheDocument();
-    expect(within(pane).getByText("Weighing options.")).toBeInTheDocument();
-
-    fireEvent.click(chip);
-
-    expect(within(pane).getByRole("button", { name: "Ran git status --short" })).toBeInTheDocument();
-    expect(within(pane).queryByText("clean")).toBeNull();
-    if (thinkingDisplay === "inline") {
-      expect(within(pane).getByText("Weighing options.")).toBeInTheDocument();
-    } else {
-      // Folded: the thought's first line rides in its header, nothing more.
-      expect(within(pane).getAllByText("Weighing options.")).toHaveLength(1);
-      expect(within(within(pane).getByRole("button", { name: "Thought" })).getByText("Weighing options.")).toBeInTheDocument();
-    }
-  });
+      expect(
+        within(pane).getByRole("button", { name: "Ran git status --short" }),
+      ).toBeInTheDocument();
+      expect(within(pane).queryByText("clean")).toBeNull();
+      if (thinkingDisplay === "inline") {
+        expect(within(pane).getByText("Weighing options.")).toBeInTheDocument();
+      } else {
+        // Folded: the thought's first line rides in its header, nothing more.
+        expect(within(pane).getAllByText("Weighing options.")).toHaveLength(1);
+        expect(
+          within(within(pane).getByRole("button", { name: "Thought" })).getByText(
+            "Weighing options.",
+          ),
+        ).toBeInTheDocument();
+      }
+    },
+  );
 
   it("groups Compact thoughts and tools into one ordered activity disclosure", () => {
     render(
@@ -579,36 +733,36 @@ describe("AgentActivity", () => {
           event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
             id: "task-1",
             name: "Task",
-            input: { description: "Explore repo", prompt: "Map the repo." }
+            input: { description: "Explore repo", prompt: "Map the repo." },
           }),
           event("child-think-1", "message.delta", "2026-05-12T15:00:02.000Z", "Inspecting.", {
             parent_tool_use_id: "task-1",
-            thinking: true
+            thinking: true,
           }),
           event("child-bash-1", "command.started", "2026-05-12T15:00:03.000Z", "Bash", {
             id: "child-bash-1",
             name: "Bash",
             parent_tool_use_id: "task-1",
-            input: { command: "git status --short" }
+            input: { command: "git status --short" },
           }),
           event("child-bash-1-done", "command.completed", "2026-05-12T15:00:04.000Z", "Bash", {
             tool_use_id: "child-bash-1",
-            output: "clean"
+            output: "clean",
           }),
           event("child-think-2", "message.delta", "2026-05-12T15:00:05.000Z", "Comparing.", {
             parent_tool_use_id: "task-1",
-            thinking: true
+            thinking: true,
           }),
           event("child-bash-2", "command.started", "2026-05-12T15:00:06.000Z", "Bash", {
             id: "child-bash-2",
             name: "Bash",
             parent_tool_use_id: "task-1",
-            input: { command: "git diff --stat" }
+            input: { command: "git diff --stat" },
           }),
           event("child-bash-2-done", "command.completed", "2026-05-12T15:00:07.000Z", "Bash", {
             tool_use_id: "child-bash-2",
-            output: "clean"
-          })
+            output: "clean",
+          }),
         ]}
         defaultToolCallsDisplay="collapsed"
         defaultToolCallGroupsExpanded={false}
@@ -616,7 +770,7 @@ describe("AgentActivity", () => {
         parentSession={{ ...session, state: "complete" }}
         parentToolUseId="task-1"
         workspace={workspace}
-      />
+      />,
     );
 
     const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
@@ -626,7 +780,9 @@ describe("AgentActivity", () => {
     fireEvent.click(group);
 
     expect(within(pane).getAllByRole("button", { name: "Thought" })).toHaveLength(2);
-    expect(within(pane).getByRole("button", { name: "Ran git status --short" })).toBeInTheDocument();
+    expect(
+      within(pane).getByRole("button", { name: "Ran git status --short" }),
+    ).toBeInTheDocument();
   });
 
   it("keeps live Compact reasoning behind one collapsed disclosure", () => {
@@ -634,11 +790,14 @@ describe("AgentActivity", () => {
       <AgentActivity
         events={[
           event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
-            id: "task-1", name: "Task", input: { description: "Explore repo" }
+            id: "task-1",
+            name: "Task",
+            input: { description: "Explore repo" },
           }),
           event("thought", "message.delta", "2026-05-12T15:00:02.000Z", "Inspecting the files.", {
-            parent_tool_use_id: "task-1", thinking: true
-          })
+            parent_tool_use_id: "task-1",
+            thinking: true,
+          }),
         ]}
         defaultToolCallsDisplay="collapsed"
         defaultToolCallGroupsExpanded={false}
@@ -646,7 +805,7 @@ describe("AgentActivity", () => {
         parentSession={session}
         parentToolUseId="task-1"
         workspace={workspace}
-      />
+      />,
     );
 
     const disclosure = screen.getByRole("button", { name: "Thinking" });
@@ -664,51 +823,57 @@ describe("AgentActivity", () => {
           event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
             id: "task-1",
             name: "Task",
-            input: { description: "Explore repo", prompt: "Map the repo." }
+            input: { description: "Explore repo", prompt: "Map the repo." },
           }),
           event("read-start", "command.started", "2026-05-12T15:00:02.000Z", "Read", {
             id: "read",
             name: "Read",
             parent_tool_use_id: "task-1",
-            input: { file_path: "README.md" }
+            input: { file_path: "README.md" },
           }),
           event("read-end", "command.completed", "2026-05-12T15:00:02.500Z", "tool_result", {
             tool_use_id: "read",
-            content: "readme"
+            content: "readme",
           }),
-          event("note", "message.completed", "2026-05-12T15:00:03.000Z", "Checked the first file.", {
-            parent_tool_use_id: "task-1"
-          }),
+          event(
+            "note",
+            "message.completed",
+            "2026-05-12T15:00:03.000Z",
+            "Checked the first file.",
+            {
+              parent_tool_use_id: "task-1",
+            },
+          ),
           event("nested-start", "command.started", "2026-05-12T15:00:04.000Z", "Task", {
             id: "nested-task",
             name: "Task",
             parent_tool_use_id: "task-1",
-            input: { description: "Nested audit", prompt: "Audit the result." }
+            input: { description: "Nested audit", prompt: "Audit the result." },
           }),
           event("nested-end", "command.completed", "2026-05-12T15:00:04.500Z", "tool_result", {
             tool_use_id: "nested-task",
-            content: "done"
+            content: "done",
           }),
           event("bash-start", "command.started", "2026-05-12T15:00:05.000Z", "Bash", {
             id: "bash",
             name: "Bash",
             parent_tool_use_id: "task-1",
-            input: { command: "git status --short" }
+            input: { command: "git status --short" },
           }),
           event("bash-end", "command.completed", "2026-05-12T15:00:05.500Z", "tool_result", {
             tool_use_id: "bash",
-            content: ""
+            content: "",
           }),
           event("task-end", "command.completed", "2026-05-12T15:00:06.000Z", "tool_result", {
             tool_use_id: "task-1",
-            content: "Mapped the repo."
-          })
+            content: "Mapped the repo.",
+          }),
         ]}
         onOpenAgent={vi.fn()}
         parentSession={{ ...session, state: "complete" }}
         parentToolUseId="task-1"
         workspace={workspace}
-      />
+      />,
     );
 
     const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
@@ -717,10 +882,17 @@ describe("AgentActivity", () => {
     const nestedAgent = within(pane).getByRole("button", { name: "Started agent Nested audit" });
     const command = within(pane).getByText("git status --short");
     expect(read.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(note.compareDocumentPosition(nestedAgent) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(nestedAgent.compareDocumentPosition(command) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(within(pane).queryByRole("button", { name: /Read a file, started an agent|started an agent, ran/ }))
-      .toBeNull();
+    expect(note.compareDocumentPosition(nestedAgent) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
+    );
+    expect(
+      nestedAgent.compareDocumentPosition(command) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      within(pane).queryByRole("button", {
+        name: /Read a file, started an agent|started an agent, ran/,
+      }),
+    ).toBeNull();
   });
 
   it("keeps a Compact nested launch out of the summaries the routine work folds into", () => {
@@ -730,42 +902,42 @@ describe("AgentActivity", () => {
           event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
             id: "task-1",
             name: "Task",
-            input: { description: "Explore repo", prompt: "Map the repo." }
+            input: { description: "Explore repo", prompt: "Map the repo." },
           }),
           event("read-start", "command.started", "2026-05-12T15:00:02.000Z", "Read", {
             id: "read",
             name: "Read",
             parent_tool_use_id: "task-1",
-            input: { file_path: "README.md" }
+            input: { file_path: "README.md" },
           }),
           event("read-end", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
             tool_use_id: "read",
-            content: "readme"
+            content: "readme",
           }),
           event("nested-start", "command.started", "2026-05-12T15:00:04.000Z", "Task", {
             id: "nested-task",
             name: "Task",
             parent_tool_use_id: "task-1",
-            input: { description: "Nested audit", prompt: "Audit the result." }
+            input: { description: "Nested audit", prompt: "Audit the result." },
           }),
           event("nested-end", "command.completed", "2026-05-12T15:00:05.000Z", "tool_result", {
             tool_use_id: "nested-task",
-            content: "done"
+            content: "done",
           }),
           event("bash-start", "command.started", "2026-05-12T15:00:06.000Z", "Bash", {
             id: "bash",
             name: "Bash",
             parent_tool_use_id: "task-1",
-            input: { command: "git status --short" }
+            input: { command: "git status --short" },
           }),
           event("bash-end", "command.completed", "2026-05-12T15:00:07.000Z", "tool_result", {
             tool_use_id: "bash",
-            content: ""
+            content: "",
           }),
           event("task-done", "command.completed", "2026-05-12T15:00:08.000Z", "tool_result", {
             tool_use_id: "task-1",
-            content: "The audit is complete."
-          })
+            content: "The audit is complete.",
+          }),
         ]}
         defaultToolCallsDisplay="collapsed"
         defaultToolCallGroupsExpanded={false}
@@ -773,7 +945,7 @@ describe("AgentActivity", () => {
         parentSession={{ ...session, state: "complete" }}
         parentToolUseId="task-1"
         workspace={workspace}
-      />
+      />,
     );
 
     const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
@@ -783,7 +955,9 @@ describe("AgentActivity", () => {
     expect(within(pane).queryByRole("button", { name: "Read README.md" })).toBeNull();
     expect(within(pane).queryByText("git status --short")).toBeNull();
     expect(readGroup.compareDocumentPosition(agent) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(agent.compareDocumentPosition(commandGroup) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(agent.compareDocumentPosition(commandGroup) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
+    );
 
     fireEvent.click(readGroup);
     expect(within(pane).getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
@@ -793,35 +967,41 @@ describe("AgentActivity", () => {
     render(
       <AgentActivity
         events={[
-          event("child-narration", "message.completed", "2026-05-12T15:00:02.000Z", "Reading the repo now.", {
-            parent_tool_use_id: "task-1"
-          }),
+          event(
+            "child-narration",
+            "message.completed",
+            "2026-05-12T15:00:02.000Z",
+            "Reading the repo now.",
+            {
+              parent_tool_use_id: "task-1",
+            },
+          ),
           event("child-bash", "command.started", "2026-05-12T15:00:03.000Z", "Bash", {
             id: "child-bash",
             name: "Bash",
             parent_tool_use_id: "task-1",
-            input: { command: "git status --short" }
+            input: { command: "git status --short" },
           }),
           event("child-bash-done", "command.completed", "2026-05-12T15:00:04.000Z", "Bash", {
             tool_use_id: "child-bash",
-            output: "clean"
+            output: "clean",
           }),
           event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
             id: "task-1",
             name: "Task",
-            input: { description: "Explore repo", prompt: "Map the repo." }
+            input: { description: "Explore repo", prompt: "Map the repo." },
           }),
           event("task-done", "command.completed", "2026-05-12T15:00:05.000Z", "Task", {
             tool_use_id: "task-1",
-            output: "The repo has one crate."
-          })
+            output: "The repo has one crate.",
+          }),
         ]}
         defaultToolCallsDisplay="single-line"
         onOpenAgent={vi.fn()}
         parentSession={{ ...session, state: "complete" }}
         parentToolUseId="task-1"
         workspace={workspace}
-      />
+      />,
     );
 
     const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
@@ -831,65 +1011,76 @@ describe("AgentActivity", () => {
     expect(within(pane).queryByRole("button", { name: "Ran git status --short" })).toBeNull();
     expect(within(pane).queryByText("Reading the repo now.")).toBeNull();
     expect(
-      within(screen.getByRole("region", { name: "Agent result" })).getByText("The repo has one crate.")
+      within(screen.getByRole("region", { name: "Agent result" })).getByText(
+        "The repo has one crate.",
+      ),
     ).toBeInTheDocument();
   });
 
   it.each([
     ["Minimal", "single-line"],
-    ["Compact", "collapsed"]
-  ] as const)("keeps a failed nested agent inspectable in a finished %s run", (_label, defaultToolCallsDisplay) => {
-    render(
-      <AgentActivity
-        events={[
-          event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
-            id: "task-1",
-            name: "Task",
-            input: { description: "Explore repo", prompt: "Map the repo." }
-          }),
-          event("nested-start", "command.started", "2026-05-12T15:00:02.000Z", "Task", {
-            id: "nested-task",
-            name: "Task",
-            parent_tool_use_id: "task-1",
-            input: { description: "Nested audit", prompt: "Audit the result." }
-          }),
-          event("nested-end", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
-            tool_use_id: "nested-task",
-            content: "The nested agent could not start.",
-            is_error: true
-          }),
-          event("task-done", "command.completed", "2026-05-12T15:00:04.000Z", "tool_result", {
-            tool_use_id: "task-1",
-            content: "The nested audit failed."
-          })
-        ]}
-        defaultToolCallsDisplay={defaultToolCallsDisplay}
-        defaultToolCallGroupsExpanded={false}
-        onOpenAgent={vi.fn()}
-        parentSession={{ ...session, state: "complete" }}
-        parentToolUseId="task-1"
-        workspace={workspace}
-      />
-    );
+    ["Compact", "collapsed"],
+  ] as const)(
+    "keeps a failed nested agent inspectable in a finished %s run",
+    (_label, defaultToolCallsDisplay) => {
+      render(
+        <AgentActivity
+          events={[
+            event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+              id: "task-1",
+              name: "Task",
+              input: { description: "Explore repo", prompt: "Map the repo." },
+            }),
+            event("nested-start", "command.started", "2026-05-12T15:00:02.000Z", "Task", {
+              id: "nested-task",
+              name: "Task",
+              parent_tool_use_id: "task-1",
+              input: { description: "Nested audit", prompt: "Audit the result." },
+            }),
+            event("nested-end", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
+              tool_use_id: "nested-task",
+              content: "The nested agent could not start.",
+              is_error: true,
+            }),
+            event("task-done", "command.completed", "2026-05-12T15:00:04.000Z", "tool_result", {
+              tool_use_id: "task-1",
+              content: "The nested audit failed.",
+            }),
+          ]}
+          defaultToolCallsDisplay={defaultToolCallsDisplay}
+          defaultToolCallGroupsExpanded={false}
+          onOpenAgent={vi.fn()}
+          parentSession={{ ...session, state: "complete" }}
+          parentToolUseId="task-1"
+          workspace={workspace}
+        />,
+      );
 
-    const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
-    if (defaultToolCallsDisplay === "single-line") {
-      expect(within(pane).queryByRole("button", { name: "Started agent Nested audit" })).toBeNull();
-      fireEvent.click(within(pane).getByRole("button", { name: /^Worked/ }));
-    }
-    const nestedAgent = within(pane).getByRole("button", { name: "Started agent Nested audit" });
-    expect(nestedAgent.closest("[data-status]")).toHaveAttribute("data-status", "error");
-    expect(within(pane).queryByText("The nested agent could not start.")).toBeNull();
-    // The row itself opens the nested run in its own tab, so the failure text
-    // is behind the disclosure beside it.
-    fireEvent.click(
-      within(pane).getByRole("button", { name: "Toggle details for Started agent Nested audit" })
-    );
-    expect(within(pane).getByText("The nested agent could not start.")).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("region", { name: "Agent result" })).getByText("The nested audit failed.")
-    ).toBeInTheDocument();
-  });
+      const pane = screen.getByRole("region", { name: "Agent activity: Explore repo" });
+      if (defaultToolCallsDisplay === "single-line") {
+        expect(
+          within(pane).queryByRole("button", { name: "Started agent Nested audit" }),
+        ).toBeNull();
+        fireEvent.click(within(pane).getByRole("button", { name: /^Worked/ }));
+      }
+      const nestedAgent = within(pane).getByRole("button", { name: "Started agent Nested audit" });
+      const nestedRow = within(pane).getByTestId("tool-call-row-nested-start");
+      expect(nestedRow).toContainElement(nestedAgent);
+      expect(nestedRow).toHaveAttribute("data-status", "error");
+      expect(within(pane).queryByText("The nested agent could not start.")).toBeNull();
+      // The row itself opens the nested run in its own tab, so the failure text
+      // is behind the disclosure beside it.
+      fireEvent.click(
+        within(pane).getByRole("button", { name: "Toggle details for Started agent Nested audit" }),
+      );
+      expect(within(pane).getByText("The nested agent could not start.")).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("region", { name: "Agent result" })).getByText(
+          "The nested audit failed.",
+        ),
+      ).toBeInTheDocument();
+    },
+  );
 
   it("names the agent in the region label so the panel's tab and body agree", () => {
     render(
@@ -898,18 +1089,18 @@ describe("AgentActivity", () => {
           event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
             id: "task-1",
             name: "Task",
-            input: { description: "Explore repo", prompt: "Map the repo." }
-          })
+            input: { description: "Explore repo", prompt: "Map the repo." },
+          }),
         ]}
         codename="Curie"
         parentSession={session}
         parentToolUseId="task-1"
         workspace={workspace}
-      />
+      />,
     );
 
     expect(
-      screen.getByRole("region", { name: "Agent activity: Curie — Explore repo" })
+      screen.getByRole("region", { name: "Agent activity: Curie — Explore repo" }),
     ).toBeInTheDocument();
   });
 
@@ -925,14 +1116,14 @@ describe("AgentActivity", () => {
               prompt: "Map the repo.",
               subagent_type: "implementer",
               model: "claude-opus-5-5",
-              reasoning_effort: "xhigh"
-            }
-          })
+              reasoning_effort: "xhigh",
+            },
+          }),
         ]}
         parentSession={session}
         parentToolUseId="task-1"
         workspace={workspace}
-      />
+      />,
     );
 
     const details = screen.getByLabelText("Agent details");
@@ -949,7 +1140,7 @@ describe("AgentActivity", () => {
           event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
             id: "task-1",
             name: "Task",
-            input: { description: "Edit app", prompt: "Update the app." }
+            input: { description: "Edit app", prompt: "Update the app." },
           }),
           event("child-edit", "command.started", "2026-05-12T15:00:02.000Z", "Edit", {
             id: "child-edit",
@@ -958,22 +1149,22 @@ describe("AgentActivity", () => {
             input: {
               file_path: "/tmp/repo/src/app.ts",
               old_string: "old",
-              new_string: "new"
-            }
+              new_string: "new",
+            },
           }),
           event("child-edit-done", "command.completed", "2026-05-12T15:00:03.000Z", "Edit", {
-            tool_use_id: "child-edit"
+            tool_use_id: "child-edit",
           }),
           event("task-done", "command.completed", "2026-05-12T15:00:04.000Z", "Task", {
             tool_use_id: "task-1",
-            output: "Updated the app."
-          })
+            output: "Updated the app.",
+          }),
         ]}
         onOpenDiff={onOpenDiff}
         parentSession={{ ...session, state: "complete" }}
         parentToolUseId="task-1"
         workspace={workspace}
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Edited src/app.ts" }));

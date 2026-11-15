@@ -1,4 +1,12 @@
-import { siDatadog, siGithub, siLinear, siNotion, siSnowflake, siSpotify, siVercel } from "simple-icons";
+import {
+  siDatadog,
+  siGithub,
+  siLinear,
+  siNotion,
+  siSnowflake,
+  siSpotify,
+  siVercel,
+} from "simple-icons";
 import sprite from "../../../assets/fox-mascot.txt?raw";
 
 /** Sprite roles the mascot keeps apart once monochrome puts every fill on one
@@ -19,7 +27,7 @@ type ServerIconTone = "line" | "fur" | "cream" | "eye";
  */
 export const SERVER_ICON_TONE_DEPTH: Record<"light" | "dark", Record<ServerIconTone, number>> = {
   light: { line: 1, fur: 0.62, cream: 0.26, eye: 0 },
-  dark: { line: 0.1, fur: 0.58, cream: 0.92, eye: 1 }
+  dark: { line: 0.1, fur: 0.58, cream: 0.92, eye: 1 },
 };
 
 interface ServerIconLayer {
@@ -47,11 +55,23 @@ const SLACK: ServerIcon = {
   title: "Slack",
   viewBox: "0 0 127 127",
   layers: [
-    { fill: "#E01E5A", path: "M27.2 80c0 7.3-5.9 13.2-13.2 13.2C6.7 93.2.8 87.3.8 80c0-7.3 5.9-13.2 13.2-13.2h13.2V80zm6.6 0c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2v33c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V80z" },
-    { fill: "#36C5F0", path: "M47 27c-7.3 0-13.2-5.9-13.2-13.2C33.8 6.5 39.7.6 47 .6c7.3 0 13.2 5.9 13.2 13.2V27H47zm0 6.7c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H13.9C6.6 60.1.7 54.2.7 46.9c0-7.3 5.9-13.2 13.2-13.2H47z" },
-    { fill: "#2EB67D", path: "M99.9 46.9c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H99.9V46.9zm-6.6 0c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V13.8C66.9 6.5 72.8.6 80.1.6c7.3 0 13.2 5.9 13.2 13.2v33.1z" },
-    { fill: "#ECB22E", path: "M80.1 99.8c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V99.8h13.2zm0-6.6c-7.3 0-13.2-5.9-13.2-13.2 0-7.3 5.9-13.2 13.2-13.2h33.1c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H80.1z" }
-  ]
+    {
+      fill: "#E01E5A",
+      path: "M27.2 80c0 7.3-5.9 13.2-13.2 13.2C6.7 93.2.8 87.3.8 80c0-7.3 5.9-13.2 13.2-13.2h13.2V80zm6.6 0c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2v33c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V80z",
+    },
+    {
+      fill: "#36C5F0",
+      path: "M47 27c-7.3 0-13.2-5.9-13.2-13.2C33.8 6.5 39.7.6 47 .6c7.3 0 13.2 5.9 13.2 13.2V27H47zm0 6.7c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H13.9C6.6 60.1.7 54.2.7 46.9c0-7.3 5.9-13.2 13.2-13.2H47z",
+    },
+    {
+      fill: "#2EB67D",
+      path: "M99.9 46.9c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H99.9V46.9zm-6.6 0c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V13.8C66.9 6.5 72.8.6 80.1.6c7.3 0 13.2 5.9 13.2 13.2v33.1z",
+    },
+    {
+      fill: "#ECB22E",
+      path: "M80.1 99.8c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V99.8h13.2zm0-6.6c-7.3 0-13.2-5.9-13.2-13.2 0-7.3 5.9-13.2 13.2-13.2h33.1c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H80.1z",
+    },
+  ],
 };
 
 // Google's product marks are multi-coloured, which Simple Icons flattens to a
@@ -61,13 +81,31 @@ const GOOGLE_DRIVE: ServerIcon = {
   title: "Google Drive",
   viewBox: "0 0 87.3 78",
   layers: [
-    { fill: "#0066DA", path: "m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" },
-    { fill: "#00AC47", path: "m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" },
-    { fill: "#EA4335", path: "m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" },
-    { fill: "#00832D", path: "m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" },
-    { fill: "#2684FC", path: "m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" },
-    { fill: "#FFBA00", path: "m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" }
-  ]
+    {
+      fill: "#0066DA",
+      path: "m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z",
+    },
+    {
+      fill: "#00AC47",
+      path: "m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z",
+    },
+    {
+      fill: "#EA4335",
+      path: "m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z",
+    },
+    {
+      fill: "#00832D",
+      path: "m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z",
+    },
+    {
+      fill: "#2684FC",
+      path: "m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z",
+    },
+    {
+      fill: "#FFBA00",
+      path: "m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z",
+    },
+  ],
 };
 
 const GMAIL: ServerIcon = {
@@ -78,8 +116,8 @@ const GMAIL: ServerIcon = {
     { fill: "#34A853", path: "M120 108h14c3.32 0 6-2.69 6-6V59l-20 15" },
     { fill: "#FBBC04", path: "M120 48v26l20-15v-8c0-7.42-8.47-11.65-14.4-7.2" },
     { fill: "#EA4335", path: "M72 74V48l24 18 24-18v26L96 92" },
-    { fill: "#C5221F", path: "M52 51v8l20 15V48l-5.6-4.2c-5.94-4.45-14.4-.22-14.4 7.2" }
-  ]
+    { fill: "#C5221F", path: "M52 51v8l20 15V48l-5.6-4.2c-5.94-4.45-14.4-.22-14.4 7.2" },
+  ],
 };
 
 // The "31" on the calendar face is dropped: at 12px it is noise, and the
@@ -89,17 +127,37 @@ const GOOGLE_CALENDAR: ServerIcon = {
   viewBox: "-3.75 -3.75 200 200",
   monochrome: {
     viewBox: "0 0 24 24",
-    layers: [{ fill: null, path: "M3 2h18v20H3V2zm2 5v13h14V7H5zM7 9h5v8H7v-2h3v-1H8v-2h2v-1H7V9zm7 0h3v8h-2v-6h-1V9z" }]
+    layers: [
+      {
+        fill: null,
+        path: "M3 2h18v20H3V2zm2 5v13h14V7H5zM7 9h5v8H7v-2h3v-1H8v-2h2v-1H7V9zm7 0h3v8h-2v-6h-1V9z",
+      },
+    ],
   },
   layers: [
-    { fill: "#FFFFFF", path: "M148.882 43.618l-47.368-5.263-57.895 5.263L38.355 96.25l5.263 52.632 52.632 6.579 52.632-6.579 5.263-53.947z" },
-    { fill: "#EA4335", path: "M148.882 196.25l47.368-47.368-23.684-10.526-23.684 10.526-10.526 23.684z" },
+    {
+      fill: "#FFFFFF",
+      path: "M148.882 43.618l-47.368-5.263-57.895 5.263L38.355 96.25l5.263 52.632 52.632 6.579 52.632-6.579 5.263-53.947z",
+    },
+    {
+      fill: "#EA4335",
+      path: "M148.882 196.25l47.368-47.368-23.684-10.526-23.684 10.526-10.526 23.684z",
+    },
     { fill: "#34A853", path: "M33.092 172.566l10.526 23.684h105.263v-47.368H43.618z" },
-    { fill: "#4285F4", path: "M12.039-3.75C3.316-3.75-3.75 3.316-3.75 12.039v136.842l23.684 10.526 23.684-10.526V43.618h105.263l10.526-23.684L148.882-3.75z" },
-    { fill: "#188038", path: "M-3.75 148.882v31.579c0 8.724 7.066 15.789 15.789 15.789h31.579v-47.368z" },
+    {
+      fill: "#4285F4",
+      path: "M12.039-3.75C3.316-3.75-3.75 3.316-3.75 12.039v136.842l23.684 10.526 23.684-10.526V43.618h105.263l10.526-23.684L148.882-3.75z",
+    },
+    {
+      fill: "#188038",
+      path: "M-3.75 148.882v31.579c0 8.724 7.066 15.789 15.789 15.789h31.579v-47.368z",
+    },
     { fill: "#FBBC04", path: "M148.882 43.618v105.263h47.368V43.618l-23.684-10.526z" },
-    { fill: "#1967D2", path: "M196.25 43.618V12.039c0-8.724-7.066-15.789-15.789-15.789h-31.579v47.368z" }
-  ]
+    {
+      fill: "#1967D2",
+      path: "M196.25 43.618V12.039c0-8.724-7.066-15.789-15.789-15.789h-31.579v47.368z",
+    },
+  ],
 };
 
 // Linear ships its mark as a badge rather than a bare glyph: near-black
@@ -110,9 +168,12 @@ const LINEAR: ServerIcon = {
   viewBox: "-8 -8 40 40",
   monochrome: { viewBox: "0 0 24 24", layers: [{ fill: null, path: siLinear.path }] },
   layers: [
-    { fill: "#08090A", path: "M1-8h22a9 9 0 0 1 9 9v22a9 9 0 0 1-9 9H1a9 9 0 0 1-9-9V1a9 9 0 0 1 9-9Z" },
-    { fill: "#F7F8F8", path: siLinear.path }
-  ]
+    {
+      fill: "#08090A",
+      path: "M1-8h22a9 9 0 0 1 9 9v22a9 9 0 0 1-9 9H1a9 9 0 0 1-9-9V1a9 9 0 0 1 9-9Z",
+    },
+    { fill: "#F7F8F8", path: siLinear.path },
+  ],
 };
 
 // Datadog's app icon is the same shape: white dog on its purple square. The
@@ -123,9 +184,12 @@ const DATADOG: ServerIcon = {
   viewBox: "-3 -3 30 30",
   monochrome: { viewBox: "0 0 24 24", layers: [{ fill: null, path: siDatadog.path }] },
   layers: [
-    { fill: `#${siDatadog.hex}`, path: "M4-3h16a7 7 0 0 1 7 7v16a7 7 0 0 1-7 7H4a7 7 0 0 1-7-7V4a7 7 0 0 1 7-7Z" },
-    { fill: "#FFFFFF", path: siDatadog.path }
-  ]
+    {
+      fill: `#${siDatadog.hex}`,
+      path: "M4-3h16a7 7 0 0 1 7 7v16a7 7 0 0 1-7 7H4a7 7 0 0 1-7-7V4a7 7 0 0 1 7-7Z",
+    },
+    { fill: "#FFFFFF", path: siDatadog.path },
+  ],
 };
 
 // Argmax's own tools carry the mascot. The whole fox turns to mush at row-icon
@@ -143,7 +207,7 @@ const FOX_CELLS: Record<string, { fill: string; tone: ServerIconTone }> = {
   c: { fill: "var(--fox-cream)", tone: "cream" },
   t: { fill: "var(--fox-cream-shade)", tone: "cream" },
   x: { fill: "var(--fox-nose)", tone: "line" },
-  w: { fill: "#ffffff", tone: "eye" }
+  w: { fill: "#ffffff", tone: "eye" },
 };
 
 function foxHeadIcon(): ServerIcon {
@@ -171,7 +235,7 @@ function foxHeadIcon(): ServerIcon {
   return {
     title: "Argmax",
     viewBox: `${FOX_HEAD.left} ${FOX_HEAD.top} ${FOX_HEAD.width} ${FOX_HEAD.height}`,
-    layers: layers.filter((layer) => layer.path !== "")
+    layers: layers.filter((layer) => layer.path !== ""),
   };
 }
 
@@ -180,36 +244,51 @@ const ARGMAX = foxHeadIcon();
 // Engram, Shunt and Trace are local tools with no brand mark, so they get matched
 // lettermarks: the same badge silhouette as Linear's, a hue each, and a
 // letterform with no counters to close up at 12px.
-const BADGE = "M5.5 0h13A5.5 5.5 0 0 1 24 5.5v13a5.5 5.5 0 0 1-5.5 5.5h-13A5.5 5.5 0 0 1 0 18.5v-13A5.5 5.5 0 0 1 5.5 0Z";
+const BADGE =
+  "M5.5 0h13A5.5 5.5 0 0 1 24 5.5v13a5.5 5.5 0 0 1-5.5 5.5h-13A5.5 5.5 0 0 1 0 18.5v-13A5.5 5.5 0 0 1 5.5 0Z";
 
 const ENGRAM: ServerIcon = {
   title: "Engram",
   viewBox: "0 0 24 24",
-  monochrome: { viewBox: "4 3 16 18", layers: [{ fill: null, path: "M7 4.5h10v3.4H7zM7 4.5h3.4v15H7zM7 10.3h8.4v3.4H7zM7 16.1h10v3.4H7z" }] },
+  monochrome: {
+    viewBox: "4 3 16 18",
+    layers: [
+      { fill: null, path: "M7 4.5h10v3.4H7zM7 4.5h3.4v15H7zM7 10.3h8.4v3.4H7zM7 16.1h10v3.4H7z" },
+    ],
+  },
   layers: [
     { fill: "#6E56CF", path: BADGE },
-    { fill: "#FFFFFF", path: "M7 4.5h10v3.4H7zM7 4.5h3.4v15H7zM7 10.3h8.4v3.4H7zM7 16.1h10v3.4H7z" }
-  ]
+    {
+      fill: "#FFFFFF",
+      path: "M7 4.5h10v3.4H7zM7 4.5h3.4v15H7zM7 10.3h8.4v3.4H7zM7 16.1h10v3.4H7z",
+    },
+  ],
 };
 
 const SHUNT: ServerIcon = {
   title: "Shunt",
   viewBox: "0 0 24 24",
-  monochrome: { viewBox: "4 3 16 18", layers: [{ fill: null, path: "M17.5 4.5h-11v9.2h7.6v2.4H6.5v3.4h11v-9.2H9.9V7.9h7.6z" }] },
+  monochrome: {
+    viewBox: "4 3 16 18",
+    layers: [{ fill: null, path: "M17.5 4.5h-11v9.2h7.6v2.4H6.5v3.4h11v-9.2H9.9V7.9h7.6z" }],
+  },
   layers: [
     { fill: "#0F766E", path: BADGE },
-    { fill: "#FFFFFF", path: "M17.5 4.5h-11v9.2h7.6v2.4H6.5v3.4h11v-9.2H9.9V7.9h7.6z" }
-  ]
+    { fill: "#FFFFFF", path: "M17.5 4.5h-11v9.2h7.6v2.4H6.5v3.4h11v-9.2H9.9V7.9h7.6z" },
+  ],
 };
 
 const TRACE: ServerIcon = {
   title: "Trace",
   viewBox: "0 0 24 24",
-  monochrome: { viewBox: "4 3 16 18", layers: [{ fill: null, path: "M6 4.5h12v3.6H6zM10.2 4.5h3.6v15h-3.6z" }] },
+  monochrome: {
+    viewBox: "4 3 16 18",
+    layers: [{ fill: null, path: "M6 4.5h12v3.6H6zM10.2 4.5h3.6v15h-3.6z" }],
+  },
   layers: [
     { fill: "#B45309", path: BADGE },
-    { fill: "#FFFFFF", path: "M6 4.5h12v3.6H6zM10.2 4.5h3.6v15h-3.6z" }
-  ]
+    { fill: "#FFFFFF", path: "M6 4.5h12v3.6H6zM10.2 4.5h3.6v15h-3.6z" },
+  ],
 };
 
 // Hex ships its mark as a near-black rounded square carrying a chunky pink
@@ -226,15 +305,18 @@ const TRACE: ServerIcon = {
 const HEX: ServerIcon = {
   title: "Hex",
   viewBox: "0 0 24 24",
-  monochrome: { viewBox: "0 0 24 24", layers: [{ fill: null, path: "M4 3h6v7h4V3h6v18h-6v-7h-4v7H4z" }] },
+  monochrome: {
+    viewBox: "0 0 24 24",
+    layers: [{ fill: null, path: "M4 3h6v7h4V3h6v18h-6v-7h-4v7H4z" }],
+  },
   layers: [
     { fill: "#030119", path: "M12 0A12 12 0 1 1 12 24 12 12 0 1 1 12 0Z" },
     {
       fill: "#EABCBB",
       // The X's two gaps are reverse-wound subpaths, knocked out by nonzero fill.
-      path: "M3.6 8.53h2.24v6.94h-2.24zM6.47 8.53h2.29v6.94h-2.29zM5.84 10.88h0.63v1.09h-0.63zM9.39 8.53h5.22v1.09h-5.22zM9.39 10.88h5.22v1.09h-5.22zM9.39 14.32h5.22v1.15h-5.22zM9.39 9.62h2.29v4.7h-2.29zM12.32 9.62h2.29v2.35h-2.29zM12.32 12.6h2.29v1.72h-2.29zM15.24 8.53h5.16v1.72l-1.15 1.15 1.15 1.15v2.92h-5.16v-2.92l1.15-1.15-1.15-1.15zM17.48 8.53v2.29h0.63v-2.29h-0.63zM17.48 11.97v3.5h0.63v-3.5h-0.63z"
-    }
-  ]
+      path: "M3.6 8.53h2.24v6.94h-2.24zM6.47 8.53h2.29v6.94h-2.29zM5.84 10.88h0.63v1.09h-0.63zM9.39 8.53h5.22v1.09h-5.22zM9.39 10.88h5.22v1.09h-5.22zM9.39 14.32h5.22v1.15h-5.22zM9.39 9.62h2.29v4.7h-2.29zM12.32 9.62h2.29v2.35h-2.29zM12.32 12.6h2.29v1.72h-2.29zM15.24 8.53h5.16v1.72l-1.15 1.15 1.15 1.15v2.92h-5.16v-2.92l1.15-1.15-1.15-1.15zM17.48 8.53v2.29h0.63v-2.29h-0.63zM17.48 11.97v3.5h0.63v-3.5h-0.63z",
+    },
+  ],
 };
 
 // Executor ships its mark as a cream serif E on a black circle, the middle arm
@@ -245,11 +327,14 @@ const HEX: ServerIcon = {
 const EXECUTOR: ServerIcon = {
   title: "Executor",
   viewBox: "0 0 28 28",
-  monochrome: { viewBox: "4 4 20 20", layers: [{ fill: null, path: "M8 6h12v4h-8v8h8v4H8zM12 12l5 2-5 2z" }] },
+  monochrome: {
+    viewBox: "4 4 20 20",
+    layers: [{ fill: null, path: "M8 6h12v4h-8v8h8v4H8zM12 12l5 2-5 2z" }],
+  },
   layers: [
     { fill: "#000000", path: "M14 0A14 14 0 1 1 14 28 14 14 0 1 1 14 0Z" },
-    { fill: "#F3EFE7", path: "M8 6h12v4h-8v8h8v4H8zM12 12l5 2-5 2z" }
-  ]
+    { fill: "#F3EFE7", path: "M8 6h12v4h-8v8h8v4H8zM12 12l5 2-5 2z" },
+  ],
 };
 
 function fromSimpleIcon(icon: { title: string; path: string; hex: string }): ServerIcon {
@@ -284,7 +369,7 @@ const SERVER_ICONS: Record<string, ServerIcon> = {
   engram: ENGRAM,
   shunt: SHUNT,
   trace: TRACE,
-  "trace hq": TRACE
+  "trace hq": TRACE,
 };
 
 /** The brand mark for an MCP server name, or null when none is wired up. */

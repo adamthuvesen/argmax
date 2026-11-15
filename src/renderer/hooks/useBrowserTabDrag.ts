@@ -5,7 +5,7 @@ import {
   useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
-  type RefObject
+  type RefObject,
 } from "react";
 import { getBrowserTabs, moveBrowserTab } from "../lib/browserPanel.js";
 
@@ -138,7 +138,7 @@ export function useBrowserTabDrag(scopeId: string, onPick: (id: string) => void)
       }
       setCarry(null);
     },
-    [scopeId]
+    [scopeId],
   );
 
   /** Lands a drop that is still settling, so the next press measures a strip
@@ -241,10 +241,10 @@ export function useBrowserTabDrag(scopeId: string, onPick: (id: string) => void)
         startClientX: event.clientX,
         offset: 0,
         carrying: false,
-        frame: null
+        frame: null,
       };
     },
-    [flushDrop, onPick, scopeId]
+    [flushDrop, onPick, scopeId],
   );
 
   // The pointer leaves the strip on any real carry, so the window owns the
@@ -279,13 +279,19 @@ export function useBrowserTabDrag(scopeId: string, onPick: (id: string) => void)
       }
       // Let the tab travel the last stretch into its slot, then commit at the
       // end of that ride — where the list's own layout already puts it.
-      setCarry({ fromIndex, toIndex, offset: restOffset(slots, fromIndex, toIndex), shift, dropping: true });
+      setCarry({
+        fromIndex,
+        toIndex,
+        offset: restOffset(slots, fromIndex, toIndex),
+        shift,
+        dropping: true,
+      });
       dropRef.current = {
         land: settle,
         timer: setTimeout(() => {
           dropRef.current = null;
           settle();
-        }, duration)
+        }, duration),
       };
     };
     const onCancel = (event: PointerEvent): void => {
@@ -312,7 +318,7 @@ export function useBrowserTabDrag(scopeId: string, onPick: (id: string) => void)
       if (!carry || index !== carry.fromIndex) return undefined;
       return carry.dropping ? "drop" : "carry";
     },
-    [carry]
+    [carry],
   );
 
   const styleOf = useCallback(
@@ -327,7 +333,7 @@ export function useBrowserTabDrag(scopeId: string, onPick: (id: string) => void)
       if (!displaced) return undefined;
       return { transform: `translateX(${toIndex > fromIndex ? -shift : shift}px)` };
     },
-    [carry]
+    [carry],
   );
 
   const consumeClick = useCallback((): boolean => {

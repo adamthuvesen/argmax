@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  displayToolInput,
-  isAgentMessageToolName,
-  isOpaqueCiphertext
-} from "./toolArguments.js";
+import { displayToolInput, isAgentMessageToolName, isOpaqueCiphertext } from "./toolArguments.js";
 
 const CIPHERTEXT =
   "gAAAAABqpr4RdQiuoPbbS8PNeXuPtwfMGzgdXSHeWlWEyxGKhoB8JNw93a0oEyUkXVys9_wfawjMwX2QyWz8Ld6BwXbK_iZ0zfaCj5BZ5d038NLnbMX1rp3M00FqlwAaKycytD6E";
@@ -21,8 +17,8 @@ describe("opaque tool arguments", () => {
       displayToolInput("send_message", {
         message: CIPHERTEXT,
         receiver_thread_ids: ["thread-1"],
-        sender_thread_id: "thread-parent"
-      })
+        sender_thread_id: "thread-parent",
+      }),
     ).toEqual({});
   });
 
@@ -31,8 +27,8 @@ describe("opaque tool arguments", () => {
     expect(
       displayToolInput("SendMessage", {
         to: "a5c5b27a1557fa19e",
-        message: "Please also check the iOS path."
-      })
+        message: "Please also check the iOS path.",
+      }),
     ).toEqual({ message: "Please also check the iOS path." });
   });
 
@@ -45,8 +41,8 @@ describe("opaque tool arguments", () => {
     expect(
       displayToolInput("mcp__argmax__session_message", {
         session: "s-1",
-        message: "The review is ready."
-      })
+        message: "The review is ready.",
+      }),
     ).toEqual({ session: "s-1", message: "The review is ready." });
   });
 });

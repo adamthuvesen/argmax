@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { recordIpcLatency, resetIpcLatency } from "../../lib/ipcLatency.js";
 import { DebugPanel } from "./DebugPanel.js";
 import type {
   ArgmaxApi,
@@ -7,12 +8,13 @@ import type {
   RawProviderOutput,
   SessionSummary,
   TimelineEvent,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../../../shared/types.js";
 
 describe("DebugPanel", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    resetIpcLatency();
   });
 
   afterEach(() => {
@@ -23,10 +25,15 @@ describe("DebugPanel", () => {
   });
 
   it("interleaves raw output and events, and expands a row to the verbatim line", () => {
-    const line = JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash" }] } });
+    const line = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Bash" }] },
+    });
     renderPanel({
-      events: [timelineEvent("e1", "assistant.message", "2026-09-01T10:00:01.000Z", "ran a command")],
-      rawOutputs: [rawOutput("r1", line, "2026-09-01T10:00:00.000Z")]
+      events: [
+        timelineEvent("e1", "assistant.message", "2026-09-01T10:00:01.000Z", "ran a command"),
+      ],
+      rawOutputs: [rawOutput("r1", line, "2026-09-01T10:00:00.000Z")],
     });
 
     const summaries = screen.getAllByRole("button", { expanded: false });
@@ -40,7 +47,7 @@ describe("DebugPanel", () => {
   it("narrows the trace to raw output only", () => {
     renderPanel({
       events: [timelineEvent("e1", "assistant.message", "2026-09-01T10:00:01.000Z", "an event")],
-      rawOutputs: [rawOutput("r1", "a raw line", "2026-09-01T10:00:00.000Z")]
+      rawOutputs: [rawOutput("r1", "a raw line", "2026-09-01T10:00:00.000Z")],
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Raw" }));
@@ -54,13 +61,11 @@ describe("DebugPanel", () => {
       .fn()
       .mockResolvedValueOnce({
         generatedAt: "2026-09-01T10:00:00.000Z",
-        ipcStats: [],
-        logs: [logEntry(1, "info", "providers.session", "session launched")]
+        logs: [logEntry(1, "info", "providers.session", "session launched")],
       })
       .mockResolvedValue({
         generatedAt: "2026-09-01T10:00:01.000Z",
-        ipcStats: [],
-        logs: [logEntry(2, "error", "gh.poller", "refresh failed")]
+        logs: [logEntry(2, "error", "gh.poller", "refresh failed")],
       });
     stubApi({ debugSnapshot });
 
@@ -87,9 +92,8 @@ describe("DebugPanel", () => {
     stubApi({
       debugSnapshot: vi.fn().mockResolvedValue({
         generatedAt: "2026-09-01T10:00:00.000Z",
-        ipcStats: [],
-        logs: [logEntry(1, "debug", "db", "chatty"), logEntry(2, "error", "db", "broken")]
-      })
+        logs: [logEntry(1, "debug", "db", "chatty"), logEntry(2, "error", "db", "broken")],
+      }),
     });
 
     renderPanel({});
@@ -103,15 +107,13 @@ describe("DebugPanel", () => {
   });
 
   it("sorts IPC channels by p99 and flags the slow ones", async () => {
+    for (let index = 0; index < 4; index += 1) recordIpcLatency("health:ping", 0.4);
+    for (let index = 0; index < 9; index += 1) recordIpcLatency("review:load-diff", 320);
     stubApi({
       debugSnapshot: vi.fn().mockResolvedValue({
         generatedAt: "2026-09-01T10:00:00.000Z",
-        ipcStats: [
-          { channel: "health:ping", count: 4, totalRecorded: 4, p50: 0.2, p99: 0.4 },
-          { channel: "review:load-diff", count: 9, totalRecorded: 9, p50: 40, p99: 320 }
-        ],
-        logs: []
-      })
+        logs: [],
+      }),
     });
 
     renderPanel({});
@@ -143,7 +145,7 @@ describe("DebugPanel", () => {
 
 function renderPanel({
   events = [],
-  rawOutputs = []
+  rawOutputs = [],
 }: {
   events?: TimelineEvent[];
   rawOutputs?: RawProviderOutput[];
@@ -155,7 +157,7 @@ function renderPanel({
       session={session()}
       workspace={workspace()}
       onClose={vi.fn()}
-    />
+    />,
   );
 }
 
@@ -163,7 +165,12 @@ function stubApi(system: Partial<ArgmaxApi["system"]>): void {
   Object.defineProperty(window, "argmax", { configurable: true, value: { system } });
 }
 
-function timelineEvent(id: string, type: string, createdAt: string, message: string): TimelineEvent {
+function timelineEvent(
+  id: string,
+  type: string,
+  createdAt: string,
+  message: string,
+): TimelineEvent {
   return { id, sessionId: "session-1", type, message, payload: {}, createdAt };
 }
 
@@ -194,7 +201,7 @@ function session(): SessionSummary {
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextTokens: 0,
     imported: false,
-    launchKind: "agent"
+    launchKind: "agent",
   };
 }
 
@@ -222,6 +229,6 @@ function workspace(): WorkspaceSummary {
     prCreatedAt: null,
     prMergedAt: null,
     prCheckState: null,
-    prActivityAt: null
+    prActivityAt: null,
   };
 }

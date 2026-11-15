@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
   type JSX,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
@@ -28,7 +28,7 @@ const PANE_SURFACE = ".conversation-surface, .launcher-surface";
 export function ImageLightbox({
   src,
   alt,
-  onClose
+  onClose,
 }: {
   src: string | null;
   alt: string;

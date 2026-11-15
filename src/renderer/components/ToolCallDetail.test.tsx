@@ -19,7 +19,7 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
     createdAt: "2026-05-30T12:00:00.000Z",
     completedAt: "2026-05-30T12:00:01.000Z",
     error: null,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -31,10 +31,10 @@ describe("ToolCallDetail", () => {
         tool={tool({
           inputFull: {
             path: "/repo/poem.md",
-            streamContent: "# Hex Context Loop\n\nThe loop begins where context ends.\n"
-          }
+            streamContent: "# Hex Context Loop\n\nThe loop begins where context ends.\n",
+          },
         })}
-      />
+      />,
     );
 
     const preview = screen.getByLabelText("Preview of /repo/poem.md");
@@ -49,7 +49,7 @@ describe("ToolCallDetail", () => {
   // A Cursor write arrives as a unified diff on the input. The card draws it,
   // so it must not also appear as an escaped argument above the card.
   it("draws a provider's diff as a change card, not as an argument", () => {
-    const { container } = render(
+    render(
       <ToolCallDetail
         workspaceCwd="/repo"
         tool={tool({
@@ -57,41 +57,52 @@ describe("ToolCallDetail", () => {
           inputPreview: "/repo/greet.ts",
           inputFull: {
             path: "/repo/greet.ts",
-            unified_diff: '@@ -1,3 +1,3 @@\n export function greet() {\n-  return "hello";\n+  return "hi there";\n }'
-          }
+            unified_diff:
+              '@@ -1,3 +1,3 @@\n export function greet() {\n-  return "hello";\n+  return "hi there";\n }',
+          },
         })}
-      />
+      />,
     );
 
-    const card = container.querySelector(".file-change-card");
-    expect(card?.getAttribute("data-kind")).toBe("edit");
-    expect(card?.getAttribute("aria-label")).toBe("Edited /repo/greet.ts");
-    expect(container.querySelector(".tool-call-args")).toBeNull();
+    const card = screen.getByRole("region", { name: "Edited /repo/greet.ts" });
+    expect(card).toHaveAttribute("data-kind", "edit");
+    expect(screen.queryByTestId("tool-call-args")).toBeNull();
   });
 
   it.each([
-    ["Codex", "file_change", {
-      changes: [{ path: "/repo/greet.ts", kind: "update", diff: "@@ -1 +1 @@\n-old\n+new" }]
-    }],
+    [
+      "Codex",
+      "file_change",
+      {
+        changes: [{ path: "/repo/greet.ts", kind: "update", diff: "@@ -1 +1 @@\n-old\n+new" }],
+      },
+    ],
     ["Claude", "Edit", { file_path: "/repo/greet.ts", old_string: "old", new_string: "new" }],
     ["OpenCode", "edit", { filePath: "/repo/greet.ts", oldString: "old", newString: "new" }],
-    ["Grok", "search_replace", {
-      file_path: "/repo/greet.ts",
-      old_string: "old",
-      new_string: "new",
-      replace_all: false
-    }]
-  ])("does not repeat %s replacement text above its rendered diff", (_provider, name, inputFull) => {
-    render(
-      <ToolCallDetail
-        workspaceCwd="/repo"
-        tool={tool({ name, inputPreview: "/repo/greet.ts", inputFull })}
-      />
-    );
+    [
+      "Grok",
+      "search_replace",
+      {
+        file_path: "/repo/greet.ts",
+        old_string: "old",
+        new_string: "new",
+        replace_all: false,
+      },
+    ],
+  ])(
+    "does not repeat %s replacement text above its rendered diff",
+    (_provider, name, inputFull) => {
+      render(
+        <ToolCallDetail
+          workspaceCwd="/repo"
+          tool={tool({ name, inputPreview: "/repo/greet.ts", inputFull })}
+        />,
+      );
 
-    expect(screen.getByLabelText("Edited /repo/greet.ts")).toBeInTheDocument();
-    expect(screen.queryByRole("definition")).toBeNull();
-  });
+      expect(screen.getByLabelText("Edited /repo/greet.ts")).toBeInTheDocument();
+      expect(screen.queryByRole("definition")).toBeNull();
+    },
+  );
 
   it("shows an MCP result's payload instead of its envelope", () => {
     render(
@@ -104,10 +115,10 @@ describe("ToolCallDetail", () => {
             metadata: { type: "page" },
             title: "Todo",
             url: "https://app.notion.com/p/28df6da7",
-            text: "Prio\n- [ ] mpa"
-          })
+            text: "Prio\n- [ ] mpa",
+          }),
         })}
-      />
+      />,
     );
 
     const body = screen.getByText(/- \[ \] mpa/);
@@ -120,8 +131,12 @@ describe("ToolCallDetail", () => {
     const contents = '{"name":"argmax","version":"0.6.0"}';
     render(
       <ToolCallDetail
-        tool={tool({ name: "Read", inputFull: { file_path: "/repo/package.json" }, output: contents })}
-      />
+        tool={tool({
+          name: "Read",
+          inputFull: { file_path: "/repo/package.json" },
+          output: contents,
+        })}
+      />,
     );
 
     expect(screen.getByText(contents).textContent).toBe(contents);
@@ -134,9 +149,9 @@ describe("ToolCallDetail", () => {
         tool={tool({
           name: "Read",
           inputFull: { file_path: "/repo/README.md" },
-          output: "# llm-infer\n\nREADME body"
+          output: "# llm-infer\n\nREADME body",
         })}
-      />
+      />,
     );
 
     expect(screen.queryByText("Output")).toBeNull();
@@ -154,14 +169,14 @@ describe("ToolCallDetail", () => {
         workspaceCwd="/Users/adam/dev/argmax"
         tool={tool({
           name: "command_execution",
-          inputPreview: "/bin/zsh -lc \"npm run lint\"",
+          inputPreview: '/bin/zsh -lc "npm run lint"',
           inputFull: {
-            command: "/bin/zsh -lc \"find /Users/adam/dev/argmax/src -type f\"",
-            timeout_ms: 30000
+            command: '/bin/zsh -lc "find /Users/adam/dev/argmax/src -type f"',
+            timeout_ms: 30000,
           },
-          output: "ok"
+          output: "ok",
         })}
-      />
+      />,
     );
 
     expect(screen.queryByText("Command")).toBeNull();
@@ -181,11 +196,11 @@ describe("ToolCallDetail", () => {
           inputFull: {
             command: "uv run python analysis/run.py --jobs 5 --output /tmp/m",
             description: "Confirm E12 reproduction and collect the human artifact hash",
-            timeout: 900000
+            timeout: 900000,
           },
-          output: "E12 default artifact still reproduces: True"
+          output: "E12 default artifact still reproduces: True",
         })}
-      />
+      />,
     );
 
     expect(screen.queryByText("Input")).toBeNull();
@@ -195,12 +210,7 @@ describe("ToolCallDetail", () => {
   });
 
   it("shows a heredoc as a readable Command block, not escaped JSON", () => {
-    const heredoc = [
-      "python3 - <<'PY'",
-      "print('hello')",
-      "print('world')",
-      "PY"
-    ].join("\n");
+    const heredoc = ["python3 - <<'PY'", "print('hello')", "print('world')", "PY"].join("\n");
     render(
       <ToolCallDetail
         tool={tool({
@@ -209,11 +219,11 @@ describe("ToolCallDetail", () => {
           inputFull: {
             command: heredoc,
             description: "print two lines",
-            timeout: 60000
+            timeout: 60000,
           },
-          output: "hello\nworld"
+          output: "hello\nworld",
         })}
-      />
+      />,
     );
 
     expect(screen.queryByText("Command")).toBeNull();
@@ -232,17 +242,18 @@ describe("ToolCallDetail", () => {
           inputPreview: "https://linear.app/docs/api/rate-limits",
           inputFull: {
             url: "https://linear.app/docs/api/rate-limits",
-            prompt: "What are the per-token request limits for the GraphQL API?"
+            prompt: "What are the per-token request limits for the GraphQL API?",
           },
-          output: "1,500 requests per hour per token."
+          output: "1,500 requests per hour per token.",
         })}
-      />
+      />,
     );
 
     // No disclosure, no braces, and the question is above the answer.
     expect(screen.queryByText("Input")).toBeNull();
     expect(screen.queryByText(/^\{/)).toBeNull();
-    const args = screen.getByText("prompt").closest("dl") as HTMLElement;
+    const args = screen.getByTestId("tool-call-args");
+    expect(within(args).getByText("prompt")).toBeInTheDocument();
     expect(within(args).getByText(/per-token request limits/)).toBeInTheDocument();
     const payload = screen.getByText("1,500 requests per hour per token.");
     const order = args.compareDocumentPosition(payload) & Node.DOCUMENT_POSITION_FOLLOWING;
@@ -256,9 +267,9 @@ describe("ToolCallDetail", () => {
           name: "Grep",
           inputPreview: "buildSessionToolCalls",
           inputFull: { pattern: "buildSessionToolCalls", glob: "*.ts", "-n": true },
-          output: "src/renderer/lib/toolCalls.ts:412"
+          output: "src/renderer/lib/toolCalls.ts:412",
         })}
-      />
+      />,
     );
 
     expect(screen.queryByRole("definition")).toBeNull();
@@ -268,7 +279,9 @@ describe("ToolCallDetail", () => {
 
   it("offers Show all instead of a truncation note when output is capped", () => {
     const long = Array.from({ length: 400 }, (_, i) => `line ${i}`).join("\n");
-    render(<ToolCallDetail tool={tool({ name: "Bash", inputFull: { command: "ls" }, output: long })} />);
+    render(
+      <ToolCallDetail tool={tool({ name: "Bash", inputFull: { command: "ls" }, output: long })} />,
+    );
 
     expect(screen.queryByText(/showing first/)).toBeNull();
     const showAll = screen.getByRole("button", { name: "Show all" });
@@ -289,9 +302,9 @@ describe("ToolCallDetail", () => {
           inputFull: { command: "npm test" },
           output: diagnostics,
           status: "error",
-          error: "Command failed with exit code 1"
+          error: "Command failed with exit code 1",
         })}
-      />
+      />,
     );
 
     expect(screen.getByText("Error")).toBeInTheDocument();
@@ -309,9 +322,9 @@ describe("ToolCallDetail", () => {
         tool={tool({
           output: "Permission denied\n",
           status: "error",
-          error: "Permission denied"
+          error: "Permission denied",
         })}
-      />
+      />,
     );
 
     expect(screen.getAllByText("Permission denied")).toHaveLength(1);
@@ -324,9 +337,9 @@ describe("ToolCallDetail", () => {
           name: "Bash",
           inputPreview: "mkdir -p dist",
           inputFull: { command: "mkdir -p dist", description: "create dist", timeout: 30 },
-          output: "\n"
+          output: "\n",
         })}
-      />
+      />,
     );
 
     expect(container).toBeEmptyDOMElement();
@@ -343,11 +356,11 @@ describe("ToolCallDetail", () => {
           inputFull: {
             message: ciphertext,
             receiver_thread_ids: ["thread-child"],
-            sender_thread_id: "thread-parent"
+            sender_thread_id: "thread-parent",
           },
-          output: ciphertext
+          output: ciphertext,
         })}
-      />
+      />,
     );
 
     expect(container).toBeEmptyDOMElement();
@@ -369,9 +382,9 @@ describe("ToolCallDetail", () => {
           name: "SendMessage",
           inputFull: { to: "a5c5b27a1557fa19e", message: "Please also check the iOS path." },
           output:
-            '{"success":true,"message":"Resuming agent a5c5b27","resumedAgentId":"a5c5b27a1557fa19e","pin":{"id":"a5c5b27a1557fa19e"}}'
+            '{"success":true,"message":"Resuming agent a5c5b27","resumedAgentId":"a5c5b27a1557fa19e","pin":{"id":"a5c5b27a1557fa19e"}}',
         })}
-      />
+      />,
     );
 
     expect(screen.getByText(/Please also check the iOS path/)).toBeInTheDocument();

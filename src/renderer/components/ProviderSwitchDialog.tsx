@@ -20,7 +20,7 @@ export function ProviderSwitchDialog({
   afterTurn = false,
   onCancel,
   onStartNewSession,
-  onSwitch
+  onSwitch,
 }: {
   to: ProviderId;
   /** The chat is mid-turn: the follow-up queues, and the switch happens when

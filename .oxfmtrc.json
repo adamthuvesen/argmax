@@ -1,0 +1,17 @@
+{
+  "ignorePatterns": [
+    "**/*.{md,json,jsonl,css,html,svg,toml,yml,yaml,swift,rs,txt}",
+    "src-tauri/**",
+    "ios/**",
+    "docs/**",
+    "assets/**",
+    "fixtures/**",
+    "build/**",
+    ".claude/**",
+    ".codex/**",
+    ".verify/**",
+    "scratch/**",
+    "src/shared/bindings.d.ts",
+    "src/shared/ipcSchemas.ts"
+  ]
+}

@@ -12,14 +12,21 @@ import { serverIconFor } from "../lib/serverIcons.js";
  */
 export function ServerIcon({
   server,
-  web = false
+  web = false,
 }: {
   server: string | null;
   web?: boolean;
 }): JSX.Element | null {
   const colorMode = useActivityIconColorMode();
   if (server === "cua repl") {
-    return <Monitor size={14} className="tool-call-row-server-icon" role="img" aria-label="Computer use" />;
+    return (
+      <Monitor
+        size={14}
+        className="tool-call-row-server-icon"
+        role="img"
+        aria-label="Computer use"
+      />
+    );
   }
   const icon = server ? serverIconFor(server) : null;
   if (!icon) {
@@ -30,13 +37,11 @@ export function ServerIcon({
     // Labelled, not hidden, like the brand marks: it is the only thing on a
     // browser-MCP row that says "the web" when the server name does not.
     if (web)
-      return (
-        <Globe size={14} className="tool-call-row-server-icon" role="img" aria-label="Web" />
-      );
+      return <Globe size={14} className="tool-call-row-server-icon" role="img" aria-label="Web" />;
     if (!server) return null;
     return <Plug size={14} className="tool-call-row-server-icon" aria-hidden="true" />;
   }
-  const artwork = colorMode === "monochrome" ? icon.monochrome ?? icon : icon;
+  const artwork = colorMode === "monochrome" ? (icon.monochrome ?? icon) : icon;
   return (
     <svg
       className="tool-call-row-server-icon"
@@ -52,6 +57,7 @@ export function ServerIcon({
       {artwork.layers.map((layer, index) => (
         <path
           key={index}
+          data-testid="server-icon-layer"
           d={layer.path}
           data-tone={layer.tone}
           style={{ fill: layer.fill ?? "currentColor" }}

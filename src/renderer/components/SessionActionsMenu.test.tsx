@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
@@ -14,24 +14,24 @@ function installArgmax(
     brief: "Test task",
     environmentId: "env-default",
     environmentDescription: "Default",
-    environments: [{ id: "env-default", name: "Default" }]
-  })
+    environments: [{ id: "env-default", name: "Default" }],
+  }),
 ): void {
   Object.defineProperty(window, "argmax", {
     configurable: true,
     writable: true,
     value: {
       prs: {
-        listForSession
+        listForSession,
       },
       cloud: {
         prepare: prepareCloud,
-        launch: vi.fn()
+        launch: vi.fn(),
       },
       system: {
-        openPath: vi.fn().mockResolvedValue({ ok: true })
-      }
-    }
+        openPath: vi.fn().mockResolvedValue({ ok: true }),
+      },
+    },
   });
 }
 
@@ -56,7 +56,7 @@ function session(overrides: Partial<SessionSummary> = {}): SessionSummary {
     contextTokens: 0,
     imported: false,
     launchKind: "agent",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -85,7 +85,7 @@ function workspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary 
     prMergedAt: null,
     prCheckState: null,
     prActivityAt: null,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -113,7 +113,6 @@ describe("SessionActionsMenu", () => {
     delete (window as { argmax?: unknown }).argmax;
   });
 
-
   it("hides actions until opened and routes main menu clicks", async () => {
     const onBrowseFiles = vi.fn();
     const onToggleLog = vi.fn();
@@ -124,7 +123,7 @@ describe("SessionActionsMenu", () => {
         onToggleLog={onToggleLog}
         session={session()}
         workspace={workspace({ dirty: true })}
-      />
+      />,
     );
 
     expect(screen.queryByRole("menuitem", { name: "Browse Files" })).toBeNull();
@@ -135,10 +134,6 @@ describe("SessionActionsMenu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Browse Files" }));
     expect(onBrowseFiles).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("menuitem", { name: "Browse Files" })).toBeNull();
-
-    await waitFor(() => {
-      expect(listForSession).toHaveBeenCalledWith({ sessionId: "session-1" });
-    });
   });
 
   it("opens the browser pane from the menu", async () => {
@@ -155,7 +150,7 @@ describe("SessionActionsMenu", () => {
         onToggleLog={vi.fn()}
         session={session()}
         workspace={workspace()}
-      />
+      />,
     );
 
     await openMenu();
@@ -177,7 +172,7 @@ describe("SessionActionsMenu", () => {
       brief: "Test task",
       environmentId: "env-default",
       environmentDescription: "Default",
-      environments: [{ id: "env-default", name: "Default" }]
+      environments: [{ id: "env-default", name: "Default" }],
     });
     installArgmax(listForSession, prepareCloud);
 
@@ -188,13 +183,15 @@ describe("SessionActionsMenu", () => {
         onToggleLog={vi.fn()}
         session={session()}
         workspace={workspace()}
-      />
+      />,
     );
 
     await openMenu();
     fireEvent.click(screen.getByRole("menuitem", { name: "Send Task to Codex Cloud…" }));
 
-    expect(await screen.findByRole("dialog", { name: "Send task to Codex Cloud" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("dialog", { name: "Send task to Codex Cloud" }),
+    ).toBeInTheDocument();
     expect(prepareCloud).toHaveBeenCalledWith({ sessionId: "session-1", provider: "codex" });
   });
 
@@ -206,16 +203,12 @@ describe("SessionActionsMenu", () => {
         onToggleLog={vi.fn()}
         session={session({ provider: "opencode" })}
         workspace={workspace()}
-      />
+      />,
     );
 
     await openMenu();
     expect(screen.queryByRole("menuitem", { name: /Cloud/ })).not.toBeInTheDocument();
   });
-
-
-
-
 });
 
 describe("SessionActionsMenu — Open in IDE", () => {
@@ -233,7 +226,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
 
   const IDES = [
     { id: "vscode" as const, label: "VS Code", appPath: "/Applications/VS Code.app", hasCli: true },
-    { id: "cursor" as const, label: "Cursor", appPath: "/Applications/Cursor.app", hasCli: true }
+    { id: "cursor" as const, label: "Cursor", appPath: "/Applications/Cursor.app", hasCli: true },
   ];
 
   it("opens the default IDE from the menu", async () => {
@@ -248,7 +241,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
         detectedIdes={IDES}
         defaultIde="cursor"
         onOpenInIde={onOpenInIde}
-      />
+      />,
     );
 
     await openMenu();
@@ -266,10 +259,12 @@ describe("SessionActionsMenu — Open in IDE", () => {
         onToggleLog={vi.fn()}
         session={session()}
         workspace={workspace()}
-        detectedIdes={[{ id: "zed", label: "Zed", appPath: "/Applications/Zed.app", hasCli: false }]}
+        detectedIdes={[
+          { id: "zed", label: "Zed", appPath: "/Applications/Zed.app", hasCli: false },
+        ]}
         defaultIde="cursor"
         onOpenInIde={onOpenInIde}
-      />
+      />,
     );
 
     await openMenu();
@@ -290,7 +285,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
         detectedIdes={IDES}
         defaultIde={null}
         onOpenInIde={onOpenInIde}
-      />
+      />,
     );
 
     await openMenu();
@@ -308,7 +303,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
         onToggleLog={vi.fn()}
         session={session()}
         workspace={workspace()}
-      />
+      />,
     );
     await openMenu();
     expect(screen.queryByRole("menuitem", { name: /^Open in (?!New Window)/ })).toBeNull();
@@ -324,7 +319,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
         detectedIdes={[]}
         defaultIde={null}
         onOpenInIde={vi.fn()}
-      />
+      />,
     );
     await openMenu();
     // A greyed-out row nobody can ever click explains nothing; with no IDE
@@ -355,7 +350,7 @@ describe("SessionActionsMenu — launching chat", () => {
         onOpenLaunchingChat={vi.fn()}
         session={session()}
         workspace={workspace()}
-      />
+      />,
     );
     await openMenu();
     expect(screen.queryByRole("menuitem", { name: "Open Launching Chat" })).toBeNull();
@@ -368,7 +363,7 @@ describe("SessionActionsMenu — launching chat", () => {
         onToggleLog={vi.fn()}
         session={{ ...session(), launchedBySessionId: "session-parent" }}
         workspace={workspace()}
-      />
+      />,
     );
     await openMenu();
     expect(screen.queryByRole("menuitem", { name: "Open Launching Chat" })).toBeNull();
@@ -384,7 +379,7 @@ describe("SessionActionsMenu — launching chat", () => {
         onStartArc={{ run, disabledReason: null }}
         session={session()}
         workspace={workspace()}
-      />
+      />,
     );
     await openMenu();
     fireEvent.click(screen.getByRole("menuitem", { name: "Start an Arc from This Chat…" }));
@@ -399,7 +394,7 @@ describe("SessionActionsMenu — launching chat", () => {
         onStartArc={{ run, disabledReason: "Wait for this turn to finish" }}
         session={session()}
         workspace={workspace()}
-      />
+      />,
     );
     await openMenu();
     const item = screen.getByRole("menuitem", { name: "Start an Arc from This Chat…" });

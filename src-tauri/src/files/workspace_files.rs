@@ -21,17 +21,17 @@ use tokio::{fs as tokio_fs, io::AsyncReadExt};
 use super::git_grep_parser::{
     parse_git_grep_output, GrepParseOptions, WorkspaceContentSearchResult,
 };
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::git::exec::{
-    run_git_text, run_git_text_with_allowed_exit_codes_and_options, GitExecOptions,
-};
-use crate::persistence::database::Database;
-use crate::persistence::project_folders::require_active_project_folder;
-use crate::persistence::projects::require_project;
-use crate::persistence::workspaces::find_workspace_by_id;
-use crate::util::sync::LockOrRecover;
 use crate::util::workspace_paths::{resolve_inside, PathError};
 use crate::workspaces::WorkspaceTargetKind;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::git_exec::{
+    run_git_text, run_git_text_with_allowed_exit_codes_and_options, GitExecOptions,
+};
+use argmax_store::database::Database;
+use argmax_store::project_folders::require_active_project_folder;
+use argmax_store::projects::require_project;
+use argmax_store::sync::LockOrRecover;
+use argmax_store::workspaces::find_workspace_by_id;
 
 /// Files larger than this are skipped — preview is not a download manager.
 pub const MAX_PREVIEW_BYTES: u64 = 1_048_576;
@@ -41,7 +41,7 @@ const BINARY_SNIFF_BYTES: usize = 4096;
 
 /// Writes larger than this are rejected. Shared with the IPC schema cap
 /// in `validation::MAX_FILE_CONTENT_BYTES` so both boundaries agree.
-pub const MAX_WRITE_BYTES: usize = crate::ipc::validation::MAX_FILE_CONTENT_BYTES;
+pub const MAX_WRITE_BYTES: usize = argmax_contracts::validation::MAX_FILE_CONTENT_BYTES;
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -616,8 +616,8 @@ fn path_error(error: PathError) -> ArgmaxError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
-    use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
+    use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
+    use argmax_store::workspaces::{persist_workspace, PersistWorkspaceInput};
     use std::path::Path;
     use tempfile::TempDir;
 

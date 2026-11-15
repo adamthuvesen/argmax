@@ -14,14 +14,14 @@
 
 use std::sync::RwLock;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
 
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::{sqlite_error, time::now_iso};
+use super::model_catalogue::{ModelId, VERCEL_SLUGS};
 use crate::util::keychain::KeychainSecret;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 const GATEWAY_KEY: &str = "opencode.gateway";
 
@@ -53,18 +53,6 @@ static VERCEL_KEY: KeychainSecret = KeychainSecret::new(
 /// The choice, mirrored from `ui_state` so launch paths with no database
 /// handle (one-shot helpers, the usage meter) read the same gateway.
 static SELECTED: RwLock<OpencodeGateway> = RwLock::new(OpencodeGateway::Openrouter);
-
-/// Vercel slugs that differ from OpenRouter's, keyed by the OpenRouter model
-/// part of a catalog id. Any other catalog model has the same slug on both,
-/// checked against Vercel's catalog on 2026-10-15. Adding an OpenCode model
-/// means checking its Vercel slug (docs/providers.md has the checklist).
-const VERCEL_SLUGS: &[(&str, &str)] = &[
-    ("z-ai/glm-5.3-flash", "zai/glm-5.3-flash"),
-    ("z-ai/glm-5.3", "zai/glm-5.3"),
-    ("qwen/qwen3.8-max-0902", "alibaba/qwen3.8-max-0902"),
-    ("qwen/qwen3.8-flash", "alibaba/qwen3.8-flash"),
-    ("meta/muse-wonder", "meta/muse-wonder-1.0"),
-];
 
 impl OpencodeGateway {
     /// OpenCode's provider id for the gateway.
@@ -102,8 +90,7 @@ impl OpencodeGateway {
     }
 
     /// `<provider>/<model>` for a CLI `-m` flag.
-    pub fn route_model_id(self, model_id: &str) -> String {
-        let model_id = super::adapters::successor_model_id(super::ProviderId::Opencode, model_id);
+    pub fn route_model_id(self, model_id: &ModelId) -> String {
         match model_id.split_once('/') {
             Some((provider, model)) => {
                 let (provider, model) = self.route(provider, model);
@@ -139,27 +126,35 @@ pub fn check_key(gateway: OpencodeGateway, api_key: &str) -> ArgmaxResult<()> {
         ),
     };
     // The Keychain is fenced too, so the save fails there with its own words.
-    if super::verification::requested() {
+    if argmax_process::environment::verification_requested() {
         return Ok(());
     }
-    let agent = ureq::AgentBuilder::new()
+    // Runs on a blocking thread (`read_off_main`), where a blocking client may
+    // be built and dropped.
+    let unverified = |error: reqwest::Error| {
+        ArgmaxError::service(
+            "OPENCODE_GATEWAY_KEY_UNVERIFIED",
+            format!("Could not check the key with {name}, so it was not saved: {error}"),
+        )
+    };
+    crate::util::tls::install_crypto_provider();
+    let response = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
-        .build();
-    match agent
-        .get(url)
-        .set("Authorization", &format!("Bearer {api_key}"))
-        .set("Accept", "application/json")
-        .call()
-    {
-        Ok(_) => Ok(()),
-        Err(ureq::Error::Status(401 | 403, _)) => Err(ArgmaxError::service(
+        .build()
+        .and_then(|client| {
+            client
+                .get(url)
+                .header("Authorization", format!("Bearer {api_key}"))
+                .header("Accept", "application/json")
+                .send()
+        })
+        .map_err(unverified)?;
+    match response.status().as_u16() {
+        401 | 403 => Err(ArgmaxError::service(
             "OPENCODE_GATEWAY_KEY_REJECTED",
             format!("{name} rejected that key, so it was not saved."),
         )),
-        Err(error) => Err(ArgmaxError::service(
-            "OPENCODE_GATEWAY_KEY_UNVERIFIED",
-            format!("Could not check the key with {name}, so it was not saved: {error}"),
-        )),
+        _ => response.error_for_status().map(|_| ()).map_err(unverified),
     }
 }
 
@@ -182,17 +177,8 @@ pub fn launch_config() -> ArgmaxResult<(OpencodeGateway, Value)> {
 /// Reads the saved choice into the mirror. Called once the database opens; an
 /// unreadable row reads as OpenRouter, the gateway every launch used before.
 pub fn load(connection: &Connection) {
-    let stored: Option<String> = connection
-        .prepare_cached("SELECT value_json FROM ui_state WHERE key = ?")
-        .and_then(|mut statement| {
-            statement
-                .query_row(params![GATEWAY_KEY], |row| row.get(0))
-                .optional()
-        })
-        .unwrap_or(None);
-    let gateway = stored
-        .and_then(|value| serde_json::from_str(&value).ok())
-        .unwrap_or_default();
+    let gateway =
+        argmax_store::app_settings::read_ui_value(connection, GATEWAY_KEY).unwrap_or_default();
     *SELECTED
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = gateway;
@@ -201,15 +187,7 @@ pub fn load(connection: &Connection) {
 /// Saves the choice. It applies from the next launch; a running turn keeps the
 /// gateway its OpenCode server started with.
 pub fn select(connection: &Connection, gateway: OpencodeGateway) -> ArgmaxResult<()> {
-    let value = serde_json::to_string(&gateway).map_err(crate::persistence::json_error)?;
-    connection
-        .prepare_cached(
-            "INSERT INTO ui_state (key, value_json, updated_at) VALUES (?, ?, ?)
-             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at",
-        )
-        .map_err(sqlite_error)?
-        .execute(params![GATEWAY_KEY, value, now_iso()])
-        .map_err(sqlite_error)?;
+    argmax_store::app_settings::write_ui_value(connection, GATEWAY_KEY, &gateway)?;
     *SELECTED
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = gateway;
@@ -219,6 +197,7 @@ pub fn select(connection: &Connection, gateway: OpencodeGateway) -> ArgmaxResult
 #[cfg(test)]
 mod tests {
     use super::*;
+    use argmax_contracts::validation::ProviderId;
 
     #[test]
     fn openrouter_keeps_catalog_ids() {
@@ -228,7 +207,10 @@ mod tests {
             ("openrouter", "z-ai/glm-5.3")
         );
         assert_eq!(
-            gateway.route_model_id("openrouter/z-ai/glm-5.3-flash"),
+            gateway.route_model_id(&ModelId::resolve(
+                ProviderId::Opencode,
+                "openrouter/z-ai/glm-5.3-flash"
+            )),
             "openrouter/z-ai/glm-5.3-flash"
         );
     }
@@ -237,7 +219,10 @@ mod tests {
     fn retired_deepseek_cli_ids_follow_the_successor_on_both_gateways() {
         for gateway in [OpencodeGateway::Openrouter, OpencodeGateway::Vercel] {
             assert_eq!(
-                gateway.route_model_id("openrouter/deepseek/deepseek-v4.1-flash"),
+                gateway.route_model_id(&ModelId::resolve(
+                    ProviderId::Opencode,
+                    "openrouter/deepseek/deepseek-v4.1-flash"
+                )),
                 format!(
                     "{}/deepseek/deepseek-v4.1-flash-1017",
                     gateway.provider_id()
@@ -275,7 +260,11 @@ mod tests {
             ),
             ("openrouter/meta/muse-wonder", "vercel/meta/muse-wonder-1.0"),
         ] {
-            assert_eq!(gateway.route_model_id(catalog), vercel, "{catalog}");
+            assert_eq!(
+                gateway.route_model_id(&ModelId::resolve(ProviderId::Opencode, catalog)),
+                vercel,
+                "{catalog}"
+            );
         }
     }
 

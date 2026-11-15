@@ -1,5 +1,7 @@
 import "../styles/goals.css";
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useEffect, useState, type JSX } from "react";
+import { dashboardEvents, goalActions } from "../data/bridgeActions.js";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import { Target, X } from "lucide-react";
 import type { Goal, SessionSummary } from "../../shared/types.js";
 import { showErrorToast } from "../state/toast.js";
@@ -8,7 +10,7 @@ import { showErrorToast } from "../state/toast.js";
 const OUTCOME_LABELS: Record<string, string> = {
   achieved: "Goal met",
   impossible: "Goal can't be met",
-  stopped: "Goal stopped"
+  stopped: "Goal stopped",
 };
 
 /**
@@ -23,28 +25,24 @@ const OUTCOME_LABELS: Record<string, string> = {
  * sees.
  */
 export function GoalStatus({ session }: { session: SessionSummary }): JSX.Element | null {
-  const [goal, setGoal] = useState<Goal | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [pending, setPending] = useState(false);
 
-  const refresh = useCallback(async (): Promise<void> => {
-    const api = window.argmax?.goals;
-    if (!api) return;
-    try {
-      setGoal(await api.get({ sessionId: session.id }));
-    } catch {
-      // A goal that cannot be read is not worth an error in the lane; the next
-      // goal delta re-reads it.
-    }
-  }, [session.id]);
+  // A goal that cannot be read is not worth an error in the lane; the next
+  // goal delta re-reads it.
+  const {
+    data: goal,
+    refetch,
+    setData: setGoal,
+  } = useBridgeQuery<Goal | null>({
+    key: ["goals.get", session.id],
+    read: (api) => api.goals?.get({ sessionId: session.id }),
+    retain: (delta) => (delta.goalChangedIds?.length ?? 0) > 0,
+  });
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    const dashboard = window.argmax?.dashboard;
+    const dashboard = dashboardEvents();
     if (!dashboard) return;
     // Goal writes always publish `goalChangedIds` (`publish_goal_changed`), so
     // that plus a resync is the whole signal. Reading on any delta touching
@@ -53,10 +51,10 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
     // turn.
     return dashboard.onDelta((delta) => {
       if (delta.resyncRequired || delta.goalChangedIds?.length) {
-        void refresh();
+        void refetch();
       }
     });
-  }, [refresh]);
+  }, [refetch]);
 
   if (!goal || goal.id === dismissed) return null;
 
@@ -65,9 +63,9 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
     if (pending) return;
     setPending(true);
     try {
-      if (active) await window.argmax!.goals.clear({ sessionId: session.id });
+      if (active) await goalActions()!.clear({ sessionId: session.id });
       setDismissed(goal.id);
-      setGoal(null);
+      setGoal(() => null);
     } catch (failure) {
       showErrorToast(failure instanceof Error ? failure.message : "Could not clear the goal.");
     } finally {
@@ -86,7 +84,9 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
           title={expanded ? "Collapse goal details" : goal.condition}
         >
           <Target size={14} className="composer-queued-chip-icon" aria-hidden="true" />
-          <span className="goal-status-label">{active ? "Goal" : OUTCOME_LABELS[goal.state] ?? "Goal"}</span>
+          <span className="goal-status-label">
+            {active ? "Goal" : (OUTCOME_LABELS[goal.state] ?? "Goal")}
+          </span>
           <span className="goal-status-condition">{goal.condition}</span>
         </button>
         <button

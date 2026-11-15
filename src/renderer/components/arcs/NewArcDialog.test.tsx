@@ -1,6 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ArcCreateInput, ArcLaunchCoordinatorInput, ArcRecord, ProjectSummary } from "../../../shared/types.js";
+import type {
+  ArcCreateInput,
+  ArcLaunchCoordinatorInput,
+  ArcRecord,
+  ProjectSummary,
+} from "../../../shared/types.js";
 import { overlaysSnapshot, resetOverlaysForTests } from "../../state/overlays.js";
 import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
 import { NewArcDialog } from "./NewArcDialog.js";
@@ -16,11 +21,11 @@ const PROJECTS: ProjectSummary[] = [
       mergeCleanup: "off",
       worktreeLocation: "/tmp/worktrees",
       setupCommand: "",
-      checkCommands: []
+      checkCommands: [],
     },
     counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
-    latestActivityAt: "2026-05-12T15:54:00.000Z"
-  }
+    latestActivityAt: "2026-05-12T15:54:00.000Z",
+  },
 ];
 
 const ARC_RECORD: ArcRecord = {
@@ -33,12 +38,14 @@ const ARC_RECORD: ArcRecord = {
   dir: "/tmp/arcs/arc-1",
   createdAt: "2026-05-12T15:54:00.000Z",
   updatedAt: "2026-05-12T15:54:00.000Z",
-  archivedAt: null
+  archivedAt: null,
 };
 
 function installArgmax(
   createMock: ReturnType<typeof vi.fn<(input: ArcCreateInput) => Promise<ArcRecord>>>,
-  launchCoordinatorMock: ReturnType<typeof vi.fn<(input: ArcLaunchCoordinatorInput) => Promise<ArcRecord>>>
+  launchCoordinatorMock: ReturnType<
+    typeof vi.fn<(input: ArcLaunchCoordinatorInput) => Promise<ArcRecord>>
+  >,
 ): void {
   Object.defineProperty(window, "argmax", {
     configurable: true,
@@ -46,15 +53,17 @@ function installArgmax(
     value: {
       arcs: {
         create: createMock,
-        launchCoordinator: launchCoordinatorMock
-      }
-    }
+        launchCoordinator: launchCoordinatorMock,
+      },
+    },
   });
 }
 
 describe("NewArcDialog", () => {
   let createMock: ReturnType<typeof vi.fn<(input: ArcCreateInput) => Promise<ArcRecord>>>;
-  let launchCoordinatorMock: ReturnType<typeof vi.fn<(input: ArcLaunchCoordinatorInput) => Promise<ArcRecord>>>;
+  let launchCoordinatorMock: ReturnType<
+    typeof vi.fn<(input: ArcLaunchCoordinatorInput) => Promise<ArcRecord>>
+  >;
 
   beforeEach(() => {
     createMock = vi.fn<(input: ArcCreateInput) => Promise<ArcRecord>>();
@@ -79,7 +88,9 @@ describe("NewArcDialog", () => {
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Pricing rollout" } });
     expect(submit).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/tmp/hq/missions/pricing" } });
+    fireEvent.change(screen.getByLabelText("Folder"), {
+      target: { value: "/tmp/hq/missions/pricing" },
+    });
     expect(submit).not.toBeDisabled();
 
     fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "" } });
@@ -89,7 +100,10 @@ describe("NewArcDialog", () => {
 
   it("creates the arc, launches its coordinator, and opens the Arc page", async () => {
     createMock.mockResolvedValue(ARC_RECORD);
-    launchCoordinatorMock.mockResolvedValue({ ...ARC_RECORD, coordinatorSessionId: "session-coordinator" });
+    launchCoordinatorMock.mockResolvedValue({
+      ...ARC_RECORD,
+      coordinatorSessionId: "session-coordinator",
+    });
     const onClose = vi.fn();
 
     render(<NewArcDialog open onClose={onClose} projects={PROJECTS} />);
@@ -103,12 +117,12 @@ describe("NewArcDialog", () => {
       name: "Pricing rollout",
       brief: "Ship the new tiers.",
       homeProjectId: "project-1",
-      dir: null
+      dir: null,
     });
 
     await waitFor(() => expect(launchCoordinatorMock).toHaveBeenCalledTimes(1));
     expect(launchCoordinatorMock).toHaveBeenCalledWith(
-      expect.objectContaining({ arcId: "arc-1", provider: "claude" })
+      expect.objectContaining({ arcId: "arc-1", provider: "claude" }),
     );
 
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -157,24 +171,24 @@ describe("NewArcDialog", () => {
       chatLabel: "Build the pricing page",
       projectName: "Argmax",
       isolated: true,
-      adoptableCount: 2
+      adoptableCount: 2,
     };
 
     function installPromote(
       draft: Promise<{ name: string | null; brief: string | null }>,
-      promote = vi.fn(() => Promise.resolve(ARC_RECORD))
+      promote = vi.fn(() => Promise.resolve(ARC_RECORD)),
     ) {
       Object.defineProperty(window, "argmax", {
         configurable: true,
         writable: true,
-        value: { arcs: { draftFromSession: vi.fn(() => draft), promote } }
+        value: { arcs: { draftFromSession: vi.fn(() => draft), promote } },
       });
       return promote;
     }
 
     it("fills the draft, names what comes along, and promotes the chat", async () => {
       const promote = installPromote(
-        Promise.resolve({ name: "Pricing rollout", brief: "Ship the new tiers." })
+        Promise.resolve({ name: "Pricing rollout", brief: "Ship the new tiers." }),
       );
       const onClose = vi.fn();
       render(<NewArcDialog open onClose={onClose} projects={PROJECTS} promote={SOURCE} />);
@@ -197,7 +211,7 @@ describe("NewArcDialog", () => {
         sessionId: "session-chat",
         name: "Pricing rollout",
         brief: "Ship the new tiers.",
-        dir: null
+        dir: null,
       });
       await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     });
@@ -207,7 +221,7 @@ describe("NewArcDialog", () => {
       installPromote(
         new Promise((resolve) => {
           resolveDraft = resolve;
-        })
+        }),
       );
       render(<NewArcDialog open onClose={() => {}} projects={PROJECTS} promote={SOURCE} />);
 
@@ -222,7 +236,9 @@ describe("NewArcDialog", () => {
     it("says so when no draft could be made", async () => {
       installPromote(Promise.resolve({ name: null, brief: null }));
       render(<NewArcDialog open onClose={() => {}} projects={PROJECTS} promote={SOURCE} />);
-      expect(await screen.findByText("Couldn’t draft one, so write it yourself")).toBeInTheDocument();
+      expect(
+        await screen.findByText("Couldn’t draft one, so write it yourself"),
+      ).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Start arc" })).toBeDisabled();
     });
   });

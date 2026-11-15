@@ -1,16 +1,13 @@
 import { Fragment, useMemo, useState, type JSX, type ReactNode } from "react";
+import { systemActions } from "../data/bridgeActions.js";
 import { interpretFileChange } from "../lib/fileChange.js";
-import {
-  argumentsFitFooter,
-  toolArguments,
-  type ToolArgument
-} from "../lib/toolArguments.js";
+import { argumentsFitFooter, toolArguments, type ToolArgument } from "../lib/toolArguments.js";
 import {
   extractOpenablePath,
   formatToolOutput,
   getToolTypeBucket,
   isBashLikeTool,
-  type ToolCall
+  type ToolCall,
 } from "../lib/toolCalls.js";
 import { FileChangeCard } from "./FileChangeCard.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
@@ -32,7 +29,7 @@ import {
   REDUNDANT_INPUT_KEYS,
   RENDERED_DIFF_INPUT_KEYS,
   toolCallHasExpandableDetail,
-  visibleInputForTool
+  visibleInputForTool,
 } from "./toolCallDetailLogic.js";
 
 const MAX_INLINE_CONTENT_CHARS = 2400;
@@ -45,7 +42,7 @@ export function ToolCallDetail({
   tool,
   workspaceCwd,
   onOpenFile,
-  leadingContent
+  leadingContent,
 }: {
   tool: ToolCall;
   workspaceCwd?: string | null;
@@ -57,22 +54,22 @@ export function ToolCallDetail({
       onOpenFile(path);
       return;
     }
-    const api = window.argmax;
-    if (!api) return;
+    const system = systemActions();
+    if (!system) return;
     void withToast(
-      () => api.system.openPath({ path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) }),
+      () => system.openPath({ path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) }),
       showToast,
-      "Could not open this file."
+      "Could not open this file.",
     );
   };
   const [showFullOutput, setShowFullOutput] = useState(false);
   const changes = useMemo(
     () => interpretFileChange(tool.name, tool.inputFull),
-    [tool.name, tool.inputFull]
+    [tool.name, tool.inputFull],
   );
   const visibleInput = visibleInputForTool(tool);
   const bashCommand = isBashLikeTool(tool.name)
-    ? pickString(tool.inputFull, BASH_COMMAND_INPUT_KEYS) ?? tool.inputPreview
+    ? (pickString(tool.inputFull, BASH_COMMAND_INPUT_KEYS) ?? tool.inputPreview)
     : null;
   const fullCommand = bashCommand ? displayCommandFull(bashCommand, workspaceCwd) : null;
   // The row *is* the command: an expanded bash row unwraps its target to the
@@ -81,7 +78,9 @@ export function ToolCallDetail({
   // still earns a block — a row cannot carry newlines.
   const showCommandBlock = fullCommand !== null && fullCommand.includes("\n");
   const openable = tool.status !== "error" ? extractOpenablePath(tool.name, tool.inputFull) : null;
-  const filePath = openable ?? pickString(tool.inputFull, ["path", "file_path", "filepath", "relative_path", "absolute_path"]);
+  const filePath =
+    openable ??
+    pickString(tool.inputFull, ["path", "file_path", "filepath", "relative_path", "absolute_path"]);
   const streamContent = pickString(tool.inputFull, ["streamContent", "content", "text"]);
   const canShowFilePreview = !changes && filePath && streamContent;
   // Output that IS a file or a command's stdout keeps byte fidelity — a read of
@@ -92,7 +91,7 @@ export function ToolCallDetail({
       tool.output && !verbatimOutput
         ? formatToolOutput(tool.output)
         : { body: tool.output ?? "", title: null },
-    [tool.output, verbatimOutput]
+    [tool.output, verbatimOutput],
   );
   // The envelope's title is the one identifying fact worth keeping when the
   // payload is lifted out of it, and the footer line already collects facts.
@@ -121,7 +120,7 @@ export function ToolCallDetail({
     (!isAgent || isCodexAgentTool(tool));
   const args = useMemo(
     () => (showArguments ? toolArguments(leftoverInput) : []),
-    [showArguments, leftoverInput]
+    [showArguments, leftoverInput],
   );
   // Short scalars read as a sentence on the footer line; anything longer needs
   // the full list above the payload.
@@ -130,7 +129,7 @@ export function ToolCallDetail({
 
   const argumentList =
     listedArgs.length > 0 ? (
-      <dl className="tool-call-args">
+      <dl className="tool-call-args" data-testid="tool-call-args">
         {listedArgs.map((arg) => (
           <Fragment key={arg.key}>
             <dt>{arg.key}</dt>
@@ -149,7 +148,7 @@ export function ToolCallDetail({
               argumentList,
               tool.error ? (
                 <pre className="tool-call-code tool-call-code--error">{tool.error}</pre>
-              ) : null
+              ) : null,
             ]}
             footer={footerArgs.length > 0 ? <ToolCallFoot args={footerArgs} /> : null}
           />
@@ -182,7 +181,8 @@ export function ToolCallDetail({
   const outputLines = outputBody.replace(/\r?\n$/, "").split(/\r?\n/);
   const outputHead = outputLines.slice(0, MAX_OUTPUT_LINES).join("\n").slice(0, MAX_OUTPUT_CHARS);
   const truncated =
-    showOutput && (outputLines.length > MAX_OUTPUT_LINES || outputHead.length < outputBody.trimEnd().length);
+    showOutput &&
+    (outputLines.length > MAX_OUTPUT_LINES || outputHead.length < outputBody.trimEnd().length);
   const shownOutput = truncated && !showFullOutput ? `${outputHead}\n…` : outputBody;
 
   const parts: (ReactNode | null)[] = [
@@ -206,7 +206,10 @@ export function ToolCallDetail({
       </div>
     ) : null,
     canShowFilePreview ? (
-      <section className="tool-call-part tool-call-file-preview" aria-label={`Preview of ${filePath}`}>
+      <section
+        className="tool-call-part tool-call-file-preview"
+        aria-label={`Preview of ${filePath}`}
+      >
         <p className="tool-call-part-label">Preview</p>
         <pre className="tool-call-code">
           {streamContent.length > MAX_INLINE_CONTENT_CHARS
@@ -217,15 +220,13 @@ export function ToolCallDetail({
     ) : null,
     // No "Output" label: it sat alone over a box as the only thing it could
     // possibly be labelling. Position and type say it instead.
-    showOutput ? (
-      <pre className="tool-call-code">{shownOutput}</pre>
-    ) : null
+    showOutput ? <pre className="tool-call-code">{shownOutput}</pre> : null,
   ];
 
   // A read that printed nothing still has somewhere to go: the footer offers
   // Open. The row above already names the file, so nothing repeats it.
   const showOpenAction = Boolean(
-    !canShowFilePreview && openable && !hasVisibleToolOutput(tool, tool.output)
+    !canShowFilePreview && openable && !hasVisibleToolOutput(tool, tool.output),
   );
 
   const footer = (
@@ -260,7 +261,7 @@ export function ToolCallDetail({
  *  to stack two bordered panels with a scrollbar apiece. */
 function ToolCallBlock({
   parts,
-  footer
+  footer,
 }: {
   parts: readonly (ReactNode | null)[];
   footer?: ReactNode;
@@ -296,7 +297,7 @@ function ToolCallFoot({
   duration = null,
   openPath = null,
   onOpen,
-  openTitle = null
+  openTitle = null,
 }: {
   args?: readonly ToolArgument[];
   notes?: readonly string[];
@@ -308,10 +309,7 @@ function ToolCallFoot({
   onOpen?: () => void;
   openTitle?: string | null;
 }): JSX.Element | null {
-  const facts: string[] = [
-    ...args.map((arg) => `${arg.key} ${arg.value}`),
-    ...notes
-  ];
+  const facts: string[] = [...args.map((arg) => `${arg.key} ${arg.value}`), ...notes];
   if (output !== null && output.length > 0) {
     // A line count of one is filler: the payload is right there. Size only
     // shows once it passes a kilobyte, for the same reason.
@@ -327,7 +325,9 @@ function ToolCallFoot({
     <>
       <div className="tool-call-block-rule" />
       <div className="tool-call-block-foot">
-        {facts.length > 0 ? <span className="tool-call-block-facts">{facts.join(" · ")}</span> : null}
+        {facts.length > 0 ? (
+          <span className="tool-call-block-facts">{facts.join(" · ")}</span>
+        ) : null}
         {truncated && onShowAll ? (
           <button className="tool-call-block-action" type="button" onClick={onShowAll}>
             Show all

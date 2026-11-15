@@ -7,7 +7,9 @@ function LightboxHarness(): JSX.Element {
   const [src, setSrc] = useState<string | null>(null);
   return (
     <>
-      <button type="button" onClick={() => setSrc("data:image/png;base64,preview")}>Open preview</button>
+      <button type="button" onClick={() => setSrc("data:image/png;base64,preview")}>
+        Open preview
+      </button>
       <ImageLightbox src={src} alt="Attached image" onClose={() => setSrc(null)} />
     </>
   );
@@ -38,11 +40,7 @@ describe("ImageLightbox", () => {
   it("dismisses from anywhere outside the image, including beside it", () => {
     const onClose = vi.fn();
     render(
-      <ImageLightbox
-        src="data:image/png;base64,preview"
-        alt="Attached image"
-        onClose={onClose}
-      />
+      <ImageLightbox src="data:image/png;base64,preview" alt="Attached image" onClose={onClose} />,
     );
 
     const image = screen.getByRole("img", { name: "Attached image" });
@@ -51,6 +49,7 @@ describe("ImageLightbox", () => {
 
     // The content box fills the overlay, so clicks in the letterboxing beside
     // the image land on it rather than on the backdrop.
+    // oxlint-disable-next-line argmax/no-node-access -- the content box has no role or name; it is the image's direct parent
     fireEvent.mouseDown(image.parentElement as HTMLElement);
     expect(onClose).toHaveBeenCalledTimes(1);
 
@@ -60,15 +59,18 @@ describe("ImageLightbox", () => {
 
   it("portals onto the conversation surface so the transcript scroller cannot clip it", () => {
     render(
-      <div className="conversation-surface">
-        <div style={{ overflow: "hidden", width: 160 }}>
+      <div className="conversation-surface" data-testid="conversation-surface">
+        <div data-testid="transcript-scroller" style={{ overflow: "hidden", width: 160 }}>
           <LightboxHarness />
         </div>
-      </div>
+      </div>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Open preview" }));
 
     const dialog = screen.getByRole("dialog", { name: "Attached image" });
+    // oxlint-disable-next-line argmax/no-node-access -- the portal must land directly on the surface, not deeper in the transcript
     expect(dialog.parentElement).toHaveClass("conversation-surface");
+    expect(screen.getByTestId("conversation-surface")).toContainElement(dialog);
+    expect(screen.getByTestId("transcript-scroller")).not.toContainElement(dialog);
   });
 });

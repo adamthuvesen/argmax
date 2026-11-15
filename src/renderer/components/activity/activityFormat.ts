@@ -107,7 +107,7 @@ export function formatCalendarDateLong(date: string): string {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
-    year: "numeric"
+    year: "numeric",
   }).format(at);
 }
 
@@ -124,7 +124,11 @@ export function formatShortDate(value: string | null, timeZone: string): string 
  * being the useful phrase. The last-commit column is scanned for which
  * repositories are warm, so recency reads before precision does.
  */
-export function formatSince(value: string | null, timeZone: string, now: Date = new Date()): string {
+export function formatSince(
+  value: string | null,
+  timeZone: string,
+  now: Date = new Date(),
+): string {
   if (!value) return "—";
   const at = parseInstant(value);
   if (!at) return "—";
@@ -148,7 +152,7 @@ export function formatSince(value: string | null, timeZone: string, now: Date = 
 export function formatBucketLabel(
   bucketStart: string,
   resolution: ActivityResolution,
-  timeZone: string
+  timeZone: string,
 ): string {
   const at = parseInstant(bucketStart);
   if (!at) return "";
@@ -165,7 +169,7 @@ export function formatBucketLabel(
 export function formatBucketTitle(
   bucketStart: string,
   resolution: ActivityResolution,
-  timeZone: string
+  timeZone: string,
 ): string {
   const at = parseInstant(bucketStart);
   if (!at) return "";
@@ -175,7 +179,7 @@ export function formatBucketTitle(
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      hour12: false
+      hour12: false,
     }).format(at);
   }
   const day = dateFormat(timeZone, { month: "short", day: "numeric", year: "numeric" }).format(at);
@@ -192,7 +196,7 @@ export function formatRangeLabel(
   rangeStart: string,
   rangeEnd: string,
   resolution: ActivityResolution,
-  timeZone: string
+  timeZone: string,
 ): string {
   const start = parseInstant(rangeStart);
   const end = parseInstant(rangeEnd);
@@ -203,7 +207,7 @@ export function formatRangeLabel(
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      hour12: false
+      hour12: false,
     });
     return `${stamp.format(start)} to ${stamp.format(end)}`;
   }
@@ -214,7 +218,7 @@ export function formatRangeLabel(
     timeZone,
     spansYears
       ? { month: "short", day: "numeric", year: "numeric" }
-      : { month: "short", day: "numeric" }
+      : { month: "short", day: "numeric" },
   );
   return `${day.format(start)} to ${day.format(lastInside)}`;
 }
@@ -229,7 +233,7 @@ export function formatScanStamp(value: string | null, timeZone: string): string 
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false
+    hour12: false,
   }).format(at);
 }
 

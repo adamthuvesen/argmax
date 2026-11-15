@@ -7,13 +7,9 @@ import {
   formatDeltaRatio,
   formatDuration,
   formatHeroCount,
-  formatRemoved
+  formatRemoved,
 } from "./activityFormat.js";
-import {
-  metricValue,
-  type ActivityDelta,
-  type ActivityMetric
-} from "./activityPresentation.js";
+import { metricValue, type ActivityDelta, type ActivityMetric } from "./activityPresentation.js";
 import { ActivityHeatmap } from "./ActivityHeatmap.js";
 
 /**
@@ -31,14 +27,14 @@ import { ActivityHeatmap } from "./ActivityHeatmap.js";
 const DELTA_GLYPH: Record<ActivityDelta["direction"], string> = {
   up: "↑",
   down: "↓",
-  flat: "→"
+  flat: "→",
 };
 
 /** The direction for a reader who cannot see the glyph. */
 const DELTA_WORD: Record<ActivityDelta["direction"], string> = {
   up: "up",
   down: "down",
-  flat: "level"
+  flat: "level",
 };
 
 /**
@@ -63,7 +59,7 @@ function ActivityDeltaChip({ delta }: { delta: ActivityDelta }): JSX.Element {
 export function ActivityHero({
   summary,
   metric,
-  delta
+  delta,
 }: {
   summary: ActivitySummary;
   metric: ActivityMetric;

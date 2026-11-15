@@ -8,16 +8,25 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::{BaseRef, ProjectId, TaskLabel, WorkspaceId};
 use argmax_lib::checks::service::{CheckService, RunWorkspaceCheckInput};
-use argmax_lib::error::{ArgmaxError, ArgmaxResult};
 use argmax_lib::ipc::inputs::{
     ProvidersLaunchInput, ScratchWorkspaceKind, WorkspacesArchiveInput,
     WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput, WorkspacesCreateScratchInput,
     WorkspacesKeepInput,
 };
-use argmax_lib::ipc::validation::{BaseRef, ProjectId, TaskLabel, WorkspaceId};
-use argmax_lib::persistence::workspaces::WorkspaceSummary;
-use argmax_lib::persistence::{
+use argmax_lib::providers::flush_queue::DashboardDelta;
+use argmax_lib::providers::runtime::{
+    BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeHandle,
+};
+use argmax_lib::providers::session_service::ProviderSessionService;
+use argmax_lib::providers::ProviderLaunchInput;
+use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
+use argmax_lib::workspaces::orchestration::WorkspaceService;
+use argmax_lib::workspaces::orchestration::{MoveDestination, WorkspacesCreateAlongsideInput};
+use argmax_store::workspaces::WorkspaceSummary;
+use argmax_store::{
     checks::list_checks,
     database::Database,
     events::{
@@ -34,18 +43,9 @@ use argmax_lib::persistence::{
     },
     workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
 };
-use argmax_lib::providers::flush_queue::DashboardDelta;
-use argmax_lib::providers::runtime::{
-    BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeHandle,
-};
-use argmax_lib::providers::session_service::ProviderSessionService;
-use argmax_lib::providers::ProviderLaunchInput;
-use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
-use argmax_lib::workspaces::orchestration::{MoveDestination, WorkspacesCreateAlongsideInput};
-use argmax_lib::workspaces::WorkspaceService;
 
 use crate::support::git_repo::{run_git, run_git_stdout, seed_git_repo, SeededGitRepo};
-use argmax_lib::sessions::state::SessionState;
+use argmax_contracts::sessions::state::SessionState;
 
 const PROJECT_ID: &str = "p-ws-test";
 
@@ -443,10 +443,7 @@ async fn wait_for(what: &str, mut condition: impl FnMut() -> bool) {
     }
 }
 
-fn checks_for(
-    database: &Database,
-    workspace_id: &str,
-) -> Vec<argmax_lib::persistence::checks::CheckRun> {
+fn checks_for(database: &Database, workspace_id: &str) -> Vec<argmax_store::checks::CheckRun> {
     let connection = database.connection();
     list_checks(
         &connection,
@@ -702,7 +699,7 @@ async fn create_scratch_initializes_repoless_workspace() {
     assert_eq!(summary.base_ref, "main");
     assert_eq!(
         summary.project_id,
-        argmax_lib::workspaces::SCRATCH_PROJECT_ID
+        argmax_lib::workspaces::orchestration::SCRATCH_PROJECT_ID
     );
     let path = std::path::PathBuf::from(&summary.path);
     assert!(path.starts_with(scratch_root.path()));
@@ -1291,12 +1288,8 @@ async fn startup_completes_an_archive_after_the_worktree_was_moved() {
     std::fs::rename(&workspace.path, &recovery_path).expect("move checkout files");
     {
         let connection = database.connection();
-        argmax_lib::persistence::workspaces::update_workspace_state(
-            &connection,
-            &workspace.id,
-            "archiving",
-        )
-        .expect("mark interrupted archive");
+        argmax_store::workspaces::update_workspace_state(&connection, &workspace.id, "archiving")
+            .expect("mark interrupted archive");
     }
 
     assert_eq!(service.recover_interrupted_archives().expect("recover"), 1);
@@ -1323,12 +1316,8 @@ async fn startup_completes_an_archive_after_the_worktree_was_moved() {
     );
     {
         let connection = database.connection();
-        argmax_lib::persistence::workspaces::update_workspace_state(
-            &connection,
-            &workspace.id,
-            "archiving",
-        )
-        .unwrap();
+        argmax_store::workspaces::update_workspace_state(&connection, &workspace.id, "archiving")
+            .unwrap();
     }
     service.recover_interrupted_archives().unwrap();
     service.start_open_watchers().unwrap();
@@ -1560,8 +1549,9 @@ fn in_checkout_input(
         project_folder_id: None,
         project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
         task_label: TaskLabel::try_from("new chat".to_owned()).expect("task label"),
-        path: argmax_lib::ipc::validation::NonEmptyString::try_from(path.to_owned()).expect("path"),
-        branch: argmax_lib::ipc::validation::BranchName::try_from(branch.to_owned())
+        path: argmax_contracts::validation::NonEmptyString::try_from(path.to_owned())
+            .expect("path"),
+        branch: argmax_contracts::validation::BranchName::try_from(branch.to_owned())
             .expect("branch"),
     }
 }
@@ -2504,12 +2494,10 @@ async fn archive_keeps_the_worktree_when_provider_teardown_fails() {
     );
 
     let lifecycle = Arc::new(WorkspaceLifecycle::new());
-    let providers = ProviderSessionService::with_launcher_and_lifecycle(
-        Arc::clone(&database),
-        Arc::new(RefusingLauncher),
-        |_delta| {},
-        Arc::clone(&lifecycle),
-    );
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(Arc::new(RefusingLauncher))
+        .lifecycle(Arc::clone(&lifecycle))
+        .build();
     let recovery = tempfile::tempdir().expect("archive recovery root");
     let service = WorkspaceService::with_services(
         Arc::clone(&database),
@@ -3178,12 +3166,8 @@ async fn archive_failed_workspace_requires_fresh_force_and_preserves_changes() {
     // Manually mark it as archive-failed in DB
     {
         let conn = database.connection();
-        argmax_lib::persistence::workspaces::update_workspace_state(
-            &conn,
-            &workspace.id,
-            "archive-failed",
-        )
-        .expect("mark failed");
+        argmax_store::workspaces::update_workspace_state(&conn, &workspace.id, "archive-failed")
+            .expect("mark failed");
     }
 
     let kept = service
@@ -3695,7 +3679,7 @@ fn branch_template_fixture() -> (SeededGitRepo, Arc<Database>, Arc<WorkspaceServ
 #[tokio::test]
 async fn a_branch_template_names_new_worktrees_and_collisions_get_a_numeric_suffix() {
     let (_repo, database, service) = branch_template_fixture();
-    argmax_lib::persistence::projects::set_project_branch_template(
+    argmax_store::projects::set_project_branch_template(
         &database.connection(),
         PROJECT_ID,
         Some("adam/{type}-{slug}"),
@@ -3719,7 +3703,7 @@ async fn a_branch_template_names_new_worktrees_and_collisions_get_a_numeric_suff
 #[tokio::test]
 async fn a_flattened_directory_collision_is_resolved_like_a_branch_collision() {
     let (repo, database, service) = branch_template_fixture();
-    argmax_lib::persistence::projects::set_project_branch_template(
+    argmax_store::projects::set_project_branch_template(
         &database.connection(),
         PROJECT_ID,
         Some("adam/{slug}"),
@@ -3749,15 +3733,12 @@ async fn the_project_template_overrides_the_app_template_and_neither_touches_old
         before.branch
     );
 
-    argmax_lib::persistence::app_settings::set_branch_template(
-        &database.connection(),
-        Some("global/{slug}"),
-    )
-    .expect("save global template");
+    argmax_store::app_settings::set_branch_template(&database.connection(), Some("global/{slug}"))
+        .expect("save global template");
     let global = create_with_label(&service, "Hello World!").await;
     assert_eq!(global.branch, "global/hello-world");
 
-    argmax_lib::persistence::projects::set_project_branch_template(
+    argmax_store::projects::set_project_branch_template(
         &database.connection(),
         PROJECT_ID,
         Some("project/{slug}"),
@@ -3767,12 +3748,8 @@ async fn the_project_template_overrides_the_app_template_and_neither_touches_old
     assert_eq!(project.branch, "project/hello-world");
 
     // Clearing the override falls back to the app template.
-    argmax_lib::persistence::projects::set_project_branch_template(
-        &database.connection(),
-        PROJECT_ID,
-        None,
-    )
-    .expect("clear project template");
+    argmax_store::projects::set_project_branch_template(&database.connection(), PROJECT_ID, None)
+        .expect("clear project template");
     let fallback = create_with_label(&service, "Another one").await;
     assert_eq!(fallback.branch, "global/another-one");
 
@@ -3784,7 +3761,7 @@ async fn the_project_template_overrides_the_app_template_and_neither_touches_old
 #[tokio::test]
 async fn an_unusable_label_still_yields_a_valid_unique_branch() {
     let (_repo, database, service) = branch_template_fixture();
-    argmax_lib::persistence::projects::set_project_branch_template(
+    argmax_store::projects::set_project_branch_template(
         &database.connection(),
         PROJECT_ID,
         Some("adam/{slug}"),
@@ -3811,7 +3788,7 @@ async fn branches_in(repo: &std::path::Path) -> Vec<String> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_launches_with_one_label_each_get_their_own_worktree() {
     let (repo, database, service) = branch_template_fixture();
-    argmax_lib::persistence::projects::set_project_branch_template(
+    argmax_store::projects::set_project_branch_template(
         &database.connection(),
         PROJECT_ID,
         Some("adam/{type}-{slug}"),
@@ -3889,7 +3866,7 @@ async fn concurrent_launches_with_one_label_each_get_their_own_worktree() {
 #[tokio::test]
 async fn a_taken_name_is_never_touched_and_the_launch_takes_the_next_one() {
     let (repo, database, service) = branch_template_fixture();
-    argmax_lib::persistence::projects::set_project_branch_template(
+    argmax_store::projects::set_project_branch_template(
         &database.connection(),
         PROJECT_ID,
         Some("adam/{slug}"),
@@ -3915,7 +3892,7 @@ async fn a_taken_name_is_never_touched_and_the_launch_takes_the_next_one() {
 #[tokio::test]
 async fn after_the_numbered_names_run_out_a_launch_appends_its_unique_id() {
     let (repo, database, service) = branch_template_fixture();
-    argmax_lib::persistence::projects::set_project_branch_template(
+    argmax_store::projects::set_project_branch_template(
         &database.connection(),
         PROJECT_ID,
         Some("adam/{slug}"),
@@ -3943,7 +3920,7 @@ async fn after_the_numbered_names_run_out_a_launch_appends_its_unique_id() {
 #[tokio::test]
 async fn a_parent_branch_blocks_the_prefix_so_the_launch_leaves_it_without_removing_anything() {
     let (repo, database, service) = branch_template_fixture();
-    argmax_lib::persistence::projects::set_project_branch_template(
+    argmax_store::projects::set_project_branch_template(
         &database.connection(),
         PROJECT_ID,
         Some("adam/{slug}/{id}"),
@@ -3974,7 +3951,7 @@ async fn a_parent_branch_blocks_the_prefix_so_the_launch_leaves_it_without_remov
 #[tokio::test]
 async fn a_child_branch_blocks_the_plain_name_but_a_suffix_still_works() {
     let (repo, database, service) = branch_template_fixture();
-    argmax_lib::persistence::projects::set_project_branch_template(
+    argmax_store::projects::set_project_branch_template(
         &database.connection(),
         PROJECT_ID,
         Some("adam/{slug}"),
@@ -4064,9 +4041,9 @@ async fn fork_into_an_isolated_checkout_starts_from_the_current_files_not_a_turn
 #[tokio::test]
 async fn a_fork_and_a_move_copy_prompt_authors_without_changing_them() {
     use argmax_lib::ipc::inputs::ForkWorkspaceMode;
-    use argmax_lib::persistence::authorship::PromptAuthor;
-    use argmax_lib::persistence::events::{persist_user_prompt, PersistTimelineEventInput};
     use argmax_lib::workspaces::orchestration::fork::ForkRequest;
+    use argmax_store::authorship::PromptAuthor;
+    use argmax_store::events::{persist_user_prompt, PersistTimelineEventInput};
 
     let database = Arc::new(Database::open_in_memory().expect("db"));
     let (service, _source_workspace, sibling, _repo) = checkout_move_fixture(&database, "claude");
@@ -4193,8 +4170,9 @@ async fn move_session_gives_the_destination_no_binding_it_could_wrongly_resume()
 
 #[tokio::test]
 async fn a_moved_fork_child_stays_a_fork_and_is_not_forked_natively_once_its_source_moved_on() {
+    use argmax_contracts::validation::ProviderId;
     use argmax_lib::ipc::inputs::ForkWorkspaceMode;
-    use argmax_lib::providers::{continuity::plan_launch, fork_merge, ProviderId};
+    use argmax_lib::providers::{continuity::plan_launch, fork_merge};
     use argmax_lib::workspaces::orchestration::fork::ForkRequest;
 
     let database = Arc::new(Database::open_in_memory().expect("db"));
@@ -4242,10 +4220,9 @@ async fn a_moved_fork_child_stays_a_fork_and_is_not_forked_natively_once_its_sou
 
     let connection = database.connection();
     // The moved chat still knows where it came from.
-    let lineage =
-        argmax_lib::persistence::continuity::fork_for_child(&connection, &moved.session.id)
-            .unwrap()
-            .expect("the moved fork keeps its lineage");
+    let lineage = argmax_store::continuity::fork_for_child(&connection, &moved.session.id)
+        .unwrap()
+        .expect("the moved fork keeps its lineage");
     assert_eq!(lineage.source_session_id.as_deref(), Some("source-session"));
     assert_eq!(lineage.boundary_event_id, forked.fork.boundary_event_id);
 
@@ -4292,8 +4269,8 @@ async fn a_moved_fork_child_stays_a_fork_and_is_not_forked_natively_once_its_sou
 fn find_session_by_id_for_test(
     connection: &rusqlite::Connection,
     session_id: &str,
-) -> argmax_lib::persistence::sessions::SessionSummary {
-    argmax_lib::persistence::sessions::find_session_by_id(connection, session_id).unwrap()
+) -> argmax_store::sessions::SessionSummary {
+    argmax_store::sessions::find_session_by_id(connection, session_id).unwrap()
 }
 
 #[tokio::test]
@@ -4394,10 +4371,8 @@ async fn a_queued_merge_claim_survives_the_fork_moving() {
 #[tokio::test]
 async fn forks_keep_the_original_repository_after_primary_change_and_folder_removal() {
     use argmax_lib::ipc::inputs::ForkWorkspaceMode;
-    use argmax_lib::persistence::project_folders::{
-        configure_project_folders, PersistProjectFolderInput,
-    };
     use argmax_lib::workspaces::orchestration::fork::ForkRequest;
+    use argmax_store::project_folders::{configure_project_folders, PersistProjectFolderInput};
 
     let source = seed_git_repo(&[("source.txt", "source repository\n")]);
     let next_primary = seed_git_repo(&[("other.txt", "other repository\n")]);
@@ -4463,7 +4438,7 @@ async fn forks_keep_the_original_repository_after_primary_change_and_folder_remo
 }
 
 fn add_launcher_folder(database: &Database, root: &std::path::Path) -> String {
-    use argmax_lib::persistence::project_folders::{
+    use argmax_store::project_folders::{
         configure_project_folders, list_project_folders, PersistProjectFolderInput,
     };
     let connection = database.connection();
@@ -4606,7 +4581,7 @@ async fn launcher_folder_selection_pins_git_current_and_worktree_without_changin
         .unwrap();
     assert_eq!(project.repo_path, primary.path().display().to_string());
     assert_eq!(project.current_branch, "main");
-    let roots = argmax_lib::persistence::linked_repos::list_workspace_linked_repos(
+    let roots = argmax_store::linked_repos::list_workspace_linked_repos(
         &database.read_connection(),
         &current.id,
     )
@@ -4620,7 +4595,7 @@ async fn launcher_folder_selection_pins_git_current_and_worktree_without_changin
         &primary.path().display().to_string(),
         &worktrees.path().display().to_string(),
     );
-    let foreign_folder_id = argmax_lib::persistence::project_folders::primary_folder_id(
+    let foreign_folder_id = argmax_store::project_folders::primary_folder_id(
         &database.read_connection(),
         "foreign-project",
     )

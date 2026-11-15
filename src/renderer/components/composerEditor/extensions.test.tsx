@@ -2,19 +2,20 @@
 import { deleteCharBackward, redo, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { installZeroLayoutForCodeMirror } from "../../../test/jsdomCodeMirror.js";
 import {
   COMPOSER_CLIPBOARD_MIME,
   chatReferenceLink,
-  decodeClipboardPayload
+  decodeClipboardPayload,
 } from "../../lib/composerContext.js";
 import {
   chatChipEnvironment,
   promptExtensions,
   skillTokenPredicate,
   type ChatChipEnvironment,
-  type PromptCallbacks
+  type PromptCallbacks,
 } from "./extensions.js";
 
 // A real EditorView, the same extensions the composers mount. jsdom has no
@@ -30,7 +31,7 @@ function mount(
     chats?: ChatChipEnvironment;
     isSkill?: (name: string) => boolean;
     callbacks?: PromptCallbacks;
-  } = {}
+  } = {},
 ): EditorView {
   const host = document.createElement("div");
   document.body.append(host);
@@ -41,9 +42,9 @@ function mount(
       extensions: [
         promptExtensions({ current: options.callbacks ?? {} }),
         chatChipEnvironment.of(options.chats ?? { resolve: () => null, open: () => undefined }),
-        skillTokenPredicate.of(options.isSkill ?? (() => false))
-      ]
-    })
+        skillTokenPredicate.of(options.isSkill ?? (() => false)),
+      ],
+    }),
   });
   views.push(view);
   return view;
@@ -60,16 +61,17 @@ describe("chat chips", () => {
   it("draws a reference as one chip showing the chat's current title", () => {
     const open = vi.fn();
     const view = mount(`see ${link} now`, {
-      chats: { resolve: () => ({ title: "Billing v2" }), open }
+      chats: { resolve: () => ({ title: "Billing v2" }), open },
     });
 
-    const chip = view.dom.querySelector<HTMLElement>(".composer-chat-chip");
-    expect(chip?.dataset.status).toBe("resolved");
-    expect(chip?.textContent).toBe("Billing v2");
-    expect(chip?.getAttribute("aria-label")).toBe("Chat reference: Billing v2. Open chat");
+    const chip = within(view.dom).getByRole("button", {
+      name: "Chat reference: Billing v2. Open chat",
+    });
+    expect(chip).toHaveAttribute("data-status", "resolved");
+    expect(chip.textContent).toBe("Billing v2");
     expect(view.dom.textContent).not.toContain("argmax://");
 
-    chip?.click();
+    chip.click();
     expect(open).toHaveBeenCalledWith("s1");
   });
 
@@ -77,17 +79,20 @@ describe("chat chips", () => {
     const open = vi.fn();
     const view = mount(link, { chats: { resolve: () => null, open } });
 
-    const chip = view.dom.querySelector<HTMLElement>(".composer-chat-chip");
-    expect(chip?.dataset.status).toBe("unresolved");
-    expect(chip?.textContent).toBe("Billing rewrite (unavailable)");
-    chip?.click();
+    const chip = within(view.dom).getByRole("img", {
+      name: "Chat reference: Billing rewrite. No longer available",
+    });
+    expect(chip).toHaveAttribute("data-status", "unresolved");
+    expect(chip.textContent).toBe("Billing rewrite (unavailable)");
+    chip.click();
     expect(open).not.toHaveBeenCalled();
   });
 
   it("leaves a reference this build cannot read as plain, visible text", () => {
     const view = mount("[Later](argmax://chat/s1?v=9)");
 
-    expect(view.dom.querySelector(".composer-chat-chip")).toBeNull();
+    expect(within(view.dom).queryByRole("button", { name: /^Chat reference:/ })).toBeNull();
+    expect(within(view.dom).queryByRole("img", { name: /^Chat reference:/ })).toBeNull();
     expect(view.dom.textContent).toContain("argmax://chat/s1?v=9");
   });
 
@@ -107,7 +112,9 @@ describe("skill tokens", () => {
     const tricky = chatReferenceLink({ sessionId: "s2", title: "x /review y" });
     const view = mount(`/review ${tricky} /nope`, { isSkill: (name) => name === "review" });
 
-    const tinted = [...view.dom.querySelectorAll(".skill-token")].map((node) => node.textContent);
+    const tinted = within(view.dom)
+      .queryAllByTestId("skill-token")
+      .map((node) => node.textContent);
     expect(tinted).toEqual(["/review"]);
   });
 });
@@ -124,8 +131,8 @@ describe("clipboard", () => {
         getData: (mime: string) => store[mime] ?? "",
         types: Object.keys(store),
         items: [],
-        files: []
-      }
+        files: [],
+      },
     });
     return event;
   }
@@ -142,7 +149,7 @@ describe("clipboard", () => {
     expect(data.getData("text/plain")).toBe(`ask ${link}`);
     expect(decodeClipboardPayload(data.getData(COMPOSER_CLIPBOARD_MIME))).toMatchObject({
       text: `ask ${link}`,
-      references: [{ sessionId: "s1", title: "Billing rewrite" }]
+      references: [{ sessionId: "s1", title: "Billing rewrite" }],
     });
   });
 
@@ -153,7 +160,9 @@ describe("clipboard", () => {
     const event = clipboardEvent("cut");
     view.contentDOM.dispatchEvent(event);
 
-    expect((event.clipboardData as unknown as { getData: (m: string) => string }).getData("text/plain")).toBe(link);
+    expect(
+      (event.clipboardData as unknown as { getData: (m: string) => string }).getData("text/plain"),
+    ).toBe(link);
     expect(view.state.doc.toString()).toBe("ask ");
   });
 
@@ -163,7 +172,11 @@ describe("clipboard", () => {
 
     const typed = clipboardEvent("paste", {
       "text/plain": "ignored",
-      [COMPOSER_CLIPBOARD_MIME]: JSON.stringify({ v: 1, text: link, references: [{ sessionId: "other" }] })
+      [COMPOSER_CLIPBOARD_MIME]: JSON.stringify({
+        v: 1,
+        text: link,
+        references: [{ sessionId: "other" }],
+      }),
     });
     view.contentDOM.dispatchEvent(typed);
     // The payload lists a reference the text does not hold, so it is refused
@@ -174,8 +187,8 @@ describe("clipboard", () => {
       [COMPOSER_CLIPBOARD_MIME]: JSON.stringify({
         v: 1,
         text: link,
-        references: [{ v: 1, sessionId: "s1", title: "Billing rewrite" }]
-      })
+        references: [{ v: 1, sessionId: "s1", title: "Billing rewrite" }],
+      }),
     });
     view.dispatch({ selection: EditorSelection.cursor(7) });
     view.contentDOM.dispatchEvent(genuine);
@@ -197,7 +210,8 @@ describe("clipboard", () => {
 describe("keyboard", () => {
   function key(init: KeyboardEventInit & { keyCode?: number }): KeyboardEvent {
     const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
-    if (init.keyCode !== undefined) Object.defineProperty(event, "keyCode", { value: init.keyCode });
+    if (init.keyCode !== undefined)
+      Object.defineProperty(event, "keyCode", { value: init.keyCode });
     return event;
   }
 
@@ -250,7 +264,7 @@ describe("undo", () => {
     const view = mount("typed");
     view.dispatch({
       changes: { from: 0, to: 5, insert: "" },
-      annotations: Transaction.addToHistory.of(false)
+      annotations: Transaction.addToHistory.of(false),
     });
 
     undo(view);

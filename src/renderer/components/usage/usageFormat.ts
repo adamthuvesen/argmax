@@ -14,7 +14,7 @@ export function formatUsd(value: number): string {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    maximumFractionDigits: 2,
   });
 }
 
@@ -31,7 +31,7 @@ export function formatUsdRate(value: number): string {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: digits,
-    maximumFractionDigits: digits
+    maximumFractionDigits: digits,
   });
 }
 
@@ -119,7 +119,7 @@ function parseInstant(value: string): Date | null {
 export function formatBucketLabel(
   bucketStart: string,
   resolution: UsageResolution,
-  timeZone: string
+  timeZone: string,
 ): string {
   const at = parseInstant(bucketStart);
   if (!at) return "";
@@ -133,7 +133,7 @@ export function formatBucketLabel(
 export function formatBucketTitle(
   bucketStart: string,
   resolution: UsageResolution,
-  timeZone: string
+  timeZone: string,
 ): string {
   const at = parseInstant(bucketStart);
   if (!at) return "";
@@ -143,7 +143,7 @@ export function formatBucketTitle(
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      hour12: false
+      hour12: false,
     }).format(at);
   }
   return dateFormat(timeZone, { month: "short", day: "numeric", year: "numeric" }).format(at);
@@ -158,7 +158,7 @@ export function formatRangeLabel(
   rangeStart: string,
   rangeEnd: string,
   resolution: UsageResolution,
-  timeZone: string
+  timeZone: string,
 ): string {
   const start = parseInstant(rangeStart);
   const end = parseInstant(rangeEnd);
@@ -170,7 +170,7 @@ export function formatRangeLabel(
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      hour12: false
+      hour12: false,
     });
     return `${stamp.format(start)} to ${stamp.format(end)}`;
   }
@@ -179,10 +179,7 @@ export function formatRangeLabel(
 }
 
 /** `2h`, `17d`, `now` — the bare distance to a window's reset. */
-export function formatResetShort(
-  value: string | null,
-  now: Date = new Date()
-): string | null {
+export function formatResetShort(value: string | null, now: Date = new Date()): string | null {
   if (!value) return null;
   const at = parseInstant(value);
   if (!at) return null;
@@ -197,10 +194,7 @@ export function formatResetShort(
 }
 
 /** A relative account-clock label such as `resets in 2h` or `resets in 17d`. */
-export function formatResetIn(
-  value: string | null,
-  now: Date = new Date()
-): string | null {
+export function formatResetIn(value: string | null, now: Date = new Date()): string | null {
   const distance = formatResetShort(value, now);
   if (!distance) return null;
   return distance === "now" ? "resets now" : `resets in ${distance}`;
@@ -230,7 +224,7 @@ export function formatScanStamp(value: string | null, timeZone: string): string 
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false
+    hour12: false,
   }).format(at);
 }
 

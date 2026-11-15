@@ -3,8 +3,8 @@ import {
   effortForModel,
   REASONING_EFFORTS,
   reasoningEffortsForModel,
-  successorModelId,
-  type ReasoningEffort
+  resolveModelId,
+  type ReasoningEffort,
 } from "../../shared/providerModels.js";
 import { allModelOptions, type ModelPickerSelection } from "./models.js";
 
@@ -22,7 +22,7 @@ function sessionModelKey(sessionId: string): string {
  */
 export function readStoredSessionModel(
   sessionId: string,
-  fallback: ModelPickerSelection
+  fallback: ModelPickerSelection,
 ): ModelPickerSelection {
   if (typeof window === "undefined") return fallback;
 
@@ -38,7 +38,7 @@ export function readStoredSessionModel(
     const option = allModelOptions.find(
       (candidate) =>
         candidate.provider === stored.provider &&
-        candidate.modelId === successorModelId(candidate.provider, storedModelId)
+        candidate.modelId === resolveModelId(candidate.provider, storedModelId),
     );
     if (!option) return fallback;
 
@@ -58,7 +58,7 @@ export function readStoredSessionModel(
       provider: option.provider,
       label: option.label,
       modelId: option.modelId,
-      ...(reasoningEffort ? { reasoningEffort } : {})
+      ...(reasoningEffort ? { reasoningEffort } : {}),
     };
   } catch {
     return fallback;
@@ -74,8 +74,8 @@ export function writeStoredSessionModel(sessionId: string, model: ModelPickerSel
       JSON.stringify({
         provider: model.provider,
         modelId: model.modelId,
-        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
-      })
+        ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+      }),
     );
   } catch {
     // Storage failure costs a restored picker choice, never the running turn.

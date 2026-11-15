@@ -8,7 +8,7 @@ import { useMotionPresence } from "../hooks/useMotionPresence.js";
 
 export function KeyboardCheatSheet({
   open,
-  onClose
+  onClose,
 }: {
   open: boolean;
   onClose: () => void;

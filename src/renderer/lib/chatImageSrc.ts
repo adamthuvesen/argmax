@@ -1,12 +1,12 @@
 import {
   ATTACHMENT_PROTOCOL_SCHEME,
   attachmentProtocolUrl,
-  toRenderableAttachmentUrl
+  toRenderableAttachmentUrl,
 } from "../../shared/attachmentProtocol.js";
 import {
   WORKSPACE_ASSET_PROTOCOL_SCHEME,
   toRenderableWorkspaceAssetUrl,
-  workspaceAssetUrl
+  workspaceAssetUrl,
 } from "../../shared/assetProtocol.js";
 
 function decodePath(value: string): string {
@@ -33,7 +33,7 @@ const ATTACHMENT_PATH = /\/local-state\/attachments\//;
  */
 export function resolveChatImageSrc(
   source: string | undefined,
-  workspacePath: string | null | undefined
+  workspacePath: string | null | undefined,
 ): string | null {
   if (!source) return null;
   if (/^https?:\/\//i.test(source)) return null;
@@ -48,7 +48,9 @@ export function resolveChatImageSrc(
   if (decoded.startsWith("/")) {
     // Only the attachment store goes through its own handler; every other
     // absolute path (checkout, agent scratch dir) is the asset handler's call.
-    return ATTACHMENT_PATH.test(decoded) ? attachmentProtocolUrl(decoded) : workspaceAssetUrl(decoded);
+    return ATTACHMENT_PATH.test(decoded)
+      ? attachmentProtocolUrl(decoded)
+      : workspaceAssetUrl(decoded);
   }
   if (!workspacePath) return null;
 

@@ -9,18 +9,18 @@ describe("splitLinkSegments", () => {
     expect(segments).toEqual([
       { text: "Can we check ", link: false },
       { text: "https://github.com/mentimeter/revops-backoffice/pull/458", link: true },
-      { text: " today", link: false }
+      { text: " today", link: false },
     ]);
     expect(segments?.map((s) => s.text).join("")).toBe(input);
   });
 
   it("finds every URL on its own line", () => {
     const segments = splitLinkSegments(
-      "Two PRs\n\nhttps://github.com/a/pull/1\nhttps://github.com/b/pull/2\n"
+      "Two PRs\n\nhttps://github.com/a/pull/1\nhttps://github.com/b/pull/2\n",
     );
     expect(segments?.filter((s) => s.link).map((s) => s.text)).toEqual([
       "https://github.com/a/pull/1",
-      "https://github.com/b/pull/2"
+      "https://github.com/b/pull/2",
     ]);
   });
 
@@ -28,10 +28,10 @@ describe("splitLinkSegments", () => {
     const segments = splitLinkSegments("Read https://menti.com/docs, then https://menti.com/api.");
     expect(segments?.filter((s) => s.link).map((s) => s.text)).toEqual([
       "https://menti.com/docs",
-      "https://menti.com/api"
+      "https://menti.com/api",
     ]);
     expect(splitLinkSegments("(see https://menti.com/docs)")?.at(1)?.text).toBe(
-      "https://menti.com/docs"
+      "https://menti.com/docs",
     );
   });
 

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BackendLogEntry, IpcChannelStats } from "../../shared/types.js";
+import type { BackendLogEntry } from "../../shared/types.js";
+import { ipcLatencySnapshot } from "../lib/ipcLatency.js";
+import type { IpcChannelStats } from "../lib/perfRegistry.js";
 
 const POLL_INTERVAL_MS = 1_000;
 
@@ -46,7 +48,7 @@ export function useDebugSnapshot(enabled: boolean): DebugSnapshotState {
         const snapshot = await api.system.debugSnapshot({ afterLogSeq: cursor.current });
         if (!alive) return;
         setError(null);
-        setIpcStats(snapshot.ipcStats);
+        setIpcStats(ipcLatencySnapshot());
         if (snapshot.logs.length > 0) {
           cursor.current = snapshot.logs[snapshot.logs.length - 1]?.seq;
           setLogs((previous) => [...previous, ...snapshot.logs].slice(-LOG_CAP));

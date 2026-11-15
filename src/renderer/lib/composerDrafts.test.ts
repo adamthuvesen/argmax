@@ -24,7 +24,7 @@ describe("composer drafts", () => {
 
     expect(readDraft("session-a")).toEqual({
       text: "look at this",
-      attachments: [screenshot("/att/a.png")]
+      attachments: [screenshot("/att/a.png")],
     });
   });
 
@@ -64,10 +64,10 @@ describe("composer drafts", () => {
             screenshot("/att/a.png"),
             { filePath: "/att/b.pdf", mimeType: "application/pdf", sizeBytes: 1 },
             { filePath: "", mimeType: "image/png", sizeBytes: 1 },
-            "not-an-attachment"
-          ]
-        }
-      })
+            "not-an-attachment",
+          ],
+        },
+      }),
     );
 
     expect(readDraft("session-a").attachments).toEqual([screenshot("/att/a.png")]);
@@ -95,7 +95,7 @@ describe("composer drafts", () => {
     writeDraftAttachments("session-a", [screenshot("/att/a.png")]);
 
     expect(stored()).toEqual({
-      "session-a": { v: 2, text, attachments: [screenshot("/att/a.png")] }
+      "session-a": { v: 2, text, attachments: [screenshot("/att/a.png")] },
     });
     expect(readDraft("session-a")).toEqual({ text, attachments: [screenshot("/att/a.png")] });
   });
@@ -105,8 +105,8 @@ describe("composer drafts", () => {
       DRAFTS_KEY,
       JSON.stringify({
         "session-a": { text: "unversioned", attachments: [] },
-        "session-b": { v: 3, text: "from the future", attachments: [] }
-      })
+        "session-b": { v: 3, text: "from the future", attachments: [] },
+      }),
     );
 
     expect(readDraft("session-a").text).toBe("unversioned");
@@ -121,7 +121,7 @@ describe("composer drafts", () => {
 
     expect(stored()).toEqual({
       "session-b": future,
-      "session-a": { v: 2, text: "mine", attachments: [] }
+      "session-a": { v: 2, text: "mine", attachments: [] },
     });
   });
 });

@@ -5,7 +5,7 @@ import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 import {
   BROWSER_HISTORY_KEY,
   setBrowserHistoryStorageForTests,
-  type BrowserHistoryEntry
+  type BrowserHistoryEntry,
 } from "../lib/browserHistory.js";
 import { BrowserHistoryImport } from "./BrowserHistoryImport.js";
 
@@ -22,14 +22,14 @@ beforeEach(() => {
     save: (nextEntries) => {
       entries = structuredClone(nextEntries);
       return Promise.resolve();
-    }
+    },
   });
   chromeProfiles.mockResolvedValue([
     { id: "Default", name: "Personal" },
-    { id: "Profile 1", name: "Work" }
+    { id: "Profile 1", name: "Work" },
   ]);
   window.argmax = {
-    browser: { chromeProfiles, importChromeHistory }
+    browser: { chromeProfiles, importChromeHistory },
   } as unknown as ArgmaxApi;
 });
 
@@ -44,9 +44,9 @@ describe("BrowserHistoryImport", () => {
     importChromeHistory.mockResolvedValue({
       entries: [
         { url: "https://example.com/", title: "Example", visitedAt: 100, visitCount: 3 },
-        { url: "https://github.com/", title: "GitHub", visitedAt: 90, visitCount: 2 }
+        { url: "https://github.com/", title: "GitHub", visitedAt: 90, visitCount: 2 },
       ],
-      totalAvailable: 12_345
+      totalAvailable: 12_345,
     });
 
     render(<BrowserHistoryImport onClose={() => undefined} />);
@@ -72,22 +72,27 @@ describe("BrowserHistoryImport", () => {
 
     expect(screen.getByText(/Cookies and saved logins are not included/)).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Could not load Chrome profiles: Chrome data is unavailable"
+      "Could not load Chrome profiles: Chrome data is unavailable",
     );
     expect(screen.getByRole("button", { name: "Import history" })).toBeDisabled();
   });
 
   it("keeps the dialog busy until the import settles and reports import failures", async () => {
     let rejectImport: ((error: Error) => void) | undefined;
-    importChromeHistory.mockReturnValue(new Promise((_resolve, reject) => {
-      rejectImport = reject;
-    }));
+    importChromeHistory.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectImport = reject;
+      }),
+    );
 
     render(<BrowserHistoryImport onClose={() => undefined} />);
     await screen.findByRole("combobox", { name: "Chrome profile" });
     fireEvent.click(screen.getByRole("button", { name: "Import history" }));
 
-    expect(screen.getByRole("dialog", { name: "Import from Chrome" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("dialog", { name: "Import from Chrome" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
     expect(screen.getByRole("button", { name: "Importing…" })).toBeDisabled();
     rejectImport?.(new Error("History database is locked"));
 

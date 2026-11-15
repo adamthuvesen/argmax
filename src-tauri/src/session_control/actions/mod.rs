@@ -11,9 +11,8 @@ mod resume;
 mod wait;
 mod workspace_tools;
 
-pub(crate) use crate::application::session_launch::{task_label, AlongsideCheckout, LaunchSpec};
 #[cfg(test)]
-use crate::application::session_launch::{DEFAULT_TASK_LABEL, MAX_TASK_LABEL_BYTES};
+use crate::application::session_launch::{task_label, DEFAULT_TASK_LABEL, MAX_TASK_LABEL_BYTES};
 pub(crate) use launch::{check_in_routine_id, launch_with_spec};
 pub use resume::resume_after_turn_actions;
 
@@ -51,16 +50,14 @@ use super::{
     registry::{ParentLaunchSettings, SessionLaunchRegistry},
     PROTOCOL_VERSION,
 };
-use crate::{
-    git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT},
-    ipc::inputs::{TerminalCols, TerminalRows},
-    persistence::{
-        database::Database,
-        projects::{list_projects, ProjectSummary},
-        session_messages::count_undelivered_messages,
-    },
-    providers::session_service::ProviderSessionService,
-    workspaces::WorkspaceService,
+use crate::providers::session_service::ProviderSessionService;
+use crate::workspaces::orchestration::WorkspaceService;
+use argmax_contracts::validation::{TerminalCols, TerminalRows};
+use argmax_process::git_exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
+use argmax_store::{
+    database::Database,
+    projects::{list_projects, ProjectSummary},
+    session_messages::count_undelivered_messages,
 };
 
 pub(super) async fn handle_session_control(
@@ -241,7 +238,7 @@ pub(super) fn resolve_project(
     // would run `create_current` against the app-owned side-chats root.
     let projects: Vec<ProjectSummary> = projects
         .iter()
-        .filter(|project| project.id != crate::workspaces::SCRATCH_PROJECT_ID)
+        .filter(|project| project.id != crate::workspaces::orchestration::SCRATCH_PROJECT_ID)
         .cloned()
         .collect();
     let Some(selector) = selector else {
@@ -358,16 +355,19 @@ Pass project: \"{destination}\" with path: \"{selector}\"."
     // registering the same repository twice.
     match registered {
         Some(project) => Ok(project),
-        None => crate::ipc::projects::register_repo_path(database, PathBuf::from(main_checkout))
-            .await
-            .map_err(argmax_protocol_error),
+        None => crate::application::project_registration::register_repo_path(
+            database,
+            PathBuf::from(main_checkout),
+        )
+        .await
+        .map_err(argmax_protocol_error),
     }
 }
 
 /// The top of the checkout at `path` and the top of its main worktree, both
 /// canonical. They differ exactly when `path` sits in a linked worktree.
 async fn repository_roots(path: &str) -> Result<(String, String), SessionControlError> {
-    let not_a_repository = |error: crate::error::ArgmaxError| {
+    let not_a_repository = |error: argmax_contracts::error::ArgmaxError| {
         protocol_error(
             "PROJECT_NOT_GIT",
             format!("{path} is not a git repository Argmax can add: {error}"),
@@ -459,12 +459,10 @@ async fn set_goal(
     let goals = goal_service(app)?;
     // The caller's own workspace: a goal belongs to the chat that set it, so
     // the tool never takes a workspace argument to get wrong.
-    let workspace_id = crate::persistence::sessions::find_session_by_id(
-        &database.read_connection(),
-        &parent.session_id,
-    )
-    .map_err(|error| protocol_error("GOAL_SET_FAILED", error.to_string()))?
-    .workspace_id;
+    let workspace_id =
+        argmax_store::sessions::find_session_by_id(&database.read_connection(), &parent.session_id)
+            .map_err(|error| protocol_error("GOAL_SET_FAILED", error.to_string()))?
+            .workspace_id;
     let goal = goals
         .set(crate::goals::service::GoalSetInput {
             workspace_id,
@@ -506,8 +504,8 @@ async fn clear_goal(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ipc::validation::TaskLabel;
-    use crate::persistence::projects::{ProjectCounts, ProjectSettings};
+    use argmax_contracts::validation::TaskLabel;
+    use argmax_store::projects::{ProjectCounts, ProjectSettings};
 
     fn project(id: &str, name: &str, repo_path: &str) -> ProjectSummary {
         ProjectSummary {

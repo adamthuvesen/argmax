@@ -7,7 +7,7 @@ import { getCachedUsageRemaining } from "../lib/ledgerPageState.js";
 import {
   lookUpUsageRemaining,
   remainingFiguresAreOld,
-  summarizeProviderWithHeld
+  summarizeProviderWithHeld,
 } from "../lib/usageRemainingLookup.js";
 import { RemainingBar } from "./usage/RemainingBar.js";
 import { formatRemainingPercent, formatResetIn } from "./usage/usageFormat.js";

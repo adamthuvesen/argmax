@@ -3,7 +3,7 @@
 Three developer-facing surfaces, split by whether the numbers move.
 
 For a reproducible local failure, start with `npm run doctor`, then
-`npm run verify -- --scenario chat-resume`. The runner writes its report and
+`npm run verify:native -- --scenario chat-resume`. The runner writes its report and
 evidence under `scratch/verification/<run-id>/` by default. The report records
 the source fingerprint, build identity, assertions, and cleanup outcome.
 See [verification.md](verification.md) for scenarios and coverage boundaries.
@@ -70,8 +70,8 @@ and no target took it, and a `warn` line — a drag that dropped without a
 `dragend`, or that stopped mid-flight — means the page left a drag session
 open, which is what a subsequent window-wide failure would follow.
 
-**IPC** lists every channel called since launch with p50/p99 over the last 100
-invocations, sorted by p99. Rows go amber past one frame (16 ms) and red past
+**IPC** lists every channel this window called since launch with p50/p95/p99/max
+over the last 100 round trips (invoke to result), sorted by p99. Rows go amber past one frame (16 ms) and red past
 100 ms.
 
 The footer copies the session id, the provider's own conversation id, the
@@ -81,8 +81,9 @@ and go query SQLite or find the provider CLI's transcript
 
 ## Polling
 
-Logs and IPC poll `system:debug-snapshot` once a second, and only while their
-tab is open. That channel reads two in-memory ring buffers and nothing else.
+Logs poll `system:debug-snapshot` once a second, and only while their
+tab is open. That channel reads one in-memory ring buffer. The IPC tab reads the
+renderer's own latency registry and costs no round trip.
 
 Do not reach for `system:diagnostics` on an interval: it runs nine `COUNT(*)`
 scans and shells out to `ps`. It is collected once, when the Advanced group
@@ -96,10 +97,20 @@ what is new rather than re-sending the ring.
 
 The performance recorder is separate from `system:diagnostics`. While active,
 a dedicated worker takes one native process-tree sample per second and reads
-only in-memory provider, IPC, and SQLite pool counters. It keeps 1,800 samples
-in a ring and performs no database writes. Renderer long tasks cross
-`system:renderer-stall` only while the browser reports one, and the backend
-drops them immediately unless a capture is active.
+only in-memory provider and SQLite pool counters. It keeps 1,800 samples
+in a ring and performs no database writes. WKWebView reports no `longtask`
+entries, so the renderer measures main-thread stalls instead
+([frameGapSampler.ts](../src/renderer/lib/frameGapSampler.ts)): a 100 ms timer
+that runs more than 50 ms late was blocked. A timer, unlike a rAF loop, does not
+make an idle window render every frame. It pauses while the window is hidden or
+unfocused. Each stall crosses `system:renderer-stall`, and the backend drops it
+immediately unless a capture is active.
+
+Interaction timings come from [interactionTimings.ts](../src/renderer/lib/interactionTimings.ts):
+`argmax:<name>` measures (start to painted) plus a ring of records with shown,
+painted and settled times and the IPC call count. The Perf HUD lists the newest
+five. Automation reads `window.__argmaxPerf.interactions()`, `.frames()` and
+`.clear()`.
 
 Enabling the hidden Perf HUD starts a capture when none exists and stops only
 the capture it started. This gives the HUD live process metrics without leaving

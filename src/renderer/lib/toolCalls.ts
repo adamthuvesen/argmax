@@ -2,7 +2,14 @@ import { safeJsonParse, safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { TimelineEvent } from "../../shared/types.js";
 import { interpretFileChange, summarizeFileChanges, type ChangeCounts } from "./fileChange.js";
 import { isOpaqueCiphertext } from "./toolArguments.js";
-import { describeActivity, joinClauses, linkedRepoName, summarizeActivities, type ToolActivity, type ToolActivityKind } from "./toolActivity.js";
+import {
+  describeActivity,
+  joinClauses,
+  linkedRepoName,
+  summarizeActivities,
+  type ToolActivity,
+  type ToolActivityKind,
+} from "./toolActivity.js";
 
 export type ToolCall = {
   id: string;
@@ -57,7 +64,7 @@ export function buildToolCallGroup(tools: ToolCall[]): ToolCallGroup {
   const firstTool = tools[0];
   return {
     id: firstTool ? `tcg-${firstTool.id}` : "tcg-empty",
-    tools
+    tools,
   };
 }
 
@@ -84,11 +91,19 @@ export function buildGroupRows(tools: ToolCall[]): GroupRow[] {
   }
   return topLevel.map((tool) => ({
     tool,
-    children: childrenByParent.get(tool.toolUseId) ?? []
+    children: childrenByParent.get(tool.toolUseId) ?? [],
   }));
 }
 
-type FineBucket = "read-files" | "read-lists" | "search" | "web" | "edit" | "bash" | "agent" | "other";
+type FineBucket =
+  | "read-files"
+  | "read-lists"
+  | "search"
+  | "web"
+  | "edit"
+  | "bash"
+  | "agent"
+  | "other";
 
 /**
  * The sub-agent / Task tool gets its own bucket so a parent agent spawning a
@@ -107,9 +122,15 @@ export function isAgentToolName(name: string): boolean {
   // Agent (Bot icon + "Started an agent") still tells the user a different
   // agent did the work. Anchor literal matches so we don't sweep up
   // "TaskList" or "agent_id"-style names.
-  return lower === "task" || lower === "agent" || lower === "subagent" ||
-    lower === "tasktoolcall" || lower === "collab_tool_call" || lower === "spawn_agent" ||
-    /(^|[_-])(sub-?agent|agent)$/.test(lower);
+  return (
+    lower === "task" ||
+    lower === "agent" ||
+    lower === "subagent" ||
+    lower === "tasktoolcall" ||
+    lower === "collab_tool_call" ||
+    lower === "spawn_agent" ||
+    /(^|[_-])(sub-?agent|agent)$/.test(lower)
+  );
 }
 
 /**
@@ -160,10 +181,9 @@ export function parseMcpToolName(name: string): { server: string; tool: string }
       const parts = server.slice("plugin-".length).split("-").filter(Boolean);
       const half = parts.length / 2;
       server =
-        Number.isInteger(half) &&
-        parts.slice(0, half).join("-") === parts.slice(half).join("-")
+        Number.isInteger(half) && parts.slice(0, half).join("-") === parts.slice(half).join("-")
           ? parts.slice(0, half).join(" ")
-          : parts.at(-1) ?? server;
+          : (parts.at(-1) ?? server);
     } else {
       server = server.replace(/[-_]/g, " ");
     }
@@ -206,7 +226,7 @@ const OPENCODE_MCP_SERVERS = new Set([
   "hex",
   "executor",
   "profound",
-  "confidence-experiments"
+  "confidence-experiments",
 ]);
 
 function parseOpenCodeServerTool(name: string): { server: string; tool: string } | null {
@@ -245,7 +265,7 @@ const HIDDEN_TOOL_NAMES = new Set([
   // Grok's poll for a spawned child. Same job as Codex `wait`: it names no
   // user-facing work, and leaving it visible splits the parent's sentence
   // around "Get command or subagent output".
-  "get_command_or_subagent_output"
+  "get_command_or_subagent_output",
 ]);
 
 export function isHiddenToolName(name: string): boolean {
@@ -293,7 +313,7 @@ const FINE_BUCKET_ORDER: FineBucket[] = [
   "web",
   "bash",
   "agent",
-  "other"
+  "other",
 ];
 
 // Each bucket keeps its action verb when several kinds of work share a
@@ -350,7 +370,13 @@ export function summarizeToolChangeCounts(tools: ToolCall[]): ChangeCounts | nul
   let adds = 0;
   let dels = 0;
   for (const tool of tools) {
-    if (tool.status !== "done" || tool.cancelled || tool.completionObserved === false || seen.has(tool.id)) continue;
+    if (
+      tool.status !== "done" ||
+      tool.cancelled ||
+      tool.completionObserved === false ||
+      seen.has(tool.id)
+    )
+      continue;
     seen.add(tool.id);
     const changes = interpretFileChange(tool.name, tool.inputFull);
     if (!changes) continue;
@@ -367,7 +393,8 @@ export function describeToolAction(tool: ToolCall): string {
   if (activity && tool.activity?.kind === "command" && tool.inputPreview) {
     const command = displayBashCommand(tool.inputPreview);
     if (tool.status === "running" && !tool.cancelled) return `Running ${command}`;
-    if (tool.status === "done" && tool.completionObserved && !tool.cancelled) return `Ran ${command}`;
+    if (tool.status === "done" && tool.completionObserved && !tool.cancelled)
+      return `Ran ${command}`;
     return `${activity}: ${command}`;
   }
   if (activity && tool.activity?.kind !== "tool") return activity;
@@ -377,7 +404,7 @@ export function describeToolAction(tool: ToolCall): string {
   const preview = tool.inputPreview;
   const basename = (path: string): string => {
     const trimmed = path.replace(/\/$/, "");
-    return trimmed.includes("/") ? trimmed.split("/").pop() ?? trimmed : trimmed;
+    return trimmed.includes("/") ? (trimmed.split("/").pop() ?? trimmed) : trimmed;
   };
   switch (bucket) {
     case "agent":
@@ -428,7 +455,7 @@ export function displayBashCommand(input: string): string {
 function stripOuterQuotes(input: string): string {
   const first = input[0];
   const last = input[input.length - 1];
-  if ((first === "'" || first === "\"" || first === "`") && first === last) {
+  if ((first === "'" || first === '"' || first === "`") && first === last) {
     return input.slice(1, -1).trim();
   }
   return input;
@@ -443,7 +470,10 @@ export function toolGroupKindKey(tools: ToolCall[]): string {
   return FINE_BUCKET_ORDER.filter((bucket) => buckets.has(bucket)).join("+");
 }
 
-export function summarizeToolGroup(tools: ToolCall[], counting = true): {
+export function summarizeToolGroup(
+  tools: ToolCall[],
+  counting = true,
+): {
   headline: string;
   currentAction: string | null;
   status: ToolCall["status"];
@@ -467,7 +497,9 @@ export function summarizeToolGroup(tools: ToolCall[], counting = true): {
   for (const bucket of FINE_BUCKET_ORDER) {
     const n = counts.get(bucket);
     if (!n) continue;
-    clauses.push(clauseForBucket(bucket, n, first, counting && tools.every((tool) => tool.status === "done")));
+    clauses.push(
+      clauseForBucket(bucket, n, first, counting && tools.every((tool) => tool.status === "done")),
+    );
     first = false;
   }
   const headline = clauses.length > 0 ? joinClauses(clauses) : "Used tools";
@@ -537,7 +569,12 @@ export function extractToolName(payload: Record<string, unknown>): string {
   if (lower === "mcptoolcall" || lower === "getmcptoolstoolcall") {
     const server = input.serverIdentifier ?? input.providerIdentifier ?? input.server;
     const tool = input.toolName;
-    if (typeof server === "string" && server.length > 0 && typeof tool === "string" && tool.length > 0) {
+    if (
+      typeof server === "string" &&
+      server.length > 0 &&
+      typeof tool === "string" &&
+      tool.length > 0
+    ) {
       return `mcp__${server}__${tool}`;
     }
   }
@@ -576,7 +613,7 @@ export function extractToolInput(payload: Record<string, unknown>): Record<strin
   const args = {
     ...inputRecord(payload.parameters, "toolCalls.parameters"),
     ...inputRecord(payload.arguments, "toolCalls.arguments"),
-    ...inputRecord(payload.args, "toolCalls.args")
+    ...inputRecord(payload.args, "toolCalls.args"),
   };
   const input = inputRecord(payload.input, "toolCalls.input");
   return { ...args, ...input };
@@ -585,7 +622,7 @@ export function extractToolInput(payload: Record<string, unknown>): Record<strin
 export function cleanToolInput(
   name: string,
   input: Record<string, unknown>,
-  providerName?: string | null
+  providerName?: string | null,
 ): Record<string, unknown> {
   if (!parseMcpToolName(name) || providerName?.toLowerCase() !== "mcptoolcall") return input;
   const args = inputRecord(input.args, "toolCalls.mcp.args");
@@ -596,7 +633,10 @@ export function cleanToolInput(
  *  marker at the head of the prompt. In a one-line title that path is all the
  *  reader sees, so drop the markers and keep the instruction. */
 function withoutImageMarkers(text: string): string {
-  return text.replace(/\[local_image:[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
+  return text
+    .replace(/\[local_image:[^\]]*\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function extractToolInputPreview(name: string, input: Record<string, unknown>): string {
@@ -689,7 +729,11 @@ export function extractToolOutput(payload: Record<string, unknown>): string | nu
   if (typeof payload.content === "string") return unwrapOutputEnvelope(payload.content);
   if (Array.isArray(payload.content)) {
     const text = payload.content
-      .map((c: unknown) => (c && typeof c === "object" && "text" in c ? String((c as Record<string, unknown>).text) : ""))
+      .map((c: unknown) =>
+        c && typeof c === "object" && "text" in c
+          ? String((c as Record<string, unknown>).text)
+          : "",
+      )
       .filter(Boolean)
       .join("\n");
     return text ? unwrapOutputEnvelope(text) : null;
@@ -699,13 +743,7 @@ export function extractToolOutput(payload: Record<string, unknown>): string | nu
 }
 
 const OUTPUT_TEXT_KEYS = ["text", "content", "result", "output"] as const;
-const OUTPUT_ENVELOPE_KEYS = new Set([
-  ...OUTPUT_TEXT_KEYS,
-  "metadata",
-  "title",
-  "type",
-  "url"
-]);
+const OUTPUT_ENVELOPE_KEYS = new Set([...OUTPUT_TEXT_KEYS, "metadata", "title", "type", "url"]);
 
 type FormattedToolOutput = { body: string; title: string | null };
 
@@ -763,7 +801,14 @@ export function extractOpenablePath(name: string, input: Record<string, unknown>
   if (!/read|view|cat|write|edit|patch|create|open/.test(lower)) return null;
   // A linked-repository path is relative to that repository, not this checkout.
   if (linkedRepoName(input)) return null;
-  for (const key of ["file_path", "filePath", "filepath", "path", "relative_path", "absolute_path"]) {
+  for (const key of [
+    "file_path",
+    "filePath",
+    "filepath",
+    "path",
+    "relative_path",
+    "absolute_path",
+  ]) {
     const value = input[key];
     if (typeof value === "string" && value.length > 0) return value;
   }

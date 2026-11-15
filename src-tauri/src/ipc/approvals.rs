@@ -1,8 +1,8 @@
 use super::inputs::*;
 use crate::approvals::service::{ApprovalService, ResolveStatus};
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::approvals::ApprovalRequest;
 use crate::state::AppState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::approvals::ApprovalRequest;
 use std::sync::Arc;
 use tauri::State;
 

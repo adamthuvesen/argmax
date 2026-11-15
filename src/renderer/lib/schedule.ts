@@ -31,7 +31,7 @@ const WEEKDAY_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
   { value: 5, label: "Thu" },
   { value: 6, label: "Fri" },
   { value: 7, label: "Sat" },
-  { value: 1, label: "Sun" }
+  { value: 1, label: "Sun" },
 ];
 
 const WEEKDAY_NAME_BY_VALUE = new Map([
@@ -41,7 +41,7 @@ const WEEKDAY_NAME_BY_VALUE = new Map([
   [4, "Wed"],
   [5, "Thu"],
   [6, "Fri"],
-  [7, "Sat"]
+  [7, "Sat"],
 ]);
 
 /** Reverse of {@link WEEKDAY_NAME_BY_VALUE}; accepts the full and abbreviated
@@ -69,7 +69,7 @@ export const DEFAULT_SCHEDULE_CONTROLS: ScheduleControls = {
   minute: 0,
   hour: 9,
   weekday: 2,
-  custom: ""
+  custom: "",
 };
 
 export function pad2(value: number): string {
@@ -81,7 +81,7 @@ export function pad2(value: number): string {
  *  when the inputs are incomplete so Save can treat the form as unfinished. */
 export function buildSchedule(
   kind: ScheduleKind,
-  controls: ScheduleControls
+  controls: ScheduleControls,
 ): { cronExpr: string | null; runOnceAt: string | null } {
   switch (kind) {
     case "once":
@@ -93,7 +93,7 @@ export function buildSchedule(
     case "weekly":
       return {
         cronExpr: `0 ${controls.minute} ${controls.hour} * * ${WEEKDAY_NAME_BY_VALUE.get(controls.weekday) ?? "Mon"}`,
-        runOnceAt: null
+        runOnceAt: null,
       };
     case "custom":
       return { cronExpr: controls.custom.trim() || null, runOnceAt: null };
@@ -103,9 +103,10 @@ export function buildSchedule(
 /** Recovers the friendly kind + controls from a stored schedule, so editing
  *  a routine prefills the same controls that built it. `custom` is the
  *  fallback for cron expressions the friendly kinds cannot express. */
-export function parseSchedule(
-  routine: Pick<Routine, "cronExpr" | "runOnceAt">
-): { kind: ScheduleKind; controls: ScheduleControls } {
+export function parseSchedule(routine: Pick<Routine, "cronExpr" | "runOnceAt">): {
+  kind: ScheduleKind;
+  controls: ScheduleControls;
+} {
   const controls: ScheduleControls = { ...DEFAULT_SCHEDULE_CONTROLS };
   if (routine.runOnceAt) {
     controls.onceAt = toLocalInputValue(routine.runOnceAt);
@@ -185,7 +186,7 @@ const WEEKDAY_FULL_NAME = new Map([
   [4, "Wednesday"],
   [5, "Thursday"],
   [6, "Friday"],
-  [7, "Saturday"]
+  [7, "Saturday"],
 ]);
 
 /** Full weekday names in the Monday-first display order of
@@ -194,7 +195,7 @@ const WEEKDAY_FULL_NAME = new Map([
 export const WEEKDAY_PICKER_OPTIONS: ReadonlyArray<{ value: string; label: string }> =
   WEEKDAY_OPTIONS.map((option) => ({
     value: String(option.value),
-    label: WEEKDAY_FULL_NAME.get(option.value) ?? option.label
+    label: WEEKDAY_FULL_NAME.get(option.value) ?? option.label,
   }));
 
 /** The cadence as a sentence fragment — "every day at 09:00". The editor reads

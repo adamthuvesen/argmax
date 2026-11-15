@@ -1,3 +1,5 @@
+import { recordChunkLoad } from "./interactionTimings.js";
+
 // Marker in sessionStorage, like the Sidebar's boot markers: scoped to the tab
 // and cleared when it closes. It bounds recovery to one reload, so a chunk that
 // is broken rather than stale still reaches the error boundary.
@@ -30,10 +32,12 @@ function markReloaded(written: boolean): void {
  * disk. Reloading picks up the current shell, which is the only way that page
  * can reach the new hashes.
  */
-export async function importChunk<T>(load: () => Promise<T>): Promise<T> {
+export async function importChunk<T>(load: () => Promise<T>, name?: string): Promise<T> {
+  const startedAt = performance.now();
   try {
     const chunk = await load();
     markReloaded(false);
+    if (name) recordChunkLoad(name, startedAt);
     return chunk;
   } catch (error) {
     if (typeof window === "undefined" || hasReloaded()) throw error;

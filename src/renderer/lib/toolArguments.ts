@@ -42,7 +42,7 @@ const AGENT_MESSAGE_TRANSPORT_KEYS = new Set([
   "target_thread_id",
   "threadId",
   "thread_id",
-  "to"
+  "to",
 ]);
 
 function foldedToolName(name: string): string {
@@ -57,14 +57,14 @@ export function isAgentMessageToolName(name: string): boolean {
 /** Drop ciphertext values and Codex thread-id plumbing the row already named. */
 export function displayToolInput(
   name: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
 ): Record<string, unknown> {
   const dropTransport = isAgentMessageToolName(name);
   return Object.fromEntries(
     Object.entries(input).filter(([key, value]) => {
       if (dropTransport && AGENT_MESSAGE_TRANSPORT_KEYS.has(key)) return false;
       return !dropTransport || typeof value !== "string" || !isOpaqueCiphertext(value);
-    })
+    }),
   );
 }
 
@@ -85,7 +85,5 @@ export function toolArguments(input: Record<string, unknown>): ToolArgument[] {
 /** True when the whole set reads as one line of footer meta. */
 export function argumentsFitFooter(args: readonly ToolArgument[]): boolean {
   if (args.length === 0) return false;
-  return args.every(
-    (arg) => !arg.value.includes("\n") && arg.value.length <= INLINE_VALUE_CHARS
-  );
+  return args.every((arg) => !arg.value.includes("\n") && arg.value.length <= INLINE_VALUE_CHARS);
 }

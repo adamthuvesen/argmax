@@ -11,24 +11,19 @@ pub mod project_check;
 pub mod reroute;
 pub mod table;
 
-use serde::{Deserialize, Serialize};
-use specta::Type;
-
-use self::{
-    jev::Classification,
-    table::{AutoTier, Difficulty, RoutedModel, TaskKind},
+use argmax_contracts::routing::{
+    difficulty_label, kind_label, tier_label, RouteDecision, RouteDecisionKind,
 };
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    ipc::{
-        inputs::ProvidersLaunchInput,
-        validation::{NonEmptyString, ProviderId, ReasoningEffort},
-    },
-    persistence::{
-        database::Database,
-        sessions::{find_session_by_id, SessionSummary},
-        turn_routes::record_route,
-    },
+
+use self::{jev::Classification, table::RoutedModel};
+use crate::providers::{discovery::AvailableProvider, inputs::ProvidersLaunchInput};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::routing::{AutoTier, Difficulty, TaskKind};
+use argmax_contracts::validation::{NonEmptyString, ProviderId, ReasoningEffort};
+use argmax_store::{
+    database::Database,
+    sessions::{find_session_by_id, SessionSummary},
+    turn_routes::record_route,
 };
 
 /// Below this, Jev's pick is a coin toss; treat the task as coding (the kind
@@ -41,54 +36,10 @@ const CODING_MARGIN: f64 = 0.15;
 /// on hard or very hard; otherwise medium, and a follow-up can climb.
 const BALANCED_HIGH_EFFORT: f64 = 0.6;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "lowercase")]
-pub enum RouteDecisionKind {
-    Launch,
-    Reroute,
-    Escalate,
-    Kept,
-    Fallback,
-    /// The user picked a model and routing ended. Not a turn and not a
-    /// switch: the row only closes the previous route's window.
-    Pinned,
-}
-
-impl RouteDecisionKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            RouteDecisionKind::Launch => "launch",
-            RouteDecisionKind::Reroute => "reroute",
-            RouteDecisionKind::Escalate => "escalate",
-            RouteDecisionKind::Kept => "kept",
-            RouteDecisionKind::Fallback => "fallback",
-            RouteDecisionKind::Pinned => "pinned",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct RouteDecision {
-    pub tier: AutoTier,
-    pub provider: ProviderId,
-    pub model_id: String,
-    pub model_label: String,
-    pub effort: Option<ReasoningEffort>,
-    pub kind: Option<TaskKind>,
-    pub difficulty: Option<Difficulty>,
-    pub kind_confidence: Option<f64>,
-    pub difficulty_confidence: Option<f64>,
-    pub decision: RouteDecisionKind,
-    pub reason: String,
-    /// Jev's raw answers as JSON (`Classification::signals_json`), when it
-    /// classified this decision.
-    pub signals: Option<String>,
-}
-
 /// The saved Jev key, or the error an Auto request gets without one: Auto
 /// routing is only on once a key is saved in Settings.
 pub fn require_api_key() -> ArgmaxResult<String> {
-    api_key::stored_key().ok_or_else(|| {
+    api_key::read_key()?.ok_or_else(|| {
         ArgmaxError::service(
             "ROUTING_NOT_CONFIGURED",
             "Auto routing needs a Jev API key. Add one in Settings → Agents.",
@@ -128,6 +79,10 @@ const AVAILABLE_PROVIDER_ORDER: [ProviderId; 5] = [
     ProviderId::Opencode,
 ];
 
+fn is_available(available: &[AvailableProvider], provider: ProviderId) -> bool {
+    available.iter().any(|entry| entry.id() == provider)
+}
+
 /// Rewrites an Auto launch to the routed provider, model and effort. `None`
 /// for an ordinary launch. Fast mode is dropped: the grid's cells never ask
 /// for it. `available` is the providers whose CLI is installed and not known
@@ -135,7 +90,7 @@ const AVAILABLE_PROVIDER_ORDER: [ProviderId; 5] = [
 /// grid's pick is left alone.
 pub async fn route_launch(
     input: &mut ProvidersLaunchInput,
-    available: &[ProviderId],
+    available: &[AvailableProvider],
 ) -> ArgmaxResult<Option<RouteDecision>> {
     let Some(tier) = input.auto_tier else {
         return Ok(None);
@@ -160,14 +115,14 @@ pub async fn route_launch(
 /// follow-up model changes. An empty `available` is "unknown", not "none".
 pub(crate) fn with_available_provider(
     mut route: RouteDecision,
-    available: &[ProviderId],
+    available: &[AvailableProvider],
 ) -> RouteDecision {
-    if available.is_empty() || available.contains(&route.provider) {
+    if available.is_empty() || is_available(available, route.provider) {
         return route;
     }
     let Some(provider) = AVAILABLE_PROVIDER_ORDER
         .into_iter()
-        .find(|provider| available.contains(provider))
+        .find(|provider| is_available(available, *provider))
     else {
         return route;
     };
@@ -199,7 +154,7 @@ pub(crate) fn with_available_provider(
         route.effort = routed.effort;
     }
     if route.provider == previous {
-        let defaults = crate::provider_defaults(provider.as_str());
+        let defaults = crate::providers::model_catalogue::provider_defaults(provider);
         route.provider = provider;
         route.model_id = defaults.model_id.to_string();
         route.model_label = defaults.model_label.to_string();
@@ -330,33 +285,6 @@ pub(crate) fn decision_from(
     }
 }
 
-pub fn kind_label(kind: TaskKind) -> &'static str {
-    match kind {
-        TaskKind::Coding => "coding",
-        TaskKind::Mechanical => "mechanical",
-        TaskKind::Research => "research",
-        TaskKind::Review => "review",
-        TaskKind::Question => "question",
-    }
-}
-
-pub fn difficulty_label(difficulty: Difficulty) -> &'static str {
-    match difficulty {
-        Difficulty::Light => "light",
-        Difficulty::Standard => "standard",
-        Difficulty::Heavy => "heavy",
-    }
-}
-
-pub fn tier_label(tier: AutoTier) -> &'static str {
-    match tier {
-        AutoTier::Economy => "economy",
-        AutoTier::Cost => "cost",
-        AutoTier::Balanced => "balanced",
-        AutoTier::Intelligence => "intelligence",
-    }
-}
-
 pub fn parse_tier(value: &str) -> Option<AutoTier> {
     match value {
         "economy" => Some(AutoTier::Economy),
@@ -374,13 +302,16 @@ mod tests {
     #[test]
     fn cost_uses_sonnet_when_codex_is_unavailable() {
         let route = fallback_decision(AutoTier::Economy, "classifier unavailable");
-        let route = with_available_provider(route, &[ProviderId::Claude]);
+        let route = with_available_provider(
+            route,
+            &[AvailableProvider::assumed_for_test(ProviderId::Claude)],
+        );
         assert_eq!(route.tier, AutoTier::Economy);
         assert_eq!(route.provider, ProviderId::Claude);
         assert_eq!(route.model_id, "claude-sonnet-5-5");
         assert_eq!(
             route.effort,
-            Some(crate::ipc::validation::ReasoningEffort::Medium)
+            Some(argmax_contracts::validation::ReasoningEffort::Medium)
         );
     }
 
@@ -411,7 +342,10 @@ mod tests {
             route.model_id,
             "openrouter/deepseek/deepseek-v4.1-flash-1017"
         );
-        let moved = with_available_provider(route, &[ProviderId::Claude]);
+        let moved = with_available_provider(
+            route,
+            &[AvailableProvider::assumed_for_test(ProviderId::Claude)],
+        );
         assert_eq!(moved.provider, ProviderId::Claude);
         assert_eq!(moved.model_id, "claude-sonnet-5-5");
         assert!(moved.reason.contains("opencode unavailable"));
@@ -424,11 +358,14 @@ mod tests {
             &classification(TaskKind::Question, 1.0, 0.2, 0.9),
         );
         assert_eq!(route.model_id, "gpt-6-luna");
-        let moved = with_available_provider(route, &[ProviderId::Claude]);
+        let moved = with_available_provider(
+            route,
+            &[AvailableProvider::assumed_for_test(ProviderId::Claude)],
+        );
         assert_eq!(moved.model_id, "claude-sonnet-5-5");
         assert_eq!(
             moved.effort,
-            Some(crate::ipc::validation::ReasoningEffort::Medium)
+            Some(argmax_contracts::validation::ReasoningEffort::Medium)
         );
     }
 

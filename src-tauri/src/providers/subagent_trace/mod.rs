@@ -13,19 +13,18 @@ pub(crate) use cursor::cursor_project_slug;
 use rusqlite::Connection;
 use serde_json::Value;
 
-use crate::{
-    error::ArgmaxResult,
-    persistence::{
-        database::Database,
-        events::{
-            completion_id_for_payload, find_event_by_id, list_session_agent_events,
-            list_session_native_agent_events, persist_timeline_event_if_absent,
-            tool_use_id_for_payload, update_event_payload, upgrade_trace_no_output_completion,
-            PersistTimelineEventInput,
-        },
-        sessions::find_session_by_id,
-        workspaces::find_workspace_by_id,
+use argmax_contracts::error::ArgmaxResult;
+use argmax_contracts::validation::ProviderId;
+use argmax_store::{
+    database::Database,
+    events::{
+        completion_id_for_payload, find_event_by_id, list_session_agent_events,
+        list_session_native_agent_events, persist_timeline_event_if_absent,
+        tool_use_id_for_payload, update_event_payload, upgrade_trace_no_output_completion,
+        PersistTimelineEventInput,
     },
+    sessions::find_session_by_id,
+    workspaces::find_workspace_by_id,
 };
 
 use self::cache::{
@@ -304,11 +303,11 @@ fn agent_trace_context(
     let workspace_path = find_workspace_by_id(connection, &session.workspace_id)
         .ok()
         .map(|workspace| workspace.path);
-    let provider = match session.provider.as_str() {
-        "codex" => TraceProvider::Codex,
-        "cursor" => TraceProvider::Cursor,
-        "grok" => TraceProvider::Grok,
-        _ => return Ok(None),
+    let provider = match ProviderId::parse(&session.provider) {
+        Some(ProviderId::Codex) => TraceProvider::Codex,
+        Some(ProviderId::Cursor) => TraceProvider::Cursor,
+        Some(ProviderId::Grok) => TraceProvider::Grok,
+        Some(ProviderId::Claude | ProviderId::Opencode) | None => return Ok(None),
     };
     let tail = list_session_agent_events(connection, session_id, parent_tool_use_id)?;
     let mut parent_created_at = None;
@@ -422,7 +421,7 @@ fn agent_trace_context(
 mod tests {
     use super::test_support::*;
     use super::*;
-    use crate::persistence::database::Database;
+    use argmax_store::database::Database;
     use serde_json::json;
 
     #[test]

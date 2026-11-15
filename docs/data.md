@@ -1,6 +1,6 @@
 # Data
 
-Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/persistence). The database file is `local-state/argmax.sqlite` in the Tauri app data folder (installed app: `~/Library/Application Support/com.argmax.rs/`; the isolated dev instance: `~/.argmax-dev/`, see [verification.md](verification.md#the-dev-instance-next-to-the-installed-app)). Two look-alikes are dead: the 0-byte `com.argmax.rs/argmax.db` and the pre-Tauri `~/Library/Application Support/argmax/` folder, whose copy of the database is stale. The file operates with WAL and SHM sidecars. The writer sets `journal_size_limit` to 64 MB, so the WAL file shrinks back after a large write burst instead of keeping its peak size (a live profile carried a 4.2 GB WAL beside its 4.3 GB database; on a scratch database a 305 MB burst now leaves 64 MB instead of 305 MB). `ARGMAX_DATA_DIR` overrides that app data folder for scratch profiles.
+Rust manages SQLite storage in the `argmax-store` crate, [src-tauri/crates/argmax-store/src](../src-tauri/crates/argmax-store/src). The app crate imports it as `argmax_store`. SQL belongs in this crate; `check:rust-boundaries` holds the list of app files that have not moved yet. The database file is `local-state/argmax.sqlite` in the Tauri app data folder (installed app: `~/Library/Application Support/com.argmax.rs/`; the isolated dev instance: `~/.argmax-dev/`, see [verification.md](verification.md#the-dev-instance-next-to-the-installed-app)). Two look-alikes are dead: the 0-byte `com.argmax.rs/argmax.db` and the pre-Tauri `~/Library/Application Support/argmax/` folder, whose copy of the database is stale. The file operates with WAL and SHM sidecars. The writer sets `journal_size_limit` to 64 MB, so the WAL file shrinks back after a large write burst instead of keeping its peak size (a live profile carried a 4.2 GB WAL beside its 4.3 GB database; on a scratch database a 305 MB burst now leaves 64 MB instead of 305 MB). `ARGMAX_DATA_DIR` overrides that app data folder for scratch profiles.
 
 ## Migrations
 
@@ -8,7 +8,7 @@ Migration v75 adds the `folder` workspace kind for chats in plain project folder
 It rebuilds `workspaces` with explicit column copies and preserves child foreign keys and indexes.
 These workspaces share user-owned directories. They skip Git setup, watchers, status, and directory deletion on archive.
 
-[migrations.rs](../src-tauri/src/persistence/migrations.rs) runs append-only schema migrations with SHA-256 checksum verification on startup. Applied migrations must never be edited.
+[migrations.rs](../src-tauri/crates/argmax-store/src/migrations.rs) runs append-only schema migrations with SHA-256 checksum verification on startup. Applied migrations must never be edited.
 
 - FTS5 sidecar tables index timeline events and learnings.
 - `synced_sessions` (v18, with paired byte and line cursors added in v40) tracks sessions imported from external provider transcripts. See [session-sync.md](session-sync.md).
@@ -88,7 +88,7 @@ widening the CHECK means rebuilding `arcs`, and `arc_events` and `routines`
 cascade from it. An archived Arc is always `done`: archiving sets `done` first,
 and any state change away from `done` clears `archived_at`.
 
-`persistence/arcs.rs` owns both the table and the small domain rules around
+`argmax-store/src/arcs.rs` owns both the table and the small domain rules around
 it: a blank name is rejected, and every create/update keeps `dir`'s
 `BRIEF.md` in sync with the row's `brief` column. The brief has exactly one
 source of truth per create: no `dir` requires a non-blank typed brief
@@ -124,7 +124,7 @@ transaction rather than by a follow-up call. `sessions.launch_depth` and
 `launched_by_session_id` stay at their defaults for a coordinator (no
 launcher, depth 0), the same as any top-level chat.
 
-`arc_events` (v53, [persistence/arc_events.rs](../src-tauri/src/persistence/arc_events.rs))
+`arc_events` (v53, [persistence/arc_events.rs](../src-tauri/crates/argmax-store/src/arc_events.rs))
 is the Arc timeline: an append-only row per thing that happened — `id`
 (deterministic, so a repeated write is `INSERT OR IGNORE`d), `arc_id`
 (`ON DELETE CASCADE`), `kind`, `occurred_at`, `session_id` and `project_id`
@@ -149,6 +149,10 @@ Migration v49 adds `gh_pull_requests` for canonical GitHub state and
 `session_pr_evidence_scans` tracks historical repair. Existing cached state is
 preserved and legacy associations begin unverified. See [gh.md](gh.md) for
 selection, repair, and automation rules.
+
+## Turn waterfalls
+
+Migration v76 adds `turn_waterfalls`: one row per timed turn, with `session_id` (`ON DELETE CASCADE`), `turn_key` (the `user.message` event id), `provider`, `stamps_json` (an ordered array of `{name, offsetMs}`), and `created_at`. A turn writes its row once, when it closes, and the same transaction deletes every row older than the newest 500. See [performance.md](performance.md#turn-waterfall).
 
 ## Auto routing
 

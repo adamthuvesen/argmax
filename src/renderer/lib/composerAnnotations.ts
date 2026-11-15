@@ -67,8 +67,7 @@ function diffNoteLocation(annotation: DiffNoteAnnotation): string {
   if (annotation.endLine === undefined) return `${annotation.filePath}:${annotation.line}`;
 
   const endSide = annotation.endSide ?? annotation.side;
-  const crossesCoordinateSpaces =
-    (annotation.side === "deletion") !== (endSide === "deletion");
+  const crossesCoordinateSpaces = (annotation.side === "deletion") !== (endSide === "deletion");
   if (!crossesCoordinateSpaces) {
     return `${annotation.filePath}:${annotation.line}-${annotation.endLine}`;
   }
@@ -96,7 +95,7 @@ function quoteBlock(excerpt: string): string {
 const SIDE_WORDS: Record<DiffNoteSide, string> = {
   addition: "added",
   deletion: "removed",
-  context: "unchanged"
+  context: "unchanged",
 };
 
 /**
@@ -112,7 +111,7 @@ function diffNoteBlock(annotation: DiffNoteAnnotation): string {
     annotation.endLine === undefined ? null : `end-line="${annotation.endLine}"`,
     `side="${SIDE_WORDS[annotation.side]}"`,
     annotation.endSide === undefined ? null : `end-side="${SIDE_WORDS[annotation.endSide]}"`,
-    `base="${annotation.base}"`
+    `base="${annotation.base}"`,
   ]
     .filter((attribute): attribute is string => attribute !== null)
     .join(" ");
@@ -130,7 +129,7 @@ const DIFF_NOTE_HEADERS = {
     "Notes the user left on diff lines in Argmax's review panel. They are about the local " +
     "changes in this worktree, not comments on a GitHub pull request — address them here; " +
     "there is nothing to reply to on GitHub. The quoted line is each note's anchor: line " +
-    "numbers move as you edit."
+    "numbers move as you edit.",
 } as const;
 
 const DIFF_NOTE_RANGE_HEADERS = {
@@ -143,7 +142,7 @@ const DIFF_NOTE_RANGE_HEADERS = {
     "Notes the user left on diff lines or ranges in Argmax's review panel. They are about the local " +
     "changes in this worktree. Address them here. There is nothing to reply to on GitHub. " +
     "Quoted ranges include diff markers. The quoted code is each note's anchor: line " +
-    "numbers move as you edit."
+    "numbers move as you edit.",
 } as const;
 
 /**
@@ -155,7 +154,7 @@ const DIFF_NOTE_RANGE_HEADERS = {
  */
 export function prependAnnotationsToPrompt(
   prompt: string,
-  annotations: readonly ComposerAnnotation[]
+  annotations: readonly ComposerAnnotation[],
 ): string {
   if (annotations.length === 0) return prompt;
   const excerpts = annotations.filter((a) => a.kind === "excerpt");

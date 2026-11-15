@@ -1,16 +1,21 @@
-import { useEffect, useState, type JSX } from "react";
+import { useState, type JSX } from "react";
+import { settingsActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import { errorMessage } from "../../../shared/error.js";
-import type { OpencodeGateway, OpencodeGatewaySettings as GatewaySettings } from "../../../shared/types.js";
+import type {
+  OpencodeGateway,
+  OpencodeGatewaySettings as GatewaySettings,
+} from "../../../shared/types.js";
 import { SegmentedControl, SettingGroup, SettingNote, SettingRow } from "./settingsPrimitives.js";
 
 const GATEWAY_OPTIONS: ReadonlyArray<{ value: OpencodeGateway; label: string }> = [
   { value: "openrouter", label: "OpenRouter" },
-  { value: "vercel", label: "Vercel AI Gateway" }
+  { value: "vercel", label: "Vercel AI Gateway" },
 ];
 
 const GATEWAY_NAMES: Record<OpencodeGateway, string> = {
   openrouter: "OpenRouter",
-  vercel: "Vercel AI Gateway"
+  vercel: "Vercel AI Gateway",
 };
 
 function isGateway(value: string): value is OpencodeGateway {
@@ -32,22 +37,12 @@ export function OpencodeGatewaySettings(): JSX.Element {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const api = window.argmax?.settings;
-    if (!api) return;
-    let cancelled = false;
-    api
-      .opencodeGateway()
-      .then((loaded) => {
-        if (!cancelled) setSettings(loaded);
-      })
-      .catch((loadError: unknown) => {
-        if (!cancelled) setError(errorMessage(loadError));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  useBridgeQuery({
+    key: ["settings.opencodeGateway"],
+    read: (api) => api.settings?.opencodeGateway(),
+    onData: setSettings,
+    onError: (loadError) => setError(errorMessage(loadError)),
+  });
 
   const run = async (action: () => Promise<GatewaySettings>): Promise<boolean> => {
     setError(null);
@@ -60,7 +55,7 @@ export function OpencodeGatewaySettings(): JSX.Element {
     }
   };
 
-  const api = window.argmax?.settings;
+  const api = settingsActions();
   const gateway = settings?.gateway ?? "openrouter";
   const name = GATEWAY_NAMES[gateway];
   const hint = settings ? keyHint(settings, gateway) : undefined;

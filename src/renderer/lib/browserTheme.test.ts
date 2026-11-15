@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   BROWSER_THEME_STORAGE_KEY,
   readStoredBrowserTheme,
-  writeStoredBrowserTheme
+  writeStoredBrowserTheme,
 } from "./browserTheme.js";
 
 afterEach(() => {

@@ -13,23 +13,24 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{claude, DiscoveredSession, SyncConfig};
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::events::{
-    persist_timeline_event_if_absent, PersistTimelineEventInput, TimelineEvent,
-};
-use crate::persistence::projects::list_projects;
-use crate::persistence::sessions::{
-    delete_session, persist_imported_session, touch_imported_session, PersistImportedSessionInput,
-};
-use crate::persistence::synced::{
-    known_conversation_ids, list_synced_sessions, prunable_session_ids, upsert_synced_session,
-    SyncedSessionRecord,
-};
-use crate::persistence::Database;
 use crate::providers::normalizer::{
     normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent, ProviderOutputStream,
 };
-use crate::workspaces::WorkspaceService;
+use crate::workspaces::orchestration::WorkspaceService;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ProviderId;
+use argmax_store::events::{
+    persist_timeline_event_if_absent, PersistTimelineEventInput, TimelineEvent,
+};
+use argmax_store::projects::list_projects;
+use argmax_store::sessions::{
+    delete_session, persist_imported_session, touch_imported_session, PersistImportedSessionInput,
+};
+use argmax_store::synced::{
+    known_conversation_ids, list_synced_sessions, prunable_session_ids, upsert_synced_session,
+    SyncedSessionRecord,
+};
+use argmax_store::Database;
 
 /// Providers whose transcript format Argmax can read today.
 pub const SUPPORTED_PROVIDERS: [&str; 1] = ["claude"];
@@ -213,7 +214,7 @@ fn import(
             // out-of-transaction artifact so a retry cannot leave ghosts.
             let connection = database.connection();
             if let Err(cleanup_error) =
-                crate::persistence::workspaces::delete_workspace(&connection, &workspace.id)
+                argmax_store::workspaces::delete_workspace(&connection, &workspace.id)
             {
                 tracing::warn!(
                     workspace_id = %workspace.id,
@@ -283,9 +284,10 @@ fn normalize_events(
     byte_cursor: u64,
     line_cursor: Option<u64>,
 ) -> ArgmaxResult<(claude::TranscriptCursor, Vec<PersistTimelineEventInput>)> {
-    let provider_id = match provider {
-        "claude" => crate::ipc::validation::ProviderId::Claude,
-        _ => {
+    let provider_id = match ProviderId::parse(provider) {
+        Some(ProviderId::Claude) => ProviderId::Claude,
+        Some(ProviderId::Codex | ProviderId::Cursor | ProviderId::Opencode | ProviderId::Grok)
+        | None => {
             return Ok((
                 claude::TranscriptCursor {
                     byte_offset: byte_cursor,
@@ -377,8 +379,7 @@ fn delete_sessions(
     {
         let connection = database.connection();
         for session_id in session_ids {
-            if let Ok(summary) =
-                crate::persistence::sessions::find_session_by_id(&connection, session_id)
+            if let Ok(summary) = argmax_store::sessions::find_session_by_id(&connection, session_id)
             {
                 removed_workspaces.push(summary.workspace_id);
             }
@@ -387,7 +388,7 @@ fn delete_sessions(
         // The workspace exists only to host the import; deleting the session
         // first keeps the cascade from taking an adopted sibling with it.
         for workspace_id in &removed_workspaces {
-            crate::persistence::workspaces::delete_workspace(&connection, workspace_id)?;
+            argmax_store::workspaces::delete_workspace(&connection, workspace_id)?;
         }
     }
     // The workspace was created solely to host the import, so it goes too.
@@ -402,8 +403,12 @@ fn model_label(session: &DiscoveredSession, provider: &str) -> String {
     session
         .model_id
         .as_deref()
-        .map(crate::fallback_model_label)
-        .unwrap_or_else(|| crate::provider_defaults(provider).model_label.to_string())
+        .map(crate::providers::model_catalogue::fallback_model_label)
+        .unwrap_or_else(|| {
+            crate::providers::model_catalogue::provider_defaults(import_provider(provider))
+                .model_label
+                .to_string()
+        })
 }
 
 /// The model to resume the imported conversation with. A transcript swept up
@@ -411,10 +416,16 @@ fn model_label(session: &DiscoveredSession, provider: &str) -> String {
 /// and an empty one is not a launchable session — the CLI rejects
 /// `--model ''` — so the provider default stands in.
 fn model_id(session: &DiscoveredSession, provider: &str) -> String {
-    session
-        .model_id
-        .clone()
-        .unwrap_or_else(|| crate::provider_defaults(provider).model_id.to_string())
+    session.model_id.clone().unwrap_or_else(|| {
+        crate::providers::model_catalogue::provider_defaults(import_provider(provider))
+            .model_id
+            .to_string()
+    })
+}
+
+/// Imports only run for `SUPPORTED_PROVIDERS`, all of which parse.
+fn import_provider(provider: &str) -> ProviderId {
+    ProviderId::parse(provider).unwrap_or(ProviderId::Claude)
 }
 
 fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {

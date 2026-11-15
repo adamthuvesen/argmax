@@ -34,7 +34,11 @@ type UserToggle = {
 /** First line of the reasoning, stripped of Markdown emphasis and markers, so a
  *  folded "Thought" says what it was about. */
 function thoughtExcerpt(text: string): string {
-  const line = text.split("\n").map((part) => part.trim()).find((part) => part.length > 0) ?? "";
+  const line =
+    text
+      .split("\n")
+      .map((part) => part.trim())
+      .find((part) => part.length > 0) ?? "";
   // Paired emphasis and code ticks only: a bare `_` belongs to `session_id`.
   return line
     .replace(/^[#>*\-\s]+/, "")
@@ -51,7 +55,7 @@ export function ThoughtBlock({
   autoExpandWhileLive = true,
   live = false,
   holdOpen = false,
-  durationMs
+  durationMs,
 }: {
   children: ReactNode;
   previewText: string;
@@ -75,9 +79,10 @@ export function ThoughtBlock({
   useEffect(() => {
     if (live) setOpenedLive(true);
   }, [live]);
-  const autoExpanded = display === "preview" || !autoExpandWhileLive
-    ? defaultExpanded
-    : live || (holdOpen && openedLive) || defaultExpanded;
+  const autoExpanded =
+    display === "preview" || !autoExpandWhileLive
+      ? defaultExpanded
+      : live || (holdOpen && openedLive) || defaultExpanded;
   const expanded = userToggle?.autoExpanded === autoExpanded ? userToggle.value : autoExpanded;
   const label = formatThoughtLabel(live, durationMs);
   const excerpt = !live && !expanded ? thoughtExcerpt(previewText) : "";
@@ -126,7 +131,11 @@ export function ThoughtBlock({
           </span>
           <span className="thought-block-eyebrow-label">{label}</span>
         </span>
-        {excerpt ? <span className="thought-block-excerpt" aria-hidden="true">{excerpt}</span> : null}
+        {excerpt ? (
+          <span className="thought-block-excerpt" aria-hidden="true">
+            {excerpt}
+          </span>
+        ) : null}
         <ChevronRight
           size={12}
           className={`thought-block-chevron${expanded ? " expanded" : ""}`}

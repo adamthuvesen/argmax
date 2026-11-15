@@ -36,44 +36,11 @@ use super::lifecycle::{ArchiveOutcome, WorkspaceArchiveLease, WorkspaceLifecycle
 use super::watcher::WatcherRegistry;
 use crate::approvals::service::ApprovalService;
 use crate::checks::service::{CheckService, RunWorkspaceCheckInput};
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::git::exec::{
-    run_git_text, run_git_text_blocking, run_git_text_with_allowed_exit_codes, GIT_DEFAULT_TIMEOUT,
-};
-use crate::persistence::arcs::{get_arc, set_arc_coordinator_session};
-use crate::persistence::database::Database;
-use crate::persistence::events::{
-    list_all_session_events, persist_copied_event, persist_timeline_event,
-    PersistTimelineEventInput, TimelineEvent,
-};
-use crate::persistence::projects::{
-    find_project_by_id, list_projects, persist_project, require_project, PersistProjectInput,
-    ProjectSettings,
-};
-use crate::persistence::sessions::{
-    find_session_by_id, persist_session, record_session_arc, record_session_launch,
-    session_launch_lineage, set_session_resume_fork, update_session_provider_conversation_id,
-    PersistSessionInput, SessionSummary,
-};
-use crate::persistence::workspaces::{
-    clear_workspace_checkout_removed, find_workspace_by_id, find_workspace_created_branch,
-    mark_workspace_checkout_removed, mark_workspaces_viewed, persist_workspace,
-    record_workspace_created_branch, set_workspace_icon, set_workspace_label,
-    set_workspace_label_auto, set_workspace_pinned, set_workspace_priority_added,
-    set_workspace_priority_dismissed, set_workspace_snoozed_until, update_workspace_state,
-    update_workspace_status, CreatedBranch, PersistWorkspaceInput, WorkspaceStatusInput,
-    WorkspaceSummary, WorkspaceViewedObservation,
-};
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::session_service::ProviderSessionService;
-use crate::sessions::state::SessionState;
 use crate::terminal::service::TerminalService;
-use crate::util::sync::LockOrRecover;
 use crate::util::workspace_paths::normalize;
-use crate::workspaces::branch_names::{
-    render_branch_step, BranchNameParts, BranchStep, DEFAULT_BRANCH_TEMPLATE,
-};
 use crate::workspaces::inputs::{
     OpenIdeChoice, ScratchWorkspaceKind, WorkspacesArchiveInput, WorkspacesAutotitleInput,
     WorkspacesCreateCurrentInput, WorkspacesCreateInCheckoutInput, WorkspacesCreateIsolatedInput,
@@ -81,6 +48,39 @@ use crate::workspaces::inputs::{
     WorkspacesOpenInIdeInput, WorkspacesSetIconInput, WorkspacesSetLabelInput,
     WorkspacesSetPinnedInput, WorkspacesSetPriorityAddedInput, WorkspacesSetPriorityDismissedInput,
     WorkspacesSetSnoozedUntilInput,
+};
+use argmax_contracts::branch_names::{
+    render_branch_step, BranchNameParts, BranchStep, DEFAULT_BRANCH_TEMPLATE,
+};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::state::SessionState;
+use argmax_process::git_exec::{
+    run_git_text, run_git_text_blocking, run_git_text_with_allowed_exit_codes, GIT_DEFAULT_TIMEOUT,
+};
+use argmax_store::arcs::{get_arc, set_arc_coordinator_session};
+use argmax_store::database::Database;
+use argmax_store::events::{
+    list_all_session_events, persist_copied_event, persist_timeline_event,
+    PersistTimelineEventInput, TimelineEvent,
+};
+use argmax_store::projects::{
+    find_project_by_id, list_projects, persist_project, require_project, PersistProjectInput,
+    ProjectSettings,
+};
+use argmax_store::sessions::{
+    find_session_by_id, persist_session, record_session_arc, record_session_launch,
+    session_launch_lineage, set_session_resume_fork, update_session_provider_conversation_id,
+    PersistSessionInput, SessionSummary,
+};
+use argmax_store::sync::LockOrRecover;
+use argmax_store::workspaces::{
+    clear_workspace_checkout_removed, find_workspace_by_id, find_workspace_created_branch,
+    mark_workspace_checkout_removed, mark_workspaces_viewed, persist_workspace,
+    record_workspace_created_branch, set_workspace_icon, set_workspace_label,
+    set_workspace_label_auto, set_workspace_pinned, set_workspace_priority_added,
+    set_workspace_priority_dismissed, set_workspace_snoozed_until, update_workspace_state,
+    update_workspace_status, CreatedBranch, PersistWorkspaceInput, WorkspaceStatusInput,
+    WorkspaceSummary, WorkspaceViewedObservation,
 };
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
@@ -265,8 +265,8 @@ pub struct WorkspaceService {
 /// newtype. Unlike `create_current` that path is not the project root, because a
 /// chat in a worktree shares that worktree, not the repo.
 pub struct WorkspacesCreateAlongsideInput {
-    pub project_id: crate::application::validation::ProjectId,
-    pub task_label: crate::application::validation::TaskLabel,
+    pub project_id: argmax_contracts::validation::ProjectId,
+    pub task_label: argmax_contracts::validation::TaskLabel,
     pub path: String,
     pub branch: String,
     pub base_ref: String,
@@ -360,7 +360,7 @@ impl WorkspaceService {
     pub fn start_open_watchers(self: &Arc<Self>) -> ArgmaxResult<usize> {
         let workspaces = {
             let connection = self.database.connection();
-            crate::persistence::workspaces::list_workspaces(&connection, None, 500)?
+            argmax_store::workspaces::list_workspaces(&connection, None, 500)?
         };
         let mut started = 0;
         for workspace in workspaces {
@@ -392,7 +392,7 @@ impl WorkspaceService {
                     }
                     let registration = {
                         let connection = self.database.connection();
-                        crate::persistence::project_folders::require_workspace_project(
+                        argmax_store::project_folders::require_workspace_project(
                             &connection,
                             &workspace.id,
                         )
@@ -453,7 +453,7 @@ impl WorkspaceService {
     pub fn recover_interrupted_archives(self: &Arc<Self>) -> ArgmaxResult<usize> {
         let workspaces = {
             let connection = self.database.connection();
-            crate::persistence::workspaces::list_workspaces(&connection, None, 500)?
+            argmax_store::workspaces::list_workspaces(&connection, None, 500)?
         };
         let mut recovered = 0;
         for workspace in workspaces {
@@ -472,7 +472,7 @@ impl WorkspaceService {
                 {
                     let project = {
                         let connection = self.database.connection();
-                        crate::persistence::project_folders::require_workspace_project(
+                        argmax_store::project_folders::require_workspace_project(
                             &connection,
                             &workspace.id,
                         )?
@@ -491,7 +491,7 @@ impl WorkspaceService {
                 } else {
                     let registration = {
                         let connection = self.database.connection();
-                        crate::persistence::project_folders::require_workspace_project(
+                        argmax_store::project_folders::require_workspace_project(
                             &connection,
                             &workspace.id,
                         )
@@ -648,7 +648,7 @@ impl WorkspaceService {
                 },
             )
             .optional()
-            .map_err(crate::persistence::sqlite_error)
+            .map_err(argmax_store::sqlite_error)
     }
 
     /// Workspaces currently watched. Several sharing one checkout cost a
@@ -672,20 +672,18 @@ impl WorkspaceService {
         &self,
         project_id: &str,
         requested: &str,
-    ) -> ArgmaxResult<(crate::persistence::projects::ProjectSummary, String, String)> {
+    ) -> ArgmaxResult<(argmax_store::projects::ProjectSummary, String, String)> {
         let folders = {
             let connection = self.database.read_connection();
-            crate::persistence::project_folders::list_project_folders(&connection, project_id)?
+            argmax_store::project_folders::list_project_folders(&connection, project_id)?
         };
         for folder in folders.into_iter().filter(|folder| folder.enabled) {
             if let Ok((path, branch)) =
                 resolve_registered_checkout(&folder.root_path, requested).await
             {
                 let connection = self.database.read_connection();
-                let project = crate::persistence::project_folders::project_for_folder(
-                    &connection,
-                    &folder.id,
-                )?;
+                let project =
+                    argmax_store::project_folders::project_for_folder(&connection, &folder.id)?;
                 return Ok((project, path, branch));
             }
         }
@@ -701,12 +699,12 @@ impl WorkspaceService {
     ) -> ArgmaxResult<WorkspaceSummary> {
         let folder_id = {
             let connection = self.database.read_connection();
-            let (project, folder_id) = crate::persistence::project_folders::project_for_launch(
+            let (project, folder_id) = argmax_store::project_folders::project_for_launch(
                 &connection,
                 input.project_id.as_str(),
                 input.project_folder_id.as_deref(),
             )?;
-            if !crate::persistence::project_folders::folder_is_git(&project.repo_path)? {
+            if !argmax_store::project_folders::folder_is_git(&project.repo_path)? {
                 return Err(ArgmaxError::service(
                     "WORKSPACE_GIT_REQUIRED",
                     "Choose a Git repository to create a worktree.",
@@ -726,7 +724,7 @@ impl WorkspaceService {
             let connection = self.database.connection();
             let project = match folder_id.as_deref() {
                 Some(folder_id) => {
-                    crate::persistence::project_folders::project_for_folder(&connection, folder_id)?
+                    argmax_store::project_folders::project_for_folder(&connection, folder_id)?
                 }
                 None => require_project(&connection, input.project_id.as_str())?,
             };
@@ -738,8 +736,8 @@ impl WorkspaceService {
             }
             (
                 project,
-                crate::persistence::app_settings::branch_template(&connection),
-                folder_id.or(crate::persistence::project_folders::primary_folder_id(
+                argmax_store::app_settings::branch_template(&connection),
+                folder_id.or(argmax_store::project_folders::primary_folder_id(
                     &connection,
                     input.project_id.as_str(),
                 )?),
@@ -919,13 +917,13 @@ impl WorkspaceService {
         let persisted = (|| {
             let connection = self.database.connection();
             if input.project_folder_id.is_some() {
-                crate::persistence::project_folders::project_for_launch(
+                argmax_store::project_folders::project_for_launch(
                     &connection,
                     input.project_id.as_str(),
                     input.project_folder_id.as_deref(),
                 )?;
             }
-            let workspace = crate::persistence::workspaces::persist_workspace_in_folder(
+            let workspace = argmax_store::workspaces::persist_workspace_in_folder(
                 &connection,
                 &PersistWorkspaceInput {
                     id: Uuid::new_v4().to_string(),
@@ -1069,15 +1067,15 @@ impl WorkspaceService {
     ) -> ArgmaxResult<WorkspaceSummary> {
         let (mut project, folder_id) = {
             let connection = self.database.connection();
-            crate::persistence::project_folders::project_for_launch(
+            argmax_store::project_folders::project_for_launch(
                 &connection,
                 input.project_id.as_str(),
                 input.project_folder_id.as_deref(),
             )?
         };
-        if !crate::persistence::project_folders::folder_is_git(&project.repo_path)? {
+        if !argmax_store::project_folders::folder_is_git(&project.repo_path)? {
             let connection = self.database.connection();
-            let workspace = crate::persistence::workspaces::persist_workspace_in_folder(
+            let workspace = argmax_store::workspaces::persist_workspace_in_folder(
                 &connection,
                 &PersistWorkspaceInput {
                     id: Uuid::new_v4().to_string(),
@@ -1160,7 +1158,7 @@ impl WorkspaceService {
             changed_files: 0,
         };
         let workspace = match folder_id {
-            Some(folder_id) => crate::persistence::workspaces::persist_workspace_in_folder(
+            Some(folder_id) => argmax_store::workspaces::persist_workspace_in_folder(
                 &connection,
                 &persisted,
                 Some(folder_id),
@@ -1199,15 +1197,11 @@ impl WorkspaceService {
     ) -> ArgmaxResult<Vec<ProjectCheckout>> {
         let repo_path = {
             let connection = self.database.read_connection();
-            crate::persistence::project_folders::project_for_launch(
-                &connection,
-                project_id,
-                folder_id,
-            )?
-            .0
-            .repo_path
+            argmax_store::project_folders::project_for_launch(&connection, project_id, folder_id)?
+                .0
+                .repo_path
         };
-        if !crate::persistence::project_folders::folder_is_git(&repo_path)? {
+        if !argmax_store::project_folders::folder_is_git(&repo_path)? {
             return Err(ArgmaxError::service(
                 "PROJECT_GIT_REQUIRED",
                 "Choose a Git repository to select a checkout.",
@@ -1259,14 +1253,14 @@ impl WorkspaceService {
         };
         let project = {
             let connection = self.database.read_connection();
-            crate::persistence::project_folders::project_for_launch(
+            argmax_store::project_folders::project_for_launch(
                 &connection,
                 input.project_id.as_str(),
                 input.project_folder_id.as_deref(),
             )?
             .0
         };
-        if !crate::persistence::project_folders::folder_is_git(&project.repo_path)? {
+        if !argmax_store::project_folders::folder_is_git(&project.repo_path)? {
             return Err(ArgmaxError::service(
                 "WORKSPACE_GIT_REQUIRED",
                 "Choose a Git repository to attach a checkout.",
@@ -1295,7 +1289,7 @@ impl WorkspaceService {
         }
         {
             let connection = self.database.read_connection();
-            crate::persistence::project_folders::project_for_launch(
+            argmax_store::project_folders::project_for_launch(
                 &connection,
                 input.project_id.as_str(),
                 input.project_folder_id.as_deref(),
@@ -1325,14 +1319,14 @@ impl WorkspaceService {
                 "SELECT id, path FROM workspaces
                  WHERE shared_workspace = 0 AND state != 'archived'",
             )
-            .map_err(crate::persistence::sqlite_error)?;
+            .map_err(argmax_store::sqlite_error)?;
         let rows = statement
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })
-            .map_err(crate::persistence::sqlite_error)?
+            .map_err(argmax_store::sqlite_error)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(crate::persistence::sqlite_error)?;
+            .map_err(argmax_store::sqlite_error)?;
         Ok(rows
             .into_iter()
             .find(|(_, owner_path)| comparable_worktree_path(Path::new(owner_path)) == target)
@@ -1356,12 +1350,12 @@ impl WorkspaceService {
                 "SELECT path FROM workspaces
                  WHERE state IN ('archiving', 'archive-failed') AND shared_workspace = 0",
             )
-            .map_err(crate::persistence::sqlite_error)?;
+            .map_err(argmax_store::sqlite_error)?;
         let paths = statement
             .query_map([], |row| row.get::<_, String>(0))
-            .map_err(crate::persistence::sqlite_error)?
+            .map_err(argmax_store::sqlite_error)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(crate::persistence::sqlite_error)?;
+            .map_err(argmax_store::sqlite_error)?;
         retired.extend(
             paths
                 .iter()
@@ -1502,7 +1496,7 @@ impl WorkspaceService {
                 "SELECT task_label, path FROM workspaces \
                  WHERE shared_workspace = 0 AND state != 'archived'",
             )
-            .map_err(crate::persistence::sqlite_error)?;
+            .map_err(argmax_store::sqlite_error)?;
         let rows = statement
             .query_map([], |row| {
                 Ok((
@@ -1510,9 +1504,9 @@ impl WorkspaceService {
                     row.get::<_, String>("path")?,
                 ))
             })
-            .map_err(crate::persistence::sqlite_error)?;
+            .map_err(argmax_store::sqlite_error)?;
         for row in rows {
-            let (task_label, workspace_path) = row.map_err(crate::persistence::sqlite_error)?;
+            let (task_label, workspace_path) = row.map_err(argmax_store::sqlite_error)?;
             if comparable_worktree_path(Path::new(&workspace_path)) == target {
                 return Ok(Some(task_label));
             }
@@ -1539,7 +1533,7 @@ impl WorkspaceService {
                 ));
             }
             let source_workspace = find_workspace_by_id(&connection, &source_session.workspace_id)?;
-            let source_project = crate::persistence::project_folders::require_workspace_project(
+            let source_project = argmax_store::project_folders::require_workspace_project(
                 &connection,
                 &source_workspace.id,
             )?;
@@ -1567,15 +1561,14 @@ impl WorkspaceService {
         };
 
         let project_id =
-            crate::application::validation::ProjectId::try_from(destination_project.id.clone())
+            argmax_contracts::validation::ProjectId::try_from(destination_project.id.clone())
                 .map_err(ArgmaxError::invalid)?;
-        let task_label = crate::application::validation::TaskLabel::try_from(
-            source_workspace.task_label.clone(),
-        )
-        .map_err(ArgmaxError::invalid)?;
+        let task_label =
+            argmax_contracts::validation::TaskLabel::try_from(source_workspace.task_label.clone())
+                .map_err(ArgmaxError::invalid)?;
         let destination_workspace = match &destination {
             MoveDestination::Project { worktree: true, .. } => {
-                let base_ref = crate::application::validation::BaseRef::try_from(
+                let base_ref = argmax_contracts::validation::BaseRef::try_from(
                     destination_project.current_branch.clone(),
                 )
                 .map_err(ArgmaxError::invalid)?;
@@ -1639,7 +1632,7 @@ impl WorkspaceService {
             .clone()
             .filter(|_| matches!(destination, MoveDestination::Checkout { .. }))
             .filter(|_| {
-                crate::providers::runtime::parse_provider(&source_session.provider)
+                argmax_contracts::validation::parse_provider(&source_session.provider)
                     .map(|provider| {
                         crate::providers::adapters::get_provider_definition(provider)
                             .move_carries_conversation
@@ -1672,7 +1665,7 @@ impl WorkspaceService {
                 let mut connection = self.database.connection();
                 let transaction = connection
                     .transaction()
-                    .map_err(crate::persistence::sqlite_error)?;
+                    .map_err(argmax_store::sqlite_error)?;
                 let destination_session = persist_session(
                     &transaction,
                     &PersistSessionInput {
@@ -1812,9 +1805,7 @@ impl WorkspaceService {
                 )?;
                 let destination_workspace =
                     update_workspace_state(&transaction, &destination_workspace.id, "complete")?;
-                transaction
-                    .commit()
-                    .map_err(crate::persistence::sqlite_error)?;
+                transaction.commit().map_err(argmax_store::sqlite_error)?;
                 Ok((
                     destination_workspace,
                     destination_session,
@@ -1828,7 +1819,7 @@ impl WorkspaceService {
                 Err(error) => {
                     let cleanup = self
                         .archive(WorkspacesArchiveInput {
-                            workspace_id: crate::application::validation::WorkspaceId::try_from(
+                            workspace_id: argmax_contracts::validation::WorkspaceId::try_from(
                                 destination_workspace.id.clone(),
                             )
                             .map_err(ArgmaxError::invalid)?,
@@ -1868,7 +1859,7 @@ impl WorkspaceService {
         } else {
             match self
                 .archive(WorkspacesArchiveInput {
-                    workspace_id: crate::application::validation::WorkspaceId::try_from(
+                    workspace_id: argmax_contracts::validation::WorkspaceId::try_from(
                         source_workspace.id.clone(),
                     )
                     .map_err(ArgmaxError::invalid)?,
@@ -2186,10 +2177,7 @@ impl WorkspaceService {
         if recovery_path.exists() && !Path::new(&prior.path).exists() {
             let project = {
                 let connection = self.database.connection();
-                crate::persistence::project_folders::require_workspace_project(
-                    &connection,
-                    &prior.id,
-                )?
+                argmax_store::project_folders::require_workspace_project(&connection, &prior.id)?
             };
             let repair_path = recovery_path.clone();
             let branch = prior.branch.clone();
@@ -2260,7 +2248,7 @@ impl WorkspaceService {
 
         let project = {
             let connection = self.database.connection();
-            match crate::persistence::project_folders::require_workspace_project(
+            match argmax_store::project_folders::require_workspace_project(
                 &connection,
                 &workspace.id,
             ) {
@@ -2790,7 +2778,7 @@ impl WorkspaceService {
         workspace_id: &str,
         path: &str,
     ) -> ArgmaxResult<Vec<ColocatedWorkspace>> {
-        let sqlite = crate::persistence::sqlite_error;
+        let sqlite = argmax_store::sqlite_error;
         let target = comparable_worktree_path(Path::new(path));
         let connection = self.database.connection();
         let mut statement = connection
@@ -3063,7 +3051,7 @@ impl WorkspaceService {
             if !path.exists() {
                 let project = {
                     let connection = self.database.connection();
-                    crate::persistence::project_folders::require_workspace_project(
+                    argmax_store::project_folders::require_workspace_project(
                         &connection,
                         &workspace.id,
                     )
@@ -3149,7 +3137,7 @@ impl WorkspaceService {
             {
                 let project = {
                     let connection = self.database.connection();
-                    crate::persistence::project_folders::require_workspace_project(
+                    argmax_store::project_folders::require_workspace_project(
                         &connection,
                         &workspace.id,
                     )
@@ -3340,11 +3328,13 @@ impl WorkspaceService {
     ) -> ArgmaxResult<Vec<WorkspaceSummary>> {
         const MAX_BATCH_SIZE: usize = 100;
         if input.workspaces.len() > MAX_BATCH_SIZE {
-            return Err(ArgmaxError::invalid(crate::error::InvalidInputIssue::at(
-                vec!["workspaces".to_owned()],
-                "WORKSPACE_VIEW_BATCH_TOO_LARGE",
-                format!("at most {MAX_BATCH_SIZE} workspaces may be marked viewed at once"),
-            )));
+            return Err(ArgmaxError::invalid(
+                argmax_contracts::error::InvalidInputIssue::at(
+                    vec!["workspaces".to_owned()],
+                    "WORKSPACE_VIEW_BATCH_TOO_LARGE",
+                    format!("at most {MAX_BATCH_SIZE} workspaces may be marked viewed at once"),
+                ),
+            ));
         }
 
         let now = chrono::Utc::now();
@@ -3356,7 +3346,7 @@ impl WorkspaceService {
                 let parsed =
                     chrono::DateTime::parse_from_rfc3339(&observation.observed_activity_at)
                         .map_err(|_| {
-                            ArgmaxError::invalid(crate::error::InvalidInputIssue::at(
+                            ArgmaxError::invalid(argmax_contracts::error::InvalidInputIssue::at(
                                 vec![
                                     "workspaces".to_owned(),
                                     index.to_string(),
@@ -3367,15 +3357,17 @@ impl WorkspaceService {
                             ))
                         })?;
                 if parsed > now {
-                    return Err(ArgmaxError::invalid(crate::error::InvalidInputIssue::at(
-                        vec![
-                            "workspaces".to_owned(),
-                            index.to_string(),
-                            "observedActivityAt".to_owned(),
-                        ],
-                        "TIMESTAMP_FUTURE",
-                        "observed activity timestamp must not be in the future",
-                    )));
+                    return Err(ArgmaxError::invalid(
+                        argmax_contracts::error::InvalidInputIssue::at(
+                            vec![
+                                "workspaces".to_owned(),
+                                index.to_string(),
+                                "observedActivityAt".to_owned(),
+                            ],
+                            "TIMESTAMP_FUTURE",
+                            "observed activity timestamp must not be in the future",
+                        ),
+                    ));
                 }
                 Ok(WorkspaceViewedObservation {
                     workspace_id: observation.workspace_id.to_string(),
@@ -3496,7 +3488,7 @@ impl WorkspaceService {
                 "SELECT id FROM sessions WHERE workspace_id = ? ORDER BY last_activity_at DESC, id DESC LIMIT 1",
             )
             .and_then(|mut statement| statement.query_row([workspace_id], |row| row.get(0)).optional())
-            .map_err(crate::persistence::sqlite_error)
+            .map_err(argmax_store::sqlite_error)
     }
 
     pub(super) fn publish(&self, delta: DashboardDelta) {

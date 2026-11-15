@@ -1,7 +1,11 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupAppTestMocks } from "../../test/appTestHarness.js";
-import { baseSession, renderConversation, reviewStub } from "../../test/sessionConversationTestHarness.js";
+import {
+  baseSession,
+  renderConversation,
+  reviewStub,
+} from "../../test/sessionConversationTestHarness.js";
 
 function prompt(): HTMLTextAreaElement {
   return screen.getByLabelText("Chat prompt");
@@ -15,13 +19,14 @@ describe("SessionComposer /cloud", () => {
       repository: "adamthuvesen/commute-cli",
       branch: "main",
       commit: "1234567890abcdef",
-      brief: "Conversation so far:\nUser: Earlier chat context\n\nNew user message:\nFix the parser",
+      brief:
+        "Conversation so far:\nUser: Earlier chat context\n\nNew user message:\nFix the parser",
       environmentId: "env-default",
       environmentDescription: "Default",
-      environments: [{ id: "env-default", name: "Default" }]
+      environments: [{ id: "env-default", name: "Default" }],
     });
     vi.spyOn(window.argmax!.cloud, "launch").mockResolvedValue({
-      url: "https://chatgpt.com/codex/tasks/task-1"
+      url: "https://chatgpt.com/codex/tasks/task-1",
     });
   });
 
@@ -41,7 +46,7 @@ describe("SessionComposer /cloud", () => {
     expect(window.argmax!.cloud.prepare).toHaveBeenCalledWith({
       sessionId: "session-a",
       provider: "codex",
-      instruction: "Fix the parser"
+      instruction: "Fix the parser",
     });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(prompt()).toHaveValue("/cloud Fix the parser");
@@ -52,11 +57,14 @@ describe("SessionComposer /cloud", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send task" }));
 
     await screen.findByRole("link", { name: "Open in Codex Cloud" });
-    expect(window.argmax!.cloud.launch).toHaveBeenCalledWith(expect.objectContaining({
-      sessionId: "session-a",
-      provider: "codex",
-      brief: "Conversation so far:\nUser: Earlier chat context\n\nNew user message:\nFix the parser"
-    }));
+    expect(window.argmax!.cloud.launch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-a",
+        provider: "codex",
+        brief:
+          "Conversation so far:\nUser: Earlier chat context\n\nNew user message:\nFix the parser",
+      }),
+    );
     await waitFor(() => expect(prompt()).toHaveValue(""));
     expect(onSendSessionInput).not.toHaveBeenCalled();
   });
@@ -64,7 +72,7 @@ describe("SessionComposer /cloud", () => {
   it("does not silently omit open-file context from a cloud task", async () => {
     const review = reviewStub({ isPanelOpen: true, mode: "files" });
     review.workspaceFiles.tabs = [
-      { path: "src/parser.ts", isDirty: false, saveState: "idle", externalChange: false }
+      { path: "src/parser.ts", isDirty: false, saveState: "idle", externalChange: false },
     ];
     review.workspaceFiles.activeTabPath = "src/parser.ts";
     renderConversation(baseSession(), [], { review });
@@ -74,7 +82,7 @@ describe("SessionComposer /cloud", () => {
     fireEvent.keyDown(prompt(), { key: "Enter" });
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Cloud tasks can’t include local annotations or open files"
+      "Cloud tasks can’t include local annotations or open files",
     );
     expect(prompt()).toHaveValue("/cloud Fix the parser");
     expect(window.argmax!.cloud.prepare).not.toHaveBeenCalled();

@@ -5,7 +5,7 @@ import {
   DEFAULT_SIDEBAR_INTENSITY,
   readStoredSidebarIntensity,
   SIDEBAR_INTENSITY_STORAGE_KEY,
-  toSidebarIntensity
+  toSidebarIntensity,
 } from "./sidebarIntensity.js";
 
 afterEach(() => {

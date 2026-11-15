@@ -19,7 +19,7 @@ export const NO_PROJECT_CHECK: ProjectCheck = {
   runnerUpProjectId: null,
   suggestedProbability: 0,
   currentProbability: 0,
-  reasons: []
+  reasons: [],
 };
 
 function checkable(prompt: string): boolean {
@@ -31,7 +31,7 @@ export function useProjectCheck({
   enabled,
   projectId,
   prompt,
-  pickedByHand
+  pickedByHand,
 }: {
   /** Off in chat and cloud mode, without a Jev key, or with one project. */
   enabled: boolean;
@@ -60,7 +60,7 @@ export function useProjectCheck({
       }
       return pending;
     },
-    [enabled, pickedByHand, projectId]
+    [enabled, pickedByHand, projectId],
   );
 
   useEffect(() => {
@@ -77,6 +77,6 @@ export function useProjectCheck({
       });
       return Promise.race([start(openingPrompt), grace]).finally(() => clearTimeout(timer));
     },
-    [start]
+    [start],
   );
 }

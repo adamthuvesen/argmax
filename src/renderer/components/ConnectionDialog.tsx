@@ -1,5 +1,13 @@
 import { PlugZap, X } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type RefObject } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type JSX,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
 import type { ProviderId } from "../../shared/types.js";
@@ -11,7 +19,7 @@ export function ConnectionDialog({
   provider,
   workspaceId,
   anchorRef,
-  onClose
+  onClose,
 }: {
   provider: ProviderId;
   workspaceId: string | null;
@@ -31,7 +39,7 @@ export function ConnectionDialog({
 
   useEffect(() => {
     setSurface(
-      probeRef.current?.closest<HTMLElement>(".conversation-surface, .launcher-surface") ?? null
+      probeRef.current?.closest<HTMLElement>(".conversation-surface, .launcher-surface") ?? null,
     );
   }, []);
   useEffect(() => {

@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Manager, Webview};
 
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::ipc::validation::ThemeMode;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ThemeMode;
 
 /// Applies a website appearance without changing the app shell's appearance.
 pub fn apply(webview: &Webview, mode: ThemeMode) -> ArgmaxResult<()> {

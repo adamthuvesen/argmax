@@ -2,11 +2,11 @@ use std::path::PathBuf;
 
 use tauri::State;
 
-use super::{inputs::*, live_database};
-use crate::{
-    error::ArgmaxResult, persistence::workspaces::find_workspace_by_id,
-    skills::registry::SkillSummary, state::AppState,
-};
+use super::inputs::*;
+use crate::state::live_database;
+use crate::{skills::registry::SkillSummary, state::AppState};
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::workspaces::find_workspace_by_id;
 
 #[tauri::command(rename = "skills:list")]
 #[specta::specta]

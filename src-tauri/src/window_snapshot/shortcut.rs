@@ -15,16 +15,17 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 use super::{SnapshotError, WindowSnapshotAttach, ATTACH_EVENT, FAILED_EVENT};
-use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
-use crate::persistence::{sqlite_error, time::now_iso};
-use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
+use argmax_store::app_settings::{read_ui_value, write_ui_value};
+use argmax_store::sqlite_error;
+use argmax_store::sync::LockOrRecover;
 
 /// ⌘⌥⇧S on macOS. Three modifiers keep it clear of the system's ⌘⇧3/4/5 and of
 /// most apps' own bindings.
@@ -48,40 +49,15 @@ impl Default for Settings {
     }
 }
 
-fn read_value<T: serde::de::DeserializeOwned>(connection: &Connection, key: &str) -> Option<T> {
-    connection
-        .prepare_cached("SELECT value_json FROM ui_state WHERE key = ?")
-        .and_then(|mut statement| {
-            statement
-                .query_row(params![key], |row| row.get::<_, String>(0))
-                .optional()
-        })
-        .unwrap_or(None)
-        .and_then(|value| serde_json::from_str(&value).ok())
-}
-
-fn write_value<T: Serialize>(connection: &Connection, key: &str, value: &T) -> ArgmaxResult<()> {
-    let value = serde_json::to_string(value).map_err(crate::persistence::json_error)?;
-    connection
-        .prepare_cached(
-            "INSERT INTO ui_state (key, value_json, updated_at) VALUES (?, ?, ?)
-             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at",
-        )
-        .map_err(sqlite_error)?
-        .execute(params![key, value, now_iso()])
-        .map_err(sqlite_error)?;
-    Ok(())
-}
-
 /// A stored chord that no longer parses reads as the default, not as a
 /// shortcut that silently never fires.
 pub fn load_settings(connection: &Connection) -> Settings {
     let defaults = Settings::default();
-    let chord = read_value::<String>(connection, CHORD_KEY)
+    let chord = read_ui_value::<String>(connection, CHORD_KEY)
         .filter(|chord| validate_chord(chord).is_ok())
         .unwrap_or(defaults.chord);
     Settings {
-        enabled: read_value(connection, ENABLED_KEY).unwrap_or(defaults.enabled),
+        enabled: read_ui_value(connection, ENABLED_KEY).unwrap_or(defaults.enabled),
         chord,
     }
 }
@@ -90,8 +66,8 @@ pub fn load_settings(connection: &Connection) -> Settings {
 /// written, or the saved flag and chord would disagree.
 pub fn save_settings(connection: &Connection, settings: &Settings) -> ArgmaxResult<()> {
     let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
-    write_value(&transaction, ENABLED_KEY, &settings.enabled)?;
-    write_value(&transaction, CHORD_KEY, &settings.chord)?;
+    write_ui_value(&transaction, ENABLED_KEY, &settings.enabled)?;
+    write_ui_value(&transaction, CHORD_KEY, &settings.chord)?;
     transaction.commit().map_err(sqlite_error)
 }
 
@@ -355,8 +331,8 @@ pub struct WindowSnapshotConfigureInput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::Database;
     use crate::window_snapshot::{SnapshotAttachment, SnapshotSource};
+    use argmax_store::Database;
     use std::cell::RefCell;
 
     /// Holds registered chords, and fails for any chord listed in
@@ -449,7 +425,7 @@ mod tests {
         save_settings(&connection, &on("Control+Alt+K")).unwrap();
         assert_eq!(load_settings(&connection), on("Control+Alt+K"));
 
-        write_value(&connection, CHORD_KEY, &"not a chord").unwrap();
+        write_ui_value(&connection, CHORD_KEY, &"not a chord").unwrap();
         assert_eq!(load_settings(&connection).chord, DEFAULT_CHORD);
     }
 

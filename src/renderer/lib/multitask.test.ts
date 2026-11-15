@@ -17,7 +17,7 @@ function event(type: string, payload: Record<string, unknown>, message = "row"):
     message,
     payload,
     createdAt: "2026-09-02T10:00:00.000Z",
-    rowCursor: 1
+    rowCursor: 1,
   };
 }
 
@@ -28,8 +28,8 @@ describe("multitaskNoticeFor", () => {
         childSessionId: "child-1",
         taskLabel: "Fix the README typo",
         prompt: "Fix the README typo",
-        worktree: false
-      })
+        worktree: false,
+      }),
     );
 
     expect(notice).toEqual({
@@ -39,12 +39,14 @@ describe("multitaskNoticeFor", () => {
       worktree: false,
       state: null,
       answer: null,
-      createdAt: "2026-09-02T10:00:00.000Z"
+      createdAt: "2026-09-02T10:00:00.000Z",
     });
   });
 
   it("falls back to the row's own message when the label is missing", () => {
-    const notice = multitaskNoticeFor(event("multitask.finished", {}, "Side fix finished alongside"));
+    const notice = multitaskNoticeFor(
+      event("multitask.finished", {}, "Side fix finished alongside"),
+    );
     expect(notice.taskLabel).toBe("Side fix finished alongside");
   });
 });
@@ -56,16 +58,16 @@ describe("mergeMultitaskNotice", () => {
         childSessionId: "child-1",
         taskLabel: "Fix the README typo",
         prompt: "Fix the README typo",
-        worktree: true
-      })
+        worktree: true,
+      }),
     );
     const finished = multitaskNoticeFor(
       event("multitask.finished", {
         childSessionId: "child-1",
         taskLabel: "Fix the README typo",
         state: "complete",
-        answer: "Fixed it."
-      })
+        answer: "Fixed it.",
+      }),
     );
 
     expect(mergeMultitaskNotice(launched, finished)).toEqual({
@@ -77,7 +79,7 @@ describe("mergeMultitaskNotice", () => {
       state: "complete",
       answer: "Fixed it.",
       // The dispatch is where the row sits, so its timestamp survives too.
-      createdAt: "2026-09-02T10:00:00.000Z"
+      createdAt: "2026-09-02T10:00:00.000Z",
     });
   });
 });
@@ -100,7 +102,7 @@ describe("multitaskCommandPrompt", () => {
 function session(
   id: string,
   workspaceId: string,
-  overrides: Partial<SessionSummary> = {}
+  overrides: Partial<SessionSummary> = {},
 ): SessionSummary {
   return {
     id,
@@ -121,7 +123,7 @@ function session(
     contextTokens: 0,
     imported: false,
     launchKind: "agent",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -149,7 +151,7 @@ function workspace(id: string): WorkspaceSummary {
     prCreatedAt: null,
     prMergedAt: null,
     prCheckState: null,
-    prActivityAt: null
+    prActivityAt: null,
   };
 }
 
@@ -159,10 +161,10 @@ describe("hiddenMultitaskWorkspaceIds", () => {
       session("parent", "workspace-parent"),
       session("child", "workspace-child", {
         launchedBySessionId: "parent",
-        launchKind: "multitask"
+        launchKind: "multitask",
       }),
       // An agent-launched session is a chat of its own and keeps its row.
-      session("launched", "workspace-launched", { launchedBySessionId: "parent" })
+      session("launched", "workspace-launched", { launchedBySessionId: "parent" }),
     ];
 
     expect([...hiddenMultitaskWorkspaceIds(sessions)]).toEqual(["workspace-child"]);
@@ -174,8 +176,8 @@ describe("hiddenMultitaskWorkspaceIds", () => {
     const sessions = [
       session("child", "workspace-child", {
         launchedBySessionId: "pruned-parent",
-        launchKind: "multitask"
-      })
+        launchKind: "multitask",
+      }),
     ];
 
     expect(hiddenMultitaskWorkspaceIds(sessions).size).toBe(0);
@@ -186,15 +188,15 @@ describe("multitasksByParentSession", () => {
   it("groups each multitask under the chat that dispatched it, with its workspace", () => {
     const child = session("child", "workspace-child", {
       launchedBySessionId: "parent",
-      launchKind: "multitask"
+      launchKind: "multitask",
     });
     const grouped = multitasksByParentSession(
       [session("parent", "workspace-parent"), child],
-      [workspace("workspace-parent"), workspace("workspace-child")]
+      [workspace("workspace-parent"), workspace("workspace-child")],
     );
 
     expect(grouped.get("parent")).toEqual([
-      { session: child, workspace: workspace("workspace-child"), pendingApproval: null }
+      { session: child, workspace: workspace("workspace-child"), pendingApproval: null },
     ]);
     expect(grouped.has("child")).toBe(false);
   });

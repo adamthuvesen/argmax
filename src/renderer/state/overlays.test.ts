@@ -9,7 +9,7 @@ import {
   showSchedulePage,
   showActivityPage,
   showSettings,
-  showUsagePage
+  showUsagePage,
 } from "./overlays.js";
 
 afterEach(() => {

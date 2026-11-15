@@ -7,7 +7,9 @@ function DialogHarness(): JSX.Element {
   const [open, setOpen] = useState(false);
   return (
     <div className="conversation-surface">
-      <button type="button" onClick={() => setOpen(true)}>Change provider</button>
+      <button type="button" onClick={() => setOpen(true)}>
+        Change provider
+      </button>
       {open ? (
         <ProviderSwitchDialog
           to="claude"

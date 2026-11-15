@@ -5,36 +5,32 @@ use serde::Serialize;
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::{
-    normalizer::{
-        normalize_provider_event, synthesize_message_completed_from_exit,
-        NormalizedApprovalRequest, NormalizedProviderResult, NormalizedUsage,
-        NormalizerSessionContext, ProviderOutputEvent, ProviderOutputStream, JSON_PARSE_LINE_CAP,
-    },
-    ProviderId,
+use super::normalizer::{
+    normalize_provider_event, synthesize_message_completed_from_exit, NormalizedApprovalRequest,
+    NormalizedProviderResult, NormalizedUsage, NormalizerSessionContext, ProviderOutputEvent,
+    ProviderOutputStream, JSON_PARSE_LINE_CAP,
 };
-use crate::sessions::state::SessionState;
-use crate::{
-    error::ArgmaxResult,
-    ipc::inputs::{AgentReference, ComposerAttachmentInput},
-    persistence::{
-        approvals::{
-            find_approval_by_provider_request, find_pending_approval, persist_approval,
-            ApprovalRequest, FindPendingApprovalInput, PersistApprovalInput,
-        },
-        events::{
-            has_provider_permission_event, persist_raw_output, persist_timeline_event,
-            PersistRawOutputInput, PersistTimelineEventInput, RawProviderOutput, TimelineEvent,
-        },
-        projects::ProjectSummary,
-        sessions::{
-            find_session_by_id, update_session_state, SessionStateInput, SessionSummary,
-            UsageCounts as PersistedUsageCounts,
-        },
-        time::now_iso,
-        usage::{insert_usage_event, InsertUsageEventInput},
-        workspaces::{update_workspace_state, WorkspaceSummary},
+use super::turn_waterfall::{self, Stamp, StampGate};
+use argmax_contracts::error::ArgmaxResult;
+use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::ProviderId;
+use argmax_store::{
+    approvals::{
+        find_approval_by_provider_request, find_pending_approval, persist_approval,
+        ApprovalRequest, FindPendingApprovalInput, PersistApprovalInput,
     },
+    events::{
+        has_provider_permission_event, persist_raw_output, persist_timeline_event,
+        PersistRawOutputInput, PersistTimelineEventInput, RawProviderOutput, TimelineEvent,
+    },
+    projects::ProjectSummary,
+    sessions::{
+        find_session_by_id, update_session_state, SessionStateInput, SessionSummary,
+        UsageCounts as PersistedUsageCounts,
+    },
+    time::now_iso,
+    usage::{insert_usage_event, InsertUsageEventInput},
+    workspaces::{update_workspace_state, WorkspaceSummary},
 };
 
 #[derive(Debug)]
@@ -45,6 +41,7 @@ pub struct SessionFlushBuffer {
     pending_usages: Vec<NormalizedUsage>,
     pending_approvals: Vec<PersistApprovalInput>,
     permission_blocked: bool,
+    first_persisted: StampGate,
 }
 
 #[derive(Debug, Clone)]
@@ -96,51 +93,7 @@ fn is_false(value: &bool) -> bool {
     !*value
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct PendingMessage {
-    pub id: String,
-    pub session_id: String,
-    pub content: String,
-    pub agent_mode: String,
-    /// The provider this follow-up runs under once it drains. `None` is the
-    /// chat's provider at that moment, which is what every row queued before
-    /// this field existed means. Set only when the sender picked another
-    /// provider than the one the chat will be on; it then carries its own
-    /// `model_label` and `model_id`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider: Option<ProviderId>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_label: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning_effort: Option<String>,
-    pub fast_mode: bool,
-    // Carried through the queue so a drained follow-up re-persists its image
-    // thumbnails on the user.message event — otherwise queuing a message with
-    // an attachment loses the image in the chat UI once the turn sends.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub attachments: Vec<ComposerAttachmentInput>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub agent_references: Vec<AgentReference>,
-    // A message another session sent while this one was mid-turn. Carried
-    // through the queue so the drained turn still renders as "From <label>"
-    // rather than as something the user typed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub origin: Option<super::session_service::MessageOrigin>,
-    /// Present only after startup recovery. Recovered messages stay visible
-    /// but are excluded from automatic queue draining until the user chooses
-    /// Send explicitly.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub recovery_status: Option<String>,
-    pub queued_at: String,
-    /// Who wrote the text. Never serialized: the queue carries it so every
-    /// action on the row (drain, Send now, steer, multitask, restore) reuses
-    /// what the sender was, and no client can set it.
-    #[serde(skip)]
-    pub author: crate::persistence::authorship::PromptAuthor,
-}
+use argmax_store::pending_messages::PendingMessage;
 
 #[derive(Debug)]
 pub struct ProviderEventFlushQueue {
@@ -154,6 +107,8 @@ struct ProviderFlushSession {
     normalizer_context: NormalizerSessionContext,
     stream_buffers: HashMap<ProviderOutputStream, String>,
     buffer: SessionFlushBuffer,
+    first_stdout: StampGate,
+    first_content: StampGate,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -165,7 +120,7 @@ pub struct QueueOutputResult {
 }
 
 fn attach_provider_invocation_id(
-    event: &mut crate::persistence::events::PersistTimelineEventInput,
+    event: &mut argmax_store::events::PersistTimelineEventInput,
     provider_invocation_id: &str,
 ) {
     if let Value::Object(payload) = &mut event.payload {
@@ -198,6 +153,8 @@ impl ProviderEventFlushQueue {
                 normalizer_context,
                 stream_buffers: HashMap::new(),
                 buffer: SessionFlushBuffer::new(),
+                first_stdout: StampGate::default(),
+                first_content: StampGate::default(),
             },
         );
     }
@@ -251,6 +208,16 @@ impl ProviderEventFlushQueue {
             });
         };
 
+        if matches!(
+            event.stream,
+            ProviderOutputStream::Stdout | ProviderOutputStream::Pty
+        ) {
+            // Claude stamps its own first line; this covers the other providers.
+            session
+                .first_stdout
+                .stamp(&event.session_id, Stamp::FirstStdout);
+        }
+
         session.buffer.queue_raw_output(PersistRawOutputInput {
             id: Uuid::new_v4().to_string(),
             session_id: event.session_id.clone(),
@@ -285,6 +252,16 @@ impl ProviderEventFlushQueue {
             &normalized_event,
             &mut session.normalizer_context,
         );
+        if session.first_content.pending()
+            && normalized
+                .events
+                .iter()
+                .any(|event| turn_waterfall::is_turn_content(&event.r#type, &event.payload))
+        {
+            session
+                .first_content
+                .stamp(&normalized_event.session_id, Stamp::FirstContent);
+        }
         let flush_immediately = normalized_result_requires_immediate_flush(&normalized);
         let provider_conversation_id =
             ingest_normalized_result(&mut session.buffer, provider_invocation_id, normalized);
@@ -449,6 +426,7 @@ impl SessionFlushBuffer {
             pending_usages: Vec::new(),
             pending_approvals: Vec::new(),
             permission_blocked: false,
+            first_persisted: StampGate::default(),
         }
     }
 
@@ -722,6 +700,15 @@ pub fn flush_session_buffer(
         }
 
         transaction.commit().map_err(sqlite_error)?;
+        if buffer.first_persisted.pending()
+            && pending_events.iter().any(|pending| {
+                turn_waterfall::is_turn_content(&pending.event.r#type, &pending.event.payload)
+            })
+        {
+            buffer
+                .first_persisted
+                .stamp(session_id, Stamp::FirstPersisted);
+        }
         Ok(delta)
     })();
 
@@ -756,8 +743,7 @@ fn transition_session_attention(
     let session = update_session_state(connection, session_id, &input)?;
     let workspace_id = session.workspace_id.clone();
     delta.sessions.push(session);
-    let workspace =
-        crate::persistence::workspaces::find_workspace_by_id(connection, &workspace_id)?;
+    let workspace = argmax_store::workspaces::find_workspace_by_id(connection, &workspace_id)?;
     if !matches!(
         workspace.state.as_str(),
         "archiving" | "archive-failed" | "archived"
@@ -771,19 +757,19 @@ fn transition_session_attention(
     Ok(())
 }
 
-fn sqlite_error(error: rusqlite::Error) -> crate::error::ArgmaxError {
-    crate::error::ArgmaxError::service("SQLITE", error.to_string())
+fn sqlite_error(error: rusqlite::Error) -> argmax_contracts::error::ArgmaxError {
+    argmax_contracts::error::ArgmaxError::service("SQLITE", error.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::{
+    use argmax_contracts::sessions::attention::AttentionState;
+    use argmax_store::{
         approvals::{list_approvals_for_session, list_pending_approvals, resolve_approval},
         database::Database,
         events::{list_session_events_since, PersistTimelineEventInput},
     };
-    use crate::sessions::attention::AttentionState;
     use serde_json::json;
 
     #[test]
@@ -822,7 +808,7 @@ mod tests {
 
     #[test]
     fn merge_from_concatenates_events_and_overrides_pending_messages() {
-        use crate::persistence::events::TimelineEvent;
+        use argmax_store::events::TimelineEvent;
         use std::collections::BTreeMap;
 
         let event = |id: &str| TimelineEvent {
@@ -831,7 +817,7 @@ mod tests {
             r#type: "message.delta".to_string(),
             message: String::new(),
             payload: serde_json::json!({}),
-            semantic: crate::persistence::timeline_semantics::derive(
+            semantic: argmax_store::timeline_semantics::derive(
                 "message.delta",
                 id,
                 &serde_json::json!({}),
@@ -854,7 +840,7 @@ mod tests {
             origin: None,
             recovery_status: None,
             queued_at: "2026-01-01T00:00:00Z".to_string(),
-            author: crate::persistence::authorship::PromptAuthor::unattested(),
+            author: argmax_store::authorship::PromptAuthor::unattested(),
         };
 
         let mut a = DashboardDelta {

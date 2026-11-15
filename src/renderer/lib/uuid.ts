@@ -1,7 +1,6 @@
 /**
- * A v4 UUID that also works over the mobile remote bridge. That origin is
- * plain HTTP, so it is not a secure context and `crypto.randomUUID` is
- * undefined there; `crypto.getRandomValues` is not gated the same way.
+ * A v4 UUID that also works on insecure origins, where `crypto.randomUUID` is
+ * undefined; `crypto.getRandomValues` is not gated the same way.
  */
 export function uuidV4(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));

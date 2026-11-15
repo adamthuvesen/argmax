@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { splitSkillTokens } from "./slashHighlight.js";
 
-
 describe("splitSkillTokens", () => {
   const isSkill = (name: string): boolean => name === "snow" || name === "eli5";
 
@@ -12,7 +11,7 @@ describe("splitSkillTokens", () => {
     expect(segments).toEqual([
       { text: "What is this skill ", skill: false },
       { text: "/eli5", skill: true },
-      { text: " about", skill: false }
+      { text: " about", skill: false },
     ]);
     expect(segments?.map((s) => s.text).join("")).toBe(input);
   });
@@ -31,7 +30,7 @@ describe("splitSkillTokens", () => {
     expect(splitSkillTokens("look in /tmp/logs for it", anyName)).toBeNull();
     expect(splitSkillTokens("open /Users/adam/dev now", anyName)).toBeNull();
     expect(splitSkillTokens("check with /snow first", anyName)?.filter((s) => s.skill)).toEqual([
-      { text: "/snow", skill: true }
+      { text: "/snow", skill: true },
     ]);
   });
 });

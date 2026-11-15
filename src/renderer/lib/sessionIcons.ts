@@ -261,7 +261,7 @@ import {
   Worm,
   Wrench,
   Zap,
-  type LucideIcon
+  type LucideIcon,
 } from "lucide-react";
 
 /**
@@ -533,7 +533,7 @@ export const SESSION_ICONS: Record<string, LucideIcon> = {
   Workflow,
   Worm,
   Wrench,
-  Zap
+  Zap,
 };
 
 export const SESSION_ICON_NAMES: readonly string[] = Object.keys(SESSION_ICONS);
@@ -552,7 +552,7 @@ export const SESSION_ICON_COLORS: readonly string[] = [
   "clay",
   "amber",
   "pink",
-  "red"
+  "red",
 ];
 
 const DEFAULT_SESSION_ICON_COLOR = "blue";
@@ -565,7 +565,7 @@ type SessionIconSelection = {
 export function randomSessionIcon(random: () => number = Math.random): SessionIconSelection {
   return {
     icon: SESSION_ICON_NAMES[Math.floor(random() * SESSION_ICON_NAMES.length)],
-    iconColor: SESSION_ICON_COLORS[Math.floor(random() * SESSION_ICON_COLORS.length)]
+    iconColor: SESSION_ICON_COLORS[Math.floor(random() * SESSION_ICON_COLORS.length)],
   };
 }
 

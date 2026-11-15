@@ -9,13 +9,17 @@ const CALL_WINDOW = 240;
 
 function rendererSources(): string[] {
   return readdirSync(RENDERER, { recursive: true, encoding: "utf8" }).filter(
-    (path) => /\.tsx?$/.test(path) && !path.includes(".test.")
+    (path) => /\.tsx?$/.test(path) && !path.includes(".test."),
   );
 }
 
 function lazyCallsWithoutRecovery(source: string): string[] {
   const offenders: string[] = [];
-  for (let index = source.indexOf("lazy("); index !== -1; index = source.indexOf("lazy(", index + 1)) {
+  for (
+    let index = source.indexOf("lazy(");
+    index !== -1;
+    index = source.indexOf("lazy(", index + 1)
+  ) {
     const call = source.slice(index, index + CALL_WINDOW);
     if (!call.includes("importChunk(")) offenders.push(call.split("\n").slice(0, 3).join(" "));
   }

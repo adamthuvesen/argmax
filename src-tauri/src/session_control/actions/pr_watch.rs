@@ -21,17 +21,19 @@ use super::super::{
 };
 use super::move_archive::run_after_turn;
 use super::workspace_tools::resolve_session_workspace;
-use crate::git::exec::{run_git_text, run_git_text_with_allowed_exit_codes, GIT_DEFAULT_TIMEOUT};
 use crate::git::pr_cleanup::PrCleanupReport;
-use crate::persistence::{
+use crate::providers::session_service::ProviderSessionService;
+use crate::workspaces::orchestration::WorkspaceService;
+use argmax_process::git_exec::{
+    run_git_text, run_git_text_with_allowed_exit_codes, GIT_DEFAULT_TIMEOUT,
+};
+use argmax_store::{
     after_turn::{AfterTurnAction, ArchiveRequest, MergedPrRequest},
     database::Database,
     gh::list_session_prs,
     pr_watches::{delete_pr_watch, upsert_pr_watch, watched_pr_state},
     workspaces::WorkspaceSummary,
 };
-use crate::providers::session_service::ProviderSessionService;
-use crate::workspaces::WorkspaceService;
 
 pub(super) fn watch_pr(
     action: PrWatchAction,
@@ -39,13 +41,13 @@ pub(super) fn watch_pr(
     database: Arc<Database>,
 ) -> Result<SessionControlResponse, SessionControlError> {
     let target = resolve_session_workspace(&database, &parent.session_id, None)?;
-    if target.project.id == crate::workspaces::SCRATCH_PROJECT_ID {
+    if target.project.id == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
         return Err(protocol_error(
             "PROJECT_NOT_ALLOWED",
-            "A side chat has no repository, so it has no pull request to watch.",
+            "This chat has no repository, so it has no pull request to watch.",
         ));
     }
-    crate::persistence::project_folders::assert_workspace_pr_repository(
+    argmax_store::project_folders::assert_workspace_pr_repository(
         &database.read_connection(),
         &target.workspace.id,
     )
@@ -121,13 +123,13 @@ pub(super) async fn cleanup_pr(
     registry: Arc<SessionLaunchRegistry>,
 ) -> Result<SessionControlResponse, SessionControlError> {
     let target = resolve_session_workspace(&database, &parent.session_id, None)?;
-    if target.project.id == crate::workspaces::SCRATCH_PROJECT_ID {
+    if target.project.id == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
         return Err(protocol_error(
             "PROJECT_NOT_ALLOWED",
-            "A side chat has no repository, so it has no pull request to clean up.",
+            "This chat has no repository, so it has no pull request to clean up.",
         ));
     }
-    crate::persistence::project_folders::assert_workspace_pr_repository(
+    argmax_store::project_folders::assert_workspace_pr_repository(
         &database.read_connection(),
         &target.workspace.id,
     )

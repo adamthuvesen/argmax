@@ -80,7 +80,7 @@ export function parseUnifiedDiff(content: string): ParsedDiffBlock[] {
           kind: "addition",
           oldLineNumber: null,
           newLineNumber,
-          content: line.slice(1)
+          content: line.slice(1),
         });
         newLineNumber += 1;
       } else if (line.startsWith("-")) {
@@ -88,7 +88,7 @@ export function parseUnifiedDiff(content: string): ParsedDiffBlock[] {
           kind: "deletion",
           oldLineNumber,
           newLineNumber: null,
-          content: line.slice(1)
+          content: line.slice(1),
         });
         oldLineNumber += 1;
       } else if (line.startsWith(" ")) {
@@ -96,7 +96,7 @@ export function parseUnifiedDiff(content: string): ParsedDiffBlock[] {
           kind: "context",
           oldLineNumber,
           newLineNumber,
-          content: line.slice(1)
+          content: line.slice(1),
         });
         oldLineNumber += 1;
         newLineNumber += 1;
@@ -117,7 +117,7 @@ export function parseUnifiedDiff(content: string): ParsedDiffBlock[] {
     blocks.push({
       kind: "truncated",
       id: "truncated",
-      droppedBytes: Number(truncation[1])
+      droppedBytes: Number(truncation[1]),
     });
   }
 

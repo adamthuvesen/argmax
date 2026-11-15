@@ -10,7 +10,7 @@ import type { ModelPickerSelection } from "./models.js";
  */
 export function selectionOfQueuedMessage(
   entry: Pick<PendingMessage, "provider" | "modelLabel" | "modelId" | "reasoningEffort">,
-  session: Pick<SessionSummary, "provider"> | null
+  session: Pick<SessionSummary, "provider"> | null,
 ): ModelPickerSelection | null {
   const provider = entry.provider ?? session?.provider;
   if (!provider || !entry.modelId || !entry.modelLabel) return null;
@@ -18,6 +18,6 @@ export function selectionOfQueuedMessage(
     provider,
     label: entry.modelLabel,
     modelId: entry.modelId,
-    ...(entry.reasoningEffort ? { reasoningEffort: entry.reasoningEffort } : {})
+    ...(entry.reasoningEffort ? { reasoningEffort: entry.reasoningEffort } : {}),
   };
 }

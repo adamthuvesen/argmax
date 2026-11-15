@@ -16,7 +16,8 @@ import type { SessionSummary } from "../../shared/types.js";
  * and a `.find(...)` (first wins, so the newest) sit in the same app picking
  * opposite sessions for the same row.
  *
- * Mirrored in `ios/Argmax/Sources/Chats/ChatSections.swift`.
+ * Mirrored in `ios/Argmax/Sources/Chats/ChatSections.swift`; fixtures/parity/workspace-chat.json
+ * holds the cases both run.
  */
 function isLaterChat(candidate: SessionSummary, held: SessionSummary): boolean {
   if (candidate.lastActivityAt !== held.lastActivityAt) {
@@ -27,7 +28,7 @@ function isLaterChat(candidate: SessionSummary, held: SessionSummary): boolean {
 
 /** Every workspace's chat, keyed by workspace id. */
 export function chatSessionByWorkspace(
-  sessions: readonly SessionSummary[]
+  sessions: readonly SessionSummary[],
 ): Map<string, SessionSummary> {
   const byWorkspace = new Map<string, SessionSummary>();
   for (const session of sessions) {
@@ -42,7 +43,7 @@ export function chatSessionByWorkspace(
 /** One workspace's chat, for the callers that only need the one. */
 export function chatSessionFor(
   sessions: readonly SessionSummary[],
-  workspaceId: string
+  workspaceId: string,
 ): SessionSummary | null {
   let chat: SessionSummary | null = null;
   for (const session of sessions) {

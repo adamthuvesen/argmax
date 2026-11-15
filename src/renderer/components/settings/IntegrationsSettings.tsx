@@ -38,7 +38,11 @@ export function IntegrationsSettings(): JSX.Element {
         <ConnectionCatalog key={provider} provider={provider} />
         <SettingRow
           label={`Add to ${setup.displayName}`}
-          description={<code className="settings-row-code">{setup.mcpCommand ?? "Settings → Tools & MCP"}</code>}
+          description={
+            <code className="settings-row-code">
+              {setup.mcpCommand ?? "Settings → Tools & MCP"}
+            </code>
+          }
           control={
             setup.mcpCommand ? (
               <CopyCommandButton command={setup.mcpCommand} name={setup.displayName} />
@@ -61,8 +65,14 @@ function CopyCommandButton({ command, name }: { command: string; name: string })
       onClick={() => void copy(command)}
       aria-label={`Copy ${name} MCP command`}
     >
-      {copyFlash === "copied" ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-      <span>{copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy"}</span>
+      {copyFlash === "copied" ? (
+        <Check size={13} aria-hidden="true" />
+      ) : (
+        <Copy size={13} aria-hidden="true" />
+      )}
+      <span>
+        {copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy"}
+      </span>
     </button>
   );
 }

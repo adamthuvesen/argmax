@@ -9,16 +9,12 @@ use super::super::{
     protocol_error,
     registry::ParentLaunchSettings,
 };
-use super::task_label;
-use crate::{
-    ipc::{
-        inputs::WorkspacesSetLabelInput,
-        validation::{TaskLabel, WorkspaceId},
-    },
-    persistence::{
-        database::Database, sessions::find_session_by_id, workspaces::find_workspace_by_id,
-    },
-    workspaces::WorkspaceService,
+use crate::application::session_launch::task_label;
+use crate::workspaces::inputs::WorkspacesSetLabelInput;
+use crate::workspaces::orchestration::WorkspaceService;
+use argmax_contracts::validation::{TaskLabel, WorkspaceId};
+use argmax_store::{
+    database::Database, sessions::find_session_by_id, workspaces::find_workspace_by_id,
 };
 
 pub(super) fn rename_session(

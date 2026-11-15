@@ -9,7 +9,7 @@ import { installZeroLayoutForCodeMirror } from "../../test/jsdomCodeMirror.js";
 import {
   baseSession,
   renderConversation,
-  rerenderConversation
+  rerenderConversation,
 } from "../../test/sessionConversationTestHarness.js";
 import type { ArgmaxApi } from "../../shared/types.js";
 import { COMPOSER_CLIPBOARD_MIME } from "../lib/composerContext.js";
@@ -33,7 +33,7 @@ function type(view: EditorView, text: string): void {
   view.dispatch({
     changes: { from: end, insert: text },
     selection: { anchor: end + text.length },
-    userEvent: "input.type"
+    userEvent: "input.type",
   });
 }
 
@@ -43,7 +43,10 @@ function press(view: EditorView, key: string, init: KeyboardEventInit = {}): Key
   return event;
 }
 
-function clipboardEvent(type: "cut" | "copy"): { event: ClipboardEvent; data: Map<string, string> } {
+function clipboardEvent(type: "cut" | "copy"): {
+  event: ClipboardEvent;
+  data: Map<string, string>;
+} {
   const data = new Map<string, string>();
   const event = new Event(type, { bubbles: true, cancelable: true }) as ClipboardEvent;
   Object.defineProperty(event, "clipboardData", {
@@ -52,8 +55,8 @@ function clipboardEvent(type: "cut" | "copy"): { event: ClipboardEvent; data: Ma
       getData: (mime: string) => data.get(mime) ?? "",
       types: [],
       items: [],
-      files: []
-    }
+      files: [],
+    },
   });
   return { event, data };
 }
@@ -67,7 +70,7 @@ describe("SessionComposer with the real editor", () => {
     listFiles.mockResolvedValue([{ path: "src/main.ts" }, { path: "src/util.ts" }]);
     window.argmax = {
       workspace: { listFiles },
-      prs: { listForSession: vi.fn(() => new Promise(() => {})) }
+      prs: { listForSession: vi.fn(() => new Promise(() => {})) },
     } as unknown as ArgmaxApi;
   });
   afterEach(() => {
@@ -105,7 +108,9 @@ describe("SessionComposer with the real editor", () => {
     renderConversation(baseSession());
     const view = editor();
     act(() => type(view, "look at @src"));
-    await waitFor(() => expect(document.getElementById("file-popover")).not.toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole("listbox", { name: "File suggestions" })).toBeInTheDocument(),
+    );
 
     act(() => {
       press(view, "Enter");
@@ -129,7 +134,9 @@ describe("SessionComposer with the real editor", () => {
     renderConversation(baseSession(), [], { onSendSessionInput });
     const view = editor();
     act(() => type(view, "look at @src"));
-    await waitFor(() => expect(document.getElementById("file-popover")).not.toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole("listbox", { name: "File suggestions" })).toBeInTheDocument(),
+    );
 
     act(() => {
       press(view, "Enter");
@@ -146,7 +153,7 @@ describe("SessionComposer with the real editor", () => {
   it("starts a new undo history for another chat's draft", async () => {
     window.localStorage.setItem(
       "argmax.composer.drafts",
-      JSON.stringify({ "session-b": { v: 2, text: "fix the tests", attachments: [] } })
+      JSON.stringify({ "session-b": { v: 2, text: "fix the tests", attachments: [] } }),
     );
     const { rerender } = renderConversation(baseSession({ id: "session-a" }));
     act(() => type(editor(), "fix the bug"));

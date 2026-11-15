@@ -62,9 +62,14 @@ export const IPC_CHANNELS = [
   "session:fork-merge",
   "session:multitask",
   "session:clear",
+  "session:turn-painted",
+  "session:turn-waterfalls",
   "session:suggest-follow-up",
   "settings:agent-tools",
   "settings:set-browser-tools",
+  "settings:claude-mcp",
+  "settings:set-claude-mcp",
+  "settings:claude-mcp-probe",
   "settings:routing",
   "settings:set-project-check",
   "settings:set-routing-key",
@@ -277,9 +282,14 @@ export interface IpcCommands {
   "session:fork-merge": Commands["sessionForkMerge"];
   "session:multitask": Commands["sessionMultitask"];
   "session:clear": Commands["sessionClear"];
+  "session:turn-painted": Commands["sessionTurnPainted"];
+  "session:turn-waterfalls": Commands["sessionTurnWaterfalls"];
   "session:suggest-follow-up": Commands["sessionSuggestFollowUp"];
   "settings:agent-tools": Commands["settingsAgentTools"];
   "settings:set-browser-tools": Commands["settingsSetBrowserTools"];
+  "settings:claude-mcp": Commands["settingsClaudeMcp"];
+  "settings:set-claude-mcp": Commands["settingsSetClaudeMcp"];
+  "settings:claude-mcp-probe": Commands["settingsClaudeMcpProbe"];
   "settings:routing": Commands["settingsRouting"];
   "settings:set-project-check": Commands["settingsSetProjectCheck"];
   "settings:set-routing-key": Commands["settingsSetRoutingKey"];

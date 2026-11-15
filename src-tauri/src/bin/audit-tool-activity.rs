@@ -1,7 +1,7 @@
 //! Read-only coverage report over a bounded sample of recorded tool starts.
 use std::{collections::BTreeMap, env, path::PathBuf, process};
 
-use argmax_lib::providers::tool_activity::enrich_tool_activity;
+use argmax_store::tool_activity::enrich_tool_activity;
 use rusqlite::{params, Connection, OpenFlags};
 use serde::Serialize;
 use serde_json::Value;

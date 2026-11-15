@@ -14,7 +14,7 @@ type SkillHighlightSegment = { text: string; skill: boolean };
  */
 export function splitSkillTokens(
   input: string,
-  isSkill: (lowercaseName: string) => boolean
+  isSkill: (lowercaseName: string) => boolean,
 ): SkillHighlightSegment[] | null {
   const pattern = /(^|\s)\/([\w-]+(?::[\w-]+)?)(?=\s|$)/g;
   const segments: SkillHighlightSegment[] = [];

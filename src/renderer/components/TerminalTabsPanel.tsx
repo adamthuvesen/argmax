@@ -5,7 +5,7 @@ import {
   useRef,
   useSyncExternalStore,
   type JSX,
-  type KeyboardEvent as ReactKeyboardEvent
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { TerminalInstance } from "./TerminalInstance.js";
 import {
@@ -15,7 +15,7 @@ import {
   markTerminalWorkspaceAttached,
   setActiveTerminalTab,
   subscribeTerminalTabs,
-  type TerminalTabMeta
+  type TerminalTabMeta,
 } from "../lib/terminalTabs.js";
 import { TerminalIcon } from "./ReviewModeIcons.js";
 
@@ -61,7 +61,7 @@ export function TerminalTabsPanel({
   workspaceId,
   visible,
   cwdLabel,
-  controlledTabId
+  controlledTabId,
 }: {
   controlledTabId?: string;
   workspaceId: string;
@@ -70,7 +70,7 @@ export function TerminalTabsPanel({
   cwdLabel?: string | null;
 }): JSX.Element {
   const { tabs, activeTabId: storedActiveTabId } = useSyncExternalStore(subscribeTerminalTabs, () =>
-    getWorkspaceTerminalState(workspaceId)
+    getWorkspaceTerminalState(workspaceId),
   );
 
   const activeTabId = controlledTabId ?? storedActiveTabId;
@@ -98,21 +98,24 @@ export function TerminalTabsPanel({
   }, [controlledTabId, tabs, workspaceId]);
 
   const addTab = useCallback(() => {
-    addTerminalTab(workspaceId, nextLabel(getWorkspaceTerminalState(workspaceId).tabs, SHELL_LABEL));
+    addTerminalTab(
+      workspaceId,
+      nextLabel(getWorkspaceTerminalState(workspaceId).tabs, SHELL_LABEL),
+    );
   }, [workspaceId]);
 
   const closeTab = useCallback(
     (tabId: string) => {
       closeTerminalTab(workspaceId, tabId);
     },
-    [workspaceId]
+    [workspaceId],
   );
 
   const activateTab = useCallback(
     (tabId: string) => {
       setActiveTerminalTab(workspaceId, tabId);
     },
-    [workspaceId]
+    [workspaceId],
   );
 
   // Refs to each tab's label button so keyboard nav can move focus along with
@@ -128,7 +131,7 @@ export function TerminalTabsPanel({
           tabButtonRefs.current.set(tabId, node);
         }
       },
-    []
+    [],
   );
 
   const focusTab = useCallback((tabId: string): void => {
@@ -174,7 +177,7 @@ export function TerminalTabsPanel({
           closeTab(tabId);
         }
       },
-    [activateTab, closeTab, focusTab, tabs]
+    [activateTab, closeTab, focusTab, tabs],
   );
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
@@ -185,7 +188,9 @@ export function TerminalTabsPanel({
     return (
       <div className="review-terminal">
         <p className="review-empty">
-          <span className="review-empty-mark" aria-hidden="true">∅</span>
+          <span className="review-empty-mark" aria-hidden="true">
+            ∅
+          </span>
           <span>No terminal open.</span>
           <button type="button" className="review-empty-action" onClick={addTab}>
             New terminal
@@ -197,55 +202,62 @@ export function TerminalTabsPanel({
 
   return (
     <div className="review-terminal">
-      {!controlledTabId ? <div className="file-tabs-shell">
-        <div className="file-tabs" role="tablist" aria-label="Terminal tabs" aria-orientation="horizontal">
-          {tabs.map((tab) => {
-            const isActive = tab.id === activeTabId;
-            return (
-              <div className="file-tab" data-active={isActive ? "true" : "false"} key={tab.id}>
-                <button
-                  ref={setTabButtonRef(tab.id)}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  aria-controls={`terminal-tabpanel-${tab.id}`}
-                  id={`terminal-tab-${tab.id}`}
-                  tabIndex={isActive ? 0 : -1}
-                  title={tab.label}
-                  onClick={() => activateTab(tab.id)}
-                  onKeyDown={handleTabKeyDown(tab.id)}
-                >
-                  <span className="file-tab-icon" aria-hidden="true">
-                    <TerminalIcon size={13} />
-                  </span>
-                  <span className="file-tab-name">{tab.label}</span>
-                </button>
-                <button
-                  type="button"
-                  className="file-tab-close"
-                  aria-label={`Close ${tab.label}`}
-                  title={`Close ${tab.label}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    closeTab(tab.id);
-                  }}
-                >
-                  <X size={12} aria-hidden="true" />
-                </button>
-              </div>
-            );
-          })}
+      {!controlledTabId ? (
+        <div className="file-tabs-shell">
+          <div
+            className="file-tabs"
+            role="tablist"
+            aria-label="Terminal tabs"
+            aria-orientation="horizontal"
+          >
+            {tabs.map((tab) => {
+              const isActive = tab.id === activeTabId;
+              return (
+                <div className="file-tab" data-active={isActive ? "true" : "false"} key={tab.id}>
+                  <button
+                    ref={setTabButtonRef(tab.id)}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    aria-controls={`terminal-tabpanel-${tab.id}`}
+                    id={`terminal-tab-${tab.id}`}
+                    tabIndex={isActive ? 0 : -1}
+                    title={tab.label}
+                    onClick={() => activateTab(tab.id)}
+                    onKeyDown={handleTabKeyDown(tab.id)}
+                  >
+                    <span className="file-tab-icon" aria-hidden="true">
+                      <TerminalIcon size={13} />
+                    </span>
+                    <span className="file-tab-name">{tab.label}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="file-tab-close"
+                    aria-label={`Close ${tab.label}`}
+                    title={`Close ${tab.label}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeTab(tab.id);
+                    }}
+                  >
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="file-tab-add"
+            aria-label="New terminal"
+            title="New terminal"
+            onClick={addTab}
+          >
+            <Plus size={13} aria-hidden="true" />
+          </button>
         </div>
-        <button
-          type="button"
-          className="file-tab-add"
-          aria-label="New terminal"
-          title="New terminal"
-          onClick={addTab}
-        >
-          <Plus size={13} aria-hidden="true" />
-        </button>
-      </div> : null}
+      ) : null}
 
       <div className="terminal-tab-bodies">
         {(controlledTabId ? tabs.filter((tab) => tab.id === controlledTabId) : tabs).map((tab) => {

@@ -30,7 +30,7 @@ let escapeDismissalOrder = 0;
 
 function dismissalElements(dismissal: EscapeDismissal): HTMLElement[] {
   return [dismissal.ref.current, dismissal.extraRef?.current].filter(
-    (element): element is HTMLElement => element !== null && element !== undefined
+    (element): element is HTMLElement => element !== null && element !== undefined,
   );
 }
 
@@ -38,7 +38,9 @@ function containsDismissal(outer: EscapeDismissal, inner: EscapeDismissal): bool
   const outerElements = dismissalElements(outer);
   const innerElements = dismissalElements(inner);
   return outerElements.some((outerElement) =>
-    innerElements.some((innerElement) => outerElement !== innerElement && outerElement.contains(innerElement))
+    innerElements.some(
+      (innerElement) => outerElement !== innerElement && outerElement.contains(innerElement),
+    ),
   );
 }
 
@@ -56,7 +58,7 @@ export function useDismissOnOutsideOrEscape(
   active: boolean,
   close: () => void,
   extraRef?: RefObject<HTMLElement | null>,
-  options: DismissOptions = {}
+  options: DismissOptions = {},
 ): void {
   const closeRef = useRef(close);
   useEffect(() => {
@@ -70,7 +72,7 @@ export function useDismissOnOutsideOrEscape(
     const dismissal: EscapeDismissal = {
       ref,
       extraRef,
-      order: ++escapeDismissalOrder
+      order: ++escapeDismissalOrder,
     };
     escapeDismissals.push(dismissal);
     const handleMouseDown = (event: MouseEvent): void => {
@@ -103,17 +105,21 @@ export function useDismissOnOutsideOrEscape(
       const container = ref.current;
       if (!container) return;
       const containers = [container, extraRef?.current].filter(
-        (candidate): candidate is HTMLElement => candidate !== null && candidate !== undefined
+        (candidate): candidate is HTMLElement => candidate !== null && candidate !== undefined,
       );
-      const focusable = containers.flatMap((candidate) =>
-        Array.from(candidate.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
-      ).filter((el) => !el.hasAttribute("inert"));
+      const focusable = containers
+        .flatMap((candidate) =>
+          Array.from(candidate.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
+        )
+        .filter((el) => !el.hasAttribute("inert"));
       if (focusable.length === 0) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
       if (!first || !last) return;
       const active = document.activeElement as HTMLElement | null;
-      const insideContainer = active ? containers.some((candidate) => candidate.contains(active)) : false;
+      const insideContainer = active
+        ? containers.some((candidate) => candidate.contains(active))
+        : false;
       if (event.shiftKey) {
         if (!insideContainer || active === first) {
           event.preventDefault();

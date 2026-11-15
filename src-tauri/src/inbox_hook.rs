@@ -44,9 +44,8 @@ struct HookInput {
     agent_id: Option<String>,
 }
 
-/// Dispatch `argmax hook inbox` before the GUI boots, mirroring
-/// [`crate::session_control::try_run_session_control_cli`]. Returns `None`
-/// when this invocation is not the hook subcommand.
+/// Dispatch `argmax hook inbox` before the GUI boots. Returns `None` when this
+/// invocation is not the hook subcommand.
 pub fn try_run_inbox_hook_cli<I, S>(args: I) -> Option<i32>
 where
     I: IntoIterator<Item = S>,

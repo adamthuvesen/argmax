@@ -23,8 +23,10 @@ export const HEADLINE_COUNT = 10;
  * to it, so discovering the provider's child id never renames or remounts the
  * tab that was opened while the launch was still streaming. */
 export function agentRootToolUseId(tool: ToolCall): string {
-  return tool.agentRootToolUseId
-    ?? (tool.providerChildSessionId && tool.parentToolUseId ? tool.parentToolUseId : tool.toolUseId);
+  return (
+    tool.agentRootToolUseId ??
+    (tool.providerChildSessionId && tool.parentToolUseId ? tool.parentToolUseId : tool.toolUseId)
+  );
 }
 
 export function agentCodenameKey(tool: ToolCall): string {
@@ -94,7 +96,7 @@ export function assignAgentCodenames(tools: readonly ToolCall[]): Map<string, st
 export function nativeAgentReferences(
   tools: readonly ToolCall[],
   codenames: ReadonlyMap<string, string>,
-  providerParentConversationId: string | null
+  providerParentConversationId: string | null,
 ): AgentReference[] {
   if (!providerParentConversationId) return [];
   const references = new Map<string, AgentReference>();
@@ -104,13 +106,14 @@ export function nativeAgentReferences(
       !providerChildSessionId ||
       tool.providerParentConversationId !== providerParentConversationId ||
       references.has(providerChildSessionId)
-    ) continue;
+    )
+      continue;
     const name = codenames.get(agentCodenameKey(tool));
     if (!name) continue;
     references.set(providerChildSessionId, {
       name,
       providerChildSessionId,
-      providerParentConversationId
+      providerParentConversationId,
     });
   }
   return [...references.values()];
@@ -123,7 +126,7 @@ export function nativeAgentReferences(
  */
 export function codenameForTool(
   tool: ToolCall,
-  codenames?: Map<string, string>
+  codenames?: Map<string, string>,
 ): string | undefined {
   if (getToolTypeBucket(tool.name) !== "agent") return undefined;
   const key = agentCodenameKey(tool);

@@ -57,9 +57,9 @@ function referencePattern(): RegExp {
   return new RegExp(
     `\\[([^\\[\\]\\n]{1,${MAX_TITLE_CHARS}})\\]\\(${CHAT_REFERENCE_PREFIX.replace(
       /[/:]/g,
-      "\\$&"
+      "\\$&",
     )}(${ID_CHARS})(?:\\?([A-Za-z0-9_=&.-]*))?\\)`,
-    "g"
+    "g",
   );
 }
 
@@ -119,8 +119,8 @@ export function findChatReferences(text: string): ChatReferenceMatch[] {
         v: CHAT_REFERENCE_VERSION,
         sessionId: match[2],
         ...(parsed.eventId !== undefined ? { eventId: parsed.eventId } : {}),
-        title: match[1]
-      }
+        title: match[1],
+      },
     });
   }
   return matches;
@@ -158,7 +158,7 @@ export function encodeClipboardPayload(text: string): string {
   const payload: ComposerClipboardPayload = {
     v: CHAT_REFERENCE_VERSION,
     text,
-    references: findChatReferences(text).map((match) => match.reference)
+    references: findChatReferences(text).map((match) => match.reference),
   };
   return JSON.stringify(payload);
 }
@@ -191,13 +191,7 @@ export function decodeClipboardPayload(raw: string): ComposerClipboardPayload | 
     listed.length === inText.length &&
     listed.every(
       (entry, index) =>
-        entry?.sessionId === inText[index]?.sessionId && entry?.eventId === inText[index]?.eventId
+        entry?.sessionId === inText[index]?.sessionId && entry?.eventId === inText[index]?.eventId,
     );
   return consistent ? { v: CHAT_REFERENCE_VERSION, text, references: inText } : null;
 }
-
-/**
- * Where a link's chat stands. A chip for a chat that is no longer in the app
- * says so rather than offering to open nothing.
- */
-export type ChatReferenceStatus = "resolved" | "unresolved";

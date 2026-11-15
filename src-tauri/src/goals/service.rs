@@ -18,34 +18,34 @@ use tokio::{sync::broadcast, task::JoinHandle};
 use uuid::Uuid;
 
 use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    ipc::{
-        inputs::ProvidersSendInput,
-        validation::{NonEmptyString, Prompt, SessionId},
-    },
-    persistence::{
-        database::Database,
-        events::goal_transcript_tail,
-        goals::{
-            find_active_goal_for_session, find_goal, insert_goal, list_goals, settle_goal,
-            stop_orphaned_goals, update_goal_progress,
-        },
-        sessions::find_session_by_id,
-        time::now_iso,
-        workspaces::find_workspace_by_id,
-    },
+    providers::inputs::ProvidersSendInput,
     providers::{
+        model_catalogue::helper_model,
         one_shot,
-        runtime::parse_provider,
         session_service::{self, GoalTurnIdentity, ProviderSessionService, SessionStateChange},
-        AgentMode,
     },
-    routing::RouteDecision,
-    sessions::state::SessionState,
-    util::sync::LockOrRecover,
+};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::routing::RouteDecision;
+use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::parse_provider;
+use argmax_contracts::validation::AgentMode;
+use argmax_contracts::validation::{NonEmptyString, Prompt, SessionId};
+use argmax_store::sync::LockOrRecover;
+use argmax_store::{
+    database::Database,
+    events::goal_transcript_tail,
+    goals::{
+        find_active_goal_for_session, find_goal, insert_goal, list_goals, settle_goal,
+        stop_orphaned_goals, update_goal_progress,
+    },
+    sessions::find_session_by_id,
+    time::now_iso,
+    workspaces::find_workspace_by_id,
 };
 
-use super::{Goal, GoalState, GoalVerdict, DEFAULT_MAX_TURNS};
+use super::{GoalVerdict, DEFAULT_MAX_TURNS};
+use argmax_contracts::goals::{Goal, GoalState};
 
 const MAX_CONDITION_BYTES: usize = 8 * 1024;
 /// Hard ceiling on the caller's ceiling. Twenty is the default; a hundred turns
@@ -445,7 +445,7 @@ impl GoalService {
                 // router's hysteresis and the model chip.
                 Ok(()) => {
                     if let Some(route) = &escalation {
-                        crate::persistence::turn_routes::record_route(
+                        argmax_store::turn_routes::record_route(
                             &self.database.connection(),
                             &goal.session_id,
                             route,
@@ -477,10 +477,11 @@ impl GoalService {
             .reasoning_effort
             .as_deref()
             .and_then(crate::providers::runtime::parse_reasoning_effort);
+        let provider = parse_provider(&session.provider)?;
         let Some(route) = crate::routing::reroute::escalate(
             tier,
-            parse_provider(&session.provider)?,
-            &session.model_id,
+            provider,
+            &crate::providers::model_catalogue::ModelId::resolve(provider, &session.model_id),
             effort,
             &available,
             "escalated: the goal came back not met twice in a row",
@@ -494,9 +495,12 @@ impl GoalService {
         let session =
             find_session_by_id(&self.database.read_connection(), &goal.session_id).ok()?;
         let provider = parse_provider(&session.provider).ok()?;
+        // `PROVIDER_TITLE_MODEL` in `src/shared/providerModels.ts` picks the
+        // helper model. The renderer passes it in for its own helper calls;
+        // the evaluator has no renderer in the loop, so it reads the generated copy.
         one_shot::evaluate_goal(
             provider,
-            one_shot::helper_model(provider),
+            helper_model(provider),
             &goal.condition,
             transcript_tail,
         )
@@ -531,6 +535,7 @@ impl GoalService {
         self.providers
             .send_goal_input(
                 ProvidersSendInput {
+                    submitted_at_ms: None,
                     session_id: SessionId::try_from(goal.session_id.clone())
                         .map_err(ArgmaxError::invalid)?,
                     input: Prompt::try_from(prompt).map_err(ArgmaxError::invalid)?,

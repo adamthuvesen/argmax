@@ -11,8 +11,8 @@ use super::shared::{
     TraceRunModel,
 };
 use super::{AgentTraceContext, TraceImport, TraceLine};
-use crate::persistence::events::PersistTimelineEventInput;
 use crate::providers::grok_trust::grok_home;
+use argmax_store::events::PersistTimelineEventInput;
 
 pub(super) fn grok_trace_events(home: &Path, context: &AgentTraceContext) -> TraceImport {
     let mut import = TraceImport {
@@ -400,7 +400,7 @@ mod tests {
     use super::super::test_support::*;
     use super::super::{import_subagent_trace_events_from_home, TraceProvider};
     use super::*;
-    use crate::persistence::{
+    use argmax_store::{
         database::Database, events::list_session_agent_events,
         sessions::update_session_provider_conversation_id,
     };

@@ -7,7 +7,7 @@
 //!
 //! | Provider | Mechanism | Leaves a file? |
 //! |---|---|---|
-//! | Claude | `--mcp-config '<inline json>'` | no |
+//! | Claude | `--mcp-config '<inline json>'`, plus `--strict-mcp-config` for some presets | no |
 //! | Codex | `-c mcp_servers.argmax.*` | no |
 //! | Cursor (ACP) | `mcpServers` in `session/new` / `session/load` | no |
 //! | OpenCode | `OPENCODE_CONFIG_CONTENT` (inline JSON) | no |
@@ -17,6 +17,11 @@
 //! Wherever the spec is per-launch, the per-session bearer token rides in its
 //! own `env` rather than the provider process's environment, so a warm shared
 //! process (Cursor's ACP pool) can still hand each session its own credential.
+//!
+//! Claude's launch also follows the user's "MCP at turn start" preset
+//! ([`ClaudeMcpLaunch`]): every server Claude starts delays the turn, so a
+//! preset can drop the claude.ai connectors (an environment variable) or start
+//! only servers named in the inline config (`--strict-mcp-config`).
 //!
 //! Claude gets one more per-launch injection on top of the server: a
 //! `PostToolUse` hook ([`claude_hook_settings`]) that hands inbox mail to the
@@ -50,7 +55,10 @@ use crate::session_control::{
     SessionLaunchProcessConfig, SESSION_LAUNCH_SOCKET_ENV, SESSION_LAUNCH_TOKEN_ENV,
 };
 
-use super::ProviderId;
+use argmax_contracts::validation::ProviderId;
+use argmax_store::app_settings::{ClaudeMcpChoice, ClaudeMcpPreset};
+
+use crate::connections::ClaudeOwnServer;
 
 /// The MCP server name; tools reach the model as `mcp__argmax__<tool>`
 /// (Claude, Codex, Cursor) or `argmax__<tool>` (Grok, OpenCode).
@@ -196,21 +204,25 @@ pub fn claude_linked_root_args(config: Option<&SessionLaunchProcessConfig>) -> V
         .collect()
 }
 
-/// The provider environment a Claude launch needs for its linked roots.
-/// Empty when there are none, so a project with no linked repositories keeps
-/// Claude's default of not loading extra `CLAUDE.md` files.
-pub fn claude_linked_root_env(
-    config: Option<&SessionLaunchProcessConfig>,
-) -> Vec<(String, String)> {
-    match config {
-        Some(config) if !config.linked_roots().is_empty() => {
-            vec![(
-                CLAUDE_ADDITIONAL_DIRECTORIES_CLAUDE_MD_ENV.to_string(),
-                "1".to_string(),
-            )]
-        }
-        _ => Vec::new(),
+/// The provider environment a Claude launch needs from its launch config:
+/// the linked roots' `CLAUDE.md` switch, and the connectors switch for the
+/// "Without claude.ai connectors" preset. Each is absent unless needed, so a
+/// default launch keeps Claude's defaults.
+pub fn claude_launch_env(config: Option<&SessionLaunchProcessConfig>) -> Vec<(String, String)> {
+    let Some(config) = config else {
+        return Vec::new();
+    };
+    let mut env = Vec::new();
+    if !config.linked_roots().is_empty() {
+        env.push((
+            CLAUDE_ADDITIONAL_DIRECTORIES_CLAUDE_MD_ENV.to_string(),
+            "1".to_string(),
+        ));
     }
+    if config.claude_mcp().servers == ClaudeMcpServers::WithoutConnectors {
+        env.push((CLAUDE_CONNECTORS_ENV.to_string(), "false".to_string()));
+    }
+    env
 }
 
 /// Puts the linked-repository listing ahead of the user's prompt. Every
@@ -428,6 +440,93 @@ fn server_env_object(config: &SessionLaunchProcessConfig) -> Value {
     )
 }
 
+/// Turns off the claude.ai connectors for one Claude process. Plugin servers
+/// and the user's own servers still load (2.1.310: 43 servers at init without
+/// it, 29 with it, none of them `claude.ai *`).
+pub const CLAUDE_CONNECTORS_ENV: &str = "ENABLE_CLAUDEAI_MCP_SERVERS";
+
+/// What one Claude launch does with MCP servers, resolved from the user's
+/// preset when the launch is issued. `preset` stays on the launch so a later
+/// measurement can say which preset a turn ran with.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClaudeMcpLaunch {
+    pub preset: ClaudeMcpPreset,
+    pub servers: ClaudeMcpServers,
+}
+
+#[derive(Clone, PartialEq)]
+pub enum ClaudeMcpServers {
+    /// Claude loads what it is configured with, plus `argmax`.
+    All,
+    /// As `All`, without the claude.ai connectors.
+    WithoutConnectors,
+    /// `--strict-mcp-config`: only `argmax` and these definitions, which come
+    /// from the user's own config files. Plugin servers and connectors cannot
+    /// be listed here, so they are off.
+    Only(Map<String, Value>),
+}
+
+// The definitions can carry credentials in `env` or `headers`, so Debug shows
+// the server names only.
+impl std::fmt::Debug for ClaudeMcpServers {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::All => formatter.write_str("All"),
+            Self::WithoutConnectors => formatter.write_str("WithoutConnectors"),
+            Self::Only(servers) => formatter
+                .debug_tuple("Only")
+                .field(&servers.keys().collect::<Vec<_>>())
+                .finish(),
+        }
+    }
+}
+
+impl Default for ClaudeMcpLaunch {
+    fn default() -> Self {
+        Self {
+            preset: ClaudeMcpPreset::Everything,
+            servers: ClaudeMcpServers::All,
+        }
+    }
+}
+
+impl ClaudeMcpLaunch {
+    /// `own_servers` is called only for the presets that name servers, so the
+    /// default launch reads no config file. A Custom name the user's config no
+    /// longer has is dropped: Settings flags it, a launch does not fail on it.
+    /// A user server named `argmax` is dropped too, because Argmax's own entry
+    /// takes that name.
+    pub fn resolve(
+        choice: &ClaudeMcpChoice,
+        own_servers: impl FnOnce() -> Vec<ClaudeOwnServer>,
+    ) -> Self {
+        let servers = match choice.preset {
+            ClaudeMcpPreset::Everything => ClaudeMcpServers::All,
+            ClaudeMcpPreset::WithoutConnectors => ClaudeMcpServers::WithoutConnectors,
+            ClaudeMcpPreset::ArgmaxOnly => ClaudeMcpServers::Only(Map::new()),
+            ClaudeMcpPreset::YourServers | ClaudeMcpPreset::Custom => {
+                let wanted = |name: &str| {
+                    choice.preset == ClaudeMcpPreset::YourServers
+                        || choice.custom_servers.iter().any(|custom| custom == name)
+                };
+                ClaudeMcpServers::Only(
+                    own_servers()
+                        .into_iter()
+                        .filter(|server| {
+                            server.enabled && server.name != SERVER_NAME && wanted(&server.name)
+                        })
+                        .map(|server| (server.name, server.definition))
+                        .collect(),
+                )
+            }
+        };
+        Self {
+            preset: choice.preset,
+            servers,
+        }
+    }
+}
+
 /// Extra argv for the providers that take an MCP server on the command line.
 /// Empty for everyone else, so callers can append unconditionally.
 pub fn mcp_args(provider: ProviderId, config: Option<&SessionLaunchProcessConfig>) -> Vec<String> {
@@ -437,19 +536,36 @@ pub fn mcp_args(provider: ProviderId, config: Option<&SessionLaunchProcessConfig
     match provider {
         ProviderId::Claude => {
             // Inline JSON rather than a file: `--mcp-config` takes either, and
-            // no file means nothing to clean up. `--strict-mcp-config` is
-            // deliberately NOT passed — the user's own servers stay loaded.
-            let spec = json!({
-                "mcpServers": {
-                    SERVER_NAME: {
-                        "type": "stdio",
-                        "command": config.argmax_bin(),
-                        "args": SERVER_ARGS,
-                        "env": server_env_object(config),
-                    }
-                }
-            });
-            vec!["--mcp-config".to_string(), spec.to_string()]
+            // no file means nothing to clean up and no copy of the user's
+            // server credentials on disk. The user's own definitions are a few
+            // KB (781 bytes for five servers here) against macOS's 1 MiB
+            // ARG_MAX, which Darwin does not split per argument, and the prompt
+            // already rides on the same argv. argv is never logged.
+            //
+            // `--strict-mcp-config` only for the presets that name servers;
+            // otherwise the user's configured servers stay loaded.
+            let (strict, mut servers) = match &config.claude_mcp().servers {
+                ClaudeMcpServers::Only(servers) => (true, servers.clone()),
+                ClaudeMcpServers::All | ClaudeMcpServers::WithoutConnectors => (false, Map::new()),
+            };
+            servers.insert(
+                SERVER_NAME.to_string(),
+                json!({
+                    "type": "stdio",
+                    "command": config.argmax_bin(),
+                    "args": SERVER_ARGS,
+                    "env": server_env_object(config),
+                }),
+            );
+            let mut args = Vec::new();
+            if strict {
+                args.push("--strict-mcp-config".to_string());
+            }
+            args.extend([
+                "--mcp-config".to_string(),
+                json!({ "mcpServers": servers }).to_string(),
+            ]);
+            args
         }
         ProviderId::Codex => {
             // `-c key=value` parses the value as TOML. JSON string escaping is
@@ -1248,8 +1364,135 @@ mod tests {
             spec["mcpServers"]["argmax"]["env"][SESSION_LAUNCH_TOKEN_ENV],
             "token-123"
         );
-        // --strict-mcp-config would drop the user's own servers.
+        // The default preset: --strict-mcp-config would drop the user's own
+        // servers, and no connector switch rides in the environment.
         assert!(!args.iter().any(|arg| arg == "--strict-mcp-config"));
+        assert!(claude_launch_env(Some(&config())).is_empty());
+    }
+
+    fn own_server(name: &str, enabled: bool) -> ClaudeOwnServer {
+        ClaudeOwnServer {
+            name: name.to_string(),
+            scope: crate::connections::ClaudeServerScope::User,
+            enabled,
+            definition: json!({
+                "type": "http",
+                "url": format!("https://{name}.example/mcp"),
+                "headers": { "Authorization": "Bearer secret-for-test" },
+            }),
+        }
+    }
+
+    fn own_servers() -> Vec<ClaudeOwnServer> {
+        vec![
+            own_server("trace", true),
+            own_server("engram", true),
+            own_server("off", false),
+            own_server("argmax", true),
+        ]
+    }
+
+    fn claude_launch(preset: ClaudeMcpPreset, custom: &[&str]) -> SessionLaunchProcessConfig {
+        let choice = ClaudeMcpChoice {
+            preset,
+            custom_servers: custom.iter().map(|name| name.to_string()).collect(),
+        };
+        config().with_claude_mcp(ClaudeMcpLaunch::resolve(&choice, own_servers))
+    }
+
+    /// The flags and the server names in the inline config, per preset.
+    fn claude_mcp_shape(config: &SessionLaunchProcessConfig) -> (bool, Vec<String>, Vec<String>) {
+        let args = mcp_args(ProviderId::Claude, Some(config));
+        let strict = args.iter().any(|arg| arg == "--strict-mcp-config");
+        let spec: Value = serde_json::from_str(args.last().expect("inline config")).expect("JSON");
+        let mut names = spec["mcpServers"]
+            .as_object()
+            .expect("servers")
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        names.sort();
+        let env = claude_launch_env(Some(config))
+            .into_iter()
+            .map(|(name, value)| format!("{name}={value}"))
+            .collect();
+        (strict, names, env)
+    }
+
+    #[test]
+    fn each_mcp_preset_builds_its_own_claude_flags_and_environment() {
+        let names = |list: &[&str]| list.iter().map(|name| name.to_string()).collect::<Vec<_>>();
+
+        assert_eq!(
+            claude_mcp_shape(&claude_launch(ClaudeMcpPreset::Everything, &[])),
+            (false, names(&["argmax"]), vec![])
+        );
+        assert_eq!(
+            claude_mcp_shape(&claude_launch(ClaudeMcpPreset::WithoutConnectors, &[])),
+            (
+                false,
+                names(&["argmax"]),
+                vec!["ENABLE_CLAUDEAI_MCP_SERVERS=false".to_string()]
+            )
+        );
+        // A disabled server stays off, and the user's own "argmax" never
+        // replaces Argmax's entry.
+        assert_eq!(
+            claude_mcp_shape(&claude_launch(ClaudeMcpPreset::YourServers, &[])),
+            (true, names(&["argmax", "engram", "trace"]), vec![])
+        );
+        assert_eq!(
+            claude_mcp_shape(&claude_launch(ClaudeMcpPreset::ArgmaxOnly, &["trace"])),
+            (true, names(&["argmax"]), vec![])
+        );
+        // A saved name the config no longer has is dropped, not an error.
+        assert_eq!(
+            claude_mcp_shape(&claude_launch(
+                ClaudeMcpPreset::Custom,
+                &["trace", "removed"]
+            )),
+            (true, names(&["argmax", "trace"]), vec![])
+        );
+    }
+
+    #[test]
+    fn strict_presets_pass_the_user_definition_unchanged_beside_argmax() {
+        let args = mcp_args(
+            ProviderId::Claude,
+            Some(&claude_launch(ClaudeMcpPreset::Custom, &["trace"])),
+        );
+        let spec: Value = serde_json::from_str(args.last().expect("inline config")).expect("JSON");
+        assert_eq!(
+            spec["mcpServers"]["trace"],
+            own_server("trace", true).definition
+        );
+        assert_eq!(
+            spec["mcpServers"]["argmax"]["env"][SESSION_LAUNCH_TOKEN_ENV],
+            "token-123"
+        );
+    }
+
+    #[test]
+    fn presets_that_name_no_servers_never_read_the_config_files() {
+        for preset in [
+            ClaudeMcpPreset::Everything,
+            ClaudeMcpPreset::WithoutConnectors,
+            ClaudeMcpPreset::ArgmaxOnly,
+        ] {
+            let choice = ClaudeMcpChoice {
+                preset,
+                custom_servers: Vec::new(),
+            };
+            ClaudeMcpLaunch::resolve(&choice, || panic!("{preset:?} read the config"));
+        }
+    }
+
+    #[test]
+    fn a_launch_debug_print_names_servers_without_their_credentials() {
+        let config = claude_launch(ClaudeMcpPreset::YourServers, &[]);
+        let printed = format!("{config:?}");
+        assert!(printed.contains("trace"), "{printed}");
+        assert!(!printed.contains("secret-for-test"), "{printed}");
     }
 
     #[test]
@@ -1645,14 +1888,14 @@ mod tests {
     #[test]
     fn linked_roots_set_the_claude_md_variable_exactly_when_there_are_roots() {
         assert_eq!(
-            claude_linked_root_env(Some(&config_with_roots())),
+            claude_launch_env(Some(&config_with_roots())),
             vec![(
                 "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD".to_string(),
                 "1".to_string()
             )]
         );
-        assert!(claude_linked_root_env(Some(&config())).is_empty());
-        assert!(claude_linked_root_env(None).is_empty());
+        assert!(claude_launch_env(Some(&config())).is_empty());
+        assert!(claude_launch_env(None).is_empty());
     }
 
     #[test]

@@ -4,7 +4,7 @@ import type {
   ComposerAttachment,
   PendingMessage,
   SessionSummary,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../../shared/types.js";
 import type { SendInputResult } from "../../shared/bindings.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
@@ -45,7 +45,7 @@ export function MultitaskPanel({
   onOpenFullChat,
   onSendQueuedMessageNow,
   onSendSessionInput,
-  onTerminateSession
+  onTerminateSession,
 }: {
   /** Settings → Appearance: keep the delegated chat and composer in sync. */
   chatFontSize?: FontSize;
@@ -67,14 +67,14 @@ export function MultitaskPanel({
   onSendQueuedMessageNow: (
     sessionId: string,
     messageId: string,
-    delivery?: QueuedMessageDelivery
+    delivery?: QueuedMessageDelivery,
   ) => Promise<void>;
   onSendSessionInput: (
     sessionId: string,
     input: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
-    attachments?: ComposerAttachment[]
+    attachments?: ComposerAttachment[],
   ) => Promise<SendInputResult>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
 }): JSX.Element {
@@ -122,7 +122,7 @@ export function MultitaskPanel({
         review={{
           ...review,
           openFile: onOpenDiff ?? review.openFile,
-          openChangesPanel: onOpenReview ?? review.openChangesPanel
+          openChangesPanel: onOpenReview ?? review.openChangesPanel,
         }}
         session={session}
         workspaceCardEnabled={false}

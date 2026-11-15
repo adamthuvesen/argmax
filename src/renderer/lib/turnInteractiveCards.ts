@@ -26,7 +26,7 @@ export function isAskUserQuestionToolName(name: string): boolean {
 
 function toolsMatching(
   toolItems: readonly TurnToolItem[],
-  predicate: (tool: ToolCall) => boolean
+  predicate: (tool: ToolCall) => boolean,
 ): ToolCall[] {
   const matches: ToolCall[] = [];
   for (const item of toolItems) {
@@ -43,7 +43,9 @@ export function collectAskUserQuestionState(toolItems: readonly TurnToolItem[]):
 } {
   const candidateIds = new Set<string>();
   let tool: ResolvedAskUserQuestionTool | null = null;
-  for (const candidate of toolsMatching(toolItems, (tool) => isAskUserQuestionToolName(tool.name))) {
+  for (const candidate of toolsMatching(toolItems, (tool) =>
+    isAskUserQuestionToolName(tool.name),
+  )) {
     candidateIds.add(candidate.id);
     const questions = parseQuestionsFromToolInput(candidate);
     if (!questions) continue;
@@ -60,7 +62,7 @@ export function collectAskUserQuestionState(toolItems: readonly TurnToolItem[]):
         ...(delivery === "async" || delivery === "blocking" ? { delivery } : {}),
         ...(typeof candidate.inputFull?.requestId === "string"
           ? { requestId: candidate.inputFull.requestId }
-          : {})
+          : {}),
       };
     }
   }
@@ -72,16 +74,20 @@ export function hasOutstandingCardAsk(events: TimelineEvent[], toolCalls: ToolCa
   let lastUserMessageTime = "";
   for (const event of events) {
     const decoded = decodeTimelineEvent(event);
-    if (decoded.kind === "message" && decoded.role === "user" && event.createdAt > lastUserMessageTime) {
+    if (
+      decoded.kind === "message" &&
+      decoded.role === "user" &&
+      event.createdAt > lastUserMessageTime
+    ) {
       lastUserMessageTime = event.createdAt;
     }
   }
   return toolCalls.some(
     (tool) =>
-      (isAskUserQuestionToolName(tool.name) &&
-        tool.inputFull?.delivery !== "async" &&
-        (tool.inputFull?.delivery !== "blocking" || tool.status === "running") &&
-        parseQuestionsFromToolInput(tool)) &&
-      tool.createdAt > lastUserMessageTime
+      isAskUserQuestionToolName(tool.name) &&
+      tool.inputFull?.delivery !== "async" &&
+      (tool.inputFull?.delivery !== "blocking" || tool.status === "running") &&
+      parseQuestionsFromToolInput(tool) &&
+      tool.createdAt > lastUserMessageTime,
   );
 }

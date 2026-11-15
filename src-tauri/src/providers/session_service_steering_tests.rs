@@ -1,21 +1,21 @@
 use super::super::{HandleEntry, PendingMessage, ProviderSessionService, SendInputResult};
 use super::{database_with_running_session, pending_message, CountingFailureLauncher};
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::ipc::inputs::{
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use crate::providers::inputs::{
     ProvidersSendInput, ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput,
     QueuedMessageDelivery,
 };
-use crate::ipc::validation::{NonEmptyString, SessionId};
-use crate::persistence::authorship::PromptAuthor;
-use crate::persistence::events::list_session_events_since;
-use crate::persistence::pending_messages::{list_session_pending_messages, replace_session_queue};
-use crate::persistence::session_messages::{
+use argmax_contracts::validation::{NonEmptyString, SessionId};
+use argmax_store::authorship::PromptAuthor;
+use argmax_store::events::list_session_events_since;
+use argmax_store::pending_messages::{list_session_pending_messages, replace_session_queue};
+use argmax_store::session_messages::{
     insert_session_message, take_undelivered_messages, NewSessionMessage,
 };
-use crate::persistence::sessions::{find_session_by_id, update_session_state, SessionStateInput};
+use argmax_store::sessions::{find_session_by_id, update_session_state, SessionStateInput};
 use crate::providers::runtime::{BoxFuture, ProviderRuntimeHandle};
-use crate::sessions::state::SessionState;
-use crate::util::sync::LockOrRecover;
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::sync::LockOrRecover;
 use serde_json::json;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -85,7 +85,7 @@ fn steer_service(
     let database = database_with_running_session();
     let launcher = Arc::new(CountingFailureLauncher::default());
     let service =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+        ProviderSessionService::builder(Arc::clone(&database)).launcher(launcher.clone()).build();
     let handle = Arc::new(SteerRecordingHandle {
         supports_steering,
         steer_error,
@@ -169,6 +169,24 @@ async fn successful_steer_persists_delivery_and_leaves_session_running() {
 /// Steering a queued row delivers the text it was queued with, so the saved
 /// message keeps the author the row had: a person's stays theirs, another
 /// session's or an unattested one never becomes theirs.
+#[tokio::test]
+async fn a_row_on_the_successor_of_a_retired_model_can_steer() {
+    let (service, handle, _) = steer_service(true, None);
+    service
+        .database
+        .connection()
+        .execute(
+            "UPDATE sessions SET provider = 'codex', model_id = 'gpt-6-sol' WHERE id = 'session-1'",
+            [],
+        )
+        .unwrap();
+    let mut message = pending("retired", "steer");
+    message.model_id = Some("gpt-6.1-sol".to_string());
+    let id = seed_queue(&service, message);
+    steer_now(&service, &id).await.unwrap();
+    assert_eq!(handle.steer_calls.load(Ordering::SeqCst), 1);
+}
+
 #[tokio::test]
 async fn steering_a_queued_row_keeps_its_author() {
     for (author, expected) in [
@@ -533,7 +551,7 @@ async fn unsupported_not_running_and_settings_mismatch_skip_steer() {
     // A row that names another provider cannot join the running turn.
     let (service, handle, launcher) = steer_service(true, None);
     let mut message = pending("provider", "switch");
-    message.provider = Some(crate::providers::ProviderId::Codex);
+    message.provider = Some(argmax_contracts::validation::ProviderId::Codex);
     message.model_label = Some("GPT".to_string());
     message.model_id = Some("gpt-5.6-sol".to_string());
     let id = seed_queue(&service, message);

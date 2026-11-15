@@ -1,7 +1,16 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BROWSER_PAGE_OWNER_ID, createBrowserTab, getActiveBrowserTabId, getBrowserRequest, getBrowserTabs, openInBrowserPanel, resetBrowserSurfaceForTests, resetBrowserTabsForTests } from "../lib/browserPanel.js";
+import {
+  BROWSER_PAGE_OWNER_ID,
+  createBrowserTab,
+  getActiveBrowserTabId,
+  getBrowserRequest,
+  getBrowserTabs,
+  openInBrowserPanel,
+  resetBrowserSurfaceForTests,
+  resetBrowserTabsForTests,
+} from "../lib/browserPanel.js";
 import { LINK_TARGET_KEY } from "../lib/linkTarget.js";
 import { useStandaloneBrowserLinks } from "./useStandaloneBrowserLinks.js";
 
@@ -32,8 +41,8 @@ describe("useStandaloneBrowserLinks", () => {
     renderHook(() =>
       useStandaloneBrowserLinks({
         active: true,
-        onOpenInAppBrowser
-      })
+        onOpenInAppBrowser,
+      }),
     );
 
     act(() => openInBrowserPanel("https://cursor.com/dashboard/spending"));
@@ -47,8 +56,8 @@ describe("useStandaloneBrowserLinks", () => {
     renderHook(() =>
       useStandaloneBrowserLinks({
         active: false,
-        onOpenInAppBrowser
-      })
+        onOpenInAppBrowser,
+      }),
     );
 
     act(() => openInBrowserPanel("https://cursor.com/dashboard/spending"));
@@ -60,8 +69,9 @@ describe("useStandaloneBrowserLinks", () => {
     const onOpenInAppBrowser = vi.fn();
     window.localStorage.setItem(LINK_TARGET_KEY, "argmax");
     const { rerender } = renderHook(
-      ({ active }: { active: boolean }) => useStandaloneBrowserLinks({ active, onOpenInAppBrowser }),
-      { initialProps: { active: false } }
+      ({ active }: { active: boolean }) =>
+        useStandaloneBrowserLinks({ active, onOpenInAppBrowser }),
+      { initialProps: { active: false } },
     );
 
     act(() => openInBrowserPanel("https://cursor.com/dashboard/spending"));
@@ -77,8 +87,8 @@ describe("useStandaloneBrowserLinks", () => {
     renderHook(() =>
       useStandaloneBrowserLinks({
         active: true,
-        onOpenInAppBrowser
-      })
+        onOpenInAppBrowser,
+      }),
     );
 
     act(() => openInBrowserPanel("https://cursor.com/dashboard/spending"));

@@ -48,7 +48,7 @@ function connectedDevices() {
       // devicectl addresses devices by its own identifier, not the hardware UDID.
       udid: device.identifier,
       name: device.deviceProperties?.name ?? "unnamed",
-      model: device.hardwareProperties?.marketingName ?? ""
+      model: device.hardwareProperties?.marketingName ?? "",
     }))
     .filter((device) => device.udid);
 }
@@ -58,12 +58,18 @@ function resolveDevice() {
   const devices = connectedDevices();
   if (wanted) {
     const match = devices.find((device) => device.udid === wanted);
-    if (!match) throw new Error(`device ${wanted} is not connected. Connected: ${devices.map((d) => d.udid).join(", ") || "none"}`);
+    if (!match)
+      throw new Error(
+        `device ${wanted} is not connected. Connected: ${devices.map((d) => d.udid).join(", ") || "none"}`,
+      );
     return match;
   }
-  if (devices.length === 0) throw new Error("no iPhone connected. Plug it in, unlock it, and trust this Mac.");
+  if (devices.length === 0)
+    throw new Error("no iPhone connected. Plug it in, unlock it, and trust this Mac.");
   if (devices.length > 1) {
-    throw new Error(`${devices.length} devices connected; pass --device <udid>:\n${devices.map((d) => `  ${d.udid}  ${d.name}`).join("\n")}`);
+    throw new Error(
+      `${devices.length} devices connected; pass --device <udid>:\n${devices.map((d) => `  ${d.udid}  ${d.name}`).join("\n")}`,
+    );
   }
   return devices[0];
 }
@@ -71,10 +77,15 @@ function resolveDevice() {
 // Xcode's managed profiles carry the team, so a machine that has ever built
 // this app does not need the id spelled out again.
 function teamFromProvisioningProfiles() {
-  const profileDir = path.join(process.env.HOME ?? "", "Library/Developer/Xcode/UserData/Provisioning Profiles");
+  const profileDir = path.join(
+    process.env.HOME ?? "",
+    "Library/Developer/Xcode/UserData/Provisioning Profiles",
+  );
   let names;
   try {
-    names = run("ls", [profileDir]).split("\n").filter((name) => name.endsWith(".mobileprovision"));
+    names = run("ls", [profileDir])
+      .split("\n")
+      .filter((name) => name.endsWith(".mobileprovision"));
   } catch {
     return undefined;
   }
@@ -82,7 +93,9 @@ function teamFromProvisioningProfiles() {
   for (const name of names) {
     let plist;
     try {
-      plist = run("security", ["cms", "-D", "-i", path.join(profileDir, name)], { stdio: ["ignore", "pipe", "ignore"] });
+      plist = run("security", ["cms", "-D", "-i", path.join(profileDir, name)], {
+        stdio: ["ignore", "pipe", "ignore"],
+      });
     } catch {
       continue;
     }
@@ -96,20 +109,33 @@ function teamFromProvisioningProfiles() {
 function resolveTeam() {
   const team = flag("--team") ?? process.env.ARGMAX_IOS_TEAM ?? teamFromProvisioningProfiles();
   if (!team) {
-    throw new Error("no development team. Pass --team <id>, set ARGMAX_IOS_TEAM, or sign in and build once from Xcode.");
+    throw new Error(
+      "no development team. Pass --team <id>, set ARGMAX_IOS_TEAM, or sign in and build once from Xcode.",
+    );
   }
   return team;
 }
 
 function builtProductsDir(team) {
   const settings = JSON.parse(
-    run("xcodebuild", [
-      "-project", "Argmax.xcodeproj", "-scheme", "Argmax",
-      "-destination", "generic/platform=iOS", "-showBuildSettings", "-json",
-      `DEVELOPMENT_TEAM=${team}`
-    ], { cwd: projectDir, stdio: ["ignore", "pipe", "ignore"], maxBuffer: 32 * 1024 * 1024 })
+    run(
+      "xcodebuild",
+      [
+        "-project",
+        "Argmax.xcodeproj",
+        "-scheme",
+        "Argmax",
+        "-destination",
+        "generic/platform=iOS",
+        "-showBuildSettings",
+        "-json",
+        `DEVELOPMENT_TEAM=${team}`,
+      ],
+      { cwd: projectDir, stdio: ["ignore", "pipe", "ignore"], maxBuffer: 32 * 1024 * 1024 },
+    ),
   );
-  const dir = settings.find((entry) => entry.target === "Argmax")?.buildSettings?.BUILT_PRODUCTS_DIR;
+  const dir = settings.find((entry) => entry.target === "Argmax")?.buildSettings
+    ?.BUILT_PRODUCTS_DIR;
   if (!dir) throw new Error("xcodebuild did not report BUILT_PRODUCTS_DIR for the Argmax target");
   return dir;
 }
@@ -117,7 +143,11 @@ function builtProductsDir(team) {
 function main() {
   if (args.includes("--list")) {
     const devices = connectedDevices();
-    console.log(devices.length ? devices.map((d) => `${d.udid}  ${d.name} (${d.model})`).join("\n") : "no devices connected");
+    console.log(
+      devices.length
+        ? devices.map((d) => `${d.udid}  ${d.name} (${d.model})`).join("\n")
+        : "no devices connected",
+    );
     return;
   }
 
@@ -126,15 +156,28 @@ function main() {
   console.log(`→ ${device.name} (${device.model})  team ${team}`);
 
   run("xcodegen", [], { cwd: projectDir, stdio: "inherit" });
-  run("xcodebuild", [
-    "-project", "Argmax.xcodeproj", "-scheme", "Argmax",
-    "-destination", "generic/platform=iOS",
-    "-allowProvisioningUpdates", "-allowProvisioningDeviceRegistration",
-    `DEVELOPMENT_TEAM=${team}`, "-quiet", "build"
-  ], { cwd: projectDir, stdio: "inherit" });
+  run(
+    "xcodebuild",
+    [
+      "-project",
+      "Argmax.xcodeproj",
+      "-scheme",
+      "Argmax",
+      "-destination",
+      "generic/platform=iOS",
+      "-allowProvisioningUpdates",
+      "-allowProvisioningDeviceRegistration",
+      `DEVELOPMENT_TEAM=${team}`,
+      "-quiet",
+      "build",
+    ],
+    { cwd: projectDir, stdio: "inherit" },
+  );
 
   const app = path.join(builtProductsDir(team), "Argmax.app");
-  run("xcrun", ["devicectl", "device", "install", "app", "--device", device.udid, app], { stdio: "inherit" });
+  run("xcrun", ["devicectl", "device", "install", "app", "--device", device.udid, app], {
+    stdio: "inherit",
+  });
 
   if (args.includes("--no-launch")) {
     console.log("installed; not launching");
@@ -142,24 +185,50 @@ function main() {
   }
 
   const pairLink = flag("--pair");
-  const payload = pairLink ? ["--payload-url", `argmax://pair?url=${encodeURIComponent(pairLink)}`] : [];
-  run("xcrun", ["devicectl", "device", "process", "launch", "--terminate-existing", "--device", device.udid, ...payload, bundleId], {
-    stdio: "inherit"
-  });
+  const payload = pairLink
+    ? ["--payload-url", `argmax://pair?url=${encodeURIComponent(pairLink)}`]
+    : [];
+  run(
+    "xcrun",
+    [
+      "devicectl",
+      "device",
+      "process",
+      "launch",
+      "--terminate-existing",
+      "--device",
+      device.udid,
+      ...payload,
+      bundleId,
+    ],
+    {
+      stdio: "inherit",
+    },
+  );
 
   // There is no way to screenshot a physical device, so the answer to "did it
   // work?" comes from the host: the process list, and the bridge's clients.
-  const processes = run("xcrun", ["devicectl", "device", "info", "processes", "--device", device.udid], {
-    stdio: ["ignore", "pipe", "ignore"]
-  });
+  const processes = run(
+    "xcrun",
+    ["devicectl", "device", "info", "processes", "--device", device.udid],
+    {
+      stdio: ["ignore", "pipe", "ignore"],
+    },
+  );
   const running = processes.split("\n").some((line) => line.includes("Argmax.app/Argmax"));
   let clients = "";
   try {
-    clients = run("/bin/sh", ["-c", "lsof -nP -iTCP:8790 | grep -c ESTABLISHED"], { stdio: ["ignore", "pipe", "ignore"] }).trim();
+    clients = run("/bin/sh", ["-c", "lsof -nP -iTCP:8790 | grep -c ESTABLISHED"], {
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
   } catch {
     clients = "0";
   }
-  console.log(running ? `running on ${device.name}; ${clients} bridge client(s) on 8790` : "launched, but no Argmax process on the device");
+  console.log(
+    running
+      ? `running on ${device.name}; ${clients} bridge client(s) on 8790`
+      : "launched, but no Argmax process on the device",
+  );
   if (!running) process.exitCode = 1;
 }
 

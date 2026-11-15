@@ -1,0 +1,41 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "scripts/**/*.mjs",
+    "scripts/**/*.d.mts",
+    "src/shared/visualization/runtime.ts"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "scripts/**/*.mjs"
+  ],
+  "ignore": [
+    "src/shared/ipcSchemas.ts"
+  ],
+  "ignoreDependencies": [
+    "@fontsource/geist-sans",
+    "dependency-cruiser",
+    "lucide"
+  ],
+  "ignoreBinaries": [
+    "uv",
+    "swift",
+    "screencapture",
+    "sqlite3"
+  ],
+  "ignoreExportsUsedInFile": false,
+  "ignoreIssues": {
+    "src/shared/types.ts": [
+      "types"
+    ],
+    "src/shared/providerModels.ts": [
+      "exports"
+    ],
+    "src/test/appTestHarness.ts": [
+      "exports"
+    ],
+    "src/renderer/lib/layoutConstants.ts": [
+      "duplicates"
+    ]
+  }
+}

@@ -6,7 +6,7 @@ import {
   parseLogDump,
   splitConcatenatedLogRecords,
   splitLogSegments,
-  splitTrailingLogFields
+  splitTrailingLogFields,
 } from "./logDump.js";
 
 const FIRST =
@@ -35,7 +35,7 @@ describe("splitConcatenatedLogRecords", () => {
 describe("splitTrailingLogFields", () => {
   it("puts a trailing session_id on its own line", () => {
     expect(splitTrailingLogFields('invalid_refresh_token session_id="abc"')).toBe(
-      'invalid_refresh_token\nsession_id="abc"'
+      'invalid_refresh_token\nsession_id="abc"',
     );
   });
 });
@@ -61,7 +61,7 @@ describe("parseLogDump", () => {
     expect(records[0]).toMatchObject({
       timestamp: "2026-09-01T07:21:37.004170Z",
       level: "ERROR",
-      target: "codex_core::session"
+      target: "codex_core::session",
     });
     expect(records[0]?.message).toContain("stream disconnected");
     expect(records[0]?.message).toMatch(/\nsession_id=/);
@@ -69,7 +69,7 @@ describe("parseLogDump", () => {
 
   it("keeps a plain error sentence as one record", () => {
     expect(parseLogDump("Provider exited")).toEqual([
-      { timestamp: null, level: null, target: null, message: "Provider exited" }
+      { timestamp: null, level: null, target: null, message: "Provider exited" },
     ]);
   });
 });
@@ -81,8 +81,8 @@ describe("splitLogSegments", () => {
     expect(segments).toEqual([
       {
         kind: "markdown",
-        text: "After that PR-description correction, I would consider it ready for colleague review."
-      }
+        text: "After that PR-description correction, I would consider it ready for colleague review.",
+      },
     ]);
   });
 
@@ -102,7 +102,7 @@ describe("splitLogSegments", () => {
   it("strips Codex apply_patch router tracing out of a surrounding sentence", () => {
     const text = `The preregistration is written.\n${APPLY_PATCH}`;
     expect(splitLogSegments(text)).toEqual([
-      { kind: "markdown", text: "The preregistration is written." }
+      { kind: "markdown", text: "The preregistration is written." },
     ]);
   });
 
@@ -123,9 +123,9 @@ describe("splitLogSegments", () => {
 
 describe("logBlockLabel", () => {
   it("names an error-toned block Error even for a plain sentence", () => {
-    expect(logBlockLabel([{ timestamp: null, level: null, target: null, message: "boom" }], "error")).toBe(
-      "Error"
-    );
+    expect(
+      logBlockLabel([{ timestamp: null, level: null, target: null, message: "boom" }], "error"),
+    ).toBe("Error");
   });
 
   it("names a dump from its highest level", () => {
@@ -140,8 +140,8 @@ describe("isNoisyProviderTracing", () => {
     expect(
       isNoisyProviderTracing(
         "codex_core::util",
-        "Custom tool call output is missing for call id: call_BGd71K6CkePKfLZku6sYyP7q"
-      )
+        "Custom tool call output is missing for call id: call_BGd71K6CkePKfLZku6sYyP7q",
+      ),
     ).toBe(true);
     expect(isNoisyProviderTracing("codex_core::session", "stream disconnected")).toBe(false);
     expect(isNoisyProviderTracing("codex_core::util", "something else broke")).toBe(false);
@@ -152,7 +152,7 @@ describe("matchTracingRecord", () => {
   it("parses a tracing prefix and leaves ordinary text alone", () => {
     expect(matchTracingRecord(CORE)).toMatchObject({
       level: "ERROR",
-      target: "codex_core::session"
+      target: "codex_core::session",
     });
     expect(matchTracingRecord("point = points[tau]")).toBeNull();
     expect(matchTracingRecord("The deploy at 2026-09-01T07:21:37.004170Z failed.")).toBeNull();

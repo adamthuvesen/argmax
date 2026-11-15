@@ -257,13 +257,13 @@ command_catalogue! {
     "providers:launch" => providers::providers_launch, control,
     |state, input, default_agent, channel| {
             let input: ProvidersLaunchInput = parse(channel, input)?;
-            encode(providers::providers_launch_impl(state, input, &default_agent).await?)
+            encode(providers::providers_launch_impl(state, input, &default_agent, None).await?)
         };
 
     "providers:send-input" => providers::providers_send_input, control,
     |state, input, default_agent, channel| {
             let input: ProvidersSendInput = parse(channel, input)?;
-            encode(providers::providers_send_input_impl(state, input).await?)
+            encode(providers::providers_send_input_impl(state, input, None).await?)
         };
 
     "providers:steer-input" => providers::providers_steer_input, control,
@@ -428,6 +428,15 @@ command_catalogue! {
             encode(session::session_clear_impl(state, input).await?)
         };
 
+    "session:turn-painted" => turn_waterfalls::session_turn_painted, desktop,
+    |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
+
+    "session:turn-waterfalls" => turn_waterfalls::session_turn_waterfalls, read,
+    |state, input, default_agent, channel| {
+            let input: turn_waterfalls::SessionTurnWaterfallsInput = parse(channel, input)?;
+            encode(turn_waterfalls::session_turn_waterfalls_impl(state, input).await?)
+        };
+
     "session:suggest-follow-up" => session::session_suggest_follow_up, control,
     |state, input, default_agent, channel| {
             let input: SessionSuggestFollowUpInput = parse(channel, input)?;
@@ -438,6 +447,15 @@ command_catalogue! {
     |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
 
     "settings:set-browser-tools" => settings::settings_set_browser_tools, desktop,
+    |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
+
+    "settings:claude-mcp" => settings::settings_claude_mcp, desktop,
+    |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
+
+    "settings:set-claude-mcp" => settings::settings_set_claude_mcp, desktop,
+    |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
+
+    "settings:claude-mcp-probe" => settings::settings_claude_mcp_probe, desktop,
     |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
 
     "settings:routing" => settings::settings_routing, read,
@@ -552,7 +570,7 @@ command_catalogue! {
             let input: crate::goals::service::GoalSessionInput = parse(channel, input)?;
             let service = goals::live_goals(state)?;
             encode(
-                crate::ipc::read_off_main(move || service.get_for_session(&input.session_id))
+                crate::state::read_off_main(move || service.get_for_session(&input.session_id))
                     .await?,
             )
         };
@@ -562,7 +580,7 @@ command_catalogue! {
             let input: crate::goals::service::GoalListInput = parse(channel, input)?;
             let service = goals::live_goals(state)?;
             encode(
-                crate::ipc::read_off_main(move || service.list(input.workspace_id.as_deref()))
+                crate::state::read_off_main(move || service.list(input.workspace_id.as_deref()))
                     .await?,
             )
         };

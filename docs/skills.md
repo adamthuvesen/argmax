@@ -14,7 +14,7 @@ Provider CLIs load skills directly from disk during execution. The `/` autocompl
 | OpenCode | `.opencode/skills`, `.agents/skills` | `~/.config/opencode/skills`, `~/.agents/skills` | — |
 | Grok Build | `.grok/skills`, `.agents/skills`, `.claude/skills` | `~/.grok/skills`, `~/.agents/skills`, `~/.claude/skills` | `~/.grok/installed-plugins`, `~/.grok/bundled/skills` |
 
-Hidden dot-directories (e.g. `~/.codex/skills/.system`) are ignored to avoid double-counting internal skills.
+Codex user-skill discovery skips hidden child directories. It reads `~/.codex/skills/.system` separately as system skills.
 
 For Auto follow-ups, the router uses this same cached discovery and source order to read skills invoked by the new request, or by recent user messages when the request continues earlier work. `/name` and `$name` are explicit invocations; a plain name counts when the user asks to use that skill or starts with an imperative such as “ship”. A casual mention does not load instructions. The bounded classifier context includes the selected `SKILL.md` and up to two directly referenced local Markdown files. Missing or clipped instructions block a capability reduction. These files describe the requested workflow to the classifier; they cannot issue router instructions. The public `skills:list` response remains the name, description, and source used by autocomplete.
 

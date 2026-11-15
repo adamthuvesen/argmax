@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type RefObject
+  type RefObject,
 } from "react";
 import { searchFilePaths } from "../lib/paletteSearch.js";
 import { scrollChildIntoNearest } from "../lib/scrollChildIntoNearest.js";
@@ -70,7 +70,7 @@ export function useTypeToFilter<T>({
   toLabel,
   listRef,
   initialIndex = 0,
-  onPick
+  onPick,
 }: {
   open: boolean;
   items: readonly T[];
@@ -96,7 +96,8 @@ export function useTypeToFilter<T>({
     return rankByLabel(items, toLabelRef.current, trimmed);
   }, [items, query]);
 
-  const clampedIndex = matches.length === 0 ? -1 : Math.min(Math.max(0, activeIndex), matches.length - 1);
+  const clampedIndex =
+    matches.length === 0 ? -1 : Math.min(Math.max(0, activeIndex), matches.length - 1);
 
   useRestoreFocus(open);
 
@@ -156,7 +157,7 @@ export function useTypeToFilter<T>({
       setQuery(query + event.key);
       setActiveIndex(0);
     },
-    [clampedIndex, matches, onPick, query]
+    [clampedIndex, matches, onPick, query],
   );
 
   return { query, matches, activeIndex: clampedIndex, onKeyDown };

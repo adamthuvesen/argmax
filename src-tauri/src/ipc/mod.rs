@@ -1,14 +1,10 @@
-use std::sync::Arc;
-
 use tauri_specta::{collect_commands, Builder as SpectaBuilder};
 
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::Database;
 use crate::state::AppState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 pub mod events;
 pub mod inputs;
-pub mod validation;
 
 pub mod activity;
 pub mod approvals;
@@ -40,6 +36,7 @@ pub mod sources;
 pub mod sync;
 pub mod system;
 pub mod terminal;
+pub mod turn_waterfalls;
 pub mod usage;
 pub mod visualizations;
 pub mod window_snapshot;
@@ -47,13 +44,10 @@ pub mod windows;
 pub mod workspace_files;
 pub mod workspaces;
 
-/// Proof that the text came from the person's own composer over IPC (the
-/// desktop webview or the paired remote device). Only `crate::ipc` can build
-/// one, and only the handlers that take fresh person input do.
-pub struct PersonAttestation(());
+use argmax_store::authorship::PersonAttestation;
 
 pub(in crate::ipc) fn attest_person() -> PersonAttestation {
-    PersonAttestation(())
+    PersonAttestation::minted_by_ipc()
 }
 
 /// For tests that stand in for a person IPC call. Production code must not
@@ -61,42 +55,13 @@ pub(in crate::ipc) fn attest_person() -> PersonAttestation {
 /// scans the source for every call site.
 #[doc(hidden)]
 pub fn attest_person_for_tests() -> PersonAttestation {
-    PersonAttestation(())
+    PersonAttestation::minted_by_ipc()
 }
 
+pub mod bindings_export;
 pub mod catalogue;
-pub use catalogue::{specta_builder, REGISTERED_CHANNELS};
 
-/// Run a blocking database read off the macOS main thread.
-///
-/// Tauri resolves a sync `#[tauri::command]` body inline on the main thread, so
-/// a 24 ms dashboard read is 24 ms the window cannot draw or handle input. The
-/// `async` flag is not the fix — it is `tokio::spawn`, which parks a shared
-/// worker that provider IO and the `dashboard:delta` emit loop also need.
-/// `spawn_blocking` uses the pool sized for exactly this.
-pub(crate) async fn read_off_main<T, F>(read: F) -> ArgmaxResult<T>
-where
-    F: FnOnce() -> ArgmaxResult<T> + Send + 'static,
-    T: Send + 'static,
-{
-    tauri::async_runtime::spawn_blocking(read)
-        .await
-        .map_err(|error| ArgmaxError::service("DATABASE_READ_JOIN", error.to_string()))?
-}
-
-pub(crate) fn live_database(state: &AppState) -> ArgmaxResult<Arc<Database>> {
-    state.db.get().cloned().ok_or_else(|| {
-        // A recorded open failure is the whole story; without one, boot is
-        // simply still in flight.
-        match state.db_open_error.get() {
-            Some(reason) => ArgmaxError::service("DATABASE_NOT_READY", reason),
-            None => ArgmaxError::service(
-                "DATABASE_NOT_READY",
-                "database is not initialized (startup may still be in progress)",
-            ),
-        }
-    })
-}
+use crate::state::{live_database, read_off_main};
 
 /// Tell subscribers to reload the dashboard snapshot after an Arc changes.
 /// Missing provider service is a no-op: boot has not finished installing
@@ -113,14 +78,31 @@ pub(crate) fn publish_pr_workspaces_for_session(
     state: &AppState,
     session_id: &str,
 ) -> ArgmaxResult<()> {
+    publish_changed_pr_workspaces_for_session(state, session_id, None)
+}
+
+/// Publishes the workspaces a PR change for `session_id` reaches. With
+/// `before`, a workspace equal to its row in `before` is left out, and nothing
+/// is published when none moved.
+pub(crate) fn publish_changed_pr_workspaces_for_session(
+    state: &AppState,
+    session_id: &str,
+    before: Option<&[argmax_store::workspaces::WorkspaceSummary]>,
+) -> ArgmaxResult<()> {
     let Some(workspaces) = state.workspaces.get().cloned() else {
         return Ok(());
     };
-    let affected = {
+    let mut affected = {
         let database = live_database(state)?;
         let conn = database.connection();
-        crate::gh::workspaces_for_pr_refresh(&conn, session_id)?
+        argmax_store::workspaces::workspaces_for_pr_refresh(&conn, session_id)?
     };
+    if let Some(before) = before {
+        affected.retain(|workspace| !before.contains(workspace));
+        if affected.is_empty() {
+            return Ok(());
+        }
+    }
     workspaces.publish_workspaces(affected);
     Ok(())
 }
@@ -157,6 +139,10 @@ mod tests {
             if relative == "ipc/mod.rs" {
                 continue;
             }
+            assert!(
+                !text.contains("minted_by_ipc"),
+                "{relative} calls the store's raw mint; only ipc/mod.rs may"
+            );
             // The test minter appears only inside unit-test code.
             if text.contains("attest_person_for_tests") {
                 test_minters.push(relative.clone());

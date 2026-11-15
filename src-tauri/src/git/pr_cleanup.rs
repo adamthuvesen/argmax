@@ -14,16 +14,16 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::gh::service::{gh_working_directory, GhService};
-use crate::git::exec::{
+use crate::git::ops::{checkout_write_lock, resolve_project_remote};
+use crate::workspaces::orchestration::comparable_worktree_path;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::git_exec::{
     reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes, GIT_DEFAULT_TIMEOUT,
 };
-use crate::git::ops::{checkout_write_lock, resolve_project_remote};
-use crate::persistence::database::Database;
-use crate::persistence::sessions::find_session_by_id;
-use crate::persistence::workspaces::find_workspace_by_id;
-use crate::workspaces::orchestration::comparable_worktree_path;
+use argmax_store::database::Database;
+use argmax_store::sessions::find_session_by_id;
+use argmax_store::workspaces::find_workspace_by_id;
 
 /// `ls-remote`, `push`, and `pull` talk to the network.
 const GIT_NETWORK_TIMEOUT: Duration = Duration::from_secs(120);
@@ -83,10 +83,10 @@ pub async fn cleanup_merged_pr(
         let connection = database.read_connection();
         let session = find_session_by_id(&connection, session_id)?;
         let workspace = find_workspace_by_id(&connection, &session.workspace_id)?;
-        if workspace.project_id == crate::workspaces::SCRATCH_PROJECT_ID {
+        if workspace.project_id == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
             return Err(ArgmaxError::service(
                 "PROJECT_NOT_ALLOWED",
-                "A side chat has no repository, so it has no pull request to clean up.",
+                "This chat has no repository, so it has no pull request to clean up.",
             ));
         }
         let cwd = gh_working_directory(&connection, &workspace)?;
@@ -391,20 +391,7 @@ fn same_checkout(left: &Path, right: &Path) -> bool {
 /// only skips the step.
 fn checkout_is_busy(database: &Database, checkout: &Path) -> bool {
     let connection = database.read_connection();
-    let paths: ArgmaxResult<Vec<String>> = (|| {
-        let mut statement = connection
-            .prepare(
-                "SELECT DISTINCT w.path FROM sessions s JOIN workspaces w ON w.id = s.workspace_id
-                 WHERE s.state IN ('running', 'waiting', 'blocked') AND w.path != ''",
-            )
-            .map_err(crate::persistence::sqlite_error)?;
-        let rows = statement
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(crate::persistence::sqlite_error)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(crate::persistence::sqlite_error)?;
-        Ok(rows)
-    })();
+    let paths = argmax_store::workspaces::checkouts_with_live_turn(&connection);
     match paths {
         Ok(paths) => paths
             .iter()
@@ -640,13 +627,13 @@ pub(crate) mod test_repo {
 
     use tempfile::TempDir;
 
-    use crate::git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
-    use crate::persistence::database::Database;
-    use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
-    use crate::persistence::sessions::{persist_session, PersistSessionInput};
-    use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
-    use crate::sessions::state::SessionState;
     use crate::util::gh_runner::GhRunner;
+    use argmax_contracts::sessions::state::SessionState;
+    use argmax_process::git_exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
+    use argmax_store::database::Database;
+    use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
+    use argmax_store::sessions::{persist_session, PersistSessionInput};
+    use argmax_store::workspaces::{persist_workspace, PersistWorkspaceInput};
 
     pub const BRANCH: &str = "fix-parser";
 
@@ -845,7 +832,7 @@ pub(crate) mod test_repo {
 mod tests {
     use super::test_repo::*;
     use super::*;
-    use crate::sessions::state::SessionState;
+    use argmax_contracts::sessions::state::SessionState;
     use tempfile::TempDir;
 
     struct Run {

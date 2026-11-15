@@ -6,7 +6,7 @@ import {
   size,
   useFloating,
   type Placement,
-  type VirtualElement
+  type VirtualElement,
 } from "@floating-ui/react-dom";
 import { useCallback, useMemo, useRef, type CSSProperties, type RefObject } from "react";
 
@@ -114,8 +114,10 @@ function popoverTransformOrigin(placement: Placement): string {
   const [side, alignment = "center"] = placement.split("-");
   const blockOrigin = side === "top" ? "bottom" : side === "bottom" ? "top" : "center";
   const inlineOrigin = alignment === "start" ? "left" : alignment === "end" ? "right" : "center";
-  if (side === "left") return `${alignment === "start" ? "top" : alignment === "end" ? "bottom" : "center"} right`;
-  if (side === "right") return `${alignment === "start" ? "top" : alignment === "end" ? "bottom" : "center"} left`;
+  if (side === "left")
+    return `${alignment === "start" ? "top" : alignment === "end" ? "bottom" : "center"} right`;
+  if (side === "right")
+    return `${alignment === "start" ? "top" : alignment === "end" ? "bottom" : "center"} left`;
   return `${blockOrigin} ${inlineOrigin}`;
 }
 
@@ -130,8 +132,8 @@ function pointReference({ x, y }: AnchorPoint): VirtualElement {
       top: y,
       left: x,
       right: x,
-      bottom: y
-    })
+      bottom: y,
+    }),
   };
 }
 
@@ -143,7 +145,7 @@ export function useAnchoredPopover({
   edgePadding = 8,
   capHeight = false,
   maxHeight,
-  strategy = "fixed"
+  strategy = "fixed",
 }: AnchoredPopoverOptions): AnchoredPopover {
   const middleware = useMemo(
     () => [
@@ -156,24 +158,24 @@ export function useAnchoredPopover({
               padding: edgePadding,
               apply({ availableHeight, elements }) {
                 elements.floating.style.maxHeight = `${cappedPopoverMaxHeight(availableHeight, maxHeight)}px`;
-              }
-            })
+              },
+            }),
           ]
-        : [])
+        : []),
     ],
-    [gutter, edgePadding, capHeight, maxHeight, flip]
+    [gutter, edgePadding, capHeight, maxHeight, flip],
   );
 
   const {
     refs,
     floatingStyles: anchoredStyles,
-    placement: resolvedPlacement
+    placement: resolvedPlacement,
   } = useFloating({
     open,
     placement,
     strategy,
     middleware,
-    whileElementsMounted: autoUpdate
+    whileElementsMounted: autoUpdate,
   });
 
   // Floating UI's own reference ref holds a virtual element for point anchors,
@@ -184,14 +186,14 @@ export function useAnchoredPopover({
       anchorRef.current = node;
       refs.setReference(node);
     },
-    [refs]
+    [refs],
   );
 
   const anchorToPoint = useCallback(
     (point: AnchorPoint | null): void => {
       refs.setReference(point ? pointReference(point) : null);
     },
-    [refs]
+    [refs],
   );
 
   // Floating UI positions from `top`/`left` only. The popover stylesheets still
@@ -206,9 +208,9 @@ export function useAnchoredPopover({
         ...anchoredStyles,
         right: "auto",
         bottom: "auto",
-        "--popover-transform-origin": popoverTransformOrigin(resolvedPlacement)
+        "--popover-transform-origin": popoverTransformOrigin(resolvedPlacement),
       }) as CSSProperties,
-    [anchoredStyles, resolvedPlacement]
+    [anchoredStyles, resolvedPlacement],
   );
 
   return {
@@ -218,6 +220,6 @@ export function useAnchoredPopover({
     popoverRef: refs.floating,
     floatingStyles,
     placement: resolvedPlacement,
-    anchorToPoint
+    anchorToPoint,
   };
 }

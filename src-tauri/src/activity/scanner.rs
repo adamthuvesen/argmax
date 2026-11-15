@@ -15,12 +15,12 @@ use futures_util::stream::{self, StreamExt};
 
 use crate::activity::git_log::{self, LOG_FORMAT};
 use crate::activity::LEDGER_MONTHS;
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::activity::{self as storage, CommitRow};
-use crate::persistence::projects;
-use crate::persistence::time::now_iso;
-use crate::persistence::Database;
-use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::activity::{self as storage, CommitRow};
+use argmax_store::projects;
+use argmax_store::sync::LockOrRecover;
+use argmax_store::time::now_iso;
+use argmax_store::Database;
 
 /// Bumping this empties `activity_commits` and rescans, the same contract the
 /// Usage scanner's parser version has.
@@ -241,13 +241,13 @@ impl ActivityScanner {
         runtime.block_on(async {
             let args = &args;
             let mut results = stream::iter(projects.iter().map(|project| async move {
-                let outcome = crate::git::exec::run_git_text_with_options(
+                let outcome = argmax_process::git_exec::run_git_text_with_options(
                     project.repo_path.as_str(),
                     args,
-                    crate::git::exec::GitExecOptions {
+                    argmax_process::git_exec::GitExecOptions {
                         timeout: LOG_TIMEOUT,
                         stdout_cap_bytes: LOG_STDOUT_CAP_BYTES,
-                        ..crate::git::exec::GitExecOptions::default()
+                        ..argmax_process::git_exec::GitExecOptions::default()
                     },
                 )
                 .await
@@ -420,7 +420,7 @@ async fn git_config_email(anchor: &str, global: bool) -> Option<String> {
     if global {
         args.push("--global".to_string());
     }
-    let output = crate::git::exec::run_git_text(anchor, &args, CONFIG_TIMEOUT)
+    let output = argmax_process::git_exec::run_git_text(anchor, &args, CONFIG_TIMEOUT)
         .await
         .ok()?;
     let email = output.trim().to_string();

@@ -1,4 +1,5 @@
 import { FileIcon, FolderIcon } from "@react-symbols/icons/utils";
+import { systemActions } from "../data/bridgeActions.js";
 import { ChevronRight, ChevronsDownUp, ExternalLink, FolderOpen, RotateCw } from "lucide-react";
 import {
   useCallback,
@@ -9,7 +10,7 @@ import {
   type CSSProperties,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { errorMessage } from "../../shared/error.js";
@@ -18,7 +19,6 @@ import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopove
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { buildFileTree, type TreeNode } from "../lib/fileTree.js";
 import { readStoredDefaultIde } from "../lib/ide.js";
-import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { showErrorToast } from "../state/toast.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 import { LoadingLine } from "./LoadingLine.js";
@@ -50,7 +50,12 @@ const STICKY_MAX_ROWS = 4;
 
 /** IDEs that can open a single file. Terminal and iTerm are not among them:
  *  `open -a Terminal <file>` runs the file as a script. */
-const FILE_EDITOR_IDS: ReadonlySet<IdeId> = new Set<IdeId & OpenFileApp>(["vscode", "cursor", "windsurf", "zed"]);
+const FILE_EDITOR_IDS: ReadonlySet<IdeId> = new Set<IdeId & OpenFileApp>([
+  "vscode",
+  "cursor",
+  "windsurf",
+  "zed",
+]);
 
 function isFileEditor(ide: DetectedIde): ide is DetectedIde & { id: IdeId & OpenFileApp } {
   return FILE_EDITOR_IDS.has(ide.id);
@@ -58,10 +63,15 @@ function isFileEditor(ide: DetectedIde): ide is DetectedIde & { id: IdeId & Open
 
 /** Same rule as the sidebar's "Open in IDE": the default IDE from Settings,
  *  else the only editor installed. */
-function editorForFiles(detected: DetectedIde[]): (DetectedIde & { id: IdeId & OpenFileApp }) | null {
+function editorForFiles(
+  detected: DetectedIde[],
+): (DetectedIde & { id: IdeId & OpenFileApp }) | null {
   const editors = detected.filter(isFileEditor);
   const preferred = readStoredDefaultIde();
-  return editors.find((ide) => ide.id === preferred) ?? (editors.length === 1 ? (editors[0] ?? null) : null);
+  return (
+    editors.find((ide) => ide.id === preferred) ??
+    (editors.length === 1 ? (editors[0] ?? null) : null)
+  );
 }
 
 function flattenVisible(root: TreeNode, expanded: Set<string>): VisibleRow[] {
@@ -111,7 +121,7 @@ function subtreeEndIndex(rows: VisibleRow[], index: number): number {
  */
 function stickyBlockFor(
   rows: VisibleRow[],
-  scrollTop: number
+  scrollTop: number,
 ): { indexes: number[]; offset: number } {
   if (rows.length === 0) return { indexes: [], offset: 0 };
   const topIndex = Math.min(rows.length - 1, Math.max(0, Math.floor(scrollTop / ROW_HEIGHT)));
@@ -132,7 +142,7 @@ function stickyBlockFor(
 export function WorkspaceTree({
   state,
   height,
-  toolbar
+  toolbar,
 }: {
   state: WorkspaceFilesState;
   height?: number;
@@ -178,7 +188,7 @@ export function WorkspaceTree({
       observer.observe(node);
       resizeObserverRef.current = observer;
     },
-    [ownsHeight]
+    [ownsHeight],
   );
 
   const collapseAll = useCallback((): void => {
@@ -218,9 +228,8 @@ export function WorkspaceTree({
   useEffect(() => () => resizeObserverRef.current?.disconnect(), []);
 
   // Right-click on a row: reveal it in Finder or open it in the default IDE.
-  // Desktop only — over the remote bridge the host's Finder is out of reach.
   const rootPath = state.rootPath;
-  const canOpenExternally = rootPath !== null && !isRemoteBridge();
+  const canOpenExternally = rootPath !== null;
   const [rowMenu, setRowMenu] = useState<{ path: string; point: AnchorPoint } | null>(null);
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[] | null>(null);
   const rowMenuPopover = useAnchoredPopover({ open: rowMenu !== null, gutter: 0, capHeight: true });
@@ -230,28 +239,35 @@ export function WorkspaceTree({
 
   useEffect(() => {
     anchorRowMenu(rowMenu?.point ?? null);
-    if (rowMenu) rowMenuRef.current?.querySelector<HTMLButtonElement>("[role=menuitem]:not(:disabled)")?.focus();
+    if (rowMenu)
+      rowMenuRef.current
+        ?.querySelector<HTMLButtonElement>("[role=menuitem]:not(:disabled)")
+        ?.focus();
   }, [anchorRowMenu, rowMenu, rowMenuRef]);
 
   const openRowMenu = useCallback(
     (path: string, point: AnchorPoint): void => {
       setRowMenu({ path, point });
-      if (detectedIdes !== null || !window.argmax) return;
-      window.argmax.system
+      const system = systemActions();
+      if (detectedIdes !== null || !system) return;
+      system
         .listDetectedIdes()
         .then(setDetectedIdes)
         .catch(() => setDetectedIdes([]));
     },
-    [detectedIdes]
+    [detectedIdes],
   );
 
   const openRowIn = (app: OpenFileApp, appLabel: string): void => {
     const menu = rowMenu;
     closeRowMenu();
-    if (!menu || rootPath === null || !window.argmax) return;
-    window.argmax.system
+    const system = systemActions();
+    if (!menu || rootPath === null || !system) return;
+    system
       .openFileIn({ path: menu.path, cwd: rootPath, app })
-      .catch((error: unknown) => showErrorToast(`Couldn't open in ${appLabel}. ${errorMessage(error)}`));
+      .catch((error: unknown) =>
+        showErrorToast(`Couldn't open in ${appLabel}. ${errorMessage(error)}`),
+      );
   };
 
   const effectiveHeight = ownsHeight ? height : measuredHeight;
@@ -271,7 +287,7 @@ export function WorkspaceTree({
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN_ROWS);
   const endIndex = Math.min(
     visibleRows.length,
-    Math.ceil((scrollTop + effectiveHeight) / ROW_HEIGHT) + OVERSCAN_ROWS
+    Math.ceil((scrollTop + effectiveHeight) / ROW_HEIGHT) + OVERSCAN_ROWS,
   );
   const visibleSlice = visibleRows.slice(startIndex, endIndex);
   const topPad = startIndex * ROW_HEIGHT;
@@ -363,7 +379,7 @@ export function WorkspaceTree({
               </button>
             </li>
           </ul>,
-          document.body
+          document.body,
         )
       : null;
   const onRowContextMenu = canOpenExternally ? openRowMenu : undefined;
@@ -400,25 +416,37 @@ export function WorkspaceTree({
 
   if (state.listState === "loading") {
     return withToolbar(
-      <div className="workspace-tree workspace-tree-empty" style={bodyStyle} aria-label="Workspace files">
+      <div
+        className="workspace-tree workspace-tree-empty"
+        style={bodyStyle}
+        aria-label="Workspace files"
+      >
         <LoadingLine label="Loading files…" />
-      </div>
+      </div>,
     );
   }
 
   if (state.listState === "error") {
     return withToolbar(
-      <div className="workspace-tree workspace-tree-empty" style={bodyStyle} aria-label="Workspace files">
+      <div
+        className="workspace-tree workspace-tree-empty"
+        style={bodyStyle}
+        aria-label="Workspace files"
+      >
         <p className="review-empty review-error">{state.listError}</p>
-      </div>
+      </div>,
     );
   }
 
   if (state.listState === "ready" && state.entries.length === 0) {
     return withToolbar(
-      <div className="workspace-tree workspace-tree-empty" style={bodyStyle} aria-label="Workspace files">
+      <div
+        className="workspace-tree workspace-tree-empty"
+        style={bodyStyle}
+        aria-label="Workspace files"
+      >
         <p className="review-empty">No files in this workspace.</p>
-      </div>
+      </div>,
     );
   }
 
@@ -438,6 +466,7 @@ export function WorkspaceTree({
           // the fold-from-here affordance.
           <div
             className="workspace-tree-sticky"
+            data-testid="workspace-tree-sticky"
             style={{ top: scrollTop + sticky.offset }}
             aria-hidden="true"
           >
@@ -476,7 +505,7 @@ export function WorkspaceTree({
         <div style={{ height: bottomPad }} aria-hidden="true" />
       </div>
       {rowMenuElement}
-    </div>
+    </div>,
   );
 }
 
@@ -488,7 +517,7 @@ function TreeRow({
   onToggle,
   onSelect,
   onContextMenu,
-  pinned = false
+  pinned = false,
 }: {
   node: TreeNode;
   depth: number;
@@ -503,7 +532,7 @@ function TreeRow({
   const isOpen = expanded.has(node.path);
   const indent: CSSProperties = {
     paddingLeft: INDENT_BASE + depth * INDENT_STEP,
-    height: ROW_HEIGHT
+    height: ROW_HEIGHT,
   };
   const menuHandlers = onContextMenu
     ? {
@@ -516,7 +545,7 @@ function TreeRow({
           event.preventDefault();
           const rect = event.currentTarget.getBoundingClientRect();
           onContextMenu(node.path, { x: rect.left, y: rect.bottom });
-        }
+        },
       }
     : undefined;
   if (node.kind === "dir") {
@@ -533,10 +562,16 @@ function TreeRow({
         {...menuHandlers}
       >
         <ChevronRight size={12} className={`workspace-tree-chevron${isOpen ? " expanded" : ""}`} />
-        <span className="workspace-tree-icon" title={`Folder icon for ${node.name}`} aria-hidden="true">
+        <span
+          className="workspace-tree-icon"
+          title={`Folder icon for ${node.name}`}
+          aria-hidden="true"
+        >
           <FolderIcon folderName={node.name} width={14} height={14} />
         </span>
-        <span className="workspace-tree-label">{node.name}</span>
+        <span className="workspace-tree-label" data-testid="workspace-tree-label">
+          {node.name}
+        </span>
       </button>
     );
   }
@@ -564,7 +599,9 @@ function TreeRow({
           height={14}
         />
       </span>
-      <span className="workspace-tree-label">{node.name}</span>
+      <span className="workspace-tree-label" data-testid="workspace-tree-label">
+        {node.name}
+      </span>
     </button>
   );
 }

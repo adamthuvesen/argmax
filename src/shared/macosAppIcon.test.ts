@@ -2,11 +2,14 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const icnsPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../src-tauri/icons/icon.icns");
+const icnsPath = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../src-tauri/icons/icon.icns",
+);
 
 function parseIcns(icns: Buffer) {
   const chunks: { type: string; data: Buffer }[] = [];
-  for (let offset = 8; offset < icns.length; ) {
+  for (let offset = 8; offset < icns.length;) {
     const type = icns.subarray(offset, offset + 4).toString("ascii");
     const length = icns.readUInt32BE(offset + 4);
     chunks.push({ type, data: icns.subarray(offset, offset + length) });

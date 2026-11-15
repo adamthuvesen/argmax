@@ -31,8 +31,8 @@ use tauri::{AppHandle, Manager, Webview};
 use super::frames::{self, EvalFailure};
 use super::registry::BrowserTabInfo;
 use super::{eval, snapshot_image, CaptureRect};
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 const AGENT_API_VERSION: u32 = 5;
 const SNAPSHOT_JS: &str = include_str!("snapshot.js");
@@ -356,7 +356,7 @@ pub fn resolve_tab(app: &AppHandle, target: &TabTarget) -> ArgmaxResult<String> 
 }
 
 fn webview(app: &AppHandle, tab_id: &str) -> ArgmaxResult<Webview> {
-    crate::ipc::browser::browser_webview(app, tab_id)
+    crate::browser::tabs::browser_webview(app, tab_id)
 }
 
 /// Where in a tab a script runs: the main frame (`None`) or one iframe.
@@ -785,11 +785,11 @@ pub fn open_with_options(
 ) -> ArgmaxResult<String> {
     let tabs = registry(app);
     let tab_id = tabs.allocate_tab_id();
-    crate::ipc::browser::open_tab(
+    crate::browser::tabs::open_tab(
         app,
         &tab_id,
         url,
-        crate::ipc::browser::hidden_tab_bounds(app),
+        crate::browser::tabs::hidden_tab_bounds(app),
         false,
         session_id.map(str::to_string),
         None,
@@ -799,7 +799,7 @@ pub fn open_with_options(
     }
     if activate {
         if let Some(session_id) = session_id {
-            crate::ipc::browser::emit_agent_open(app, session_id, &tab_id, url);
+            crate::browser::tabs::emit_agent_open(app, session_id, &tab_id, url);
         }
     }
     Ok(tab_id)
@@ -815,7 +815,7 @@ pub fn tabs(app: &AppHandle, session_id: Option<&str>) -> Vec<BrowserTabInfo> {
 
 pub fn navigate(app: &AppHandle, target: &TabTarget, url: &str) -> ArgmaxResult<String> {
     let tab_id = resolve_tab(app, target)?;
-    crate::ipc::browser::navigate_tab(app, &tab_id, url)?;
+    crate::browser::tabs::navigate_tab(app, &tab_id, url)?;
     Ok(tab_id)
 }
 
@@ -837,7 +837,7 @@ pub fn reload(app: &AppHandle, target: &TabTarget) -> ArgmaxResult<String> {
 
 pub fn close(app: &AppHandle, target: &TabTarget) -> ArgmaxResult<String> {
     let tab_id = resolve_tab(app, target)?;
-    crate::ipc::browser::close_tab(app, &tab_id)?;
+    crate::browser::tabs::close_tab(app, &tab_id)?;
     Ok(tab_id)
 }
 
@@ -849,7 +849,7 @@ pub fn activate(app: &AppHandle, session_id: &str, target: &TabTarget) -> Argmax
             format!("browser tab {tab_id} is not open"),
         )
     })?;
-    crate::ipc::browser::emit_agent_open(app, session_id, &tab_id, &tab.url);
+    crate::browser::tabs::emit_agent_open(app, session_id, &tab_id, &tab.url);
     Ok(tab_id)
 }
 

@@ -19,20 +19,21 @@ use uuid::Uuid;
 
 use super::acp::{AcpClient, AcpPermissionDecision, AcpPermissionHandler, AcpPermissionRequest};
 use super::adapters::grok_launch_model_id;
-use super::environment::build_provider_environment;
 use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-#[cfg(test)]
-use super::AgentMode;
-use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort};
+use super::{mcp_injection, prompt_gate::PromptGate, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::time::now_iso;
 use crate::session_control::SessionLaunchProcessConfig;
 use crate::usage::grok::billed_models;
-use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+#[cfg(test)]
+use argmax_contracts::validation::AgentMode;
+use argmax_contracts::validation::{PermissionMode, ProviderId, ReasoningEffort};
+use argmax_process::environment::build_provider_environment;
+use argmax_store::sync::LockOrRecover;
+use argmax_store::time::now_iso;
 
 const CANCEL_WAIT: Duration = Duration::from_secs(5);
 
@@ -109,6 +110,7 @@ impl GrokAcpSessions {
         session_launch: Option<&SessionLaunchProcessConfig>,
         approvals: Option<Arc<ApprovalService>>,
         on_event: EventCallback,
+        prompt_gate: &PromptGate,
     ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
         let workspace = self.workspace_client(binary_path, input).await?;
         let _boot = workspace.boot.lock().await;
@@ -201,6 +203,9 @@ impl GrokAcpSessions {
             .insert(acp_session_id.clone());
 
         select_grok_model(&workspace.client, &acp_session_id, input, &response).await?;
+        // The session is ready while the checkpoint finishes; the prompt
+        // that `spawn_turn` sends waits for it.
+        prompt_gate.wait_before_prompt(&input.session_id).await?;
         let invocation_id = Uuid::new_v4().to_string();
         workspace
             .permission_contexts
@@ -448,7 +453,7 @@ fn spawn_turn(
     });
     let session_id = input.session_id.clone();
     let prompt = input.prompt.clone();
-    let model_id = input.model_id.clone();
+    let model_id = input.model_id.to_string();
     tokio::spawn(async move {
         run_turn(
             Arc::clone(&client),
@@ -945,6 +950,7 @@ impl ProviderRuntimeHandle for GrokTurnHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::model_catalogue::ModelId;
 
     #[test]
     fn message_chunks_from_separate_bursts_get_a_paragraph_break() {
@@ -1029,7 +1035,7 @@ done
                 workspace_path: "/tmp".into(),
                 prompt: "p".into(),
                 model_label: model.into(),
-                model_id: model.into(),
+                model_id: ModelId::resolve(ProviderId::Grok, model),
                 reasoning_effort: Some(effort),
                 fast_mode: false,
                 resume_conversation_id: Some("native-conversation".into()),
@@ -1052,7 +1058,8 @@ done
             .map(|line| serde_json::from_str::<Value>(line).unwrap())
             .collect::<Vec<_>>();
         assert_eq!(requests.len(), 10);
-        for (pair, (model, _, expected_mode)) in requests.chunks_exact(2).zip(selections) {
+        for (pair, (model, _, expected_mode)) in requests.as_chunks::<2>().0.iter().zip(selections)
+        {
             assert_eq!(pair[0]["method"], "session/set_model");
             assert_eq!(pair[0]["params"]["sessionId"], "native-conversation");
             assert_eq!(pair[0]["params"]["modelId"], model);
@@ -1070,7 +1077,7 @@ done
             workspace_path: "/tmp".into(),
             prompt: "p".into(),
             model_label: "Grok 4.6".into(),
-            model_id: "grok-4.6".into(),
+            model_id: ModelId::resolve(ProviderId::Grok, "grok-4.6"),
             reasoning_effort: Some(ReasoningEffort::High),
             fast_mode: false,
             resume_conversation_id: None,

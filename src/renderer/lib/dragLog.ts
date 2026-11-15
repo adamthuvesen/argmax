@@ -79,8 +79,8 @@ function armWatchdog(): void {
         fields: {
           startedInPage: String(current.startedInPage),
           dragovers: String(current.overs),
-          accepted: String(current.accepted)
-        }
+          accepted: String(current.accepted),
+        },
       });
     }
     endSequence();
@@ -95,7 +95,7 @@ function beginSequence(startedInPage: boolean): DragSequence {
     overs: 0,
     accepted: 0,
     lastSampleAt: 0,
-    timer: null
+    timer: null,
   };
   armWatchdog();
   return sequence;
@@ -111,7 +111,7 @@ export function installDragBreadcrumbs(): () => void {
     recordRendererLog({
       scope: SCOPE,
       message: "drag started",
-      fields: { source: describeTarget(event.target), types: describeTypes(event) }
+      fields: { source: describeTarget(event.target), types: describeTypes(event) },
     });
   };
 
@@ -121,7 +121,7 @@ export function installDragBreadcrumbs(): () => void {
     recordRendererLog({
       scope: SCOPE,
       message: "drag entered the window",
-      fields: { target: describeTarget(event.target), types: describeTypes(event) }
+      fields: { target: describeTarget(event.target), types: describeTypes(event) },
     });
   };
 
@@ -139,8 +139,8 @@ export function installDragBreadcrumbs(): () => void {
       fields: {
         target: describeTarget(event.target),
         accepted: String(event.defaultPrevented),
-        dragovers: String(current.overs)
-      }
+        dragovers: String(current.overs),
+      },
     });
   };
 
@@ -155,8 +155,8 @@ export function installDragBreadcrumbs(): () => void {
         target: describeTarget(event.target),
         accepted: String(event.defaultPrevented),
         files: String(event.dataTransfer?.files.length ?? 0),
-        types: describeTypes(event)
-      }
+        types: describeTypes(event),
+      },
     });
   };
 
@@ -169,8 +169,8 @@ export function installDragBreadcrumbs(): () => void {
       fields: {
         dropped: String(current.dropped),
         dragovers: String(current.overs),
-        accepted: String(current.accepted)
-      }
+        accepted: String(current.accepted),
+      },
     });
     endSequence();
   };

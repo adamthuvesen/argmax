@@ -2,7 +2,7 @@ import {
   applyFontHeavinessToDocument,
   FONT_HEAVINESS_STORAGE_KEY,
   readStoredFontHeaviness,
-  type FontHeaviness
+  type FontHeaviness,
 } from "../lib/fontHeaviness.js";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -16,43 +16,43 @@ import {
   readStoredFontSize,
   readStoredFont,
   type FontSize,
-  type FontFamilyId
+  type FontFamilyId,
 } from "../lib/fonts.js";
 import {
   applyInkStrengthToDocument,
   INK_STRENGTH_STORAGE_KEY,
   readStoredInkStrength,
-  type InkStrength
+  type InkStrength,
 } from "../lib/inkStrength.js";
 import {
   applyBackgroundIntensityToDocument,
   BACKGROUND_INTENSITY_STORAGE_KEY,
   readStoredBackgroundIntensity,
-  type BackgroundIntensity
+  type BackgroundIntensity,
 } from "../lib/backgroundIntensity.js";
 import {
   applySidebarIntensityToDocument,
   SIDEBAR_INTENSITY_STORAGE_KEY,
   readStoredSidebarIntensity,
-  type SidebarIntensity
+  type SidebarIntensity,
 } from "../lib/sidebarIntensity.js";
 import {
   applyContrastToDocument,
   CONTRAST_STORAGE_KEY,
   readStoredContrast,
-  type Contrast
+  type Contrast,
 } from "../lib/contrast.js";
 import {
   applyAccentToDocument,
   readStoredAccent,
   writeStoredAccent,
-  type AccentId
+  type AccentId,
 } from "../lib/accent.js";
 import {
   applyUserBubbleTintToDocument,
   readStoredUserBubbleTint,
   writeStoredUserBubbleTint,
-  type UserBubbleTint
+  type UserBubbleTint,
 } from "../lib/userBubbleTint.js";
 import { DEFAULT_IDE_KEY, NO_DEFAULT_IDE, readStoredDefaultIde } from "../lib/ide.js";
 import type { DetectedIde, IdeId } from "../../shared/types.js";
@@ -65,7 +65,7 @@ import {
   prefersDarkSystem,
   readStoredTheme,
   resolveTheme,
-  writeStoredTheme
+  writeStoredTheme,
 } from "../lib/theme.js";
 import { readStoredBrowserTheme, writeStoredBrowserTheme } from "../lib/browserTheme.js";
 
@@ -103,11 +103,11 @@ export function useLauncherAppearance(): {
 } {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredTheme());
   const [browserThemeMode, setBrowserThemeMode] = useState<ThemeMode>(() =>
-    readStoredBrowserTheme()
+    readStoredBrowserTheme(),
   );
   const [accentId, setAccentId] = useState<AccentId>(() => readStoredAccent());
   const [userBubbleTint, setUserBubbleTint] = useState<UserBubbleTint>(() =>
-    readStoredUserBubbleTint()
+    readStoredUserBubbleTint(),
   );
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
   const [fontSize, setFontSize] = useState<FontSize>(() => readStoredFontSize());
@@ -115,10 +115,10 @@ export function useLauncherAppearance(): {
   const [fontHeaviness, setFontHeaviness] = useState<FontHeaviness>(readStoredFontHeaviness);
   const [inkStrength, setInkStrength] = useState<InkStrength>(() => readStoredInkStrength());
   const [backgroundIntensity, setBackgroundIntensity] = useState<BackgroundIntensity>(() =>
-    readStoredBackgroundIntensity()
+    readStoredBackgroundIntensity(),
   );
   const [sidebarIntensity, setSidebarIntensity] = useState<SidebarIntensity>(() =>
-    readStoredSidebarIntensity()
+    readStoredSidebarIntensity(),
   );
   const [contrast, setContrast] = useState<Contrast>(() => readStoredContrast());
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
@@ -213,7 +213,7 @@ export function useLauncherAppearance(): {
     if (window.argmax?.browser) {
       void window.argmax.browser.setTheme(browserThemeMode).catch((error: unknown) => {
         logger.warn("renderer.launcher", "browser theme update failed", {
-          error: errorMessage(error)
+          error: errorMessage(error),
         });
       });
     }
@@ -230,7 +230,7 @@ export function useLauncherAppearance(): {
         // Detection failure leaves detectedIdes empty and the button disables;
         // log a breadcrumb so the empty list isn't a silent fallback.
         logger.warn("renderer.launcher", "IDE detection failed", {
-          error: errorMessage(error)
+          error: errorMessage(error),
         });
       });
   }, []);
@@ -269,6 +269,6 @@ export function useLauncherAppearance(): {
     setContrast,
     defaultIde,
     setDefaultIde,
-    detectedIdes
+    detectedIdes,
   };
 }

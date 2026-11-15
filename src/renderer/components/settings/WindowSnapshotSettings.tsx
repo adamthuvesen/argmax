@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type JSX } from "react";
+import { windowSnapshotActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import type { WindowSnapshotStatus } from "../../../shared/types.js";
 import { displayChord, recordChord } from "../../lib/windowSnapshotChord.js";
-import { isRemoteBridge } from "../../lib/tauriBridge.js";
 import { showErrorToast } from "../../state/toast.js";
 import { SettingGroup, SettingNote, SettingRow, Toggle } from "./settingsPrimitives.js";
 
@@ -15,24 +16,18 @@ function message(error: unknown): string {
  * truth, and a failed registration comes back as an error that leaves the old chord.
  */
 export function WindowSnapshotSettings(): JSX.Element | null {
-  // The remote browser has no chord to set and the channels are desktop-only.
-  const api = isRemoteBridge() ? undefined : window.argmax?.windowSnapshot;
+  const api = windowSnapshotActions();
   const [status, setStatus] = useState<WindowSnapshotStatus | null>(null);
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    void api?.status().then(
-      (next) => {
-        if (!cancelled) setStatus(next);
-      },
-      (error: unknown) => showErrorToast(message(error))
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [api]);
+  useBridgeQuery({
+    key: ["windowSnapshot.status"],
+    enabled: api !== undefined,
+    read: (bridge) => bridge.windowSnapshot.status(),
+    onData: setStatus,
+    onError: (error) => showErrorToast(message(error)),
+  });
 
   const configure = useCallback(
     async (enabled: boolean, chord: string): Promise<void> => {
@@ -48,7 +43,7 @@ export function WindowSnapshotSettings(): JSX.Element | null {
         setBusy(false);
       }
     },
-    [api]
+    [api],
   );
 
   useEffect(() => {
@@ -106,7 +101,11 @@ export function WindowSnapshotSettings(): JSX.Element | null {
             <button
               type="button"
               className="settings-button"
-              aria-label={recording ? "Press the new shortcut" : `Change shortcut, now ${displayChord(status.chord)}`}
+              aria-label={
+                recording
+                  ? "Press the new shortcut"
+                  : `Change shortcut, now ${displayChord(status.chord)}`
+              }
               aria-pressed={recording}
               disabled={busy}
               onClick={() => setRecording((value) => !value)}

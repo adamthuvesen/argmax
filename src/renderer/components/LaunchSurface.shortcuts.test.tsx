@@ -63,7 +63,7 @@ describe("LaunchSurface picker shortcuts", () => {
       await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
     });
 
-    const modelMenu = screen.getByRole("listbox", { name: "Switch model" }).parentElement;
+    const modelMenu = screen.getByTestId("model-picker-flyout");
     const projectMenu = screen.getByRole("listbox", { name: "Select project" });
     expect(modelMenu).toHaveStyle({ position: "absolute", bottom: "auto" });
     expect(projectMenu).toHaveStyle({ position: "absolute", bottom: "auto" });
@@ -87,22 +87,30 @@ describe("LaunchSurface picker shortcuts", () => {
 
     fireEvent.keyDown(document, { key: "b", metaKey: true });
     fireEvent.click(await screen.findByRole("button", { name: "Expand panel" }));
-    expect(screen.getByRole("button", { name: "Restore panel size" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Restore panel size" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("button", { name: "Restore panel size" })).not.toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "b", metaKey: true });
-    expect(await screen.findByRole("button", { name: "Expand panel" })).toHaveAttribute("aria-pressed", "false");
+    expect(await screen.findByRole("button", { name: "Expand panel" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 
   it("closes the browser panel with Escape when the launcher has no project", async () => {
-    render(launcher({
-      project: null,
-      projects: [],
-      sideChatMode: true,
-      onLaunchSideChat: () => Promise.resolve()
-    }));
+    render(
+      launcher({
+        project: null,
+        projects: [],
+        sideChatMode: true,
+        onLaunchSideChat: () => Promise.resolve(),
+      }),
+    );
     await act(async () => {});
 
     fireEvent.keyDown(document, { key: "I", metaKey: true, shiftKey: true });

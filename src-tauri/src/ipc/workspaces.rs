@@ -1,11 +1,8 @@
 use super::inputs::*;
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    ipc::system::SystemOk,
-    persistence::workspaces::WorkspaceSummary,
-    state::AppState,
-    workspaces::{WorkspaceArchiveResult, WorkspaceService},
-};
+use crate::workspaces::orchestration::{WorkspaceArchiveResult, WorkspaceService};
+use crate::{ipc::system::SystemOk, state::AppState};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::workspaces::WorkspaceSummary;
 use std::sync::Arc;
 use tauri::State;
 

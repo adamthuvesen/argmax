@@ -22,7 +22,8 @@ function quotedExcerptWithContext(excerpt: string, events: readonly TimelineEven
         decoded.kind !== "message" ||
         (decoded.role !== "user" && decoded.phase !== "completed") ||
         event.message.trim().length === 0
-      ) return [];
+      )
+        return [];
       return [{ role: decoded.role, message: event.message }];
     })
     .slice(-CONTEXT_EVENT_LIMIT)

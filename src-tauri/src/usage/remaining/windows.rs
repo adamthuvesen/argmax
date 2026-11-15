@@ -33,10 +33,8 @@ pub fn resets_at_from_epoch(value: &serde_json::Value) -> Option<String> {
         n
     } else if let Some(n) = value.as_f64() {
         n as i64
-    } else if let Some(s) = value.as_str() {
-        s.parse::<i64>().ok()?
     } else {
-        return None;
+        value.as_str()?.parse::<i64>().ok()?
     };
     // Milliseconds if it looks like one.
     let secs = if secs > 10_000_000_000 {

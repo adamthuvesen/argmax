@@ -6,10 +6,10 @@ use tokio::{
     process::Command,
 };
 
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    providers::{cloud::CloudEnvironment, environment::build_provider_environment, ProviderId},
-};
+use crate::providers::cloud::CloudEnvironment;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ProviderId;
+use argmax_process::environment::build_provider_environment;
 
 const CODEX_ENVIRONMENTS_BASE_URL: &str =
     "https://chatgpt.com/backend-api/wham/environments/by-repo/github";
@@ -66,17 +66,27 @@ fn fetch_environments(
     account_id: &str,
 ) -> ArgmaxResult<Vec<CloudEnvironment>> {
     let url = format!("{base_url}/{repository}");
-    let response = ureq::AgentBuilder::new()
+    // `environments` runs this on `spawn_blocking`, where a blocking client may
+    // be built and dropped.
+    crate::util::tls::install_crypto_provider();
+    let response = reqwest::blocking::Client::builder()
         .timeout(REQUEST_TIMEOUT)
-        .redirects(0)
+        .redirect(reqwest::redirect::Policy::none())
         .build()
-        .get(&url)
-        .set("Authorization", &format!("Bearer {access_token}"))
-        .set("ChatGPT-Account-ID", account_id)
-        .set("User-Agent", "argmax")
-        .call()
-        .map_err(codex_environment_request_error)?;
-    let body = response.into_string().map_err(|_| {
+        .and_then(|client| {
+            client
+                .get(&url)
+                .header("Authorization", format!("Bearer {access_token}"))
+                .header("ChatGPT-Account-ID", account_id)
+                .header("User-Agent", "argmax")
+                .send()
+        })
+        .map_err(|_| codex_unreachable())?;
+    let status = response.status().as_u16();
+    if status >= 400 {
+        return Err(codex_environment_status_error(status));
+    }
+    let body = response.text().map_err(|_| {
         ArgmaxError::service(
             "CLOUD_CODEX_ENVIRONMENTS_INVALID",
             "Codex Cloud returned an unreadable environment list.",
@@ -138,25 +148,28 @@ fn codex_login_error() -> ArgmaxError {
     )
 }
 
-fn codex_environment_request_error(error: ureq::Error) -> ArgmaxError {
-    match error {
-        ureq::Error::Status(401 | 403, _) => ArgmaxError::service(
+fn codex_environment_status_error(status: u16) -> ArgmaxError {
+    match status {
+        401 | 403 => ArgmaxError::service(
             "CLOUD_CODEX_LOGIN_REQUIRED",
             "Your Codex sign-in expired. Run `codex login`, then try again.",
         ),
-        ureq::Error::Status(404, _) => ArgmaxError::service(
+        404 => ArgmaxError::service(
             "CLOUD_CODEX_ENVIRONMENT_NOT_FOUND",
             "No Codex Cloud environment is connected to this repository.",
         ),
-        ureq::Error::Status(status, _) => ArgmaxError::service(
+        status => ArgmaxError::service(
             "CLOUD_CODEX_ENVIRONMENTS_FAILED",
             format!("Codex Cloud could not list environments (HTTP {status})."),
         ),
-        ureq::Error::Transport(_) => ArgmaxError::service(
-            "CLOUD_CODEX_ENVIRONMENTS_FAILED",
-            "Could not reach Codex Cloud. Check your connection and try again.",
-        ),
     }
+}
+
+fn codex_unreachable() -> ArgmaxError {
+    ArgmaxError::service(
+        "CLOUD_CODEX_ENVIRONMENTS_FAILED",
+        "Could not reach Codex Cloud. Check your connection and try again.",
+    )
 }
 
 pub async fn launch(

@@ -18,23 +18,25 @@ use super::super::{
 };
 use super::{
     project_tools::{schedule_same_session_wake, SameSessionWake},
-    resolve_or_register_project, task_label, LaunchSpec,
+    resolve_or_register_project,
 };
+use crate::application::session_launch::{task_label, LaunchSpec};
+use crate::arcs::preamble::member_preamble;
+use crate::workspaces::orchestration::WorkspaceService;
 use crate::{
     application::session_launch::{child_permission_mode, LaunchOutcome, LaunchReceiptTicket},
-    arcs::member_preamble,
-    persistence::{
-        arcs::{self, ArcRecord},
-        database::Database,
-        launch_receipts::{self, Claim, LaunchReceipt, ReceiptStatus},
-        sessions::{
-            find_session_by_id, record_session_launch, session_launch_lineage, LAUNCH_KIND_AGENT,
-        },
-        workspaces::find_workspace_by_id,
-    },
     providers::session_service::ProviderSessionService,
-    util::sync::LockOrRecover,
-    workspaces::{orchestration::resolve_registered_checkout, WorkspaceService},
+    workspaces::orchestration::resolve_registered_checkout,
+};
+use argmax_store::sync::LockOrRecover;
+use argmax_store::{
+    arcs::{self, ArcRecord},
+    database::Database,
+    launch_receipts::{self, Claim, LaunchReceipt, ReceiptStatus},
+    sessions::{
+        find_session_by_id, record_session_launch, session_launch_lineage, LAUNCH_KIND_AGENT,
+    },
+    workspaces::find_workspace_by_id,
 };
 
 /// One lock per budget, held from the launch caps check until the launch is
@@ -189,10 +191,11 @@ fn launched_response(launched: LaunchedSession) -> SessionControlResponse {
 
 /// Digest of the request a key was first used with, minus the key itself, so a
 /// retry is recognised by what it asks for.
-fn launch_request_hash(action: &LaunchAction) -> crate::error::ArgmaxResult<String> {
+fn launch_request_hash(action: &LaunchAction) -> argmax_contracts::error::ArgmaxResult<String> {
     use sha2::{Digest, Sha256};
-    let mut canonical = serde_json::to_value(action)
-        .map_err(|error| crate::error::ArgmaxError::service("JSON", error.to_string()))?;
+    let mut canonical = serde_json::to_value(action).map_err(|error| {
+        argmax_contracts::error::ArgmaxError::service("JSON", error.to_string())
+    })?;
     if let Some(fields) = canonical.as_object_mut() {
         fields.remove("clientRequestId");
     }
@@ -217,7 +220,9 @@ fn settle_receipt(
     let connection = database.connection();
     let settled = match result {
         Ok(launched) => serde_json::to_string(launched)
-            .map_err(|error| crate::error::ArgmaxError::service("JSON", error.to_string()))
+            .map_err(|error| {
+                argmax_contracts::error::ArgmaxError::service("JSON", error.to_string())
+            })
             .and_then(|json| {
                 launch_receipts::complete_receipt(
                     &connection,
@@ -504,7 +509,7 @@ async fn launch_once(
         ),
         None => match (action.model, provider == parent.provider) {
             (Some(model), _) => (
-                crate::fallback_model_label(&model),
+                crate::providers::model_catalogue::fallback_model_label(&model),
                 model,
                 provider_effort(provider, &parent),
             ),
@@ -514,7 +519,7 @@ async fn launch_once(
                 parent.reasoning_effort,
             ),
             (None, false) => {
-                let defaults = crate::provider_defaults(provider.as_str());
+                let defaults = crate::providers::model_catalogue::provider_defaults(provider);
                 (
                     defaults.model_label.to_string(),
                     defaults.model_id.to_string(),
@@ -546,8 +551,8 @@ async fn launch_once(
     // `launch_with_spec` registers the repository the session actually starts in.
     let aimed_id = {
         let connection = database.read_connection();
-        let projects = crate::persistence::projects::list_projects(&connection)
-            .map_err(argmax_protocol_error)?;
+        let projects =
+            argmax_store::projects::list_projects(&connection).map_err(argmax_protocol_error)?;
         match super::resolve_project(&projects, action.project.as_deref(), &parent_project_id) {
             Ok(project) => Some(project.id),
             Err(_) => None,
@@ -598,7 +603,7 @@ async fn launch_once(
             arc_id: parent_arc.as_ref().map(|arc| arc.id.clone()),
             arc_is_coordinator_launch: false,
             // An agent wrote this prompt: a chat reference in it grants nothing.
-            author: crate::persistence::authorship::PromptAuthor::unattested(),
+            author: argmax_store::authorship::PromptAuthor::unattested(),
         },
         aimed_launch.project.as_deref(),
         Arc::clone(&database),
@@ -611,7 +616,7 @@ async fn launch_once(
     if let Some(route) = &auto_route {
         let session = {
             let connection = database.connection();
-            crate::persistence::turn_routes::record_route(&connection, &outcome.session_id, route)
+            argmax_store::turn_routes::record_route(&connection, &outcome.session_id, route)
                 .map_err(argmax_protocol_error)?;
             find_session_by_id(&connection, &outcome.session_id).map_err(argmax_protocol_error)?
         };
@@ -630,7 +635,7 @@ async fn launch_once(
     }
     if let Some(record) = aimed_launch.record {
         let connection = database.connection();
-        if let Err(error) = crate::persistence::project_checks::record_project_check(
+        if let Err(error) = argmax_store::project_checks::record_project_check(
             &connection,
             &record,
             "accepted",
@@ -672,7 +677,7 @@ struct AimedLaunch {
     path: Option<String>,
     branch: Option<String>,
     project_check: Option<LaunchProjectCheck>,
-    record: Option<crate::persistence::project_checks::ProjectCheckRecord>,
+    record: Option<argmax_store::project_checks::ProjectCheckRecord>,
 }
 
 async fn aim_at_check(
@@ -746,12 +751,12 @@ async fn checkout_of_project(repo_path: &str, requested: &str) -> Option<String>
 
 fn auto_tier_from_model(
     model: Option<&str>,
-) -> Result<Option<crate::routing::table::AutoTier>, SessionControlError> {
+) -> Result<Option<argmax_contracts::routing::AutoTier>, SessionControlError> {
     let Some(model) = model else {
         return Ok(None);
     };
     if model == "auto" {
-        return Ok(Some(crate::routing::table::AutoTier::Balanced));
+        return Ok(Some(argmax_contracts::routing::AutoTier::Balanced));
     }
     let Some(tier) = model.strip_prefix("auto:") else {
         return Ok(None);
@@ -771,7 +776,7 @@ fn launch_auto_tier(
     model: Option<&str>,
     provider_named: bool,
     parent_auto_tier: Option<&str>,
-) -> Result<Option<crate::routing::table::AutoTier>, SessionControlError> {
+) -> Result<Option<argmax_contracts::routing::AutoTier>, SessionControlError> {
     if model.is_some() || provider_named {
         return auto_tier_from_model(model);
     }
@@ -820,10 +825,10 @@ fn schedule_check_in(
     label: &str,
     minutes: u32,
 ) -> Result<(), SessionControlError> {
-    if parent_project_id == crate::workspaces::SCRATCH_PROJECT_ID {
+    if parent_project_id == crate::workspaces::orchestration::SCRATCH_PROJECT_ID {
         tracing::info!(
             session_id = launched_session_id,
-            "a side chat has no repository to hold a check-in; skipping the wake"
+            "a chat with no repository cannot hold a check-in; skipping the wake"
         );
         return Ok(());
     }
@@ -866,23 +871,27 @@ fn check_arc_launch_budget(
 /// The effort to carry onto an explicitly named model: the caller's own when
 /// it stays on its provider, that provider's default otherwise.
 fn provider_effort(
-    provider: crate::providers::ProviderId,
+    provider: argmax_contracts::validation::ProviderId,
     parent: &ParentLaunchSettings,
-) -> Option<crate::providers::ReasoningEffort> {
+) -> Option<argmax_contracts::validation::ReasoningEffort> {
     if provider == parent.provider {
         return parent.reasoning_effort;
     }
-    parse_reasoning_effort(crate::provider_defaults(provider.as_str()).reasoning_effort)
+    parse_reasoning_effort(
+        crate::providers::model_catalogue::provider_defaults(provider).reasoning_effort,
+    )
 }
 
-fn parse_reasoning_effort(value: Option<&str>) -> Option<crate::providers::ReasoningEffort> {
+fn parse_reasoning_effort(
+    value: Option<&str>,
+) -> Option<argmax_contracts::validation::ReasoningEffort> {
     serde_json::from_value(serde_json::json!(value?)).ok()
 }
 
 #[cfg(test)]
 mod auto_model_tests {
     use super::{auto_tier_from_model, launch_auto_tier};
-    use crate::routing::table::AutoTier;
+    use argmax_contracts::routing::AutoTier;
 
     #[test]
     fn auto_model_names_pick_a_tier_and_reject_unknown_ones() {

@@ -8,7 +8,7 @@ import {
   getBrowserTabs,
   openInBrowserPanel,
   resetBrowserSurfaceForTests,
-  resetBrowserTabsForTests
+  resetBrowserTabsForTests,
 } from "../lib/browserPanel.js";
 import { BrowserPage } from "./BrowserPage.js";
 
@@ -37,9 +37,9 @@ describe("BrowserPage", () => {
           onPageCommand: () => () => undefined,
           onTabs: () => () => undefined,
           onAgentOpen: () => () => undefined,
-          listTabs: vi.fn().mockResolvedValue({ tabs: [] })
-        }
-      }
+          listTabs: vi.fn().mockResolvedValue({ tabs: [] }),
+        },
+      },
     });
   });
 
@@ -73,7 +73,10 @@ describe("BrowserPage", () => {
 
     expect(getActiveBrowserTabId(BROWSER_PAGE_OWNER_ID)).toBe(selected);
     expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toHaveLength(count);
-    expect(screen.getByRole("tab", { name: /first.example/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /first.example/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("opens a new tab after closing the last tab", () => {
@@ -86,7 +89,9 @@ describe("BrowserPage", () => {
     page.unmount();
 
     render(<BrowserPage onClose={onClose} />);
-    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.url)).toEqual([DEFAULT_BROWSER_URL]);
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.url)).toEqual([
+      DEFAULT_BROWSER_URL,
+    ]);
   });
 
   it("Esc closes the page when no overlay is open", () => {

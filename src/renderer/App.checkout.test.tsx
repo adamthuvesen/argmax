@@ -10,7 +10,7 @@ import {
   setupAppTestMocks,
   snapshot,
   workspaceRow,
-  sessionRow
+  sessionRow,
 } from "../test/appTestHarness.js";
 
 describe("App workspace follow", () => {
@@ -31,7 +31,7 @@ describe("App workspace follow", () => {
 
     const updatedWorkspace: DashboardSnapshot["workspaces"][number] = {
       ...snapshot.workspaces[0],
-      branch: "adam/updated-checkout"
+      branch: "adam/updated-checkout",
     };
 
     await act(async () => {
@@ -40,14 +40,14 @@ describe("App workspace follow", () => {
     });
 
     expect(
-      await screen.findByRole("button", { name: "Copy branch name adam/updated-checkout" })
+      await screen.findByRole("button", { name: "Copy branch name adam/updated-checkout" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Workspace details/ })).toBeNull();
   });
 
   it("follows a session move to the destination workspace and routes actions to the destination ids", async () => {
     listChangedFiles.mockResolvedValue([
-      { path: "src/renderer/App.tsx", status: "M", additions: 1, deletions: 0, staged: false }
+      { path: "src/renderer/App.tsx", status: "M", additions: 1, deletions: 0, staged: false },
     ]);
     listWorkspaceFiles.mockResolvedValue([{ path: "src/renderer/App.tsx" }]);
     sessionEventsSince.mockImplementation((input) => {
@@ -61,7 +61,7 @@ describe("App workspace follow", () => {
           deletedEventIds: [],
           deletedRawOutputIds: [],
           resetRequired: false,
-          hasMore: false
+          hasMore: false,
         });
       }
       return Promise.resolve({
@@ -73,7 +73,7 @@ describe("App workspace follow", () => {
         deletedEventIds: [],
         deletedRawOutputIds: [],
         resetRequired: false,
-        hasMore: false
+        hasMore: false,
       });
     });
 
@@ -89,7 +89,7 @@ describe("App workspace follow", () => {
       sharedWorkspace: true,
       dirty: true,
       changedFiles: 1,
-      lastActivityAt: "2026-05-08T16:00:00.000Z"
+      lastActivityAt: "2026-05-08T16:00:00.000Z",
     });
     const movedSession = sessionRow({
       id: "session-moved",
@@ -103,7 +103,7 @@ describe("App workspace follow", () => {
       attention: "normal",
       startedAt: "2026-05-08T15:30:00.000Z",
       completedAt: "2026-05-08T16:00:00.000Z",
-      lastActivityAt: "2026-05-08T16:00:00.000Z"
+      lastActivityAt: "2026-05-08T16:00:00.000Z",
     });
 
     await act(async () => {
@@ -125,45 +125,43 @@ describe("App workspace follow", () => {
               destinationWorkspaceId: movedWorkspace.id,
               destinationProjectName: "Argmax",
               destinationPath: movedWorkspace.path,
-              checkoutMode: "attached"
+              checkoutMode: "attached",
             },
-            createdAt: "2026-05-08T16:00:00.000Z"
-          }
-        ]
+            createdAt: "2026-05-08T16:00:00.000Z",
+          },
+        ],
       });
       await Promise.resolve();
     });
 
     expect(
       await screen.findByRole("status", {
-        name: "Moved to argmax-attached, existing checkout"
-      })
+        name: "Moved to argmax-attached, existing checkout",
+      }),
     ).toBeInTheDocument();
 
     expect(
-      await screen.findByRole("button", { name: "Copy branch name adam/feature-branch" })
+      await screen.findByRole("button", { name: "Copy branch name adam/feature-branch" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Workspace details/ })).toBeNull();
 
     await waitFor(() => {
       expect(
-        sessionEventsSince.mock.calls.some(([input]) => input.sessionId === "session-moved")
+        sessionEventsSince.mock.calls.some(([input]) => input.sessionId === "session-moved"),
       ).toBe(true);
     });
 
     fireEvent.click(await screen.findByRole("button", { name: "Files" }));
 
     await waitFor(() =>
-      expect(listWorkspaceFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-moved" })
+      expect(listWorkspaceFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-moved" }),
     );
 
     await waitFor(() =>
       expect(listChangedFiles).toHaveBeenCalledWith(
         { kind: "workspace", id: "workspace-moved" },
-        "branch"
-      )
+        "branch",
+      ),
     );
-
-
   });
 });

@@ -17,7 +17,7 @@
 
 use tauri::{Url, Webview};
 
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 /// What every tab says by default.
 /// Slack rejects Safari 18 at the HTTP gate, before loading the sign-in page.

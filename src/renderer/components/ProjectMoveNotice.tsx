@@ -11,7 +11,7 @@ export function ProjectMoveNotice({ notice }: { notice: Notice }): JSX.Element {
         : notice.checkoutMode === "attached"
           ? "existing checkout"
           : null,
-    notice.sourceArchiveState === "kept" ? "source kept" : null
+    notice.sourceArchiveState === "kept" ? "source kept" : null,
   ].filter((detail): detail is string => detail !== null);
   const accessibleLabel = details.length > 0 ? `${label}, ${details.join(", ")}` : label;
 

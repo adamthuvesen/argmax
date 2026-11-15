@@ -7,10 +7,15 @@ import {
   useRef,
   useState,
   type JSX,
-  type KeyboardEvent as ReactKeyboardEvent
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import type { ActivityResolution, ActivitySeriesPoint } from "./activityContract.js";
-import { formatBucketLabel, formatBucketTitle, formatCompact, formatCount } from "./activityFormat.js";
+import {
+  formatBucketLabel,
+  formatBucketTitle,
+  formatCompact,
+  formatCount,
+} from "./activityFormat.js";
 import type { ActivityChartSeries } from "./activityPresentation.js";
 
 /**
@@ -128,7 +133,7 @@ export function ActivityChart({
   series,
   resolution,
   timeZone,
-  title
+  title,
 }: {
   points: readonly ActivitySeriesPoint[];
   series: readonly ActivityChartSeries[];
@@ -186,8 +191,9 @@ export function ActivityChart({
   }, [points.length, series]);
 
   const totals = useMemo(
-    () => points.map((_, index) => series.reduce((sum, entry) => sum + (entry.values[index] ?? 0), 0)),
-    [points, series]
+    () =>
+      points.map((_, index) => series.reduce((sum, entry) => sum + (entry.values[index] ?? 0), 0)),
+    [points, series],
   );
   const { top, ticks } = niceTicks(Math.max(...totals, 0));
 
@@ -200,11 +206,11 @@ export function ActivityChart({
       points.length <= 1
         ? PAD_LEFT + plotWidth / 2
         : PAD_LEFT + (plotWidth * index) / (points.length - 1),
-    [points.length, plotWidth]
+    [points.length, plotWidth],
   );
   const yAt = useCallback(
     (value: number): number => plotBottom - (plotBottom - plotTop) * (top === 0 ? 0 : value / top),
-    [plotBottom, plotTop, top]
+    [plotBottom, plotTop, top],
   );
 
   const indexFromClientX = useCallback(
@@ -217,7 +223,7 @@ export function ActivityChart({
       const ratio = (clientX - rect.left - PAD_LEFT) / plotWidth;
       return Math.min(points.length - 1, Math.max(0, Math.round(ratio * (points.length - 1))));
     },
-    [plotWidth, points.length]
+    [plotWidth, points.length],
   );
 
   const onKeyDown = useCallback(
@@ -235,7 +241,7 @@ export function ActivityChart({
       } else return;
       event.preventDefault();
     },
-    [activeIndex, points.length]
+    [activeIndex, points.length],
   );
 
   // A window change can shorten the series under a held crosshair.
@@ -246,7 +252,7 @@ export function ActivityChart({
   const bucketNoun = resolution === "hour" ? "hours" : resolution === "week" ? "weeks" : "days";
   const peakIndex = totals.reduce(
     (best, value, index) => (value > (totals[best] ?? -1) ? index : best),
-    -1
+    -1,
   );
   const ariaLabel = [
     `${title} by repository, ${formatCount(points.length)} ${bucketNoun}.`,
@@ -256,7 +262,7 @@ export function ActivityChart({
     }),
     peakIndex >= 0 && totals[peakIndex] > 0
       ? `Busiest ${bucketNoun.slice(0, -1)} ${formatBucketTitle(points[peakIndex].bucketStart, resolution, timeZone)} at ${formatCount(totals[peakIndex])}.`
-      : ""
+      : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -275,7 +281,12 @@ export function ActivityChart({
     cursorIndex === null
       ? []
       : series
-          .map((entry) => ({ key: entry.key, label: entry.label, slot: entry.slot, value: entry.values[cursorIndex] ?? 0 }))
+          .map((entry) => ({
+            key: entry.key,
+            label: entry.label,
+            slot: entry.slot,
+            value: entry.values[cursorIndex] ?? 0,
+          }))
           .filter((row) => row.value > 0);
   const activeTotal = cursorIndex === null ? 0 : totals[cursorIndex];
   const showTotal = activeRows.length > 1;
@@ -346,7 +357,13 @@ export function ActivityChart({
                   would resolve every band to the same colour. */}
               {area ? (
                 <defs>
-                  <linearGradient id={`${gradientId}-${band.entry.key}`} x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient
+                    id={`${gradientId}-${band.entry.key}`}
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
                     <stop className="activity-chart-area-stop" offset="0%" data-stop="top" />
                     <stop className="activity-chart-area-stop" offset="100%" data-stop="bottom" />
                   </linearGradient>
@@ -370,7 +387,10 @@ export function ActivityChart({
           >
             <path
               className="activity-chart-line"
-              d={monotonePath(xs, band.upper.map((value) => yAt(value)))}
+              d={monotonePath(
+                xs,
+                band.upper.map((value) => yAt(value)),
+              )}
             />
             {points.length === 1 ? (
               <circle
@@ -482,7 +502,11 @@ export function ActivityChart({
       </svg>
 
       {/* The same numbers, reachable by screen reader and by copy-paste. */}
-      <table className="activity-visually-hidden" id={tableId} aria-label={`${title} by repository`}>
+      <table
+        className="activity-visually-hidden"
+        id={tableId}
+        aria-label={`${title} by repository`}
+      >
         <caption>{title} by repository</caption>
         <thead>
           <tr>

@@ -23,9 +23,9 @@ use tauri::AppHandle;
 
 use crate::browser::automation::{self, BrowserAction, TabTarget};
 use crate::browser::encode_base64;
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::ipc::validation::{AttachmentMimeType, Base64ImageData, SessionId};
 use crate::session_control::{argmax_protocol_error, SessionControlError};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::{AttachmentMimeType, Base64ImageData, SessionId};
 
 /// Points, not device pixels — retina WebKit returns two device pixels per
 /// point, so this delivers an image near 720 pixels wide. That keeps the base64

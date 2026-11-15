@@ -2,10 +2,8 @@
 // follow-up queue, persistence side effects, and orphan recovery live in
 // `session_service.rs`: this module is the IO, that one is the state machine.
 
-use crate::{
-    session_control::{SessionLaunchProcessConfig, SessionLaunchRegistry},
-    util::sync::LockOrRecover,
-};
+use crate::session_control::{SessionLaunchProcessConfig, SessionLaunchRegistry};
+use argmax_store::sync::LockOrRecover;
 use std::{
     fs::File,
     future::Future,
@@ -35,16 +33,14 @@ use nix::{
 use serde_json::json;
 
 use super::{
-    adapters::get_provider_definition, discovery::ProviderDiscovery,
-    environment::build_provider_environment, flush_queue::DashboardDelta,
-    normalizer::ProviderOutputStream, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput,
-    ReasoningEffort,
+    adapters::get_provider_definition, discovery::ProviderDiscovery, flush_queue::DashboardDelta,
+    normalizer::ProviderOutputStream, prompt_gate::PromptGate, ProviderLaunchInput,
 };
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    ipc::inputs::ComposerAttachmentInput,
-    persistence::time::now_iso,
-};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::messages::ComposerAttachmentInput;
+use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
+use argmax_process::environment::build_provider_environment;
+use argmax_store::time::now_iso;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub type EventCallback = Arc<dyn Fn(ProviderRuntimeEvent) + Send + Sync>;
@@ -108,6 +104,22 @@ pub trait ProviderProcessLauncher: Send + Sync {
         input: ProviderLaunchInput,
         on_event: EventCallback,
     ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>>;
+
+    /// Launch while the pre-turn checkpoint may still be running. The prompt
+    /// must not reach the provider before `gate` opens, and a refused gate
+    /// ends the launch with its error and nothing left running. A launcher
+    /// that cannot start early waits for the gate first.
+    fn launch_gated<'a>(
+        &'a self,
+        input: ProviderLaunchInput,
+        on_event: EventCallback,
+        gate: PromptGate,
+    ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+        Box::pin(async move {
+            gate.wait().await?;
+            self.launch(input, on_event).await
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -195,6 +207,15 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
         input: ProviderLaunchInput,
         on_event: EventCallback,
     ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
+        self.launch_gated(input, on_event, PromptGate::open())
+    }
+
+    fn launch_gated<'a>(
+        &'a self,
+        input: ProviderLaunchInput,
+        on_event: EventCallback,
+        gate: PromptGate,
+    ) -> BoxFuture<'a, ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>> {
         Box::pin(async move {
             let definition = get_provider_definition(input.provider);
             let capability = self.discovery.discover(input.provider).await;
@@ -231,6 +252,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                         self.approvals.clone(),
                         self.questions.clone(),
                         Arc::clone(&on_event),
+                        &gate,
                     )
                     .await;
             }
@@ -247,6 +269,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                         session_launch.as_ref(),
                         self.approvals.clone(),
                         on_event,
+                        &gate,
                     )
                     .await;
             }
@@ -265,6 +288,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                     self.required_approvals()?,
                     questions,
                     on_event,
+                    &gate,
                 )
                 .await;
             }
@@ -284,6 +308,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                     approvals,
                     questions,
                     on_event,
+                    &gate,
                 )
                 .await;
             }
@@ -295,10 +320,15 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                     session_launch.as_ref(),
                     self.required_approvals()?,
                     on_event,
+                    &gate,
                 )
                 .await;
             }
 
+            // The PTY path puts the prompt in argv, so the CLI acts as soon as
+            // it spawns, and Cursor and Grok write their MCP config into the
+            // worktree first. Nothing here may run before the capture ends.
+            gate.wait().await?;
             let args = match input.resume_conversation_id.as_deref() {
                 Some(resume_id) => {
                     (definition.structured_resume_args)(&input, resume_id, session_launch.as_ref())
@@ -351,6 +381,7 @@ pub(crate) fn with_argmax_routing_instruction(
 #[cfg(test)]
 mod routing_tests {
     use super::*;
+    use crate::providers::model_catalogue::ModelId;
     use std::path::PathBuf;
 
     fn input(provider: ProviderId, prompt: &str) -> ProviderLaunchInput {
@@ -360,7 +391,7 @@ mod routing_tests {
             workspace_path: PathBuf::from("/tmp/project"),
             prompt: prompt.to_string(),
             model_label: "Model".to_string(),
-            model_id: "model".to_string(),
+            model_id: ModelId::resolve(provider, "model"),
             reasoning_effort: None,
             fast_mode: false,
             resume_conversation_id: None,
@@ -482,13 +513,12 @@ fn launch_structured_via_pty(
         ("TERM".to_string(), "xterm-256color".to_string()),
     ];
     if input.provider == ProviderId::Claude {
-        environment_overrides.extend(super::mcp_injection::claude_linked_root_env(session_launch));
-        // Print mode otherwise kills active background agents after ten minutes,
-        // even while they are making progress. The user can still stop the turn.
-        environment_overrides.push((
-            "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS".to_string(),
-            "0".to_string(),
-        ));
+        environment_overrides.extend(super::mcp_injection::claude_launch_env(session_launch));
+        environment_overrides.extend(
+            super::adapters::CLAUDE_TURN_ENV
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string())),
+        );
     }
     if let Some(config) = session_launch {
         environment_overrides.extend(config.env_pairs());
@@ -797,20 +827,6 @@ pub(super) fn composer_payload(
 
 // Wire coercions for rows read straight out of SQLite. They are lossy; the
 // typed surface in `ipc::inputs` is the entry point everywhere else.
-pub(crate) fn parse_provider(value: &str) -> ArgmaxResult<ProviderId> {
-    match value {
-        "claude" => Ok(ProviderId::Claude),
-        "codex" => Ok(ProviderId::Codex),
-        "cursor" => Ok(ProviderId::Cursor),
-        "opencode" => Ok(ProviderId::Opencode),
-        "grok" => Ok(ProviderId::Grok),
-        _ => Err(ArgmaxError::service(
-            "PROVIDER_UNKNOWN",
-            format!("unknown provider {value}"),
-        )),
-    }
-}
-
 pub(super) fn parse_permission_mode(value: &str) -> ArgmaxResult<PermissionMode> {
     match value {
         "auto-approve" => Ok(PermissionMode::AutoApprove),
@@ -891,16 +907,6 @@ pub(super) fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
     ArgmaxError::service("SQLITE", error.to_string())
 }
 
-impl PermissionMode {
-    pub(super) fn as_wire(self) -> &'static str {
-        match self {
-            PermissionMode::AutoApprove => "auto-approve",
-            PermissionMode::AskEachTime => "ask-each-time",
-            PermissionMode::ProviderDefaults => "provider-defaults",
-        }
-    }
-}
-
 #[cfg(all(test, unix))]
 mod process_tests {
     use super::*;
@@ -939,7 +945,7 @@ mod process_tests {
             workspace_path: workspace_path.clone(),
             prompt: String::new(),
             model_label: "Grok".to_string(),
-            model_id: "grok".to_string(),
+            model_id: super::super::model_catalogue::ModelId::resolve(ProviderId::Grok, "grok"),
             reasoning_effort: None,
             fast_mode: false,
             resume_conversation_id: None,
@@ -996,11 +1002,65 @@ mod process_tests {
         }
         std::mem::forget(guard);
     }
+
+    // Claude reads these before it applies `--settings` env, so the PTY launch
+    // must put them in the process environment as the stream-json one does.
+    #[tokio::test]
+    async fn a_claude_pty_launch_puts_every_turn_env_pair_in_the_process_env() {
+        let directory = tempfile::tempdir().unwrap();
+        let env_file = directory.path().join("env.log");
+        let input = ProviderLaunchInput {
+            provider: ProviderId::Claude,
+            session_id: uuid::Uuid::new_v4().to_string(),
+            workspace_path: directory.path().to_path_buf(),
+            prompt: String::new(),
+            model_label: "Sonnet 5.5".to_string(),
+            model_id: super::super::model_catalogue::ModelId::resolve(
+                ProviderId::Claude,
+                "claude-sonnet-5-5",
+            ),
+            reasoning_effort: None,
+            fast_mode: false,
+            resume_conversation_id: None,
+            resume_fork: false,
+            continuity: None,
+            permission_mode: PermissionMode::AutoApprove,
+            agent_mode: AgentMode::Auto,
+            cols: 120,
+            rows: 32,
+        };
+        let handle = launch_structured_via_pty(
+            "/bin/sh",
+            "sh",
+            vec![
+                "-c".to_string(),
+                "env > env.pending; mv env.pending env.log".to_string(),
+            ],
+            &input,
+            Arc::new(|_| {}),
+            None,
+        )
+        .expect("launch the env fixture");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !env_file.is_file() {
+            assert!(Instant::now() < deadline, "the fixture wrote no env");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let env = fs::read_to_string(&env_file).unwrap();
+        handle.terminate().await.unwrap();
+        for (name, value) in super::super::adapters::CLAUDE_TURN_ENV {
+            assert!(
+                env.lines().any(|line| line == format!("{name}={value}")),
+                "{name}={value} missing from the child env:\n{env}"
+            );
+        }
+    }
 }
 
 #[cfg(all(test, feature = "verification", unix))]
 mod verification_tests {
     use super::*;
+    use crate::providers::model_catalogue::ModelId;
     use std::{path::PathBuf, process::Command as ProcessCommand, time::Instant};
 
     const CHILD_ENV: &str = "ARGMAX_VERIFICATION_RUNTIME_TEST_CHILD";
@@ -1029,8 +1089,8 @@ mod verification_tests {
                 "--nocapture",
             ])
             .env(CHILD_ENV, "1")
-            .env(super::super::verification::MODE_ENV, "1")
-            .env(super::super::verification::HOME_ENV, &profile)
+            .env(argmax_process::environment::VERIFICATION_MODE_ENV, "1")
+            .env(argmax_process::environment::VERIFICATION_HOME_ENV, &profile)
             .env("ARGMAX_VERIFICATION_LOG", profile.join("invocations.jsonl"))
             .env("ARGMAX_VERIFICATION_CLAUDE_BINARY", fixture)
             .output()
@@ -1049,9 +1109,8 @@ mod verification_tests {
             .expect("verification child configuration");
         let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
         runtime.block_on(async {
-            let database = Arc::new(
-                crate::persistence::Database::open_in_memory().expect("verification database"),
-            );
+            let database =
+                Arc::new(argmax_store::Database::open_in_memory().expect("verification database"));
             let launcher = RealProviderProcessLauncher::new()
                 .with_approvals(crate::approvals::service::ApprovalService::new(database));
             let first =
@@ -1105,11 +1164,12 @@ mod verification_tests {
             provider: ProviderId::Claude,
             session_id: uuid::Uuid::new_v4().to_string(),
             workspace_path: PathBuf::from(
-                std::env::var(super::super::verification::HOME_ENV).expect("verification profile"),
+                std::env::var(argmax_process::environment::VERIFICATION_HOME_ENV)
+                    .expect("verification profile"),
             ),
             prompt: prompt.to_string(),
             model_label: "Sonnet 5.5".to_string(),
-            model_id: "claude-sonnet-5-5".to_string(),
+            model_id: ModelId::resolve(ProviderId::Claude, "claude-sonnet-5-5"),
             reasoning_effort: None,
             fast_mode: false,
             resume_conversation_id: resume_conversation_id.map(str::to_string),

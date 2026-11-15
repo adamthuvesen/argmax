@@ -31,7 +31,7 @@ export function touchIdRecency(key: string, id: string): string[] {
 export function sortByIdRecency<T>(
   items: readonly T[],
   recency: readonly string[],
-  idOf: (item: T) => string
+  idOf: (item: T) => string,
 ): T[] {
   if (recency.length === 0) return [...items];
   const rank = new Map(recency.map((id, index) => [id, index]));

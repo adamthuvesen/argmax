@@ -1,4 +1,6 @@
 import { useEffect, useState, type JSX } from "react";
+import { dashboardEvents } from "../data/bridgeActions.js";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import { GitFork } from "lucide-react";
 import type { ForkLineage } from "../../shared/types.js";
 import { useForkBarVisible } from "../lib/forkBarVisibility.js";
@@ -15,48 +17,43 @@ import { ForkMergeDialog } from "./ForkMergeDialog.js";
  */
 export function ForkBar({
   sessionId,
-  onOpenSession
+  onOpenSession,
 }: {
   sessionId: string;
   onOpenSession?: (sessionId: string) => void;
 }): JSX.Element | null {
-  const [lineage, setLineage] = useState<ForkLineage | null>(null);
   const [merging, setMerging] = useState(false);
   const visible = useForkBarVisible();
 
-  useEffect(() => {
-    let cancelled = false;
-    setLineage(null);
-    setMerging(false);
-    if (!visible) return;
+  const { data: lineage, setData: setLineage } = useBridgeQuery<ForkLineage | null>({
+    key: ["session.forkLineage", sessionId],
+    enabled: visible,
     // Optional all the way down: a host (or a test stub) that predates the fork
-    // channels simply has no lineage to show.
-    void window.argmax?.session?.forkLineage?.({ sessionId })
-      .then((next) => {
-        if (!cancelled) setLineage(next);
-      })
-      .catch(() => {
-        // A chat that cannot report its lineage is just an ordinary chat.
-      });
-    return () => {
-      cancelled = true;
-    };
+    // channels simply has no lineage to show. A chat that cannot report its
+    // lineage is just an ordinary chat, so a failed read shows nothing.
+    read: (api) => api.session?.forkLineage?.({ sessionId }),
+    // The source label is the source workspace's title, and a rename reaches
+    // the renderer as a dashboard change.
+    retain: (delta) => delta.dashboardChanged === true,
+  });
+  useEffect(() => {
+    setMerging(false);
   }, [sessionId, visible]);
 
   // Renames reach the renderer as dashboard deltas, not as a new lineage read.
   const sourceWorkspaceId = lineage?.sourceWorkspaceId ?? null;
   useEffect(() => {
     if (!sourceWorkspaceId) return;
-    return window.argmax?.dashboard?.onDelta?.((delta) => {
+    return dashboardEvents()?.onDelta?.((delta) => {
       const renamed = delta.workspaces?.find((workspace) => workspace.id === sourceWorkspaceId);
       if (!renamed) return;
       setLineage((current) =>
         current && current.sourceLabel !== renamed.taskLabel
           ? { ...current, sourceLabel: renamed.taskLabel }
-          : current
+          : current,
       );
     });
-  }, [sourceWorkspaceId]);
+  }, [sourceWorkspaceId, setLineage]);
 
   if (!visible || !lineage) return null;
   const sourceSessionId = lineage.sourceSessionId;

@@ -16,9 +16,10 @@ import {
   Play,
   SquareCheck,
   UserPlus,
-  type LucideIcon
+  type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import type { ArcTimelineCursor, ArcTimelineEvent } from "../../../shared/types.js";
 import {
   ARC_TIMELINE_FILTERS,
@@ -29,7 +30,7 @@ import {
   showsProject,
   splitInlineCode,
   type ArcEventGlyph,
-  type ArcTimelineFilter
+  type ArcTimelineFilter,
 } from "../../lib/arcTimeline.js";
 import { openWebUrl } from "../../lib/openWebUrl.js";
 import { showErrorToast } from "../../state/toast.js";
@@ -55,7 +56,7 @@ const GLYPHS: Record<ArcEventGlyph, LucideIcon> = {
   resumed: Play,
   archived: Archive,
   done: SquareCheck,
-  schedule: Clock
+  schedule: Clock,
 };
 
 /**
@@ -67,7 +68,7 @@ export function ArcTimeline({
   arcId,
   refreshKey,
   canOpenSession,
-  onOpenSession
+  onOpenSession,
 }: {
   arcId: string;
   refreshKey: string;
@@ -76,55 +77,42 @@ export function ArcTimeline({
 }): JSX.Element {
   const [events, setEvents] = useState<ArcTimelineEvent[] | null>(null);
   const [cursor, setCursor] = useState<ArcTimelineCursor | null>(null);
-  const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<ArcTimelineFilter>("all");
   const loadedCount = useRef(0);
   // Bumped by an arc switch and by every refresh, so an earlier-page load that
   // started under the old arc or window cannot append into the new one.
-  const requestGeneration = useRef(0);
 
   useEffect(() => {
-    requestGeneration.current += 1;
     loadedCount.current = 0;
     setEvents(null);
     setCursor(null);
     setFilter("all");
   }, [arcId]);
 
+  const { isAvailable } = useBridgeQuery({
+    key: ["arcs.timeline", arcId, refreshKey],
+    read: (api) =>
+      api.arcs.timeline({ arcId, before: null, limit: Math.max(PAGE_SIZE, loadedCount.current) }),
+    onData: (page) => {
+      loadedCount.current = page.events.length;
+      setEvents(page.events);
+      setCursor(page.nextCursor);
+      setError(null);
+    },
+    onError: (cause) =>
+      setError(cause instanceof Error ? cause.message : "Could not load the timeline."),
+  });
   useEffect(() => {
-    if (!window.argmax) {
-      setEvents([]);
-      return;
-    }
-    requestGeneration.current += 1;
-    // An earlier-page load from the old generation no longer owns the button.
-    setLoadingEarlier(false);
-    let cancelled = false;
-    void window.argmax.arcs
-      .timeline({ arcId, before: null, limit: Math.max(PAGE_SIZE, loadedCount.current) })
-      .then((page) => {
-        if (cancelled) return;
-        loadedCount.current = page.events.length;
-        setEvents(page.events);
-        setCursor(page.nextCursor);
-        setError(null);
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not load the timeline.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [arcId, refreshKey]);
+    if (!isAvailable) setEvents([]);
+  }, [arcId, refreshKey, isAvailable]);
 
-  const loadEarlier = useCallback(async (): Promise<void> => {
-    if (!window.argmax || !cursor) return;
-    const generation = requestGeneration.current;
-    setLoadingEarlier(true);
-    try {
-      const page = await window.argmax.arcs.timeline({ arcId, before: cursor, limit: PAGE_SIZE });
-      if (generation !== requestGeneration.current) return;
+  // A reload of the first page owns the list, so it drops an earlier page still in flight.
+  const earlierPage = useBridgeQuery({
+    key: ["arcs.timeline.earlier", arcId, refreshKey],
+    enabled: false,
+    read: (api) => api.arcs.timeline({ arcId, before: cursor, limit: PAGE_SIZE }),
+    onData: (page) => {
       setEvents((current) => {
         const next = [...(current ?? []), ...page.events];
         loadedCount.current = next.length;
@@ -132,17 +120,18 @@ export function ArcTimeline({
       });
       setCursor(page.nextCursor);
       setError(null);
-    } catch (cause) {
-      if (generation !== requestGeneration.current) return;
-      showErrorToast(cause instanceof Error ? cause.message : "Could not load earlier events.");
-    } finally {
-      if (generation === requestGeneration.current) setLoadingEarlier(false);
-    }
-  }, [arcId, cursor]);
+    },
+    onError: (cause) =>
+      showErrorToast(cause instanceof Error ? cause.message : "Could not load earlier events."),
+  });
+  const loadingEarlier = earlierPage.isLoading;
+  const loadEarlier = (): void => {
+    if (cursor) void earlierPage.refetch();
+  };
 
   const shown = useMemo(
     () => (events ?? []).filter((event) => matchesArcTimelineFilter(event, filter)),
-    [events, filter]
+    [events, filter],
   );
 
   return (
@@ -206,7 +195,7 @@ export function ArcTimeline({
 function ArcTimelineRow({
   event,
   canOpenSession,
-  onOpenSession
+  onOpenSession,
 }: {
   event: ArcTimelineEvent;
   canOpenSession: (sessionId: string) => boolean;
@@ -233,7 +222,11 @@ function ArcTimelineRow({
   // every row starts at the same edge and the eye reads down one line.
   return (
     <li className="arc-event" data-tone={presentation.tone}>
-      <time className="arc-event-time" dateTime={event.occurredAt} title={formatArcEventStamp(event.occurredAt)}>
+      <time
+        className="arc-event-time"
+        dateTime={event.occurredAt}
+        title={formatArcEventStamp(event.occurredAt)}
+      >
         {formatArcEventTime(event.occurredAt)}
       </time>
       <span className="arc-event-glyph" aria-hidden="true">
@@ -257,14 +250,23 @@ function ArcTimelineRow({
             )
           ) : null}
           {meta ? <span className="arc-event-meta">{meta}</span> : null}
-          {presentation.badge ? <span className="arc-event-badge">{presentation.badge}</span> : null}
+          {presentation.badge ? (
+            <span className="arc-event-badge">{presentation.badge}</span>
+          ) : null}
         </p>
         {detail ? (
           presentation.detailIsQuote ? (
-            <blockquote className="arc-event-quote" data-clamped={clampable && !expanded ? "true" : undefined}>
+            <blockquote
+              className="arc-event-quote"
+              data-clamped={clampable && !expanded ? "true" : undefined}
+            >
               <p>
                 {splitInlineCode(detail).map((part, index) =>
-                  part.code ? <code key={index}>{part.text}</code> : <span key={index}>{part.text}</span>
+                  part.code ? (
+                    <code key={index}>{part.text}</code>
+                  ) : (
+                    <span key={index}>{part.text}</span>
+                  ),
                 )}
               </p>
               {clampable ? (

@@ -15,7 +15,6 @@
 //   assets/icon.svg, assets/icon-dark.svg     browsable squircle artwork
 //   assets/icon.png, assets/icon-dark.png     1024px renders (README, docs)
 //   assets/Argmax.icon/                       Icon Composer source package
-//   public/argmax-icon.png                    PWA manifest icon (unhashed)
 //   ios/Argmax/…/AppIcon.appiconset           iPhone app icon, light and dark
 //   ios/Argmax/…/FoxMark.imageset             the bare fox, for pairing and empty states
 //   src-tauri/icons/icon.icns                 legacy icon, macOS < 26
@@ -45,14 +44,27 @@ import { deflateSync } from "node:zlib";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ASSETS = path.join(ROOT, "assets");
 const TAURI_ICONS = path.join(ROOT, "src-tauri", "icons");
-const PUBLIC = path.join(ROOT, "public");
 const ICON_PACKAGE = path.join(ASSETS, "Argmax.icon");
-const IOS_APPICON = path.join(ROOT, "ios", "Argmax", "Sources", "Assets.xcassets", "AppIcon.appiconset");
-const IOS_FOXMARK = path.join(ROOT, "ios", "Argmax", "Sources", "Assets.xcassets", "FoxMark.imageset");
+const IOS_APPICON = path.join(
+  ROOT,
+  "ios",
+  "Argmax",
+  "Sources",
+  "Assets.xcassets",
+  "AppIcon.appiconset",
+);
+const IOS_FOXMARK = path.join(
+  ROOT,
+  "ios",
+  "Argmax",
+  "Sources",
+  "Assets.xcassets",
+  "FoxMark.imageset",
+);
 
 const APPEARANCES = {
   light: { field: "#fefefe" },
-  dark: { field: "#1b1b18" }
+  dark: { field: "#1b1b18" },
 };
 
 // One entry per sprite character. Painted in this order so the eye highlights
@@ -64,7 +76,7 @@ const PALETTE = [
   ["c", "#ebe1cf"],
   ["t", "#bca595"],
   ["x", "#110b0f"],
-  ["w", "#ffffff"]
+  ["w", "#ffffff"],
 ];
 
 const GRID = readFileSync(path.join(ASSETS, "fox-mascot.txt"), "utf8")
@@ -124,7 +136,10 @@ function coverCells(cell) {
 function markGroups() {
   return PALETTE.map(([cell, hex]) => {
     const rects = coverCells(cell)
-      .map(({ x, y, width, height }) => `        <rect x="${x}" y="${y}" width="${width}" height="${height}"/>`)
+      .map(
+        ({ x, y, width, height }) =>
+          `        <rect x="${x}" y="${y}" width="${width}" height="${height}"/>`,
+      )
       .join("\n");
     return `      <g fill="${hex}">\n${rects}\n      </g>`;
   }).join("\n");
@@ -147,7 +162,9 @@ ${markGroups()}
 }
 
 function srgb(hex) {
-  const channels = [1, 3, 5].map((at) => (Number.parseInt(hex.slice(at, at + 2), 16) / 255).toFixed(5));
+  const channels = [1, 3, 5].map((at) =>
+    (Number.parseInt(hex.slice(at, at + 2), 16) / 255).toFixed(5),
+  );
   return `srgb:${channels.join(",")},1.00000`;
 }
 
@@ -156,7 +173,7 @@ function iconDocument() {
   return {
     "fill-specializations": [
       { value: { solid: srgb(APPEARANCES.light.field) } },
-      { appearance: "dark", value: { solid: srgb(APPEARANCES.dark.field) } }
+      { appearance: "dark", value: { solid: srgb(APPEARANCES.dark.field) } },
     ],
     groups: [
       {
@@ -167,8 +184,8 @@ function iconDocument() {
             // reading as a fox. The layer ships its own palette instead, and
             // only the field behind it changes with the appearance.
             name: "mark",
-            "image-name": "mark.png"
-          }
+            "image-name": "mark.png",
+          },
         ],
         // No shadow, specular or translucency: Liquid Glass's default bevel
         // reads as embossing on a flat pixel mark, which fights the artwork.
@@ -176,10 +193,10 @@ function iconDocument() {
         lighting: "individual",
         specular: false,
         shadow: { kind: "none", opacity: 0.5 },
-        translucency: { enabled: false, value: 0.5 }
-      }
+        translucency: { enabled: false, value: 0.5 },
+      },
     ],
-    "supported-platforms": { squares: "shared" }
+    "supported-platforms": { squares: "shared" },
   };
 }
 
@@ -323,8 +340,8 @@ function writePng(pixels, outPath, { opaque = false, width = CANVAS, height = CA
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
       chunk("IHDR", header),
       chunk("IDAT", deflateSync(scanlines, { level: 9 })),
-      chunk("IEND", Buffer.alloc(0))
-    ])
+      chunk("IEND", Buffer.alloc(0)),
+    ]),
   );
 }
 
@@ -338,7 +355,7 @@ const ICONSET_RENDITIONS = [
   { points: 256, scale: 1, file: "icon_256x256.png" },
   { points: 256, scale: 2, file: "icon_256x256@2x.png" },
   { points: 512, scale: 1, file: "icon_512x512.png" },
-  { points: 512, scale: 2, file: "icon_512x512@2x.png" }
+  { points: 512, scale: 2, file: "icon_512x512@2x.png" },
 ];
 
 function parseIcns(icns) {
@@ -347,7 +364,7 @@ function parseIcns(icns) {
   }
 
   const chunks = [];
-  for (let offset = 8; offset < icns.length; ) {
+  for (let offset = 8; offset < icns.length;) {
     const type = icns.subarray(offset, offset + 4).toString("ascii");
     const length = icns.readUInt32BE(offset + 4);
     if (length < 8 || offset + length > icns.length) {
@@ -392,7 +409,9 @@ function validateIcns(icns) {
   }
   const firstPng = chunks.map(pngWidth).find((width) => width !== null);
   if (!(firstPng >= 256)) {
-    throw new Error(`Generated ICNS first PNG is ${firstPng ?? "missing"}px; 1Password needs >= 256`);
+    throw new Error(
+      `Generated ICNS first PNG is ${firstPng ?? "missing"}px; 1Password needs >= 256`,
+    );
   }
   if (!chunks.some((chunk) => chunk.type === "ic10" && pngWidth(chunk) === 1024)) {
     throw new Error("Generated ICNS is missing the 1024px ic10 rendition");
@@ -409,7 +428,7 @@ function buildIcns(sourcePng, scratch) {
       String(points * scale),
       sourcePng,
       "--out",
-      path.join(iconset, file)
+      path.join(iconset, file),
     ]);
   }
   const icnsPath = path.join(scratch, "icon.icns");
@@ -423,7 +442,9 @@ function buildAssetsCar(scratch) {
   const version = run("actool", ["--version", "--output-format=human-readable-text"]);
   const major = Number.parseInt(version.match(/short-bundle-version:\s*(\d+)/)?.[1] ?? "", 10);
   if (!(major >= 26)) {
-    throw new Error(`Assets.car needs Xcode 26's actool. Found ${major || "an unreadable version"}`);
+    throw new Error(
+      `Assets.car needs Xcode 26's actool. Found ${major || "an unreadable version"}`,
+    );
   }
 
   // actool names the compiled asset after the package, and Tauri reads that name
@@ -447,7 +468,7 @@ function buildAssetsCar(scratch) {
     "--minimum-deployment-target",
     "11.0",
     "--output-partial-info-plist",
-    path.join(out, "partial.plist")
+    path.join(out, "partial.plist"),
   ]);
 
   const car = path.join(TAURI_ICONS, "Assets.car");
@@ -456,7 +477,9 @@ function buildAssetsCar(scratch) {
   const info = JSON.parse(run("assetutil", ["--info", car]));
   const named = info.find((entry) => entry.AssetType === "Icon Image")?.Name;
   if (named !== "Argmax") {
-    throw new Error(`Assets.car has no "Argmax" Icon Image asset. Tauri would skip CFBundleIconName`);
+    throw new Error(
+      `Assets.car has no "Argmax" Icon Image asset. Tauri would skip CFBundleIconName`,
+    );
   }
 }
 
@@ -469,7 +492,9 @@ function buildIosAppIcon() {
   mkdirSync(IOS_APPICON, { recursive: true });
   for (const [appearance, palette] of Object.entries(APPEARANCES)) {
     const stem = appearance === "light" ? "icon" : `icon-${appearance}`;
-    writePng(render({ ...palette, bleed: true }), path.join(IOS_APPICON, `${stem}.png`), { opaque: true });
+    writePng(render({ ...palette, bleed: true }), path.join(IOS_APPICON, `${stem}.png`), {
+      opaque: true,
+    });
   }
   const contents = {
     images: [
@@ -479,10 +504,10 @@ function buildIosAppIcon() {
         filename: "icon-dark.png",
         idiom: "universal",
         platform: "ios",
-        size: "1024x1024"
-      }
+        size: "1024x1024",
+      },
     ],
-    info: { author: "argmax", version: 1 }
+    info: { author: "argmax", version: 1 },
   };
   writeFileSync(path.join(IOS_APPICON, "Contents.json"), `${JSON.stringify(contents, null, 2)}\n`);
 }
@@ -553,13 +578,10 @@ try {
   // supplies both fields, so the package carries one asset rather than one per
   // appearance.
   writePng(render({}), path.join(ICON_PACKAGE, "Assets", "mark.png"));
-  writeFileSync(path.join(ICON_PACKAGE, "icon.json"), `${JSON.stringify(iconDocument(), null, 2)}\n`);
-
-  // The PWA icon has to live in public/: Vite hashes anything referenced from
-  // HTML, and manifest.webmanifest is copied verbatim, so a hashed path would
-  // 404 for the installed app. Same render, unhashed name.
-  mkdirSync(PUBLIC, { recursive: true });
-  cpSync(path.join(ASSETS, "icon.png"), path.join(PUBLIC, "argmax-icon.png"));
+  writeFileSync(
+    path.join(ICON_PACKAGE, "icon.json"),
+    `${JSON.stringify(iconDocument(), null, 2)}\n`,
+  );
 
   buildIosAppIcon();
   buildIosFoxMark();
@@ -568,8 +590,8 @@ try {
   buildAssetsCar(scratch);
 
   console.log(
-    "icons rebuilt: assets/icon{,-dark}.{svg,png}, assets/Argmax.icon, public/argmax-icon.png, " +
-      "ios/Argmax/Sources/Assets.xcassets, src-tauri/icons/{icon.icns,Assets.car}"
+    "icons rebuilt: assets/icon{,-dark}.{svg,png}, assets/Argmax.icon, " +
+      "ios/Argmax/Sources/Assets.xcassets, src-tauri/icons/{icon.icns,Assets.car}",
   );
 } finally {
   rmSync(scratch, { recursive: true, force: true });

@@ -4,7 +4,7 @@ import {
   getLastGoodProviderRow,
   getUsageRemainingFailedAt,
   recordUsageRemainingFailure,
-  requestUsageRemaining
+  requestUsageRemaining,
 } from "./ledgerPageState.js";
 
 /**
@@ -12,7 +12,7 @@ import {
  * come from provider accounts over the network and Claude's endpoint
  * rate-limits, so opening a menu twice in a minute must not fetch twice.
  */
-export const REMAINING_STALE_AFTER_MS = 5 * 60_000;
+const REMAINING_STALE_AFTER_MS = 5 * 60_000;
 /** A lookup the user asks for by hand still waits this long after the last read. */
 const MANUAL_REFRESH_COOLDOWN_MS = 30_000;
 
@@ -43,13 +43,15 @@ export function isUsageRemainingStale(remaining: UsageRemaining | null, now: num
  * stale, but not one taken a moment ago.
  */
 export async function lookUpUsageRemaining(
-  options: { manual?: boolean; now?: number } = {}
+  options: { manual?: boolean; now?: number } = {},
 ): Promise<UsageRemaining> {
   const now = options.now ?? Date.now();
   const cached = getCachedUsageRemaining();
   if (cached) {
     const age = ageMs(cached, now);
-    const reuse = options.manual ? age <= MANUAL_REFRESH_COOLDOWN_MS : age <= REMAINING_STALE_AFTER_MS;
+    const reuse = options.manual
+      ? age <= MANUAL_REFRESH_COOLDOWN_MS
+      : age <= REMAINING_STALE_AFTER_MS;
     if (reuse) return cached;
   }
   // After a failed read, wait out the stale window before asking the accounts
@@ -68,7 +70,7 @@ export async function lookUpUsageRemaining(
   } catch (cause) {
     recordUsageRemainingFailure(
       cause instanceof Error ? cause.message : "Could not read remaining usage.",
-      now
+      now,
     );
     throw cause;
   }
@@ -90,7 +92,7 @@ export interface ProviderRemainingSummary {
  */
 export function summarizeProviderWithHeld(
   remaining: UsageRemaining | null,
-  provider: ProviderId
+  provider: ProviderId,
 ): { summary: ProviderRemainingSummary; asOf: string } | null {
   const current = summarizeProviderRemaining(remaining, provider);
   const currentRow = (remaining?.providers ?? []).find((entry) => entry.provider === provider);
@@ -102,7 +104,7 @@ export function summarizeProviderWithHeld(
   if (!held) return null;
   const rebuilt = summarizeProviderRemaining(
     { fetchedAt: held.fetchedAt, providers: [held.row] },
-    provider
+    provider,
   );
   return rebuilt ? { summary: rebuilt, asOf: held.fetchedAt } : null;
 }
@@ -116,16 +118,17 @@ export function remainingFiguresAreOld(asOf: string, now: number): boolean {
 /** One provider's plan windows, or null when its account reported none. */
 export function summarizeProviderRemaining(
   remaining: UsageRemaining | null,
-  provider: ProviderId
+  provider: ProviderId,
 ): ProviderRemainingSummary | null {
   // Read the way the sidebar menu reads it: a bridge with no usage source
   // (a browser preview, a test double) yields nothing, not an error.
   const row = (remaining?.providers ?? []).find(
-    (entry) => entry.provider === provider && entry.kind === "subscription" && entry.windows.length > 0
+    (entry) =>
+      entry.provider === provider && entry.kind === "subscription" && entry.windows.length > 0,
   );
   if (!row) return null;
   const tightest = row.windows.reduce((least, window) =>
-    window.remainingPercent < least.remainingPercent ? window : least
+    window.remainingPercent < least.remainingPercent ? window : least,
   );
   return { provider, planLabel: row.planLabel, tightest, windows: row.windows };
 }

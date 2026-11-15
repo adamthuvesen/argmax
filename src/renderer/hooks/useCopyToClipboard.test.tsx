@@ -42,9 +42,9 @@ describe("useCopyToClipboard", () => {
   });
 
   it("falls back to the command when the async write is refused", async () => {
-    const writeText = vi.fn<(text: string) => Promise<void>>().mockRejectedValue(
-      new DOMException("Document is not focused", "NotAllowedError")
-    );
+    const writeText = vi
+      .fn<(text: string) => Promise<void>>()
+      .mockRejectedValue(new DOMException("Document is not focused", "NotAllowedError"));
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     stubExecCommand(true);
     render(<CopyButton text="the reply" />);

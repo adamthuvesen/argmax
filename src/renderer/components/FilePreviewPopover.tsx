@@ -19,12 +19,18 @@ export function FilePreviewPopover({
   data,
   loading,
   error,
-  path
+  path,
 }: FilePreviewPopoverProps): JSX.Element {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [position, setPosition] = useState<{ left: number; top: number; placement: "above" | "below" }>(
-    () => ({ left: anchorRect.left, top: anchorRect.bottom + PREVIEW_GAP_PX, placement: "below" })
-  );
+  const [position, setPosition] = useState<{
+    left: number;
+    top: number;
+    placement: "above" | "below";
+  }>(() => ({
+    left: anchorRect.left,
+    top: anchorRect.bottom + PREVIEW_GAP_PX,
+    placement: "below",
+  }));
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -56,15 +62,19 @@ export function FilePreviewPopover({
         left: `${position.left}px`,
         top: `${position.top}px`,
         maxWidth: `${PREVIEW_MAX_W}px`,
-        minWidth: `${PREVIEW_MIN_W}px`
+        minWidth: `${PREVIEW_MIN_W}px`,
       }}
     >
       <div className="file-preview-popover-header">
-        <span className="file-preview-popover-path" title={path}>{path}</span>
+        <span className="file-preview-popover-path" title={path}>
+          {path}
+        </span>
         {data ? (
           <span className="file-preview-popover-range">
             {data.startLine}–{data.endLine}
-            {data.totalLines > data.endLine ? <span className="file-preview-popover-more">·{data.totalLines}</span> : null}
+            {data.totalLines > data.endLine ? (
+              <span className="file-preview-popover-more">·{data.totalLines}</span>
+            ) : null}
           </span>
         ) : null}
       </div>

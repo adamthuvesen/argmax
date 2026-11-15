@@ -1,11 +1,11 @@
 import type { AttachmentMimeType } from "../../shared/types.js";
 import { WORKSPACE_DRAG_MIME } from "./gridState.js";
 
-export const SUPPORTED_IMAGE_MIME_TYPES: readonly AttachmentMimeType[] = [
+const SUPPORTED_IMAGE_MIME_TYPES: readonly AttachmentMimeType[] = [
   "image/png",
   "image/jpeg",
   "image/gif",
-  "image/webp"
+  "image/webp",
 ];
 
 export function isSupportedImageMime(mime: string): mime is AttachmentMimeType {
@@ -17,7 +17,7 @@ const IMAGE_EXTENSION_MIME: Readonly<Record<string, AttachmentMimeType>> = {
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
   gif: "image/gif",
-  webp: "image/webp"
+  webp: "image/webp",
 };
 
 /**
@@ -35,7 +35,7 @@ const DRAG_TYPE_IMAGE_MIME: Readonly<Record<string, AttachmentMimeType>> = {
   "public.jpeg": "image/jpeg",
   "public.jpeg-2000": "image/jpeg",
   "com.compuserve.gif": "image/gif",
-  "org.webmproject.webp": "image/webp"
+  "org.webmproject.webp": "image/webp",
 };
 
 /** MIME from a filename when the File's own type is empty. Screenshot drops
@@ -83,10 +83,7 @@ function isFilePromiseDragType(type: string): boolean {
  */
 export function isTransientScreenshotPath(path: string): boolean {
   const normalized = path.replaceAll("\\", "/").toLowerCase();
-  return (
-    normalized.includes("screencaptureui") ||
-    normalized.includes("/temporaryitems/nsird_")
-  );
+  return normalized.includes("screencaptureui") || normalized.includes("/temporaryitems/nsird_");
 }
 
 /** Whether a dropped File should use the Finder @-mention path rather than
@@ -201,7 +198,7 @@ export function collectDroppedFiles(dataTransfer: ComposerDragPayload): File[] {
  */
 export function buildAttachmentReferences(
   files: Iterable<File> | Iterable<{ path?: string }>,
-  workspacePath: string | null
+  workspacePath: string | null,
 ): string[] {
   const refs: string[] = [];
   for (const file of files) {

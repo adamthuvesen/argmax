@@ -7,12 +7,8 @@ copying it into a tap.
 
 ## A personal tap, for now
 
-The main `homebrew-cask` repository gates on notability: a project needs
-**75 stars, 30 forks, or 30 watchers**, and **225 stars, 90 forks, or 90
-watchers** when the repository's own owner submits it. Repositories younger
-than 30 days are generally ineligible regardless. Argmax is nowhere near
-those numbers, so core is out of reach and a personal tap is the answer —
-it needs no review and works identically for the user.
+The cask is intended for a personal tap. The checked-in `sha256` is a
+placeholder and must be replaced with the published DMG hash before use.
 
 A tap is an ordinary public GitHub repository named `homebrew-<name>`:
 
@@ -29,8 +25,7 @@ brew install --cask adamthuvesen/tap/argmax
 ```
 
 The `homebrew-` prefix is implied, which is why the command says `tap` and the
-repository says `homebrew-tap`. Revisit core once the star count clears the
-owner-submission bar.
+repository says `homebrew-tap`. Check Homebrew’s current submission requirements before proposing the cask to core.
 
 ## Per release
 
@@ -57,10 +52,8 @@ After [publishing the draft release](release.md#cutting-a-release):
 dead URL, and the style problems core would reject — worth running even while
 the cask lives in a personal tap.
 
-## Until the app is signed
+## Signing
 
-A cask is not a way around Gatekeeper. An unsigned, un-notarized build still
-triggers *"the developer cannot be verified"* on first launch when it arrives
-through Homebrew, so the cask is worth publishing but does not substitute for
-signing. See [release.md](release.md#signing-and-notarization) for what closes
-that gap.
+The release workflow can produce an unsigned build when credentials are missing.
+Verify signing and notarization for the DMG before publishing the cask.
+See [release.md](release.md#signing-and-notarization).

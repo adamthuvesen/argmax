@@ -24,23 +24,24 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::MissedTickBehavior;
 use uuid::Uuid;
 
-use super::adapters::successor_model_id;
-use super::environment::build_provider_environment;
+use super::adapters::codex_effort_value;
 use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-#[cfg(test)]
-use super::AgentMode;
-use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput};
+use super::{mcp_injection, prompt_gate::PromptGate, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::time::now_iso;
 use crate::questions::service::QuestionService;
 use crate::session_control::{
     SessionLaunchProcessConfig, SESSION_LAUNCH_SOCKET_ENV, SESSION_LAUNCH_TOKEN_ENV,
 };
-use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+#[cfg(test)]
+use argmax_contracts::validation::AgentMode;
+use argmax_contracts::validation::{PermissionMode, ProviderId};
+use argmax_process::environment::build_provider_environment;
+use argmax_store::sync::LockOrRecover;
+use argmax_store::time::now_iso;
 
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);
 const CANCEL_TIMEOUT: Duration = Duration::from_secs(5);
@@ -62,6 +63,7 @@ pub async fn launch_turn(
     approvals: Arc<ApprovalService>,
     questions: Arc<QuestionService>,
     on_event: EventCallback,
+    prompt_gate: &PromptGate,
 ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
     let mut environment_overrides = vec![("NO_COLOR".to_string(), "1".to_string())];
     if let Some(config) = session_launch {
@@ -177,6 +179,9 @@ pub async fn launch_turn(
             verify_fork_end(&rpc, &thread_id, requested).await?;
         }
 
+        // The app-server and thread are up while the checkpoint finishes;
+        // the turn itself waits for it.
+        prompt_gate.wait_before_prompt(&input.session_id).await?;
         let turn_id = if crate::providers::inputs::is_compact_command(&input.prompt) {
             // Compaction runs as its own turn, but `thread/compact/start`
             // answers `{}`: the turn id only arrives in `turn/started`.
@@ -234,7 +239,7 @@ pub async fn launch_turn(
         &input.session_id,
         json!({
             "type": "turn_context",
-            "model": successor_model_id(ProviderId::Codex, &input.model_id),
+            "model": input.model_id.as_str(),
             "reasoning_effort": effective_effort(input),
         }),
     );
@@ -375,10 +380,7 @@ fn thread_params(
 ) -> Value {
     let mut params = Map::new();
     params.insert("cwd".to_string(), json!(input.workspace_path));
-    params.insert(
-        "model".to_string(),
-        json!(successor_model_id(ProviderId::Codex, &input.model_id)),
-    );
+    params.insert("model".to_string(), json!(input.model_id.as_str()));
     if let Some(resume_id) = &input.resume_conversation_id {
         params.insert("threadId".to_string(), json!(resume_id));
         // Fork through a selected turn, inclusive. Never combined with
@@ -528,10 +530,7 @@ fn turn_params(input: &ProviderLaunchInput, thread_id: &str, prompt: String) -> 
             json!([{ "type": "text", "text": prompt }]),
         ),
         ("cwd".to_string(), json!(input.workspace_path)),
-        (
-            "model".to_string(),
-            json!(successor_model_id(ProviderId::Codex, &input.model_id)),
-        ),
+        ("model".to_string(), json!(input.model_id.as_str())),
         ("summary".to_string(), json!("auto")),
         (
             "additionalContext".to_string(),
@@ -595,15 +594,7 @@ fn apply_permission_policy(
 
 fn effective_effort(input: &ProviderLaunchInput) -> Option<&'static str> {
     let effort = input.reasoning_effort?;
-    Some(match input.model_id.as_str() {
-        "gpt-6-astra" | "gpt-6.1-sol" | "gpt-6-sol" | "gpt-5.6-sol" | "gpt-5.6-terra" => {
-            effort.as_str()
-        }
-        "gpt-6-luna" | "gpt-5.6-luna" if effort.as_str() == "ultra" => "max",
-        "gpt-6-luna" | "gpt-5.6-luna" => effort.as_str(),
-        _ if matches!(effort.as_str(), "max" | "ultra") => "xhigh",
-        _ => effort.as_str(),
-    })
+    Some(codex_effort_value(&input.model_id, effort))
 }
 
 fn mcp_config(
@@ -1780,8 +1771,9 @@ impl ProviderRuntimeHandle for CodexTurnHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::database::Database;
-    use crate::providers::ReasoningEffort;
+    use crate::providers::model_catalogue::ModelId;
+    use argmax_contracts::validation::ReasoningEffort;
+    use argmax_store::database::Database;
 
     fn input(permission_mode: PermissionMode) -> ProviderLaunchInput {
         ProviderLaunchInput {
@@ -1790,7 +1782,7 @@ mod tests {
             workspace_path: "/tmp/project".into(),
             prompt: "Do the work".to_string(),
             model_label: "Astra".to_string(),
-            model_id: "gpt-6-astra".to_string(),
+            model_id: ModelId::resolve(ProviderId::Codex, "gpt-6-astra"),
             reasoning_effort: Some(ReasoningEffort::Ultra),
             fast_mode: true,
             resume_conversation_id: None,
@@ -2022,7 +2014,7 @@ done
             });
             let mut launch_input = input(PermissionMode::ProviderDefaults);
             launch_input.workspace_path = temp.path().to_path_buf();
-            launch_input.model_id = (*model).to_string();
+            launch_input.model_id = ModelId::resolve(launch_input.provider, model);
             launch_input.reasoning_effort = Some(*effort);
             launch_input.resume_conversation_id = (index > 0).then(|| "thread-1".to_string());
             let _handle = launch_turn(
@@ -2032,6 +2024,7 @@ done
                 Arc::clone(&approvals),
                 Arc::clone(&questions),
                 callback,
+                &PromptGate::open(),
             )
             .await
             .unwrap();
@@ -2146,6 +2139,7 @@ done
             approvals,
             questions,
             callback,
+            &PromptGate::open(),
         )
         .await;
         // The handle owns the process: keep it until the turn has ended.
@@ -2954,6 +2948,7 @@ done
             approvals,
             questions,
             callback,
+            &PromptGate::open(),
         )
         .await
         .unwrap();
@@ -3079,6 +3074,7 @@ done
             approvals,
             questions,
             callback,
+            &PromptGate::open(),
         )
         .await
         .unwrap();
@@ -3149,14 +3145,22 @@ done
         launch_input.session_id = Uuid::new_v4().to_string();
         launch_input.workspace_path = temp.path().to_path_buf();
         launch_input.model_label = "GPT-5.6 Luna".into();
-        launch_input.model_id = "gpt-5.6-luna".into();
+        launch_input.model_id = ModelId::resolve(launch_input.provider, "gpt-5.6-luna");
         launch_input.reasoning_effort = Some(ReasoningEffort::Low);
         launch_input.prompt = format!(
             "Use the shell to run sleep 5, then finish the original task by including this exact token in your final response: {original_token}"
         );
-        let handle = launch_turn(&binary, &launch_input, None, approvals, questions, callback)
-            .await
-            .unwrap();
+        let handle = launch_turn(
+            &binary,
+            &launch_input,
+            None,
+            approvals,
+            questions,
+            callback,
+            &PromptGate::open(),
+        )
+        .await
+        .unwrap();
         handle
             .steer(&format!(
                 "Also include this exact token in the same final response: {steer_token}"

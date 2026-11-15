@@ -13,13 +13,21 @@ export function ChatBubble({ kind, rawMarkdown, children }: ChatBubbleProps): JS
 
   return (
     <article className={`chat-bubble ${kind}`}>
-      {kind === "user" ? <UserBubbleBody rawMarkdown={rawMarkdown}>{children}</UserBubbleBody> : children}
+      {kind === "user" ? (
+        <UserBubbleBody rawMarkdown={rawMarkdown}>{children}</UserBubbleBody>
+      ) : (
+        children
+      )}
       <button
         type="button"
         className="chat-bubble-copy"
         aria-label="Copy bubble"
         title={
-          copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy markdown"
+          copyFlash === "copied"
+            ? "Copied"
+            : copyFlash === "failed"
+              ? "Couldn't copy"
+              : "Copy markdown"
         }
         onClick={() => void copy(rawMarkdown)}
       >
@@ -42,7 +50,7 @@ export function ChatBubble({ kind, rawMarkdown, children }: ChatBubbleProps): JS
  */
 function UserBubbleBody({
   rawMarkdown,
-  children
+  children,
 }: {
   rawMarkdown: string;
   children: ReactNode;
@@ -65,7 +73,8 @@ function UserBubbleBody({
       // never look exceeded. `max-height: none` while expanded is already
       // bailed out above.
       const cap = parseFloat(getComputedStyle(body).maxHeight);
-      const limit = Number.isFinite(cap) && cap > 0 ? Math.min(body.clientHeight, cap) : body.clientHeight;
+      const limit =
+        Number.isFinite(cap) && cap > 0 ? Math.min(body.clientHeight, cap) : body.clientHeight;
       setClipped(content.scrollHeight - limit > 1);
     };
     measure();
@@ -83,8 +92,11 @@ function UserBubbleBody({
       <div
         ref={bodyRef}
         className={`chat-bubble-body${expanded ? " expanded" : clipped ? " clipped" : ""}`}
+        data-testid="chat-bubble-body"
       >
-        <div ref={contentRef}>{children}</div>
+        <div ref={contentRef} data-testid="chat-bubble-content">
+          {children}
+        </div>
       </div>
       {clipped ? (
         <button

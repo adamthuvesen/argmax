@@ -1,5 +1,5 @@
 //! Walks every provider transcript on disk and folds the billed calls into
-//! the hourly ledger (`persistence::usage_scan`). A sweep is incremental: an
+//! the hourly ledger (`argmax_store::usage_scan`). A sweep is incremental: an
 //! unchanged file is skipped on its size and mtime, a grown file is read from
 //! the byte the last sweep stopped at, and only a rewritten or unknown file is
 //! parsed in full. See `docs/usage.md`.
@@ -15,17 +15,17 @@ use std::{
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::ipc::validation::ProviderId;
-use crate::persistence::{
+use crate::providers::pricing::normalize_model_id;
+use crate::usage::records::{TranscriptContext, UsageRecord};
+use crate::usage::{claude, codex, grok, opencode};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ProviderId;
+use argmax_store::sync::LockOrRecover;
+use argmax_store::{
     time::now_iso,
     usage_scan::{self, ScanFileRecord, UsageContribution},
     Database,
 };
-use crate::providers::pricing::normalize_model_id;
-use crate::usage::records::{TranscriptContext, UsageRecord};
-use crate::usage::{claude, codex, grok, opencode};
-use crate::util::sync::LockOrRecover;
 
 /// Bump when a parser's output for the same bytes changes; the next sweep
 /// empties the ledger and reads everything again.
@@ -157,7 +157,7 @@ impl UsageScanner {
 
         let connection = self.database.connection();
         for provider in [ProviderId::Claude, ProviderId::Codex, ProviderId::Grok] {
-            for path in usage_scan::list_scan_file_paths(&connection, provider_key(provider))? {
+            for path in usage_scan::list_scan_file_paths(&connection, provider.as_str())? {
                 if !Path::new(&path).exists() {
                     let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
                     usage_scan::forget_file(&transaction, &path)?;
@@ -327,7 +327,7 @@ impl UsageScanner {
             &transaction,
             &ScanFileRecord {
                 path: path_key,
-                provider: provider_key(file.provider).to_owned(),
+                provider: file.provider.as_str().to_owned(),
                 session_id,
                 size: file.size,
                 mtime_ms: file.mtime_ms,
@@ -394,7 +394,7 @@ fn fold_records(
         .into_iter()
         .map(|record| UsageContribution {
             billed_call_key: record.dedupe_key,
-            provider: provider_key(record.provider).to_owned(),
+            provider: record.provider.as_str().to_owned(),
             model_id: normalize_model_id(&record.model_id),
             session_id: record.session_id,
             at_ms: record.at_ms,
@@ -532,27 +532,6 @@ fn guard_matches(path: &Path, cursor_offset: i64, expected: Option<&str>) -> Arg
     Ok(guard_hash_at(path, cursor_offset as u64)?.as_deref() == Some(expected))
 }
 
-pub fn provider_key(provider: ProviderId) -> &'static str {
-    match provider {
-        ProviderId::Claude => "claude",
-        ProviderId::Codex => "codex",
-        ProviderId::Cursor => "cursor",
-        ProviderId::Opencode => "opencode",
-        ProviderId::Grok => "grok",
-    }
-}
-
-pub fn provider_from_key(key: &str) -> Option<ProviderId> {
-    match key {
-        "claude" => Some(ProviderId::Claude),
-        "codex" => Some(ProviderId::Codex),
-        "cursor" => Some(ProviderId::Cursor),
-        "opencode" => Some(ProviderId::Opencode),
-        "grok" => Some(ProviderId::Grok),
-        _ => None,
-    }
-}
-
 /// Unix seconds at the start of the UTC hour containing `at_ms`.
 pub fn hour_start_secs(at_ms: i64) -> i64 {
     at_ms.div_euclid(3_600_000) * 3600
@@ -585,8 +564,8 @@ fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::usage_scan::HourlyBucketDelta;
-    use crate::usage::records::UsageRecordTokens;
+    use argmax_contracts::usage::UsageRecordTokens;
+    use argmax_store::usage_scan::HourlyBucketDelta;
     use chrono::{Duration, SecondsFormat, Utc};
     use std::io::Write;
 

@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineEvent } from "../../shared/types.js";
 import type { ToolCall } from "./toolCalls.js";
-import {
-  collectAskUserQuestionState,
-  hasOutstandingCardAsk
-} from "./turnInteractiveCards.js";
+import { collectAskUserQuestionState, hasOutstandingCardAsk } from "./turnInteractiveCards.js";
 import type { TurnToolItem } from "./toolCalls.js";
 
 function tool(overrides: Partial<ToolCall> = {}): ToolCall {
@@ -19,7 +16,7 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
     createdAt: "2026-01-01T00:00:00.000Z",
     completedAt: "2026-01-01T00:00:01.000Z",
     error: "denied",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -31,19 +28,19 @@ describe("turnInteractiveCards", () => {
         tool: tool({
           id: "q1",
           inputFull: {
-            questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }]
-          }
-        })
+            questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }],
+          },
+        }),
       },
       {
         kind: "tool",
         tool: tool({
           id: "q2",
           inputFull: {
-            questions: [{ question: "Pick two?", header: "Q2", options: [{ label: "B" }] }]
-          }
-        })
-      }
+            questions: [{ question: "Pick two?", header: "Q2", options: [{ label: "B" }] }],
+          },
+        }),
+      },
     ];
 
     const { tool: resolved, hiddenToolIds } = collectAskUserQuestionState(items);
@@ -62,19 +59,23 @@ describe("turnInteractiveCards", () => {
           inputFull: {
             delivery: "blocking",
             requestId: "request-1",
-            questions: [{ id: "scope", question: "Pick one?", header: "Scope", options: [{ label: "A" }] }]
-          }
-        })
-      }
+            questions: [
+              { id: "scope", question: "Pick one?", header: "Scope", options: [{ label: "A" }] },
+            ],
+          },
+        }),
+      },
     ];
 
     expect(collectAskUserQuestionState(blocking("running")).tool).toMatchObject({
       id: "blocking-q",
       delivery: "blocking",
-      requestId: "request-1"
+      requestId: "request-1",
     });
     expect(collectAskUserQuestionState(blocking("done")).tool).toBeNull();
-    expect(collectAskUserQuestionState(blocking("done")).hiddenToolIds).toEqual(new Set(["blocking-q"]));
+    expect(collectAskUserQuestionState(blocking("done")).hiddenToolIds).toEqual(
+      new Set(["blocking-q"]),
+    );
   });
 
   it("hides malformed AskUserQuestion attempts even when no card can render", () => {
@@ -84,10 +85,22 @@ describe("turnInteractiveCards", () => {
         tool: tool({
           id: "bad",
           inputFull: {
-            questions: [{ question: "Too many?", header: "Bad", options: [{ label: "1" }, { label: "2" }, { label: "3" }, { label: "4" }, { label: "5" }] }]
-          }
-        })
-      }
+            questions: [
+              {
+                question: "Too many?",
+                header: "Bad",
+                options: [
+                  { label: "1" },
+                  { label: "2" },
+                  { label: "3" },
+                  { label: "4" },
+                  { label: "5" },
+                ],
+              },
+            ],
+          },
+        }),
+      },
     ];
 
     const { tool: resolved, hiddenToolIds } = collectAskUserQuestionState(items);
@@ -103,9 +116,9 @@ describe("turnInteractiveCards", () => {
         tool: tool({
           id: "send-message",
           name: "SendUserMessage",
-          inputFull: { message: "Which path should I take?" }
-        })
-      }
+          inputFull: { message: "Which path should I take?" },
+        }),
+      },
     ];
 
     const { tool: resolved, hiddenToolIds } = collectAskUserQuestionState(items);
@@ -122,9 +135,9 @@ describe("turnInteractiveCards", () => {
           id: "q-alias",
           name: "ask_user_question",
           inputFull: {
-            questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }]
-          }
-        })
+            questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }],
+          },
+        }),
       },
       {
         kind: "tool",
@@ -132,15 +145,17 @@ describe("turnInteractiveCards", () => {
           id: "cursor-q",
           name: "askQuestionToolCall",
           inputFull: {
-            questions: [{ question: "Pick from Cursor?", header: "Cursor", options: [{ label: "C" }] }]
-          }
-        })
-      }
+            questions: [
+              { question: "Pick from Cursor?", header: "Cursor", options: [{ label: "C" }] },
+            ],
+          },
+        }),
+      },
     ];
 
     expect(collectAskUserQuestionState(items).tool?.id).toBe("q-alias");
     expect(collectAskUserQuestionState(items).hiddenToolIds).toEqual(
-      new Set(["q-alias", "cursor-q"])
+      new Set(["q-alias", "cursor-q"]),
     );
   });
 
@@ -152,17 +167,17 @@ describe("turnInteractiveCards", () => {
         type: "user.message",
         message: "go",
         createdAt: "2026-01-01T00:00:00.000Z",
-        payload: {}
-      }
+        payload: {},
+      },
     ];
     const toolCalls: ToolCall[] = [
       tool({
         name: "AskUserQuestion",
         createdAt: "2026-01-01T00:00:02.000Z",
         inputFull: {
-          questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }]
-        }
-      })
+          questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }],
+        },
+      }),
     ];
 
     expect(hasOutstandingCardAsk(events, toolCalls)).toBe(true);
@@ -172,10 +187,10 @@ describe("turnInteractiveCards", () => {
           name: "AskUserQuestion",
           createdAt: "2025-12-31T00:00:00.000Z",
           inputFull: {
-            questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }]
-          }
-        })
-      ])
+            questions: [{ question: "Pick one?", header: "Q", options: [{ label: "A" }] }],
+          },
+        }),
+      ]),
     ).toBe(false);
   });
 });

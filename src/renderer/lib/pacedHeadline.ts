@@ -23,7 +23,7 @@ export const CLAUSE_DWELL_MS = 800;
 export function usePacedHeadline(
   headline: string,
   kindKey: string,
-  running: boolean
+  running: boolean,
 ): { shown: string; previous: string } {
   const [shown, setShown] = useState(headline);
   const shownRef = useRef(headline);
@@ -57,7 +57,7 @@ export function usePacedHeadline(
       return;
     }
 
-    if (kindKey === shownKindRef.current) return;   // same work, new count: hold
+    if (kindKey === shownKindRef.current) return; // same work, new count: hold
 
     const remaining = Math.max(0, CLAUSE_DWELL_MS - (performance.now() - shownAtRef.current));
     if (remaining === 0) {
@@ -75,7 +75,7 @@ export function usePacedHeadline(
     () => () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     },
-    []
+    [],
   );
 
   return { shown, previous: previousRef.current };

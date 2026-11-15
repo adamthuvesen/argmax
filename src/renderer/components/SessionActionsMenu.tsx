@@ -9,16 +9,17 @@ import {
   PanelRightDashed,
   SquareArrowOutUpRight,
   SquarePen,
-  Workflow
+  Workflow,
 } from "lucide-react";
 import { useCallback, useContext, useEffect, useState, type JSX } from "react";
+import { prActions, windowActions } from "../data/bridgeActions.js";
 import { createPortal } from "react-dom";
 import type { DetectedIde, IdeId, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { cloudProviderName, isHostedCloudProvider } from "../../shared/cloudProviders.js";
 import { openBrowserPanel } from "../lib/browserPanel.js";
 import { isSecondaryWindow } from "../lib/windowRole.js";
 import { DeveloperToolsContext } from "../lib/uiPreferences.js";
-import { refreshSessionPrs } from "../lib/sessionPrs.js";
+import { refreshSessionPrsOnOpen } from "../lib/sessionPrs.js";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { CloudTaskDialog } from "./CloudTaskDialog.js";
@@ -38,7 +39,7 @@ export function SessionActionsMenu({
   onToggleLog,
   onToggleWorkspaceCard,
   session,
-  workspace
+  workspace,
 }: {
   defaultIde?: IdeId | null;
   detectedIdes?: DetectedIde[];
@@ -67,7 +68,8 @@ export function SessionActionsMenu({
 }): JSX.Element {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [cloudDialogOpen, setCloudDialogOpen] = useState(false);
-  const cloudProvider = session && isHostedCloudProvider(session.provider) ? session.provider : null;
+  const cloudProvider =
+    session && isHostedCloudProvider(session.provider) ? session.provider : null;
   const developerToolsEnabled = useContext(DeveloperToolsContext);
   const closeActions = useCallback(() => {
     setActionsOpen(false);
@@ -79,20 +81,12 @@ export function SessionActionsMenu({
 
   useDismissOnOutsideOrEscape(menu.anchorRef, actionsOpen, closeActions, menu.popoverRef);
 
+  const sessionId = session?.id;
+  const branch = workspace?.branch ?? "";
   useEffect(() => {
-    if (!session?.id || !window.argmax?.prs) return;
-    let cancelled = false;
-    void window.argmax.prs
-      .listForSession({ sessionId: session.id })
-      .catch((error) => {
-        if (cancelled) return;
-        showErrorToast(error instanceof Error ? error.message : "Could not load pull requests.");
-      });
-    void refreshSessionPrs(session.id)?.catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.id]);
+    if (!sessionId || !prActions()) return;
+    return refreshSessionPrsOnOpen(sessionId, branch);
+  }, [sessionId, branch]);
 
   // One item for the pinned default when detected. Without one, listing every
   // GUI IDE *is* the "Ask each time" setting — guessing a favorite here would
@@ -104,223 +98,233 @@ export function SessionActionsMenu({
   // Tearing off is a desktop gesture from the main window: the phone has no
   // windows, and a window already torn off would only focus itself.
   const canOpenInWindow =
-    typeof window !== "undefined" && window.argmax?.windows !== undefined && !isSecondaryWindow();
+    typeof window !== "undefined" && windowActions() !== undefined && !isSecondaryWindow();
 
   return (
     <>
       <div className="session-actions-anchor" ref={menu.setAnchor}>
-      <button
-        className="small-icon"
-        type="button"
-        title="Chat actions"
-        aria-label="Chat actions"
-        aria-haspopup="menu"
-        aria-expanded={actionsOpen}
-        onClick={() => setActionsOpen((open) => !open)}
-      >
-        <MoreHorizontal size={16} />
-      </button>
-      {actionsOpen && createPortal(
-        <div
-          ref={menu.setPopover}
-          className="project-picker-popover session-actions-popover"
-          role="menu"
+        <button
+          className="small-icon"
+          type="button"
+          title="Chat actions"
           aria-label="Chat actions"
-          style={menu.floatingStyles}
+          aria-haspopup="menu"
+          aria-expanded={actionsOpen}
+          onClick={() => setActionsOpen((open) => !open)}
         >
-          <ul className="session-actions-list">
-            <MenuSections
-              sections={[
-                [
-                  onNewSession ? (
-                    <li role="none">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="project-picker-item"
-                        title="Compose a task for any repository beside this chat (⌘N)"
-                        onClick={() => {
-                          closeActions();
-                          onNewSession();
-                        }}
-                      >
-                        <SquarePen size={14} aria-hidden="true" />
-                        New Chat Here
-                      </button>
-                    </li>
-                  ) : null,
-                  onStartArc ? (
-                    <li role="none">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="project-picker-item"
-                        disabled={onStartArc.disabledReason !== null}
-                        title={onStartArc.disabledReason ?? "This chat becomes the coordinator of a new arc"}
-                        onClick={() => {
-                          closeActions();
-                          onStartArc.run();
-                        }}
-                      >
-                        <Workflow size={14} aria-hidden="true" />
-                        Start an Arc from This Chat…
-                      </button>
-                    </li>
-                  ) : null,
-                  session && cloudProvider && workspace?.kind === "git" ? (
-                    <li role="none">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="project-picker-item"
-                        title={`Continue this chat as a ${cloudProviderName(cloudProvider)} task, from the pushed branch`}
-                        onClick={() => {
-                          closeActions();
-                          setCloudDialogOpen(true);
-                        }}
-                      >
-                        <Cloud size={14} aria-hidden="true" />
-                        Send Task to {cloudProviderName(cloudProvider)}…
-                      </button>
-                    </li>
-                  ) : null
-                ],
-                [
-                  session?.launchedBySessionId && onOpenLaunchingChat ? (
-                    <li role="none">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="project-picker-item"
-                        title="Open the chat whose agent started this one"
-                        onClick={() => {
-                          closeActions();
-                          onOpenLaunchingChat();
-                        }}
-                      >
-                        <CornerUpLeft size={14} aria-hidden="true" />
-                        Open Launching Chat
-                      </button>
-                    </li>
-                  ) : null,
-                  <li role="none">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="project-picker-item"
-                      disabled={!workspace}
-                      onClick={() => {
-                        closeActions();
-                        onBrowseFiles();
-                      }}
-                    >
-                      <Folder size={14} aria-hidden="true" />
-                      Browse Files
-                    </button>
-                  </li>,
-                  !isSecondaryWindow() ? (
-                    <li role="none">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="project-picker-item"
-                        title="Open the browser in the review panel"
-                        onClick={() => {
-                          closeActions();
-                          openBrowserPanel();
-                        }}
-                      >
-                        <Globe size={14} aria-hidden="true" />
-                        Open Browser
-                      </button>
-                    </li>
-                  ) : null,
-                  session && canOpenInWindow ? (
-                    <li role="none">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="project-picker-item"
-                        title="Show this chat in a desktop window of its own"
-                        onClick={() => {
-                          closeActions();
-                          void window.argmax?.windows.openSession({ sessionId: session.id }).catch((error: unknown) => {
-                            showErrorToast(error instanceof Error ? error.message : "Couldn't open a new window.");
-                          });
-                        }}
-                      >
-                        <AppWindow size={14} aria-hidden="true" />
-                        Open in New Window
-                      </button>
-                    </li>
-                  ) : null,
-                  onOpenInIde
-                    ? ideChoices.map((entry) => (
-                        <li role="none" key={entry.id}>
+          <MoreHorizontal size={16} />
+        </button>
+        {actionsOpen &&
+          createPortal(
+            <div
+              ref={menu.setPopover}
+              className="project-picker-popover session-actions-popover"
+              role="menu"
+              aria-label="Chat actions"
+              style={menu.floatingStyles}
+            >
+              <ul className="session-actions-list">
+                <MenuSections
+                  sections={[
+                    [
+                      onNewSession ? (
+                        <li role="none">
                           <button
                             type="button"
                             role="menuitem"
                             className="project-picker-item"
-                            disabled={!workspace}
+                            title="Compose a task for any repository beside this chat (⌘N)"
+                            onClick={() => {
+                              closeActions();
+                              onNewSession();
+                            }}
+                          >
+                            <SquarePen size={14} aria-hidden="true" />
+                            New Chat Here
+                          </button>
+                        </li>
+                      ) : null,
+                      onStartArc ? (
+                        <li role="none">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="project-picker-item"
+                            disabled={onStartArc.disabledReason !== null}
                             title={
-                              pinnedIde
-                                ? "Open this workspace in your default IDE (set in Settings → Handoff)"
-                                : "Open this workspace in this IDE (pin a default in Settings → Handoff)"
+                              onStartArc.disabledReason ??
+                              "This chat becomes the coordinator of a new arc"
                             }
                             onClick={() => {
                               closeActions();
-                              onOpenInIde(entry.id);
+                              onStartArc.run();
                             }}
                           >
-                            <SquareArrowOutUpRight size={14} aria-hidden="true" />
-                            {`Open in ${entry.label}`}
+                            <Workflow size={14} aria-hidden="true" />
+                            Start an Arc from This Chat…
                           </button>
                         </li>
-                      ))
-                    : null
-                ],
-                [
-                  <li role="none">
-                    <button
-                      type="button"
-                      role="menuitemcheckbox"
-                      className="project-picker-item"
-                      aria-checked={isWorkspaceCardEnabled}
-                      disabled={!onToggleWorkspaceCard}
-                      title="Float a worktree summary beside the chat. Appears once the pane is wide enough to hold it."
-                      onClick={() => {
-                        closeActions();
-                        onToggleWorkspaceCard?.();
-                      }}
-                    >
-                      <PanelRightDashed size={14} aria-hidden="true" />
-                      Workspace Card
-                    </button>
-                  </li>,
-                  developerToolsEnabled ? (
-                    <li role="none">
-                      <button
-                        type="button"
-                        role="menuitemcheckbox"
-                        className="project-picker-item"
-                        aria-checked={isLogOpen}
-                        onClick={() => {
-                          closeActions();
-                          onToggleLog();
-                        }}
-                      >
-                        <Bug size={14} aria-hidden="true" />
-                        Debug Log
-                      </button>
-                    </li>
-                  ) : null
-                ]
-              ]}
-            />
-          </ul>
-        </div>,
-        document.body
-      )}
+                      ) : null,
+                      session && cloudProvider && workspace?.kind === "git" ? (
+                        <li role="none">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="project-picker-item"
+                            title={`Continue this chat as a ${cloudProviderName(cloudProvider)} task, from the pushed branch`}
+                            onClick={() => {
+                              closeActions();
+                              setCloudDialogOpen(true);
+                            }}
+                          >
+                            <Cloud size={14} aria-hidden="true" />
+                            Send Task to {cloudProviderName(cloudProvider)}…
+                          </button>
+                        </li>
+                      ) : null,
+                    ],
+                    [
+                      session?.launchedBySessionId && onOpenLaunchingChat ? (
+                        <li role="none">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="project-picker-item"
+                            title="Open the chat whose agent started this one"
+                            onClick={() => {
+                              closeActions();
+                              onOpenLaunchingChat();
+                            }}
+                          >
+                            <CornerUpLeft size={14} aria-hidden="true" />
+                            Open Launching Chat
+                          </button>
+                        </li>
+                      ) : null,
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="project-picker-item"
+                          disabled={!workspace}
+                          onClick={() => {
+                            closeActions();
+                            onBrowseFiles();
+                          }}
+                        >
+                          <Folder size={14} aria-hidden="true" />
+                          Browse Files
+                        </button>
+                      </li>,
+                      !isSecondaryWindow() ? (
+                        <li role="none">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="project-picker-item"
+                            title="Open the browser in the review panel"
+                            onClick={() => {
+                              closeActions();
+                              openBrowserPanel();
+                            }}
+                          >
+                            <Globe size={14} aria-hidden="true" />
+                            Open Browser
+                          </button>
+                        </li>
+                      ) : null,
+                      session && canOpenInWindow ? (
+                        <li role="none">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="project-picker-item"
+                            title="Show this chat in a desktop window of its own"
+                            onClick={() => {
+                              closeActions();
+                              void windowActions()
+                                ?.openSession({ sessionId: session.id })
+                                .catch((error: unknown) => {
+                                  showErrorToast(
+                                    error instanceof Error
+                                      ? error.message
+                                      : "Couldn't open a new window.",
+                                  );
+                                });
+                            }}
+                          >
+                            <AppWindow size={14} aria-hidden="true" />
+                            Open in New Window
+                          </button>
+                        </li>
+                      ) : null,
+                      onOpenInIde
+                        ? ideChoices.map((entry) => (
+                            <li role="none" key={entry.id}>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="project-picker-item"
+                                disabled={!workspace}
+                                title={
+                                  pinnedIde
+                                    ? "Open this workspace in your default IDE (set in Settings → Handoff)"
+                                    : "Open this workspace in this IDE (pin a default in Settings → Handoff)"
+                                }
+                                onClick={() => {
+                                  closeActions();
+                                  onOpenInIde(entry.id);
+                                }}
+                              >
+                                <SquareArrowOutUpRight size={14} aria-hidden="true" />
+                                {`Open in ${entry.label}`}
+                              </button>
+                            </li>
+                          ))
+                        : null,
+                    ],
+                    [
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitemcheckbox"
+                          className="project-picker-item"
+                          aria-checked={isWorkspaceCardEnabled}
+                          disabled={!onToggleWorkspaceCard}
+                          title="Float a worktree summary beside the chat. Appears once the pane is wide enough to hold it."
+                          onClick={() => {
+                            closeActions();
+                            onToggleWorkspaceCard?.();
+                          }}
+                        >
+                          <PanelRightDashed size={14} aria-hidden="true" />
+                          Workspace Card
+                        </button>
+                      </li>,
+                      developerToolsEnabled ? (
+                        <li role="none">
+                          <button
+                            type="button"
+                            role="menuitemcheckbox"
+                            className="project-picker-item"
+                            aria-checked={isLogOpen}
+                            onClick={() => {
+                              closeActions();
+                              onToggleLog();
+                            }}
+                          >
+                            <Bug size={14} aria-hidden="true" />
+                            Debug Log
+                          </button>
+                        </li>
+                      ) : null,
+                    ],
+                  ]}
+                />
+              </ul>
+            </div>,
+            document.body,
+          )}
       </div>
       {session && cloudProvider ? (
         <CloudTaskDialog

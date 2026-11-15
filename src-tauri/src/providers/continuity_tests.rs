@@ -5,24 +5,25 @@ use std::path::Path;
 use rusqlite::Connection;
 use serde_json::{json, Value};
 
+use super::model_catalogue::ModelId;
 use super::{
     continuity::{
-        fresh_retry_input, is_definite_rejection, latest_turn_starter, observe_provider_line,
-        plan_launch, record_resume_rejected, RESUME_REJECTED,
+        fresh_retry_input, is_definite_rejection, observe_provider_line, plan_launch,
+        record_resume_rejected, RESUME_REJECTED,
     },
     follow_up::{compose_follow_up_prompt, compose_follow_up_prompt_since},
-    LaunchContinuity, PermissionMode, ProviderId, ProviderLaunchInput,
+    LaunchContinuity, ProviderLaunchInput,
 };
-use crate::{
-    error::ArgmaxError,
-    persistence::{
-        continuity::{find_binding, list_bindings, BindingState},
-        database::Database,
-        events::{persist_timeline_event, PersistTimelineEventInput},
-        sessions::{
-            clear_session_conversation, find_session_by_id, update_session_provider,
-            update_session_provider_conversation_id, SessionProviderInput,
-        },
+use argmax_contracts::error::ArgmaxError;
+use argmax_contracts::validation::{PermissionMode, ProviderId};
+use argmax_store::events::latest_turn_starter;
+use argmax_store::{
+    continuity::{find_binding, list_bindings, BindingState},
+    database::Database,
+    events::{persist_timeline_event, PersistTimelineEventInput},
+    sessions::{
+        clear_session_conversation, find_session_by_id, update_session_provider,
+        update_session_provider_conversation_id, SessionProviderInput,
     },
 };
 
@@ -105,7 +106,6 @@ fn plan(
     .expect("plan")
 }
 
-/// Claude -> Codex -> Claude.
 fn claude_codex_claude(connection: &Connection) {
     seed_session(connection, "claude");
     event(connection, "s1", "u1", "user.message", "build the exporter");
@@ -332,7 +332,7 @@ fn launch_with(fallback: Option<&str>) -> ProviderLaunchInput {
         workspace_path: WORKSPACE.into(),
         prompt: "native prompt".to_string(),
         model_label: "Model".to_string(),
-        model_id: "model-id".to_string(),
+        model_id: ModelId::resolve(ProviderId::Claude, "model-id"),
         reasoning_effort: None,
         fast_mode: false,
         resume_conversation_id: Some("claude-conv".to_string()),
@@ -436,20 +436,14 @@ fn a_steered_message_never_becomes_a_codex_turn_boundary() {
         Some("u1")
     );
     assert_eq!(
-        crate::persistence::continuity::binding_turn(&connection, "s1", "codex", "thread-1", "u1")
+        argmax_store::continuity::binding_turn(&connection, "s1", "codex", "thread-1", "u1")
             .unwrap()
             .as_deref(),
         Some("turn-1")
     );
     assert_eq!(
-        crate::persistence::continuity::binding_turn(
-            &connection,
-            "s1",
-            "codex",
-            "thread-1",
-            "steer1"
-        )
-        .unwrap(),
+        argmax_store::continuity::binding_turn(&connection, "s1", "codex", "thread-1", "steer1")
+            .unwrap(),
         None
     );
 }
@@ -549,7 +543,7 @@ fn the_migration_seed_skips_children_that_still_hold_their_sources_id() {
         .execute("DELETE FROM provider_bindings", [])
         .unwrap();
 
-    let migration = crate::persistence::continuity::MIGRATION_SQL;
+    let migration = argmax_store::continuity::MIGRATION_SQL;
     let seed = &migration[migration.find("INSERT INTO provider_bindings").unwrap()..];
     connection
         .execute_batch(&seed[..=seed.find(';').unwrap()])
@@ -642,7 +636,14 @@ async fn grok_rejects_a_resume_it_cannot_list_before_sending_anything() {
     let sessions = super::grok_acp::GrokAcpSessions::new();
     let callback: super::runtime::EventCallback = std::sync::Arc::new(|_| {});
     let error = sessions
-        .launch_turn(server.to_str().unwrap(), &input, None, None, callback)
+        .launch_turn(
+            server.to_str().unwrap(),
+            &input,
+            None,
+            None,
+            callback,
+            &super::prompt_gate::PromptGate::open(),
+        )
         .await
         .err()
         .expect("the resume is refused");

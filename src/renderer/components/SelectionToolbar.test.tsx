@@ -11,12 +11,19 @@ afterEach(() => {
 it("consumes Escape only while a selection toolbar is open", () => {
   function Probe() {
     const ref = useRef<HTMLDivElement>(null);
-    return <><div ref={ref}>Selected response</div><SelectionToolbar containerRef={ref} onAddToChat={() => undefined} /></>;
+    return (
+      <>
+        <div ref={ref}>Selected response</div>
+        <SelectionToolbar containerRef={ref} onAddToChat={() => undefined} />
+      </>
+    );
   }
   render(<Probe />);
   const range = document.createRange();
   range.selectNodeContents(screen.getByText("Selected response"));
-  Object.defineProperty(range, "getBoundingClientRect", { value: () => new DOMRect(20, 50, 100, 20) });
+  Object.defineProperty(range, "getBoundingClientRect", {
+    value: () => new DOMRect(20, 50, 100, 20),
+  });
   act(() => {
     document.getSelection()?.addRange(range);
     document.dispatchEvent(new Event("selectionchange"));

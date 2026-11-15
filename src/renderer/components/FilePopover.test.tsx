@@ -1,10 +1,7 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  FileAutocompleteEntry,
-  FileAutocompleteState
-} from "../hooks/useFileAutocomplete.js";
+import type { FileAutocompleteEntry, FileAutocompleteState } from "../hooks/useFileAutocomplete.js";
 import { FilePopover } from "./FilePopover.js";
 
 const ENTRIES: FileAutocompleteEntry[] = [
@@ -12,7 +9,7 @@ const ENTRIES: FileAutocompleteEntry[] = [
   { path: "README.md", kind: "file" },
   { path: "src", kind: "dir" },
   { path: "src/files/mod.rs", kind: "file" },
-  { path: "src/persistence/mod.rs", kind: "file" }
+  { path: "src/persistence/mod.rs", kind: "file" },
 ];
 
 function makeState(overrides: Partial<FileAutocompleteState> = {}): FileAutocompleteState {
@@ -24,7 +21,7 @@ function makeState(overrides: Partial<FileAutocompleteState> = {}): FileAutocomp
     selectEntry: vi.fn(),
     onKeyDown: vi.fn(),
     onSelectionChange: vi.fn(),
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -43,12 +40,12 @@ describe("FilePopover", () => {
 
     expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual([
       "src/files/mod.rs",
-      "src/persistence/mod.rs"
+      "src/persistence/mod.rs",
     ]);
     expect(rows[0]).toHaveTextContent("mod.rs");
-    expect(rows[0].querySelector('[aria-hidden="true"].file-popover-dir')).toHaveTextContent(
-      "src/files"
-    );
+    const folder = within(rows[0]).getByText("src/files");
+    expect(folder).toHaveClass("file-popover-dir");
+    expect(folder).toHaveAttribute("aria-hidden", "true");
   });
 
   it("highlights a row on hover by moving the shared selection index", () => {
@@ -57,7 +54,7 @@ describe("FilePopover", () => {
       <FilePopover
         state={makeState({ selectionIndex: 0, setSelectionIndex })}
         inputRef={createRef()}
-      />
+      />,
     );
 
     fireEvent.mouseMove(screen.getByText("src/"));
@@ -67,9 +64,7 @@ describe("FilePopover", () => {
 
   it("commits the entry on mouse down", () => {
     const selectEntry = vi.fn();
-    render(
-      <FilePopover state={makeState({ selectEntry })} inputRef={createRef()} />
-    );
+    render(<FilePopover state={makeState({ selectEntry })} inputRef={createRef()} />);
 
     fireEvent.mouseDown(screen.getByText("README.md"));
 

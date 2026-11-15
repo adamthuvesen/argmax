@@ -1,0 +1,3858 @@
+use std::{
+    collections::{HashMap, HashSet},
+    sync::OnceLock,
+};
+
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row};
+use serde::Serialize;
+use serde_json::{json, Value};
+use specta::Type;
+
+use super::authorship::PromptAuthor;
+use super::timeline_semantics::{self, TimelineSemantics};
+use super::{json_error, sqlite_error, time::now_iso};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
+use argmax_contracts::validation::ProviderId;
+
+/// Rows before the last `/clear` or provider switch belong to a conversation
+/// the current one cannot see, so agent lifecycle lookups start after it.
+const AGENT_TURN_BOUNDARY: &str = "SELECT MAX(rowid) FROM events boundary
+                WHERE boundary.session_id = events.session_id
+                  AND boundary.type IN ('session.cleared', 'session.provider-changed')";
+
+/// The same cut for reads that only a `/clear` ends.
+const CLEAR_BOUNDARY: &str = "SELECT MAX(rowid) FROM events cleared
+                WHERE cleared.session_id = events.session_id
+                  AND cleared.type = 'session.cleared'";
+
+const INVALID_PAYLOAD_PREVIEW_CHARS: usize = 512;
+const AGENT_CODENAME_HEADLINE_COUNT: usize = 10;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PersistTimelineEventInput {
+    pub id: String,
+    pub session_id: String,
+    pub r#type: String,
+    pub message: String,
+    pub payload: Value,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PersistRawOutputInput {
+    pub id: String,
+    pub session_id: String,
+    pub stream: String,
+    pub content: String,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TimelineEvent {
+    pub id: String,
+    pub session_id: String,
+    pub r#type: String,
+    pub message: String,
+    pub payload: Value,
+    pub semantic: TimelineSemantics,
+    pub created_at: String,
+    pub row_cursor: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RawProviderOutput {
+    pub id: String,
+    pub session_id: String,
+    pub stream: String,
+    pub content: String,
+    pub created_at: String,
+    pub row_cursor: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionEventsSinceResult {
+    pub events: Vec<TimelineEvent>,
+    pub raw_outputs: Vec<RawProviderOutput>,
+    pub event_cursor: i64,
+    pub raw_output_cursor: i64,
+    pub change_cursor: Option<i64>,
+    pub deleted_event_ids: Vec<String>,
+    pub deleted_raw_output_ids: Vec<String>,
+    pub reset_required: bool,
+    pub has_more: bool,
+}
+
+pub const SESSION_EVENT_PAGE_LIMIT: usize = 500;
+// Durable rows (everything but `message.delta`) the cursorless tail keeps in
+// addition to the newest page. Same size as the renderer's protected budget.
+pub const SESSION_TAIL_DURABLE_LIMIT: usize = 2000;
+// How far past the newest page the cursorless tail may reach back to finish
+// the delta run it landed in. One Codex answer streams ~1000 word-sized
+// deltas (5 KB of prose measured 2026-09-12), so a 500-row page opened
+// mid-answer began the bubble mid-sentence until `message.completed` landed.
+pub const SESSION_TAIL_OPEN_RUN_LIMIT: usize = 5000;
+pub const SESSION_RAW_OUTPUT_PAGE_LIMIT: usize = 100;
+pub const SESSION_CHANGE_PAGE_LIMIT: usize = 500;
+// `session:agent-events` scans the session tail on every pane poll, so the
+// scan must stay bounded. An agent tail lives in the recent slice of its
+// session; sized to the renderer's protected-event budget.
+pub const SESSION_AGENT_EVENT_SCAN_LIMIT: usize = 2000;
+
+pub fn list_session_events_since(
+    connection: &Connection,
+    session_id: &str,
+    event_cursor: Option<i64>,
+    raw_output_cursor: Option<i64>,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    // The continuation of a backfill the bridge cut to fit one socket
+    // message. Row pages carry no change cursor until the last one: a client
+    // that has a change cursor reads the mutation feed instead, which would
+    // skip the rows still owed here. The last page's cursor is the head from
+    // this read, so a mutation landing between two pages to a row an earlier
+    // page already delivered is not replayed until the next authoritative
+    // read; the window is one backfill, seconds long.
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let event_rows = list_event_rows(&transaction, session_id, event_cursor)?;
+    let raw_output_rows = list_raw_output_rows(&transaction, session_id, raw_output_cursor)?;
+    let head = change_feed_head(&transaction)?;
+    transaction.commit().map_err(sqlite_error)?;
+    let next_event_cursor = max_row_cursor(&event_rows, event_cursor.unwrap_or(0));
+    let next_raw_output_cursor =
+        max_raw_row_cursor(&raw_output_rows, raw_output_cursor.unwrap_or(0));
+    let has_more = event_rows.len() >= SESSION_EVENT_PAGE_LIMIT
+        || raw_output_rows.len() >= SESSION_RAW_OUTPUT_PAGE_LIMIT;
+
+    Ok(SessionEventsSinceResult {
+        events: event_rows,
+        raw_outputs: raw_output_rows,
+        event_cursor: next_event_cursor,
+        raw_output_cursor: next_raw_output_cursor,
+        change_cursor: (!has_more).then_some(head),
+        has_more,
+        ..SessionEventsSinceResult::default()
+    })
+}
+
+/// Reads a session through the durable mutation sequence.
+///
+/// A cursorless request is an authoritative bounded backfill. Its rows and
+/// change cursor come from one read transaction, so a mutation cannot land
+/// between the backfill and its high-water mark. Supplying either legacy rowid
+/// cursor keeps the old paging behavior for older clients.
+pub fn list_session_changes_since(
+    connection: &Connection,
+    session_id: &str,
+    event_cursor: Option<i64>,
+    raw_output_cursor: Option<i64>,
+    change_cursor: Option<i64>,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    list_session_changes_since_with_budget(
+        connection,
+        session_id,
+        event_cursor,
+        raw_output_cursor,
+        change_cursor,
+        None,
+    )
+}
+
+/// Applies a serialized-byte budget when reading the mutation feed. Initial
+/// and legacy row-cursor reads keep their normal paging because their cursors
+/// already provide a safe continuation point.
+pub fn list_session_changes_since_with_budget(
+    connection: &Connection,
+    session_id: &str,
+    event_cursor: Option<i64>,
+    raw_output_cursor: Option<i64>,
+    change_cursor: Option<i64>,
+    change_page_budget_bytes: Option<usize>,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    match change_cursor {
+        Some(cursor) => list_change_page(connection, session_id, cursor, change_page_budget_bytes),
+        None if event_cursor.is_some() || raw_output_cursor.is_some() => {
+            list_session_events_since(connection, session_id, event_cursor, raw_output_cursor)
+        }
+        None => list_authoritative_tail(connection, session_id),
+    }
+}
+
+pub fn list_session_agent_events(
+    connection: &Connection,
+    session_id: &str,
+    parent_tool_use_id: &str,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    list_session_agent_events_for_identity(connection, session_id, parent_tool_use_id, None, None)
+}
+
+pub fn list_session_agent_events_for_identity(
+    connection: &Connection,
+    session_id: &str,
+    parent_tool_use_id: &str,
+    provider_parent_conversation_id: Option<&str>,
+    provider_child_session_id: Option<&str>,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    let rows = list_newest_event_rows(connection, session_id, SESSION_AGENT_EVENT_SCAN_LIMIT)?;
+    let mut receiver_thread_ids = std::collections::HashSet::new();
+    let mut child_tool_use_ids = std::collections::HashSet::new();
+    let mut included_ids = std::collections::HashSet::new();
+
+    for row in &rows {
+        if is_parent_agent_event(row, parent_tool_use_id) {
+            included_ids.insert(row.id.clone());
+            receiver_thread_ids.extend(receiver_thread_ids_for_payload(&row.payload));
+        }
+        if parent_tool_use_id_for_payload(&row.payload) == Some(parent_tool_use_id) {
+            included_ids.insert(row.id.clone());
+            if row.r#type == "command.started" {
+                if let Some(tool_use_id) = tool_use_id_for_payload(&row.payload) {
+                    child_tool_use_ids.insert(tool_use_id.to_string());
+                }
+            }
+        }
+    }
+
+    for row in &rows {
+        if child_tool_use_ids.iter().any(|tool_use_id| {
+            completion_id_for_payload(&row.payload) == Some(tool_use_id.as_str())
+        }) {
+            included_ids.insert(row.id.clone());
+        }
+        if is_agent_message_for_threads(&row.payload, &receiver_thread_ids) {
+            included_ids.insert(row.id.clone());
+        }
+    }
+
+    let mut events = rows
+        .into_iter()
+        .filter(|row| included_ids.contains(&row.id))
+        .collect::<Vec<_>>();
+    append_native_agent_events(
+        connection,
+        session_id,
+        parent_tool_use_id,
+        provider_parent_conversation_id,
+        provider_child_session_id,
+        &mut events,
+    )?;
+    let mut events_by_id = HashMap::new();
+    for event in events {
+        events_by_id.insert(event.id.clone(), event);
+    }
+    let mut events = events_by_id.into_values().collect::<Vec<_>>();
+    events.sort_by_key(|event| event.row_cursor.unwrap_or_default());
+    let has_more = events.len() > SESSION_AGENT_EVENT_SCAN_LIMIT;
+    if has_more {
+        let required_ids = events
+            .iter()
+            .filter(|event| {
+                (matches!(
+                    event.r#type.as_str(),
+                    "agent.started" | "agent.completed" | "command.started" | "command.completed"
+                ) && string_field(&event.payload, "providerChildSessionId").is_some())
+                    || (matches!(
+                        event.r#type.as_str(),
+                        "command.started" | "command.completed"
+                    ) && (tool_use_id_for_payload(&event.payload) == Some(parent_tool_use_id)
+                        || completion_id_for_payload(&event.payload) == Some(parent_tool_use_id)))
+                    || (matches!(event.r#type.as_str(), "agent.started" | "agent.completed")
+                        && string_field(&event.payload, "agentRootToolUseId")
+                            == Some(parent_tool_use_id)
+                        && string_field(&event.payload, "agentRunId") == Some(parent_tool_use_id))
+            })
+            .map(|event| event.id.clone())
+            .collect::<HashSet<_>>();
+        let newest_slots = SESSION_AGENT_EVENT_SCAN_LIMIT.saturating_sub(required_ids.len());
+        let mut bounded = events
+            .iter()
+            .filter(|event| required_ids.contains(&event.id))
+            .cloned()
+            .collect::<Vec<_>>();
+        bounded.extend(
+            events
+                .iter()
+                .rev()
+                .filter(|event| !required_ids.contains(&event.id))
+                .take(newest_slots)
+                .cloned(),
+        );
+        bounded.sort_by_key(|event| event.row_cursor.unwrap_or_default());
+        events = bounded;
+    }
+    let next_event_cursor = max_row_cursor(&events, 0);
+
+    Ok(SessionEventsSinceResult {
+        events,
+        event_cursor: next_event_cursor,
+        has_more,
+        ..SessionEventsSinceResult::default()
+    })
+}
+
+/// Confirms that a resumable native child belongs to the session's current
+/// provider conversation. Clearing, switching provider, and forking away from
+/// that conversation therefore invalidate old renderer references even though
+/// their timeline rows remain readable history.
+pub fn has_current_native_agent_identity(
+    connection: &Connection,
+    session_id: &str,
+    provider_parent_conversation_id: &str,
+    provider_child_session_id: &str,
+) -> ArgmaxResult<bool> {
+    let current_parent = current_native_agent_parent_conversation_id(connection, session_id)?;
+    if current_parent.as_deref() != Some(provider_parent_conversation_id) {
+        return Ok(false);
+    }
+    connection
+        .query_row(
+            &format!(
+                r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM events
+                WHERE session_id = ?
+                  AND type = 'agent.started'
+                  AND json_extract(payload_json, '$.providerParentConversationId') = ?
+                  AND json_extract(payload_json, '$.providerChildSessionId') = ?
+                  AND rowid > COALESCE((
+                {AGENT_TURN_BOUNDARY}
+                  ), 0)
+            )
+            "#
+            ),
+            (
+                session_id,
+                provider_parent_conversation_id,
+                provider_child_session_id,
+            ),
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(sqlite_error)
+}
+
+fn append_native_agent_events(
+    connection: &Connection,
+    session_id: &str,
+    root_tool_use_id: &str,
+    requested_parent_conversation_id: Option<&str>,
+    requested_child_id: Option<&str>,
+    events: &mut Vec<TimelineEvent>,
+) -> ArgmaxResult<()> {
+    let current_parent = current_native_agent_parent_conversation_id(connection, session_id)?;
+    let Some(current_parent) = current_parent else {
+        return Ok(());
+    };
+    if requested_parent_conversation_id.is_some_and(|parent| parent != current_parent) {
+        return Ok(());
+    }
+    let initial_lifecycle = connection
+        .query_row(
+            &format!(
+                r#"
+            SELECT rowid AS row_cursor, id, session_id, type, message, payload_json, created_at
+            FROM events
+            WHERE session_id = ?1
+              AND type = 'agent.started'
+              AND json_extract(payload_json, '$.providerParentConversationId') = ?2
+              AND json_extract(payload_json, '$.agentRootToolUseId') = ?3
+              AND (?4 IS NULL OR json_extract(payload_json, '$.providerChildSessionId') = ?4)
+              AND rowid > COALESCE((
+                {AGENT_TURN_BOUNDARY}
+              ), 0)
+            ORDER BY rowid ASC
+            LIMIT 1
+            "#
+            ),
+            params![
+                session_id,
+                current_parent,
+                root_tool_use_id,
+                requested_child_id
+            ],
+            event_row_to_timeline_event,
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let Some(initial_lifecycle) = initial_lifecycle else {
+        return Ok(());
+    };
+    let child_id = string_field(&initial_lifecycle.payload, "providerChildSessionId")
+        .unwrap_or_default()
+        .to_string();
+    let initial_invocation = string_field(&initial_lifecycle.payload, "providerInvocationId")
+        .unwrap_or_default()
+        .to_string();
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT rowid AS row_cursor, id, session_id, type, message, payload_json, created_at
+            FROM events candidate
+            WHERE session_id = ?1
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events boundary
+                  WHERE boundary.session_id = candidate.session_id
+                    AND boundary.type IN ('session.cleared', 'session.provider-changed')
+              ), 0)
+              AND (
+                json_extract(payload_json, '$.parent_tool_use_id') = ?4
+                OR (
+                  type IN ('agent.started', 'agent.completed')
+                  AND json_extract(payload_json, '$.providerParentConversationId') = ?2
+                  AND json_extract(payload_json, '$.providerChildSessionId') = ?3
+                )
+                OR (
+                  -- Uncorrelated on purpose: SQLite builds the (invocation, run)
+                  -- set once. The correlated EXISTS rescanned the session per
+                  -- command row, 6 s on a 17k-event chat while holding a lock.
+                  -- The IS NOT NULL guards keep `=`'s NULL-never-matches rule.
+                  type IN ('command.started', 'command.completed')
+                  AND json_array(
+                    json_extract(payload_json, '$.providerInvocationId'),
+                    COALESCE(
+                      json_extract(payload_json, '$.tool_use_id'),
+                      json_extract(payload_json, '$.id'),
+                      json_extract(payload_json, '$.call_id')
+                    )
+                  ) IN (
+                    SELECT json_array(
+                      json_extract(lifecycle.payload_json, '$.providerInvocationId'),
+                      json_extract(lifecycle.payload_json, '$.agentRunId')
+                    )
+                    FROM events lifecycle
+                    WHERE lifecycle.session_id = ?1
+                      AND lifecycle.type IN ('agent.started', 'agent.completed')
+                      AND json_extract(lifecycle.payload_json, '$.providerParentConversationId') = ?2
+                      AND json_extract(lifecycle.payload_json, '$.providerChildSessionId') = ?3
+                      AND json_extract(lifecycle.payload_json, '$.providerInvocationId') IS NOT NULL
+                      AND json_extract(lifecycle.payload_json, '$.agentRunId') IS NOT NULL
+                  )
+                )
+              )
+            ORDER BY
+              CASE WHEN type IN ('agent.started', 'agent.completed', 'command.started', 'command.completed')
+                THEN 0 ELSE 1 END,
+              rowid DESC
+            LIMIT ?5
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let mut candidates = statement
+        .query_map(
+            params![
+                session_id,
+                current_parent,
+                child_id,
+                root_tool_use_id,
+                (SESSION_AGENT_EVENT_SCAN_LIMIT + 1) as i64
+            ],
+            event_row_to_timeline_event,
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    candidates.push(initial_lifecycle);
+    if let Some(root_command) = connection
+        .query_row(
+            r#"
+            SELECT rowid AS row_cursor, id, session_id, type, message, payload_json, created_at
+            FROM events
+            WHERE session_id = ?
+              AND type = 'command.started'
+              AND json_extract(payload_json, '$.providerInvocationId') = ?
+              AND COALESCE(json_extract(payload_json, '$.id'), json_extract(payload_json, '$.call_id')) = ?
+            ORDER BY rowid ASC LIMIT 1
+            "#,
+            (session_id, initial_invocation.as_str(), root_tool_use_id),
+            event_row_to_timeline_event,
+        )
+        .optional()
+        .map_err(sqlite_error)?
+    {
+        candidates.push(root_command);
+    }
+    if let Some(initial_completion) = connection
+        .query_row(
+            r#"
+            SELECT rowid AS row_cursor, id, session_id, type, message, payload_json, created_at
+            FROM events
+            WHERE session_id = ?
+              AND type = 'agent.completed'
+              AND json_extract(payload_json, '$.providerParentConversationId') = ?
+              AND json_extract(payload_json, '$.providerChildSessionId') = ?
+              AND json_extract(payload_json, '$.providerInvocationId') = ?
+              AND json_extract(payload_json, '$.agentRunId') = ?
+            ORDER BY rowid ASC LIMIT 1
+            "#,
+            (
+                session_id,
+                current_parent.as_str(),
+                child_id.as_str(),
+                initial_invocation.as_str(),
+                root_tool_use_id,
+            ),
+            event_row_to_timeline_event,
+        )
+        .optional()
+        .map_err(sqlite_error)?
+    {
+        candidates.push(initial_completion);
+    }
+    if let Some(root_result) = connection
+        .query_row(
+            r#"
+            SELECT rowid AS row_cursor, id, session_id, type, message, payload_json, created_at
+            FROM events
+            WHERE session_id = ?
+              AND type = 'command.completed'
+              AND json_extract(payload_json, '$.providerInvocationId') = ?
+              AND COALESCE(json_extract(payload_json, '$.tool_use_id'), json_extract(payload_json, '$.id'), json_extract(payload_json, '$.call_id')) = ?
+            ORDER BY rowid ASC LIMIT 1
+            "#,
+            (session_id, initial_invocation.as_str(), root_tool_use_id),
+            event_row_to_timeline_event,
+        )
+        .optional()
+        .map_err(sqlite_error)?
+    {
+        candidates.push(root_result);
+    }
+    candidates.sort_by_key(|event| event.row_cursor.unwrap_or_default());
+
+    let child_ids = HashSet::from([child_id]);
+    let run_keys = candidates
+        .iter()
+        .filter(|event| {
+            string_field(&event.payload, "providerChildSessionId")
+                .is_some_and(|id| child_ids.contains(id))
+        })
+        .filter_map(|event| {
+            Some((
+                string_field(&event.payload, "providerInvocationId")?.to_string(),
+                string_field(&event.payload, "agentRunId")?.to_string(),
+            ))
+        })
+        .collect::<HashSet<_>>();
+    let identity = candidates.iter().find_map(|event| {
+        let child_id = string_field(&event.payload, "providerChildSessionId")?;
+        child_ids.contains(child_id).then(|| {
+            (
+                child_id.to_string(),
+                string_field(&event.payload, "providerParentConversationId")
+                    .unwrap_or_default()
+                    .to_string(),
+                string_field(&event.payload, "agentCodename")
+                    .unwrap_or_default()
+                    .to_string(),
+            )
+        })
+    });
+    let run_starts = candidates
+        .iter()
+        .filter(|event| event.r#type == "agent.started")
+        .filter_map(|event| {
+            Some((
+                event.row_cursor?,
+                string_field(&event.payload, "providerInvocationId")?.to_string(),
+                string_field(&event.payload, "agentRunId")?.to_string(),
+            ))
+        })
+        .collect::<Vec<_>>();
+
+    for mut event in candidates {
+        let is_child_row = parent_tool_use_id_for_payload(&event.payload) == Some(root_tool_use_id);
+        let invocation_id =
+            string_field(&event.payload, "providerInvocationId").unwrap_or_default();
+        let child_run_id = is_child_row.then(|| {
+            let row_cursor = event.row_cursor.unwrap_or_default();
+            run_starts
+                .iter()
+                .rev()
+                .find(|(started_at, invocation, _)| {
+                    invocation == invocation_id && *started_at <= row_cursor
+                })
+                .map(|(_, _, run_id)| run_id.clone())
+        });
+        let is_run_control = match event.r#type.as_str() {
+            "command.started" => tool_use_id_for_payload(&event.payload)
+                .is_some_and(|id| run_keys.contains(&(invocation_id.to_string(), id.to_string()))),
+            "command.completed" => completion_id_for_payload(&event.payload)
+                .is_some_and(|id| run_keys.contains(&(invocation_id.to_string(), id.to_string()))),
+            "agent.started" | "agent.completed" => {
+                string_field(&event.payload, "providerChildSessionId")
+                    .is_some_and(|id| child_ids.contains(id))
+            }
+            _ => false,
+        };
+        let child_invocation = is_child_row
+            && run_keys
+                .iter()
+                .any(|(invocation, _)| invocation == invocation_id);
+        if !child_invocation && !is_run_control {
+            continue;
+        }
+        if let (Some((child_id, parent_conversation_id, codename)), Value::Object(payload)) =
+            (&identity, &mut event.payload)
+        {
+            payload
+                .entry("providerChildSessionId".to_string())
+                .or_insert_with(|| Value::String(child_id.clone()));
+            if !parent_conversation_id.is_empty() {
+                payload
+                    .entry("providerParentConversationId".to_string())
+                    .or_insert_with(|| Value::String(parent_conversation_id.clone()));
+            }
+            payload
+                .entry("agentRootToolUseId".to_string())
+                .or_insert_with(|| Value::String(root_tool_use_id.to_string()));
+            if !codename.is_empty() {
+                payload
+                    .entry("agentCodename".to_string())
+                    .or_insert_with(|| Value::String(codename.clone()));
+            }
+            let run_id = child_run_id.flatten().or_else(|| {
+                match event.r#type.as_str() {
+                    "command.started" => payload.get("id").or_else(|| payload.get("call_id")),
+                    "command.completed" => payload
+                        .get("tool_use_id")
+                        .or_else(|| payload.get("id"))
+                        .or_else(|| payload.get("call_id")),
+                    _ => payload.get("agentRunId"),
+                }
+                .and_then(Value::as_str)
+                .map(str::to_string)
+            });
+            if let Some(run_id) = run_id {
+                payload
+                    .entry("agentRunId".to_string())
+                    .or_insert(Value::String(run_id));
+            }
+        }
+        events.push(event);
+    }
+    Ok(())
+}
+
+pub fn persist_timeline_event(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+) -> ArgmaxResult<TimelineEvent> {
+    insert_timeline_event(connection, input, PromptAuthor::unattested())
+}
+
+fn insert_timeline_event(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+    author: PromptAuthor,
+) -> ArgmaxResult<TimelineEvent> {
+    let created_at = input.created_at.clone().unwrap_or_else(now_iso);
+    let payload = enrich_native_agent_event(connection, input)?;
+    let payload_json = serde_json::to_string(&payload).map_err(json_error)?;
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        INSERT INTO events (id, session_id, type, message, payload_json, created_at, prompt_author)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    statement
+        .execute((
+            input.id.as_str(),
+            input.session_id.as_str(),
+            input.r#type.as_str(),
+            input.message.as_str(),
+            payload_json.as_str(),
+            created_at.as_str(),
+            author.as_column(),
+        ))
+        .map_err(sqlite_error)?;
+    Ok(TimelineEvent {
+        id: input.id.clone(),
+        session_id: input.session_id.clone(),
+        r#type: input.r#type.clone(),
+        message: input.message.clone(),
+        semantic: timeline_semantics::derive(&input.r#type, &input.id, &payload),
+        payload,
+        created_at,
+        row_cursor: Some(connection.last_insert_rowid()),
+    })
+}
+
+/// Persist a `user.message` with the author it was written by. This and
+/// [`persist_copied_event`] are the only ways to store a person mark on a new
+/// event: [`persist_timeline_event`] always stores NULL, so the normalizer, sync
+/// import and every other writer cannot set it.
+pub fn persist_user_prompt(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+    author: PromptAuthor,
+) -> ArgmaxResult<TimelineEvent> {
+    insert_timeline_event(connection, input, author)
+}
+
+/// A fork or a move copies history rather than writing it: the copy keeps the
+/// author its source row had and never gains one.
+pub fn persist_copied_event(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+    source_event_id: &str,
+) -> ArgmaxResult<TimelineEvent> {
+    let column: Option<String> = connection
+        .query_row(
+            "SELECT prompt_author FROM events WHERE id = ?1",
+            [source_event_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?
+        .flatten();
+    let mut copied = input.clone();
+    if let Some(payload) = copied.payload.as_object_mut() {
+        payload
+            .entry("_argmaxOriginalEventId")
+            .or_insert_with(|| Value::String(source_event_id.to_owned()));
+    }
+    insert_timeline_event(
+        connection,
+        &copied,
+        PromptAuthor::from_column(column.as_deref()),
+    )
+}
+
+fn enrich_native_agent_event(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+) -> ArgmaxResult<Value> {
+    if !matches!(input.r#type.as_str(), "agent.started" | "agent.completed") {
+        return enrich_native_agent_child_row(connection, input);
+    }
+    let Some(payload) = input.payload.as_object() else {
+        return Ok(input.payload.clone());
+    };
+    let Some(parent_conversation_id) = payload
+        .get("providerParentConversationId")
+        .and_then(Value::as_str)
+    else {
+        return Ok(input.payload.clone());
+    };
+    let Some(child_id) = payload
+        .get("providerChildSessionId")
+        .and_then(Value::as_str)
+    else {
+        return Ok(input.payload.clone());
+    };
+    if current_native_agent_parent_conversation_id(connection, input.session_id.as_str())?
+        .as_deref()
+        != Some(parent_conversation_id)
+    {
+        return Ok(input.payload.clone());
+    }
+    let current_run_id = payload
+        .get("agentRunId")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let existing_identity = connection
+        .query_row(
+            &format!(
+                r#"
+            SELECT json_extract(payload_json, '$.agentRunId'),
+                   json_extract(payload_json, '$.agentCodename')
+            FROM events
+            WHERE session_id = ?
+              AND type = 'agent.started'
+              AND json_extract(payload_json, '$.providerParentConversationId') = ?
+              AND json_extract(payload_json, '$.providerChildSessionId') = ?
+              AND rowid > COALESCE((
+                {AGENT_TURN_BOUNDARY}
+              ), 0)
+            ORDER BY rowid ASC
+            LIMIT 1
+            "#
+            ),
+            (input.session_id.as_str(), parent_conversation_id, child_id),
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let root_tool_use_id = existing_identity
+        .as_ref()
+        .map(|(root, _)| root.clone())
+        .unwrap_or_else(|| current_run_id.to_string());
+    let mut enriched = payload.clone();
+    if !root_tool_use_id.is_empty() {
+        enriched.insert(
+            "agentRootToolUseId".to_string(),
+            Value::String(root_tool_use_id.clone()),
+        );
+    }
+    let codename = match existing_identity.and_then(|(_, codename)| codename) {
+        Some(codename) => Some(codename),
+        None => assign_native_agent_codename(
+            connection,
+            input.session_id.as_str(),
+            parent_conversation_id,
+            root_tool_use_id.as_str(),
+        )?,
+    };
+    if let Some(codename) = codename {
+        enriched.insert("agentCodename".to_string(), Value::String(codename));
+    }
+    Ok(Value::Object(enriched))
+}
+
+fn enrich_native_agent_child_row(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+) -> ArgmaxResult<Value> {
+    let Some(payload) = input.payload.as_object() else {
+        return Ok(input.payload.clone());
+    };
+    let Some(root_tool_use_id) = payload.get("parent_tool_use_id").and_then(Value::as_str) else {
+        return Ok(input.payload.clone());
+    };
+    let Some(provider_invocation_id) = payload.get("providerInvocationId").and_then(Value::as_str)
+    else {
+        return Ok(input.payload.clone());
+    };
+    let Some(current_parent_conversation_id) =
+        current_native_agent_parent_conversation_id(connection, input.session_id.as_str())?
+    else {
+        return Ok(input.payload.clone());
+    };
+    let has_explicit_native_identity = payload
+        .get("providerParentConversationId")
+        .and_then(Value::as_str)
+        == Some(current_parent_conversation_id.as_str())
+        && ["providerChildSessionId", "agentRunId", "agentRootToolUseId"]
+            .into_iter()
+            .all(|key| {
+                payload
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| !value.is_empty())
+            });
+    if has_explicit_native_identity {
+        return Ok(input.payload.clone());
+    }
+    let identity = connection
+        .query_row(
+            &format!(
+                r#"
+            SELECT json_extract(payload_json, '$.providerChildSessionId'),
+                   json_extract(payload_json, '$.providerParentConversationId'),
+                   json_extract(payload_json, '$.agentRunId'),
+                   json_extract(payload_json, '$.agentCodename'),
+                   json_extract(payload_json, '$.agentRootToolUseId')
+            FROM events
+            WHERE session_id = ?
+              AND type = 'agent.started'
+              AND json_extract(payload_json, '$.providerInvocationId') = ?
+              AND json_extract(payload_json, '$.agentRootToolUseId') = ?
+              AND json_extract(payload_json, '$.providerParentConversationId') = ?
+              AND rowid > COALESCE((
+                {AGENT_TURN_BOUNDARY}
+              ), 0)
+            ORDER BY rowid DESC
+            LIMIT 1
+            "#
+            ),
+            (
+                input.session_id.as_str(),
+                provider_invocation_id,
+                root_tool_use_id,
+                current_parent_conversation_id.as_str(),
+            ),
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let Some((child_id, parent_conversation_id, run_id, codename, root_tool_use_id)) = identity
+    else {
+        return Ok(input.payload.clone());
+    };
+    let mut enriched = payload.clone();
+    enriched.insert(
+        "providerChildSessionId".to_string(),
+        Value::String(child_id),
+    );
+    enriched.insert(
+        "providerParentConversationId".to_string(),
+        Value::String(parent_conversation_id),
+    );
+    enriched.insert("agentRunId".to_string(), Value::String(run_id));
+    enriched.insert(
+        "agentRootToolUseId".to_string(),
+        Value::String(root_tool_use_id),
+    );
+    if let Some(codename) = codename {
+        enriched.insert("agentCodename".to_string(), Value::String(codename));
+    }
+    Ok(Value::Object(enriched))
+}
+
+fn current_native_agent_parent_conversation_id(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    let current: Option<(String, Option<String>, bool)> = connection
+        .query_row(
+            "SELECT provider, provider_conversation_id, resume_fork FROM sessions WHERE id = ?",
+            (session_id,),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let Some((provider, parent_conversation_id, resume_fork)) = current else {
+        return Ok(None);
+    };
+    let resumes_parent = match ProviderId::parse(&provider) {
+        Some(
+            ProviderId::Claude | ProviderId::Codex | ProviderId::Cursor | ProviderId::Opencode,
+        ) => true,
+        Some(ProviderId::Grok) | None => false,
+    };
+    if resume_fork || !resumes_parent {
+        return Ok(None);
+    }
+    Ok(parent_conversation_id.filter(|id| !id.is_empty()))
+}
+
+fn assign_native_agent_codename(
+    connection: &Connection,
+    session_id: &str,
+    parent_conversation_id: &str,
+    root_tool_use_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    static CODENAMES: OnceLock<Vec<String>> = OnceLock::new();
+    let codenames = CODENAMES.get_or_init(|| {
+        serde_json::from_str(include_str!("../../../../src/shared/agentCodenames.json"))
+            .expect("shared agent codename catalog must be valid JSON")
+    });
+    if codenames.is_empty() {
+        return Ok(None);
+    }
+    let mut statement = connection
+        .prepare_cached(&format!(
+            r#"
+            SELECT DISTINCT json_extract(payload_json, '$.agentCodename')
+            FROM events
+            WHERE session_id = ?
+              AND type = 'agent.started'
+              AND json_extract(payload_json, '$.providerParentConversationId') = ?
+              AND json_extract(payload_json, '$.agentCodename') IS NOT NULL
+              AND rowid > COALESCE((
+                {AGENT_TURN_BOUNDARY}
+              ), 0)
+            "#
+        ))
+        .map_err(sqlite_error)?;
+    let taken = statement
+        .query_map((session_id, parent_conversation_id), |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(sqlite_error)?
+        .collect::<Result<HashSet<_>, _>>()
+        .map_err(sqlite_error)?;
+    let hash = root_tool_use_id
+        .encode_utf16()
+        .fold(0x811c9dc5_u32, |hash, unit| {
+            (hash ^ u32::from(unit)).wrapping_mul(0x01000193)
+        });
+    if taken.len() >= codenames.len() {
+        return Ok(Some(codenames[hash as usize % codenames.len()].clone()));
+    }
+    let modulus = if taken.is_empty() {
+        AGENT_CODENAME_HEADLINE_COUNT.min(codenames.len())
+    } else {
+        codenames.len()
+    };
+    let start = hash as usize % modulus;
+    Ok((0..codenames.len())
+        .map(|step| &codenames[(start + step) % codenames.len()])
+        .find(|name| !taken.contains(name.as_str()))
+        .cloned())
+}
+
+/// Returns the persisted event when the row was new, `None` when the id
+/// already existed — the sync sweep republishes fresh events from that return
+/// value without a second read.
+pub fn persist_timeline_event_if_absent(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+) -> ArgmaxResult<Option<TimelineEvent>> {
+    let created_at = input.created_at.clone().unwrap_or_else(now_iso);
+    let payload = enrich_native_agent_event(connection, input)?;
+    let payload_json = serde_json::to_string(&payload).map_err(json_error)?;
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        INSERT OR IGNORE INTO events (id, session_id, type, message, payload_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .execute((
+            input.id.as_str(),
+            input.session_id.as_str(),
+            input.r#type.as_str(),
+            input.message.as_str(),
+            payload_json.as_str(),
+            created_at.as_str(),
+        ))
+        .map_err(sqlite_error)?;
+    if rows == 0 {
+        return Ok(None);
+    }
+    Ok(Some(TimelineEvent {
+        id: input.id.clone(),
+        session_id: input.session_id.clone(),
+        r#type: input.r#type.clone(),
+        message: input.message.clone(),
+        semantic: timeline_semantics::derive(&input.r#type, &input.id, &payload),
+        payload,
+        created_at,
+        row_cursor: Some(connection.last_insert_rowid()),
+    }))
+}
+
+/// Returns whether a provider permission event with this request identity has
+/// already been recorded for the session. Unsupported approval modes do not
+/// create an approval row, so their blocked timeline event is the durable
+/// replay-deduplication record.
+pub fn has_provider_permission_event(
+    connection: &Connection,
+    session_id: &str,
+    provider: &str,
+    provider_invocation_id: &str,
+    provider_request_id: &str,
+) -> ArgmaxResult<bool> {
+    let exists = connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM events
+                WHERE session_id = ?
+                  AND type IN ('approval.requested', 'permission.blocked')
+                  AND json_extract(payload_json, '$.provider') = ?
+                  AND json_extract(payload_json, '$.providerInvocationId') = ?
+                  AND json_extract(payload_json, '$.providerRequestId') = ?
+            )
+            "#,
+            (
+                session_id,
+                provider,
+                provider_invocation_id,
+                provider_request_id,
+            ),
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(sqlite_error)?;
+    Ok(exists != 0)
+}
+
+/// Whether the current turn (everything since the latest user message) already
+/// has a `session.completed`. Cursor and OpenCode report the end of a turn in
+/// their own output, which the normalizer records, before the process exits;
+/// the exit path checks this so the turn is not completed twice.
+pub fn turn_completion_recorded(connection: &Connection, session_id: &str) -> ArgmaxResult<bool> {
+    let exists = connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM events
+                WHERE session_id = ?1
+                  AND type = 'session.completed'
+                  AND created_at >= COALESCE((
+                    SELECT created_at FROM events
+                    WHERE session_id = ?1 AND type = 'user.message'
+                    ORDER BY created_at DESC LIMIT 1
+                  ), '')
+            )
+            "#,
+            [session_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(sqlite_error)?;
+    Ok(exists != 0)
+}
+
+/// A Cursor trace import persists a synthetic `traceNoOutput` completion in
+/// the sequence slot the tool's real result will occupy once the child
+/// transcript catches up. The real completion then arrives under the same
+/// deterministic id, so `INSERT OR IGNORE` would keep the placeholder forever.
+/// Upgrade it in place (same rowid, so cursors and ordering are untouched).
+pub fn upgrade_trace_no_output_completion(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+) -> ArgmaxResult<bool> {
+    if input.r#type != "command.completed" || input.payload.get("traceNoOutput").is_some() {
+        return Ok(false);
+    }
+    let created_at = input.created_at.clone().unwrap_or_else(now_iso);
+    let payload_json = serde_json::to_string(&input.payload).map_err(json_error)?;
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        UPDATE events
+        SET message = ?, payload_json = ?, created_at = ?
+        WHERE id = ? AND json_extract(payload_json, '$.traceNoOutput') = true
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .execute((
+            input.message.as_str(),
+            payload_json.as_str(),
+            created_at.as_str(),
+            input.id.as_str(),
+        ))
+        .map_err(sqlite_error)?;
+    Ok(rows > 0)
+}
+
+pub fn find_event_by_id(
+    connection: &Connection,
+    event_id: &str,
+) -> ArgmaxResult<Option<TimelineEvent>> {
+    let mut statement = connection
+        .prepare_cached("SELECT rowid AS row_cursor, * FROM events WHERE id = ?")
+        .map_err(sqlite_error)?;
+    statement
+        .query_row((event_id,), event_row_to_timeline_event)
+        .optional()
+        .map_err(sqlite_error)
+}
+
+/// The chats a person attached to this session's prompts: every
+/// `[title](argmax://chat/<id>?v=1)` link the composer's chat chip writes in a
+/// prompt the person wrote. It is the only grant that crosses a project
+/// boundary, so what counts is narrow:
+///
+/// - The prompt must carry the positive person mark (`events.prompt_author`,
+///   written only for fresh text on a person IPC call; see
+///   `persistence/authorship.rs`). Everything else grants nothing: another
+///   session's message, a goal, a schedule, a move, a notice, an agent launch,
+///   an import, a legacy row, and any path that does not say who wrote it.
+/// - The link has to be one the composer would draw as a chip, in the
+///   renderer's own grammar (`composerContext.ts`): bracketed title, `v=1` or no
+///   version, and a delimiter right after the id, so a bare URL, another
+///   version, or a prefix of a longer id grants nothing.
+pub fn human_referenced_session_ids(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<std::collections::HashSet<String>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT e.message FROM events e
+            WHERE e.session_id = ?1
+              AND e.type = 'user.message'
+              AND e.prompt_author = 'person'
+              AND instr(e.message, ?2) > 0
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let messages = statement
+        .query_map((session_id, CHAT_REFERENCE_PREFIX), |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    let mut ids = std::collections::HashSet::new();
+    for message in &messages {
+        ids.extend(chat_reference_ids(message));
+    }
+    Ok(ids)
+}
+
+/// Session ids named by well-formed chat references in `text`.
+pub fn chat_reference_ids(text: &str) -> Vec<String> {
+    static REFERENCE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let pattern = REFERENCE.get_or_init(|| {
+        regex::Regex::new(
+            r"\[([^\[\]\n]+)\]\(argmax://chat/([A-Za-z0-9_-]{1,64})(?:\?([A-Za-z0-9_=&.-]*))?\)",
+        )
+        .expect("chat reference pattern")
+    });
+    pattern
+        .captures_iter(text)
+        .filter(|captures| {
+            // The renderer counts UTF-16 units.
+            let title_units = captures[1].encode_utf16().count();
+            (1..=120).contains(&title_units)
+                && chat_reference_query_ok(captures.get(3).map(|m| m.as_str()))
+        })
+        .map(|captures| captures[2].to_string())
+        .collect()
+}
+
+/// Metadata that an agent can set (a chat label, a branch, an Arc name) and that
+/// Argmax writes into a prompt a person is credited with must not be able to
+/// form a chat chip, because a chip in a person's prompt is a read grant. A chip
+/// needs `[title](argmax://chat/...)`, so removing the brackets removes the
+/// link. Only the person's own typed text is left untouched.
+pub fn without_chat_link_brackets(text: &str) -> String {
+    text.replace('[', "(").replace(']', ")")
+}
+
+/// `v` must be exactly `1` when present, and `e` an id when present. The first
+/// occurrence of a key wins, as `URLSearchParams.get` does.
+fn chat_reference_query_ok(query: Option<&str>) -> bool {
+    let Some(query) = query else {
+        return true;
+    };
+    let first = |key: &str| {
+        query
+            .split('&')
+            .filter_map(|pair| pair.split_once('=').or(Some((pair, ""))))
+            .find(|(name, _)| *name == key)
+            .map(|(_, value)| value)
+    };
+    let id_ok = |value: &str| {
+        (1..=64).contains(&value.len())
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+    };
+    first("v").is_none_or(|version| version == "1") && first("e").is_none_or(id_ok)
+}
+
+/// Whether a person put a reference to `target_session_id` in one of this
+/// session's prompts. See [`human_referenced_session_ids`].
+pub fn human_prompt_references_session(
+    connection: &Connection,
+    session_id: &str,
+    target_session_id: &str,
+) -> ArgmaxResult<bool> {
+    Ok(human_referenced_session_ids(connection, session_id)?.contains(target_session_id))
+}
+
+/// The link prefix of a chat reference. The composer writes
+/// `[title](argmax://chat/<session id>)`; the renderer's `composerContext`
+/// owns the same constant.
+pub const CHAT_REFERENCE_PREFIX: &str = "argmax://chat/";
+
+/// Replace one event's payload, keeping its rowid so cursors and timeline
+/// ordering are untouched. Used when Argmax learns something about an event
+/// after the fact — the measured diff for a file write the provider reported
+/// without one.
+pub fn update_event_payload(
+    connection: &Connection,
+    event_id: &str,
+    payload: &Value,
+) -> ArgmaxResult<bool> {
+    let payload_json = serde_json::to_string(payload).map_err(json_error)?;
+    let rows = connection
+        .prepare_cached("UPDATE events SET payload_json = ? WHERE id = ?")
+        .map_err(sqlite_error)?
+        .execute((payload_json.as_str(), event_id))
+        .map_err(sqlite_error)?;
+    Ok(rows > 0)
+}
+
+/// Every tool boundary row of a session, oldest first. The subagent trace
+/// reconciler reads them to learn which child threads already carry a launch
+/// row and which tool ids are taken.
+pub fn list_session_tool_events(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Vec<TimelineEvent>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        SELECT rowid AS row_cursor, *
+        FROM events
+        WHERE session_id = ? AND type IN ('command.started', 'command.completed')
+        ORDER BY rowid ASC
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map((session_id,), event_row_to_timeline_event)
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+/// Native child lifecycle rows, oldest first. Trace reconciliation uses these
+/// persisted run boundaries to attach each appended Codex child turn to the
+/// parent invocation that dispatched it.
+pub fn list_session_native_agent_events(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Vec<TimelineEvent>> {
+    let mut statement = connection
+        .prepare_cached(&format!(
+            r#"
+        SELECT rowid AS row_cursor, *
+        FROM events
+        WHERE session_id = ?
+          AND type IN ('agent.started', 'agent.completed')
+          AND rowid > COALESCE((
+                {AGENT_TURN_BOUNDARY}
+          ), 0)
+        ORDER BY rowid ASC
+        "#
+        ))
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map((session_id,), event_row_to_timeline_event)
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+/// Imported child trace rows filed under one parent tool call, oldest first.
+pub fn list_imported_trace_events(
+    connection: &Connection,
+    session_id: &str,
+    parent_tool_use_id: &str,
+) -> ArgmaxResult<Vec<TimelineEvent>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        SELECT rowid AS row_cursor, *
+        FROM events
+        WHERE session_id = ?
+          AND json_extract(payload_json, '$.traceImported') = 1
+          AND json_extract(payload_json, '$.parent_tool_use_id') = ?
+        ORDER BY rowid ASC
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map(
+            (session_id, parent_tool_use_id),
+            event_row_to_timeline_event,
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+/// Re-files one imported trace row under a different parent tool call. The
+/// rewrite keeps the rowid, so cursors and timeline ordering are untouched.
+/// Returns false when the destination id already exists — the caller decides
+/// whether the row it was moving is now a duplicate.
+pub fn rewrite_trace_event(
+    connection: &Connection,
+    row_cursor: i64,
+    id: &str,
+    payload: &Value,
+) -> ArgmaxResult<bool> {
+    let payload_json = serde_json::to_string(payload).map_err(json_error)?;
+    let mut statement = connection
+        .prepare_cached("UPDATE OR IGNORE events SET id = ?, payload_json = ? WHERE rowid = ?")
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .execute((id, payload_json.as_str(), row_cursor))
+        .map_err(sqlite_error)?;
+    Ok(rows > 0)
+}
+
+pub fn delete_event_row(connection: &Connection, row_cursor: i64) -> ArgmaxResult<()> {
+    connection
+        .prepare_cached("DELETE FROM events WHERE rowid = ?")
+        .map_err(sqlite_error)?
+        .execute((row_cursor,))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+/// Drops placeholder launch rows outright, for a child the timeline should
+/// never have shown. Unlike a takeover there is nothing to hand the rows to, so
+/// they leave as deletions the renderer's delta channel carries.
+pub fn delete_synthetic_launch_events(
+    connection: &Connection,
+    session_id: &str,
+    tool_use_id: &str,
+) -> ArgmaxResult<usize> {
+    let deleted = connection
+        .prepare_cached(
+            r#"
+        DELETE FROM events
+        WHERE session_id = ?
+          AND json_extract(payload_json, '$.traceSyntheticLaunch') = 1
+          AND json_extract(payload_json, '$.id') = ?
+        "#,
+        )
+        .map_err(sqlite_error)?
+        .execute((session_id, tool_use_id))
+        .map_err(sqlite_error)?;
+    Ok(deleted)
+}
+
+/// Rewrites placeholder launch rows as cursor-visible tombstones after a real
+/// launch takes over. Re-inserting the same event ids gives them fresh rowids,
+/// so an incremental renderer replaces and hides its stale launch cards.
+pub fn supersede_synthetic_launch_events(
+    connection: &Connection,
+    session_id: &str,
+    tool_use_id: &str,
+    real_tool_use_id: &str,
+) -> ArgmaxResult<usize> {
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let rows = {
+        let mut statement = transaction
+            .prepare_cached(
+                r#"
+            SELECT rowid AS row_cursor, *
+            FROM events
+            WHERE session_id = ?
+              AND json_extract(payload_json, '$.traceSyntheticLaunch') = 1
+              AND json_extract(payload_json, '$.id') = ?
+            ORDER BY rowid ASC
+            "#,
+            )
+            .map_err(sqlite_error)?;
+        let rows = statement
+            .query_map((session_id, tool_use_id), event_row_to_timeline_event)
+            .map_err(sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(sqlite_error)?;
+        rows
+    };
+    let deleted = transaction
+        .prepare_cached(
+            r#"
+        DELETE FROM events
+        WHERE session_id = ?
+          AND json_extract(payload_json, '$.traceSyntheticLaunch') = 1
+          AND json_extract(payload_json, '$.id') = ?
+        "#,
+        )
+        .map_err(sqlite_error)?
+        .execute((session_id, tool_use_id))
+        .map_err(sqlite_error)?;
+    for row in rows {
+        let mut payload = row.payload;
+        if let Some(payload) = payload.as_object_mut() {
+            payload.remove("traceSyntheticLaunch");
+            payload.insert("traceSyntheticSuperseded".to_string(), Value::Bool(true));
+            payload.insert(
+                "traceSupersededBy".to_string(),
+                Value::String(real_tool_use_id.to_string()),
+            );
+        }
+        persist_timeline_event(
+            &transaction,
+            &PersistTimelineEventInput {
+                id: row.id,
+                session_id: row.session_id,
+                r#type: row.r#type,
+                message: row.message,
+                payload,
+                created_at: Some(row.created_at),
+            },
+        )?;
+    }
+    transaction.commit().map_err(sqlite_error)?;
+    Ok(deleted)
+}
+
+pub fn persist_raw_output(
+    connection: &Connection,
+    input: &PersistRawOutputInput,
+) -> ArgmaxResult<RawProviderOutput> {
+    let created_at = input.created_at.clone().unwrap_or_else(now_iso);
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        INSERT INTO raw_outputs (id, session_id, stream, content, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    statement
+        .execute((
+            input.id.as_str(),
+            input.session_id.as_str(),
+            input.stream.as_str(),
+            input.content.as_str(),
+            created_at.as_str(),
+        ))
+        .map_err(sqlite_error)?;
+    Ok(RawProviderOutput {
+        id: input.id.clone(),
+        session_id: input.session_id.clone(),
+        stream: input.stream.clone(),
+        content: input.content.clone(),
+        created_at,
+        row_cursor: Some(connection.last_insert_rowid()),
+    })
+}
+
+/// Every timeline row for a session, oldest first and unpaged.
+///
+/// `list_session_events_since` is the renderer's pager: called with no cursor
+/// it returns only the newest `SESSION_EVENT_PAGE_LIMIT` rows plus the newest
+/// `SESSION_TAIL_DURABLE_LIMIT` durable rows. Copying a transcript (session
+/// fork) needs all of it — a long run passes those caps easily, since every
+/// tool call and assistant chunk is a row, and paging would otherwise drop the
+/// beginning of the conversation with no warning.
+pub fn list_all_session_events(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Vec<TimelineEvent>> {
+    let mut statement = connection
+        .prepare_cached(
+            "SELECT rowid AS row_cursor, * FROM events WHERE session_id = ? ORDER BY rowid ASC",
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map((session_id,), event_row_to_timeline_event)
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+/// The agent's most recent visible message in a session — what a suggested
+/// follow-up is a reply to. Applies the same child-agent exclusions as
+/// `compose_follow_up_prompt`: subagent prose never reaches the transcript, so
+/// it must not reach the suggestion either.
+///
+/// Clamped like `compose_follow_up_prompt` clamps its own lines. The caller
+/// spends a model call on this text, and four of the five providers carry it
+/// in argv, where a pasted log would cost real tokens and eventually exceed
+/// `ARG_MAX`. The opening characters are all a follow-up needs to reply to.
+/// The session's newest assistant message, clamped to 4,000 characters: a
+/// preview for the sidebar, a wait result, or a multitask row.
+pub fn latest_agent_message(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    latest_agent_message_within(connection, session_id, Some(LATEST_AGENT_MESSAGE_CHARS))
+}
+
+/// The same message whole. The completion notice caps it itself and keeps the
+/// "Learnings for the arc" tail, which a clamp at the head would cut off.
+pub fn latest_agent_answer(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    latest_agent_message_within(connection, session_id, None)
+}
+
+const LATEST_AGENT_MESSAGE_CHARS: usize = 4000;
+
+fn latest_agent_message_within(
+    connection: &Connection,
+    session_id: &str,
+    max_chars: Option<usize>,
+) -> ArgmaxResult<Option<String>> {
+    let selected = match max_chars {
+        Some(max_chars) => format!("substr(message, 1, {max_chars})"),
+        None => "message".to_string(),
+    };
+    let mut statement = connection
+        .prepare_cached(&format!(
+            r#"
+            SELECT {selected}
+            FROM events
+            WHERE session_id = ?
+              AND type = 'message.completed'
+              AND trim(message) <> ''
+              AND rowid > COALESCE((
+                {CLEAR_BOUNDARY}
+              ), 0)
+              AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
+              AND json_extract(payload_json, '$.traceImported') IS NULL
+              AND NOT (
+                (json_extract(payload_json, '$.item_type') = 'agent_message'
+                  OR json_extract(payload_json, '$.item.type') = 'agent_message')
+                AND (json_extract(payload_json, '$.thread_id') IS NOT NULL
+                  OR json_extract(payload_json, '$.sender_thread_id') IS NOT NULL
+                  OR json_extract(payload_json, '$.item.thread_id') IS NOT NULL
+                  OR json_extract(payload_json, '$.item.sender_thread_id') IS NOT NULL)
+              )
+            ORDER BY rowid DESC
+            LIMIT 1
+            "#
+        ))
+        .map_err(sqlite_error)?;
+    let message = statement
+        .query_row((session_id,), |row| row.get::<_, String>(0))
+        .optional()
+        .map_err(sqlite_error)?;
+    Ok(message)
+}
+
+/// What a Goal's evaluator reads: the end of the conversation, plus how much
+/// the agent actually did in its last turn.
+pub struct GoalTranscriptTail {
+    /// Labelled transcript lines, oldest first, clamped to the caller's budget.
+    pub text: String,
+    /// Tool calls since the last user turn. Zero across several turns running
+    /// is how the driver notices the agent has stopped making progress.
+    pub tool_calls_in_last_turn: u32,
+}
+
+/// Rows scanned for the tail. The budget cuts the text long before this in an
+/// ordinary session; the limit is what keeps a chatty one bounded.
+const GOAL_TAIL_SCAN_LIMIT: usize = 400;
+/// Per-row clamp, so one pasted build log cannot fill the whole budget.
+const GOAL_TAIL_ROW_CHARS: usize = 2_000;
+
+/// Reads the tail of `session_id` for a Goal verdict: assistant prose, tool
+/// calls and their outcomes, and the prompts they answered, newest rows first
+/// until `max_chars` is spent, then flipped back into reading order. Subagent
+/// and imported-trace rows are excluded, like the chat surface excludes them.
+///
+/// Rows are read one at a time rather than collected: a tool result can be
+/// megabytes, and once the budget is spent the rest are never pulled out of
+/// SQLite at all.
+pub fn goal_transcript_tail(
+    connection: &Connection,
+    session_id: &str,
+    max_chars: usize,
+) -> ArgmaxResult<GoalTranscriptTail> {
+    let mut statement = connection
+        .prepare_cached(&format!(
+            r#"
+            SELECT type, message, payload_json
+            FROM events
+            WHERE session_id = ?
+              AND (
+                (type IN ('user.message', 'message.completed', 'error')
+                  AND trim(message) <> '')
+                OR type IN ('command.started', 'command.completed')
+              )
+              AND rowid > COALESCE((
+                {CLEAR_BOUNDARY}
+              ), 0)
+              AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
+              AND json_extract(payload_json, '$.traceImported') IS NULL
+            ORDER BY rowid DESC
+            LIMIT ?
+            "#
+        ))
+        .map_err(sqlite_error)?;
+    let mut rows = statement
+        .query(params![session_id, GOAL_TAIL_SCAN_LIMIT as i64])
+        .map_err(sqlite_error)?;
+
+    let mut lines = Vec::new();
+    let mut spent = 0usize;
+    while let Some(row) = rows.next().map_err(sqlite_error)? {
+        let kind = row.get::<_, String>(0).map_err(sqlite_error)?;
+        let message = row.get::<_, String>(1).map_err(sqlite_error)?;
+        let payload = row.get::<_, Option<String>>(2).map_err(sqlite_error)?;
+        let Some(line) = goal_tail_line(&kind, &message, payload.as_deref()) else {
+            continue;
+        };
+        if spent + line.len() > max_chars && !lines.is_empty() {
+            break;
+        }
+        spent += line.len();
+        lines.push(line);
+    }
+    lines.reverse();
+
+    Ok(GoalTranscriptTail {
+        text: lines.join("\n"),
+        tool_calls_in_last_turn: count_tool_calls_since_last_prompt(connection, session_id)?,
+    })
+}
+
+/// One labelled line for the evaluator, or `None` for a row that shows it
+/// nothing.
+///
+/// Tool rows are the reason this reads the payload rather than the `message`
+/// column: there a tool call is only its name — `shell`, `read` — so a goal
+/// whose evidence lived in `git rev-parse` output was judged from lines reading
+/// `TOOL RESULT: shell`. The command and what it printed are in the payload,
+/// and that is what a verdict actually turns on.
+fn goal_tail_line(kind: &str, message: &str, payload_json: Option<&str>) -> Option<String> {
+    let payload = payload_json
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .unwrap_or(serde_json::Value::Null);
+    match kind {
+        "command.started" => {
+            // Grok names its tool inside the arguments rather than on the row.
+            let name = [
+                payload.get("name").and_then(serde_json::Value::as_str),
+                Some(message),
+                payload
+                    .pointer("/input/variant")
+                    .and_then(serde_json::Value::as_str),
+            ]
+            .into_iter()
+            .flatten()
+            .map(str::trim)
+            .find(|name| !name.is_empty())
+            .unwrap_or_default();
+            let label = if name.is_empty() {
+                "TOOL".to_string()
+            } else {
+                format!("TOOL {name}")
+            };
+            match goal_tail_command_input(&payload) {
+                Some(input) => Some(format!("{label}: {input}")),
+                None if name.is_empty() => None,
+                None => Some(label),
+            }
+        }
+        // A result the provider did not record is dropped rather than printed
+        // as an empty line: the `TOOL` row above it already says the call was
+        // made, and a bare "TOOL RESULT:" reads as a command that printed
+        // nothing.
+        "command.completed" => {
+            let output = goal_tail_command_output(&payload)?;
+            Some(format!("TOOL RESULT: {}", clamp_tail(&output)))
+        }
+        _ => {
+            let label = match kind {
+                "user.message" => "USER",
+                "message.completed" => "AGENT",
+                _ => "ERROR",
+            };
+            Some(format!("{label}: {}", clamp_head(message.trim())))
+        }
+    }
+}
+
+/// What the agent asked the tool to do: the shell command when there is one,
+/// otherwise the compact arguments.
+fn goal_tail_command_input(payload: &serde_json::Value) -> Option<String> {
+    let input = payload.get("input")?;
+    if let Some(command) = input.get("command").and_then(serde_json::Value::as_str) {
+        return Some(clamp_head(command.trim()));
+    }
+    let rendered = serde_json::to_string(input).ok()?;
+    (rendered != "{}" && rendered != "null").then(|| clamp_head(&rendered))
+}
+
+/// What the tool printed, across the shapes the five providers record it in:
+/// Claude's `content`, Cursor's `result` object of `stdout`/`stderr`,
+/// OpenCode's `result` string, and the `aggregated_output` of a streamed
+/// command. A non-zero exit is named, because a failing check that prints
+/// nothing is still evidence.
+fn goal_tail_command_output(payload: &serde_json::Value) -> Option<String> {
+    let mut text = String::new();
+    if let Some(code) = payload
+        .pointer("/result/exitCode")
+        .and_then(serde_json::Value::as_i64)
+        .filter(|code| *code != 0)
+    {
+        text.push_str(&format!("exit {code}"));
+    }
+    for key in ["content", "aggregated_output", "result"] {
+        if let Some(value) = payload.get(key) {
+            push_goal_tail_text(&mut text, value);
+        }
+    }
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_string())
+}
+
+fn push_goal_tail_text(into: &mut String, value: &serde_json::Value) {
+    match value {
+        serde_json::Value::String(chunk) if !chunk.trim().is_empty() => {
+            if !into.is_empty() {
+                into.push('\n');
+            }
+            into.push_str(chunk.trim());
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                push_goal_tail_text(into, item);
+            }
+        }
+        // `type` is the block's kind in Claude's content blocks, not output:
+        // without this every text block contributes a stray "text" line.
+        serde_json::Value::Object(fields) => {
+            for (key, field) in fields {
+                if key != "type" {
+                    push_goal_tail_text(into, field);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn clamp_head(text: &str) -> String {
+    match text.char_indices().nth(GOAL_TAIL_ROW_CHARS) {
+        Some((at, _)) => format!("{}…", text[..at].trim_end()),
+        None => text.to_string(),
+    }
+}
+
+/// Keeps the *end* of a long output. A check's verdict — the failure count, the
+/// summary line — is the last thing it prints.
+fn clamp_tail(text: &str) -> String {
+    let count = text.chars().count();
+    if count <= GOAL_TAIL_ROW_CHARS {
+        return text.to_string();
+    }
+    let at = text
+        .char_indices()
+        .nth(count - GOAL_TAIL_ROW_CHARS)
+        .map_or(0, |(at, _)| at);
+    format!("…{}", text[at..].trim_start())
+}
+
+fn count_tool_calls_since_last_prompt(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<u32> {
+    connection
+        .prepare_cached(
+            r#"
+            SELECT COUNT(*) FROM events
+            WHERE session_id = ?1
+              AND type = 'command.started'
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events prompt
+                WHERE prompt.session_id = ?1 AND prompt.type = 'user.message'
+              ), 0)
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .query_row([session_id], |row| row.get::<_, u32>(0))
+        .map_err(sqlite_error)
+}
+
+/// Recent transcript rows for follow-up routing, with the same Clear and
+/// subagent exclusions as the visible provider handoff transcript.
+pub fn routing_visible_messages(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Vec<RoutingVisibleMessage>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        SELECT type, substr(message, 1, 601), length(message) > 600 FROM events
+        WHERE session_id = ?
+          AND type IN ('user.message', 'message.completed')
+          AND message <> ''
+          AND rowid > COALESCE((
+            SELECT MAX(rowid) FROM events cleared
+            WHERE cleared.session_id = events.session_id
+              AND cleared.type = 'session.cleared'
+          ), 0)
+          AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
+          AND json_extract(payload_json, '$.traceImported') IS NULL
+          AND NOT (
+            (json_extract(payload_json, '$.item_type') = 'agent_message'
+              OR json_extract(payload_json, '$.item.type') = 'agent_message')
+            AND (json_extract(payload_json, '$.thread_id') IS NOT NULL
+              OR json_extract(payload_json, '$.sender_thread_id') IS NOT NULL
+              OR json_extract(payload_json, '$.item.thread_id') IS NOT NULL
+              OR json_extract(payload_json, '$.item.sender_thread_id') IS NOT NULL)
+          )
+        ORDER BY rowid DESC LIMIT 30
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([session_id], |row| {
+            Ok(RoutingVisibleMessage {
+                event_type: row.get(0)?,
+                text: row.get(1)?,
+                truncated: row.get(2)?,
+            })
+        })
+        .map_err(sqlite_error)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
+}
+
+pub struct RoutingVisibleMessage {
+    pub event_type: String,
+    pub text: String,
+    pub truncated: bool,
+}
+
+/// When the current turn's prompt landed — what `session_status` ages to
+/// report how long a session has been working.
+pub fn latest_user_message_at(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    latest_user_message_column(connection, session_id, "created_at")
+}
+
+/// The id of the turn a before-turn checkpoint belongs to. Recorded on the
+/// checkpoint as its `turn_boundary`, which is what lets a turn in the
+/// transcript offer "Revert to here" — the checkpoint is matched to the
+/// message rather than picked off a list of identical timestamps.
+pub fn latest_user_message_id(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    latest_user_message_column(connection, session_id, "id")
+}
+
+/// One column of the newest top-level user message since the last clear,
+/// ignoring subagent prompts — the same slice the transcript shows.
+fn latest_user_message_column(
+    connection: &Connection,
+    session_id: &str,
+    column: &str,
+) -> ArgmaxResult<Option<String>> {
+    connection
+        .prepare_cached(&format!(
+            r#"
+            SELECT {column}
+            FROM events
+            WHERE session_id = ?
+              AND type = 'user.message'
+              AND rowid > COALESCE((
+                {CLEAR_BOUNDARY}
+              ), 0)
+              AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
+            ORDER BY rowid DESC
+            LIMIT 1
+            "#
+        ))
+        .map_err(sqlite_error)?
+        .query_row([session_id], |row| row.get::<_, String>(0))
+        .optional()
+        .map_err(sqlite_error)
+}
+
+/// Names whose tool call puts a question in front of the person and then waits
+/// for them. Kept in step with `isAskUserQuestionToolName` in
+/// `src/renderer/lib/turnInteractiveCards.ts`.
+const ASK_TOOL_NAMES: [&str; 3] = ["askuserquestion", "askquestiontoolcall", "sendusermessage"];
+
+fn normalized_tool_name(name: &str) -> String {
+    name.chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .map(|character| character.to_ascii_lowercase())
+        .collect()
+}
+
+/// The tool's merged argument object. Providers put it under any of four keys
+/// and Cursor hands `input` over as a JSON string, so this mirrors
+/// `extractToolInput` rather than reading one field.
+fn merged_tool_input(payload: &Value) -> serde_json::Map<String, Value> {
+    let mut merged = serde_json::Map::new();
+    for key in ["parameters", "arguments", "args", "input"] {
+        let container = match payload.get(key) {
+            Some(Value::Object(object)) => object.clone(),
+            Some(Value::String(raw)) => match serde_json::from_str::<Value>(raw) {
+                Ok(Value::Object(object)) => object,
+                _ => continue,
+            },
+            _ => continue,
+        };
+        merged.extend(container);
+    }
+    merged
+}
+
+/// The tool's identity, mirroring the parts of `extractToolName` that can
+/// name an interactive ask: Cursor's ACP wraps the real tool as `other` and
+/// keeps its name in the input.
+fn ask_tool_identity(payload: &Value) -> Option<String> {
+    let payload_name = payload.get("name").and_then(Value::as_str);
+    if let Some(name) = payload_name {
+        if name.eq_ignore_ascii_case("other") {
+            if let Some(embedded) = merged_tool_input(payload)
+                .get("_toolName")
+                .and_then(Value::as_str)
+            {
+                if !embedded.is_empty() {
+                    return Some(normalized_tool_name(embedded));
+                }
+            }
+        }
+    }
+    payload_name.map(normalized_tool_name)
+}
+
+/// Whether this session is sitting on an ask the person has not answered: an
+/// `AskUserQuestion` tool call newer than the last thing they said. The same
+/// rule `hasOutstandingCardAsk` applies in the renderer, evaluated here
+/// because the sidebar cannot see the transcript.
+///
+/// `answers_itself` auto-allows these tools, so the turn settles the instant
+/// the question is drawn and the session goes `complete` like any other. Left
+/// unasked, a pending question is indistinguishable from a finished job.
+///
+/// The SQL narrows on a substring of the tool name, which the payload could
+/// carry for other reasons (an agent reading this very file). Every candidate
+/// is re-checked against its `name` field before it counts.
+pub fn has_outstanding_card_ask(connection: &Connection, session_id: &str) -> ArgmaxResult<bool> {
+    let since = latest_user_message_at(connection, session_id)?.unwrap_or_default();
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT payload_json
+            FROM events
+            WHERE session_id = ?1
+              AND type = 'command.started'
+              AND rowid > COALESCE((
+                SELECT MAX(rowid) FROM events cleared
+                WHERE cleared.session_id = ?1
+                  AND cleared.type = 'session.cleared'
+              ), 0)
+              AND created_at > ?2
+              AND NOT (
+                json_extract(payload_json, '$.input.delivery') = 'blocking'
+                AND EXISTS (
+                  SELECT 1
+                  FROM events completed
+                  WHERE completed.session_id = events.session_id
+                    AND completed.type = 'command.completed'
+                    AND json_extract(completed.payload_json, '$.id') = json_extract(events.payload_json, '$.id')
+                    AND json_extract(completed.payload_json, '$.providerInvocationId') = json_extract(events.payload_json, '$.providerInvocationId')
+                    AND json_extract(completed.payload_json, '$.providerRequestId') = json_extract(events.payload_json, '$.providerRequestId')
+                )
+              )
+              AND (
+                payload_json LIKE '%skUserQuestion%'
+                OR payload_json LIKE '%skQuestionToolCall%'
+                OR payload_json LIKE '%endUserMessage%'
+              )
+            ORDER BY rowid DESC
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map((session_id, since.as_str()), |row| row.get::<_, String>(0))
+        .map_err(sqlite_error)?;
+    for row in rows {
+        let payload: Value = match serde_json::from_str(&row.map_err(sqlite_error)?) {
+            Ok(payload) => payload,
+            Err(_) => continue,
+        };
+        let Some(name) = ask_tool_identity(&payload) else {
+            continue;
+        };
+        // A question tool with nothing to choose between draws no card, so it
+        // is not something the person can answer.
+        if ASK_TOOL_NAMES.contains(&name.as_str())
+            && merged_tool_input(&payload)
+                .get("questions")
+                .and_then(Value::as_array)
+                .is_some_and(|questions| !questions.is_empty())
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// How many times this chat has arrived somewhere by being moved. A move
+/// copies the transcript, so the seams of earlier moves ride along and the
+/// count is the whole chain rather than the last hop.
+pub fn count_move_arrivals(connection: &Connection, session_id: &str) -> ArgmaxResult<i64> {
+    connection
+        .query_row(
+            r#"
+            SELECT COUNT(*)
+            FROM events
+            WHERE session_id = ?
+              AND type = 'session.moved'
+              AND json_extract(payload_json, '$.direction') = 'destination'
+            "#,
+            (session_id,),
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(sqlite_error)
+}
+
+fn list_authoritative_tail(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let events = list_event_rows(&transaction, session_id, None)?;
+    let raw_outputs = list_raw_output_rows(&transaction, session_id, None)?;
+    let change_cursor = change_feed_head(&transaction)?;
+    let event_cursor = max_row_cursor(&events, 0);
+    let raw_output_cursor = max_raw_row_cursor(&raw_outputs, 0);
+    transaction.commit().map_err(sqlite_error)?;
+
+    Ok(SessionEventsSinceResult {
+        events,
+        raw_outputs,
+        event_cursor,
+        raw_output_cursor,
+        change_cursor: Some(change_cursor),
+        reset_required: true,
+        ..SessionEventsSinceResult::default()
+    })
+}
+
+fn list_change_page(
+    connection: &Connection,
+    session_id: &str,
+    cursor: i64,
+    budget_bytes: Option<usize>,
+) -> ArgmaxResult<SessionEventsSinceResult> {
+    if cursor < 0 {
+        return Err(ArgmaxError::invalid(InvalidInputIssue::at(
+            vec!["changeCursor".to_owned()],
+            "CHANGE_CURSOR_NEGATIVE",
+            "change cursor must be zero or greater",
+        )));
+    }
+
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    let head = change_feed_head(&transaction)?;
+    let pruned_through = transaction
+        .prepare_cached("SELECT pruned_through FROM session_change_watermarks WHERE session_id = ?")
+        .map_err(sqlite_error)?
+        .query_row((session_id,), |row| row.get::<_, i64>(0))
+        .optional()
+        .map_err(sqlite_error)?
+        .unwrap_or(0);
+
+    if cursor > head || cursor < pruned_through {
+        let events = list_event_rows(&transaction, session_id, None)?;
+        let raw_outputs = list_raw_output_rows(&transaction, session_id, None)?;
+        let event_cursor = max_row_cursor(&events, 0);
+        let raw_output_cursor = max_raw_row_cursor(&raw_outputs, 0);
+        transaction.commit().map_err(sqlite_error)?;
+        return Ok(SessionEventsSinceResult {
+            events,
+            raw_outputs,
+            event_cursor,
+            raw_output_cursor,
+            change_cursor: Some(head),
+            reset_required: true,
+            ..SessionEventsSinceResult::default()
+        });
+    }
+
+    let changes = {
+        let mut statement = transaction
+            .prepare_cached(
+                r#"
+                SELECT sequence, entity_kind, entity_id
+                FROM session_changes
+                WHERE session_id = ? AND sequence > ? AND sequence <= ?
+                ORDER BY sequence ASC
+                LIMIT ?
+                "#,
+            )
+            .map_err(sqlite_error)?;
+        let rows = statement
+            .query_map(
+                (
+                    session_id,
+                    cursor,
+                    head,
+                    (SESSION_CHANGE_PAGE_LIMIT + 1) as i64,
+                ),
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .map_err(sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(sqlite_error)?;
+        rows
+    };
+    let candidates = &changes[..changes.len().min(SESSION_CHANGE_PAGE_LIMIT)];
+    let mut candidate_event_ids = Vec::new();
+    let mut candidate_raw_output_ids = Vec::new();
+    let mut seen_event_ids = HashSet::new();
+    let mut seen_raw_output_ids = HashSet::new();
+    for (_, entity_kind, entity_id) in candidates {
+        match entity_kind.as_str() {
+            "event" if seen_event_ids.insert(entity_id.as_str()) => {
+                candidate_event_ids.push(entity_id.clone());
+            }
+            "raw_output" if seen_raw_output_ids.insert(entity_id.as_str()) => {
+                candidate_raw_output_ids.push(entity_id.clone());
+            }
+            _ => {}
+        }
+    }
+
+    let candidate_events = list_events_by_ids(&transaction, session_id, &candidate_event_ids)?;
+    let candidate_raw_outputs =
+        list_raw_outputs_by_ids(&transaction, session_id, &candidate_raw_output_ids)?;
+    let events_by_id = candidate_events
+        .iter()
+        .map(|event| (event.id.as_str(), event))
+        .collect::<HashMap<_, _>>();
+    let raw_outputs_by_id = candidate_raw_outputs
+        .iter()
+        .map(|output| (output.id.as_str(), output))
+        .collect::<HashMap<_, _>>();
+
+    // Use the largest cursor values and the longer `false` spelling so the
+    // empty result envelope is an upper bound for every prefix below. The
+    // entity bytes are the persisted representation, before remote trimming.
+    let mut spent = budget_bytes
+        .map(|_| {
+            serialized_len(&SessionEventsSinceResult {
+                event_cursor: max_row_cursor(&candidate_events, 0),
+                raw_output_cursor: max_raw_row_cursor(&candidate_raw_outputs, 0),
+                change_cursor: Some(head),
+                ..SessionEventsSinceResult::default()
+            })
+        })
+        .transpose()?
+        .unwrap_or(0);
+    let mut event_ids = Vec::new();
+    let mut raw_output_ids = Vec::new();
+    let mut included_event_ids = HashSet::new();
+    let mut included_raw_output_ids = HashSet::new();
+    let mut included_entity_count = 0usize;
+    let mut consumed_count = 0usize;
+    let mut last_consumed_sequence = cursor;
+
+    for (sequence, entity_kind, entity_id) in candidates {
+        let is_new_event =
+            entity_kind == "event" && !included_event_ids.contains(entity_id.as_str());
+        let is_new_raw_output =
+            entity_kind == "raw_output" && !included_raw_output_ids.contains(entity_id.as_str());
+        let contribution = if budget_bytes.is_none() {
+            0
+        } else {
+            // One byte conservatively covers the comma before every array
+            // member, including the first member where JSON needs none.
+            match entity_kind.as_str() {
+                "event" if is_new_event => events_by_id
+                    .get(entity_id.as_str())
+                    .map_or_else(|| serialized_len(entity_id), |event| serialized_len(*event))?
+                    .saturating_add(1),
+                "raw_output" if is_new_raw_output => raw_outputs_by_id
+                    .get(entity_id.as_str())
+                    .map_or_else(
+                        || serialized_len(entity_id),
+                        |output| serialized_len(*output),
+                    )?
+                    .saturating_add(1),
+                _ => 0,
+            }
+        };
+
+        if budget_bytes.is_some_and(|budget| {
+            contribution > 0
+                && included_entity_count > 0
+                && spent.saturating_add(contribution) > budget
+        }) {
+            break;
+        }
+
+        if is_new_event {
+            included_event_ids.insert(entity_id.as_str());
+            event_ids.push(entity_id.clone());
+            included_entity_count += 1;
+        } else if is_new_raw_output {
+            included_raw_output_ids.insert(entity_id.as_str());
+            raw_output_ids.push(entity_id.clone());
+            included_entity_count += 1;
+        }
+        spent = spent.saturating_add(contribution);
+        consumed_count += 1;
+        last_consumed_sequence = *sequence;
+    }
+
+    let has_more = consumed_count < changes.len();
+    let next_cursor = if has_more {
+        last_consumed_sequence
+    } else {
+        head
+    };
+    let events = candidate_events
+        .into_iter()
+        .filter(|event| included_event_ids.contains(event.id.as_str()))
+        .collect::<Vec<_>>();
+    let raw_outputs = candidate_raw_outputs
+        .into_iter()
+        .filter(|output| included_raw_output_ids.contains(output.id.as_str()))
+        .collect::<Vec<_>>();
+    let current_event_ids = events
+        .iter()
+        .map(|event| event.id.as_str())
+        .collect::<HashSet<_>>();
+    let current_raw_output_ids = raw_outputs
+        .iter()
+        .map(|output| output.id.as_str())
+        .collect::<HashSet<_>>();
+    let deleted_event_ids = event_ids
+        .into_iter()
+        .filter(|id| !current_event_ids.contains(id.as_str()))
+        .collect();
+    let deleted_raw_output_ids = raw_output_ids
+        .into_iter()
+        .filter(|id| !current_raw_output_ids.contains(id.as_str()))
+        .collect();
+    let event_cursor = max_row_cursor(&events, 0);
+    let raw_output_cursor = max_raw_row_cursor(&raw_outputs, 0);
+    transaction.commit().map_err(sqlite_error)?;
+
+    Ok(SessionEventsSinceResult {
+        events,
+        raw_outputs,
+        event_cursor,
+        raw_output_cursor,
+        change_cursor: Some(next_cursor),
+        deleted_event_ids,
+        deleted_raw_output_ids,
+        reset_required: false,
+        has_more,
+    })
+}
+
+fn serialized_len<T: Serialize>(value: &T) -> ArgmaxResult<usize> {
+    serde_json::to_vec(value)
+        .map(|json| json.len())
+        .map_err(json_error)
+}
+
+fn change_feed_head(connection: &Connection) -> ArgmaxResult<i64> {
+    connection
+        .query_row(
+            "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'session_changes'), 0)",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(sqlite_error)
+}
+
+fn list_events_by_ids(
+    connection: &Connection,
+    session_id: &str,
+    ids: &[String],
+) -> ArgmaxResult<Vec<TimelineEvent>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = std::iter::repeat_n("?", ids.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT rowid AS row_cursor, id, session_id, type, message, payload_json, created_at \
+         FROM events WHERE session_id = ? AND id IN ({placeholders}) ORDER BY rowid ASC"
+    );
+    let mut statement = connection.prepare(&sql).map_err(sqlite_error)?;
+    let rows = statement
+        .query_map(
+            params_from_iter(std::iter::once(session_id).chain(ids.iter().map(String::as_str))),
+            event_row_to_timeline_event,
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+fn list_raw_outputs_by_ids(
+    connection: &Connection,
+    session_id: &str,
+    ids: &[String],
+) -> ArgmaxResult<Vec<RawProviderOutput>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = std::iter::repeat_n("?", ids.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT rowid AS row_cursor, id, session_id, stream, content, created_at \
+         FROM raw_outputs WHERE session_id = ? AND id IN ({placeholders}) ORDER BY rowid ASC"
+    );
+    let mut statement = connection.prepare(&sql).map_err(sqlite_error)?;
+    let rows = statement
+        .query_map(
+            params_from_iter(std::iter::once(session_id).chain(ids.iter().map(String::as_str))),
+            raw_output_row_to_provider_output,
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+fn list_event_rows(
+    connection: &Connection,
+    session_id: &str,
+    cursor: Option<i64>,
+) -> ArgmaxResult<Vec<TimelineEvent>> {
+    match cursor {
+        Some(cursor) => {
+            let mut statement = connection.prepare_cached("SELECT rowid AS row_cursor, * FROM events WHERE session_id = ? AND rowid > ? ORDER BY rowid ASC LIMIT ?",
+            )
+            .map_err(sqlite_error)?;
+            let rows = statement
+                .query_map(
+                    (session_id, cursor, SESSION_EVENT_PAGE_LIMIT as i64),
+                    event_row_to_timeline_event,
+                )
+                .map_err(sqlite_error)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(sqlite_error)?;
+            Ok(rows)
+        }
+        None => {
+            // The newest rows plus every durable row back to its own cap. A
+            // flat newest-N tail is mostly streaming deltas: one long thinking
+            // turn (2000+ rows) pushed the user bubble and every earlier turn
+            // out of the initial read, and nothing pages further back. Durable
+            // rows (user messages, tool calls, completions) carry the whole
+            // transcript on their own since `message.completed` holds the full
+            // answer, so keeping them restores the earlier turns at the cost
+            // of their thinking blocks. The cap mirrors the renderer's
+            // protected-row budget in snapshot.ts.
+            //
+            // The newest page must not begin inside a delta run: the clients
+            // rebuild a streaming bubble by concatenating the deltas they hold,
+            // so a page cut mid-answer paints the answer from its cut point
+            // until the completion lands. The floor therefore steps back from
+            // the page's oldest row to the durable row before it, bounded by
+            // SESSION_TAIL_OPEN_RUN_LIMIT rows in total.
+            let mut statement = connection
+                .prepare_cached(
+                    "WITH page AS (
+                        SELECT rowid FROM events WHERE session_id = ?1
+                        ORDER BY rowid DESC LIMIT ?2
+                    ),
+                    durable AS (
+                        SELECT rowid FROM events
+                        WHERE session_id = ?1 AND type <> 'message.delta'
+                        ORDER BY rowid DESC LIMIT ?3
+                    ),
+                    run_floor AS (
+                        SELECT MAX(
+                            COALESCE((
+                                SELECT MAX(rowid) FROM events
+                                WHERE session_id = ?1 AND type <> 'message.delta'
+                                  AND rowid < (SELECT MIN(rowid) FROM page)
+                            ), 0),
+                            COALESCE((
+                                SELECT rowid FROM events WHERE session_id = ?1
+                                ORDER BY rowid DESC LIMIT 1 OFFSET ?4
+                            ), 0)
+                        ) AS rowid
+                    )
+                    SELECT rowid AS row_cursor, * FROM events
+                    WHERE session_id = ?1 AND (
+                        rowid > (SELECT rowid FROM run_floor)
+                        OR rowid IN (SELECT rowid FROM durable)
+                    )
+                    ORDER BY row_cursor ASC",
+                )
+                .map_err(sqlite_error)?;
+            let rows = statement
+                .query_map(
+                    (
+                        session_id,
+                        SESSION_EVENT_PAGE_LIMIT as i64,
+                        SESSION_TAIL_DURABLE_LIMIT as i64,
+                        SESSION_TAIL_OPEN_RUN_LIMIT as i64,
+                    ),
+                    event_row_to_timeline_event,
+                )
+                .map_err(sqlite_error)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(sqlite_error)?;
+            Ok(rows)
+        }
+    }
+}
+
+fn list_newest_event_rows(
+    connection: &Connection,
+    session_id: &str,
+    limit: usize,
+) -> ArgmaxResult<Vec<TimelineEvent>> {
+    let mut statement = connection.prepare_cached("SELECT * FROM (SELECT rowid AS row_cursor, * FROM events WHERE session_id = ? ORDER BY rowid DESC LIMIT ?) ORDER BY row_cursor ASC",
+    )
+    .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map((session_id, limit as i64), event_row_to_timeline_event)
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+fn list_raw_output_rows(
+    connection: &Connection,
+    session_id: &str,
+    cursor: Option<i64>,
+) -> ArgmaxResult<Vec<RawProviderOutput>> {
+    match cursor {
+        Some(cursor) => {
+            let mut statement = connection.prepare_cached("SELECT rowid AS row_cursor, * FROM raw_outputs WHERE session_id = ? AND rowid > ? ORDER BY rowid ASC LIMIT ?",
+            )
+            .map_err(sqlite_error)?;
+            let rows = statement
+                .query_map(
+                    (session_id, cursor, SESSION_RAW_OUTPUT_PAGE_LIMIT as i64),
+                    raw_output_row_to_provider_output,
+                )
+                .map_err(sqlite_error)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(sqlite_error)?;
+            Ok(rows)
+        }
+        None => {
+            let mut statement = connection.prepare_cached("SELECT * FROM (SELECT rowid AS row_cursor, * FROM raw_outputs WHERE session_id = ? ORDER BY rowid DESC LIMIT ?) ORDER BY row_cursor ASC",
+            )
+            .map_err(sqlite_error)?;
+            let rows = statement
+                .query_map(
+                    (session_id, SESSION_RAW_OUTPUT_PAGE_LIMIT as i64),
+                    raw_output_row_to_provider_output,
+                )
+                .map_err(sqlite_error)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(sqlite_error)?;
+            Ok(rows)
+        }
+    }
+}
+
+fn event_row_to_timeline_event(row: &Row<'_>) -> rusqlite::Result<TimelineEvent> {
+    let payload_json: String = row.get("payload_json")?;
+    let event_type: String = row.get("type")?;
+    let mut payload = parse_event_payload(&payload_json);
+    crate::tool_activity::enrich_tool_activity(&event_type, &mut payload);
+    let id: String = row.get("id")?;
+    let semantic = timeline_semantics::derive(&event_type, &id, &payload);
+    Ok(TimelineEvent {
+        id,
+        session_id: row.get("session_id")?,
+        r#type: event_type,
+        message: row.get("message")?,
+        payload,
+        semantic,
+        created_at: row.get("created_at")?,
+        row_cursor: Some(row.get("row_cursor")?),
+    })
+}
+
+fn parse_event_payload(payload_json: &str) -> Value {
+    match serde_json::from_str(payload_json) {
+        Ok(payload) => payload,
+        Err(error) => {
+            let raw_payload: String = payload_json
+                .chars()
+                .take(INVALID_PAYLOAD_PREVIEW_CHARS)
+                .collect();
+            let raw_payload_truncated =
+                payload_json.chars().count() > INVALID_PAYLOAD_PREVIEW_CHARS;
+            tracing::warn!(?error, "invalid timeline event payload json");
+            json!({
+                "parseError": true,
+                "error": error.to_string(),
+                "rawPayload": raw_payload,
+                "rawPayloadTruncated": raw_payload_truncated,
+            })
+        }
+    }
+}
+
+fn object_field<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
+    value.as_object().and_then(|object| object.get(key))
+}
+
+fn string_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+    object_field(value, key).and_then(Value::as_str)
+}
+
+fn object_path_string<'a>(value: &'a Value, first: &str, second: &str) -> Option<&'a str> {
+    object_field(value, first)
+        .and_then(Value::as_object)
+        .and_then(|object| object.get(second))
+        .and_then(Value::as_str)
+}
+
+pub fn tool_use_id_for_payload(payload: &Value) -> Option<&str> {
+    string_field(payload, "id").or_else(|| string_field(payload, "call_id"))
+}
+
+pub fn completion_id_for_payload(payload: &Value) -> Option<&str> {
+    string_field(payload, "tool_use_id")
+        .or_else(|| string_field(payload, "id"))
+        .or_else(|| string_field(payload, "call_id"))
+}
+
+fn parent_tool_use_id_for_payload(payload: &Value) -> Option<&str> {
+    string_field(payload, "parent_tool_use_id")
+}
+
+fn receiver_thread_ids_for_payload(payload: &Value) -> Vec<String> {
+    let mut ids = Vec::new();
+    for value in [
+        object_field(payload, "receiver_thread_ids"),
+        object_field(payload, "input")
+            .and_then(Value::as_object)
+            .and_then(|input| input.get("receiver_thread_ids")),
+    ] {
+        let Some(array) = value.and_then(Value::as_array) else {
+            continue;
+        };
+        ids.extend(
+            array
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|id| !id.is_empty())
+                .map(str::to_string),
+        );
+    }
+    ids
+}
+
+fn is_parent_agent_event(row: &TimelineEvent, parent_tool_use_id: &str) -> bool {
+    match row.r#type.as_str() {
+        "command.started" => tool_use_id_for_payload(&row.payload) == Some(parent_tool_use_id),
+        "command.completed" => completion_id_for_payload(&row.payload) == Some(parent_tool_use_id),
+        _ => false,
+    }
+}
+
+fn is_agent_message_for_threads(
+    payload: &Value,
+    receiver_thread_ids: &std::collections::HashSet<String>,
+) -> bool {
+    if receiver_thread_ids.is_empty() {
+        return false;
+    }
+    let item_type = object_field(payload, "item")
+        .and_then(Value::as_object)
+        .and_then(|item| item.get("type"))
+        .and_then(Value::as_str)
+        .or_else(|| string_field(payload, "item_type"));
+    if item_type != Some("agent_message") {
+        return false;
+    }
+    [
+        string_field(payload, "thread_id"),
+        string_field(payload, "sender_thread_id"),
+        object_path_string(payload, "item", "thread_id"),
+        object_path_string(payload, "item", "sender_thread_id"),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|id| receiver_thread_ids.contains(id))
+}
+
+fn raw_output_row_to_provider_output(row: &Row<'_>) -> rusqlite::Result<RawProviderOutput> {
+    Ok(RawProviderOutput {
+        id: row.get("id")?,
+        session_id: row.get("session_id")?,
+        stream: row.get("stream")?,
+        content: row.get("content")?,
+        created_at: row.get("created_at")?,
+        row_cursor: Some(row.get("row_cursor")?),
+    })
+}
+
+fn max_row_cursor(rows: &[TimelineEvent], fallback: i64) -> i64 {
+    rows.iter()
+        .filter_map(|row| row.row_cursor)
+        .max()
+        .unwrap_or(fallback)
+}
+
+fn max_raw_row_cursor(rows: &[RawProviderOutput], fallback: i64) -> i64 {
+    rows.iter()
+        .filter_map(|row| row.row_cursor)
+        .max()
+        .unwrap_or(fallback)
+}
+
+/// Every prompt the session has ever taken, clear boundaries included — only
+/// the very first one can be the launch prompt.
+pub fn count_user_messages(connection: &Connection, session_id: &str) -> ArgmaxResult<i64> {
+    connection
+        .prepare_cached(
+            "SELECT COUNT(*) FROM events WHERE session_id = ? AND type = 'user.message'",
+        )
+        .map_err(sqlite_error)?
+        .query_row([session_id], |row| row.get::<_, i64>(0))
+        .map_err(sqlite_error)
+}
+
+pub fn has_durable_request(
+    connection: &Connection,
+    session_id: &str,
+    invocation_id: &str,
+    request_id: &str,
+) -> ArgmaxResult<bool> {
+    let count = connection
+        .query_row(
+            "SELECT COUNT(*) FROM events WHERE session_id = ?1 AND type = 'command.started' AND json_extract(payload_json, '$.providerInvocationId') = ?2 AND json_extract(payload_json, '$.providerRequestId') = ?3",
+            (session_id, invocation_id, request_id),
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(sqlite_error)?;
+    Ok(count > 0)
+}
+
+pub fn list_durable_pending(connection: &Connection, session_id: &str) -> ArgmaxResult<Vec<Value>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT requested.payload_json
+            FROM events requested
+            WHERE requested.session_id = ?1
+              AND requested.type = 'command.started'
+              AND json_extract(requested.payload_json, '$.input.delivery') = 'blocking'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM events completed
+                WHERE completed.session_id = requested.session_id
+                  AND completed.type = 'command.completed'
+                  AND json_extract(completed.payload_json, '$.id') = json_extract(requested.payload_json, '$.id')
+                  AND json_extract(completed.payload_json, '$.providerInvocationId') = json_extract(requested.payload_json, '$.providerInvocationId')
+                  AND json_extract(completed.payload_json, '$.providerRequestId') = json_extract(requested.payload_json, '$.providerRequestId')
+              )
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map((session_id,), |row| row.get::<_, String>(0))
+        .map_err(sqlite_error)?;
+    rows.map(|row| {
+        let raw = row.map_err(sqlite_error)?;
+        serde_json::from_str(&raw)
+            .map_err(|error| ArgmaxError::service("TIMELINE_PAYLOAD", error.to_string()))
+    })
+    .collect()
+}
+
+/// The user message that began the newest provider run: the latest message
+/// that is not steering into one already running.
+pub fn latest_turn_starter(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Option<String>> {
+    connection
+        .query_row(
+            "SELECT id FROM events WHERE session_id = ?1 AND type = 'user.message' \
+             AND COALESCE(json_extract(payload_json, '$.delivery'), '') <> 'steer' \
+             ORDER BY rowid DESC LIMIT 1",
+            [session_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)
+}
+
+/// A person or agent prompt reached the session past the given event rowid.
+pub fn has_user_message_after(
+    connection: &Connection,
+    session_id: &str,
+    after_rowid: i64,
+) -> ArgmaxResult<bool> {
+    connection
+        .query_row(
+            "SELECT EXISTS (SELECT 1 FROM events WHERE session_id = ?1 AND type = 'user.message' \
+             AND rowid > ?2)",
+            rusqlite::params![session_id, after_rowid],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)
+}
+
+pub fn has_user_message_containing(
+    connection: &Connection,
+    session_id: &str,
+    text: &str,
+) -> ArgmaxResult<bool> {
+    connection
+        .query_row(
+            "SELECT EXISTS (SELECT 1 FROM events WHERE session_id = ?1 \
+             AND type = 'user.message' AND instr(message, ?2) > 0)",
+            rusqlite::params![session_id, text],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)
+}
+
+pub fn event_message(
+    connection: &Connection,
+    session_id: &str,
+    event_id: &str,
+) -> rusqlite::Result<String> {
+    connection.query_row(
+        "SELECT message FROM events WHERE id = ?1 AND session_id = ?2",
+        rusqlite::params![event_id, session_id],
+        |row| row.get(0),
+    )
+}
+
+pub fn event_is_in_session(
+    connection: &Connection,
+    session_id: &str,
+    event_id: &str,
+) -> ArgmaxResult<bool> {
+    connection
+        .query_row(
+            "SELECT EXISTS (SELECT 1 FROM events WHERE id = ?1 AND session_id = ?2)",
+            rusqlite::params![event_id, session_id],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)
+}
+
+pub fn event_rowid_in_session(
+    connection: &Connection,
+    session_id: &str,
+    event_id: &str,
+) -> ArgmaxResult<Option<i64>> {
+    connection
+        .query_row(
+            "SELECT rowid FROM events WHERE session_id = ?1 AND id = ?2",
+            [session_id, event_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)
+}
+
+/// `(id, payload_json)` of the prompt that started the turn holding this rowid:
+/// the newest top-level, non-steering prompt at or before it, or else the
+/// session's first event.
+pub fn turn_origin_event(
+    connection: &Connection,
+    session_id: &str,
+    rowid: i64,
+) -> ArgmaxResult<(String, String)> {
+    let origin: Option<(String, String)> = connection
+        .query_row(
+            "SELECT id, payload_json FROM events WHERE session_id = ?1 AND rowid <= ?2 AND type = 'user.message' AND COALESCE(json_extract(payload_json, '$.delivery'), '') <> 'steer' AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL ORDER BY rowid DESC LIMIT 1",
+            rusqlite::params![session_id, rowid],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    match origin {
+        Some(origin) => Ok(origin),
+        None => connection
+            .query_row(
+                "SELECT id, payload_json FROM events WHERE session_id = ?1 AND rowid <= ?2 ORDER BY rowid ASC LIMIT 1",
+                rusqlite::params![session_id, rowid],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(sqlite_error),
+    }
+}
+
+pub fn visualization_is_published(
+    connection: &Connection,
+    session_id: &str,
+    artifact_id: &str,
+) -> ArgmaxResult<bool> {
+    connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM events WHERE session_id=?1 AND type='visualization.published' AND json_extract(payload_json,'$.artifactId')=?2)",
+            (session_id, artifact_id),
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)
+}
+
+#[cfg(test)]
+mod change_feed_tests {
+    use super::*;
+    use crate::Database;
+
+    const TIME: &str = "2026-09-05T10:00:00.000Z";
+
+    #[test]
+    fn initial_tail_establishes_an_exact_revision_boundary() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "e1", "s1", "one");
+
+        let initial =
+            list_session_changes_since(&connection, "s1", None, None, None).expect("initial");
+        assert!(initial.reset_required);
+        assert!(!initial.has_more);
+        assert_eq!(ids(&initial.events), vec!["e1"]);
+        assert_eq!(
+            initial.change_cursor,
+            Some(change_feed_head(&connection).expect("feed head"))
+        );
+
+        insert_event(&connection, "e2", "s1", "two");
+        let next = list_session_changes_since(&connection, "s1", None, None, initial.change_cursor)
+            .expect("incremental");
+        assert!(!next.reset_required);
+        assert_eq!(ids(&next.events), vec!["e2"]);
+        assert!(next.deleted_event_ids.is_empty());
+    }
+
+    #[test]
+    fn initial_tail_keeps_durable_rows_behind_a_delta_flood() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_typed_event(&connection, "prompt", "s1", "user.message", "fix it");
+        insert_typed_event(&connection, "tool", "s1", "command.started", "read");
+        let flood = SESSION_TAIL_OPEN_RUN_LIMIT + 10;
+        for index in 0..flood {
+            insert_typed_event(
+                &connection,
+                &format!("delta-{index}"),
+                "s1",
+                "message.delta",
+                "thinking",
+            );
+        }
+        insert_event(&connection, "answer", "s1", "done");
+
+        let initial =
+            list_session_changes_since(&connection, "s1", None, None, None).expect("initial");
+        let ids = ids(&initial.events);
+        assert_eq!(
+            &ids[..2],
+            ["prompt", "tool"],
+            "durable rows precede the tail"
+        );
+        assert_eq!(ids.last(), Some(&"answer"));
+        assert!(
+            !ids.contains(&"delta-10"),
+            "deltas beyond the open-run cap still fall out"
+        );
+        assert!(
+            ids.contains(&"delta-11"),
+            "the newest deltas up to the cap are kept"
+        );
+        assert_eq!(ids.len(), SESSION_TAIL_OPEN_RUN_LIMIT + 2);
+        assert_eq!(
+            initial.event_cursor,
+            initial
+                .events
+                .last()
+                .and_then(|event| event.row_cursor)
+                .unwrap()
+        );
+    }
+
+    // Opening a chat while an answer longer than one page is still streaming
+    // used to paint the bubble from the page's cut point. The tail now steps
+    // back to the durable row before the page so the whole open run arrives.
+    #[test]
+    fn initial_tail_does_not_cut_an_open_answer_mid_stream() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_typed_event(&connection, "prompt", "s1", "user.message", "explain");
+        insert_event(&connection, "first-answer", "s1", "On it.");
+        insert_typed_event(
+            &connection,
+            "search",
+            "s1",
+            "command.completed",
+            "web_search",
+        );
+        let run = SESSION_EVENT_PAGE_LIMIT + 200;
+        for index in 0..run {
+            insert_typed_event(
+                &connection,
+                &format!("delta-{index}"),
+                "s1",
+                "message.delta",
+                "word",
+            );
+        }
+
+        let initial =
+            list_session_changes_since(&connection, "s1", None, None, None).expect("initial");
+        let ids = ids(&initial.events);
+        assert_eq!(
+            &ids[..4],
+            ["prompt", "first-answer", "search", "delta-0"],
+            "the open run starts at its first delta"
+        );
+        assert_eq!(ids.len(), run + 3);
+    }
+
+    #[test]
+    fn upgrading_existing_rows_starts_with_an_authoritative_tail_without_backfill() {
+        use crate::migrations::{run_migrations_with, MIGRATIONS};
+
+        let mut connection = Connection::open_in_memory().expect("open database");
+        run_migrations_with(&mut connection, &MIGRATIONS[..27]).expect("migrate through v27");
+        seed_connection(&connection);
+        // Written the way a v27 database holds it: before `prompt_author` existed.
+        connection
+            .execute(
+                "INSERT INTO events (id, session_id, type, message, payload_json, created_at)
+                 VALUES ('legacy', 's1', 'message.completed', 'before upgrade', '{}', ?1)",
+                [TIME],
+            )
+            .expect("insert legacy event");
+
+        run_migrations_with(&mut connection, MIGRATIONS).expect("apply v28");
+        let backfilled = connection
+            .query_row("SELECT COUNT(*) FROM session_changes", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("count revisions");
+        assert_eq!(backfilled, 0);
+
+        let initial =
+            list_session_changes_since(&connection, "s1", None, None, None).expect("initial");
+        assert!(initial.reset_required);
+        assert_eq!(initial.change_cursor, Some(0));
+        assert_eq!(ids(&initial.events), vec!["legacy"]);
+
+        connection
+            .execute(
+                "UPDATE events SET message = 'after upgrade' WHERE id = 'legacy'",
+                [],
+            )
+            .expect("update legacy row");
+        let next = list_session_changes_since(&connection, "s1", None, None, initial.change_cursor)
+            .expect("incremental");
+        assert_eq!(next.events[0].message, "after upgrade");
+        assert_eq!(next.change_cursor, Some(1));
+    }
+
+    #[test]
+    fn revisions_cover_updates_deletes_raw_output_and_reparenting() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "e1", "s1", "one");
+        insert_raw(&connection, "r1", "s1", "raw one");
+        let s1_cursor = initial_cursor(&connection, "s1");
+        let s2_cursor = initial_cursor(&connection, "s2");
+
+        connection
+            .execute("UPDATE events SET message = 'updated' WHERE id = 'e1'", [])
+            .expect("update event");
+        connection
+            .execute(
+                "UPDATE raw_outputs SET content = 'raw updated' WHERE id = 'r1'",
+                [],
+            )
+            .expect("update raw");
+        let updated = list_session_changes_since(&connection, "s1", None, None, Some(s1_cursor))
+            .expect("updated page");
+        assert_eq!(updated.events[0].message, "updated");
+        assert_eq!(updated.raw_outputs[0].content, "raw updated");
+
+        let updated_cursor = updated.change_cursor.expect("updated cursor");
+        connection
+            .execute("UPDATE events SET session_id = 's2' WHERE id = 'e1'", [])
+            .expect("reparent event");
+        connection
+            .execute(
+                "UPDATE raw_outputs SET session_id = 's2' WHERE id = 'r1'",
+                [],
+            )
+            .expect("reparent raw output");
+
+        let old_session =
+            list_session_changes_since(&connection, "s1", None, None, Some(updated_cursor))
+                .expect("old session page");
+        assert_eq!(old_session.deleted_event_ids, vec!["e1"]);
+        assert_eq!(old_session.deleted_raw_output_ids, vec!["r1"]);
+        assert!(old_session.events.is_empty());
+        assert!(old_session.raw_outputs.is_empty());
+
+        let new_session =
+            list_session_changes_since(&connection, "s2", None, None, Some(s2_cursor))
+                .expect("new session page");
+        assert_eq!(ids(&new_session.events), vec!["e1"]);
+        assert_eq!(new_session.events[0].session_id, "s2");
+        assert_eq!(new_session.raw_outputs[0].id, "r1");
+        assert_eq!(new_session.raw_outputs[0].session_id, "s2");
+
+        connection
+            .execute("DELETE FROM raw_outputs WHERE id = 'r1'", [])
+            .expect("delete raw output");
+        let after_delete =
+            list_session_changes_since(&connection, "s2", None, None, new_session.change_cursor)
+                .expect("raw deletion page");
+        assert_eq!(after_delete.deleted_raw_output_ids, vec!["r1"]);
+
+        let operations: Vec<(String, String, String, String)> = connection
+            .prepare(
+                "SELECT session_id, entity_kind, entity_id, operation FROM session_changes ORDER BY sequence",
+            )
+            .expect("prepare operations")
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .expect("read operations")
+            .collect::<Result<_, _>>()
+            .expect("collect operations");
+        assert!(operations.contains(&(
+            "s1".to_owned(),
+            "event".to_owned(),
+            "e1".to_owned(),
+            "delete".to_owned(),
+        )));
+        assert!(operations.contains(&(
+            "s2".to_owned(),
+            "raw_output".to_owned(),
+            "r1".to_owned(),
+            "upsert".to_owned(),
+        )));
+        assert_eq!(
+            operations.last(),
+            Some(&(
+                "s2".to_owned(),
+                "raw_output".to_owned(),
+                "r1".to_owned(),
+                "delete".to_owned(),
+            ))
+        );
+    }
+
+    #[test]
+    fn ignored_id_collision_then_delete_is_visible() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "kept", "s1", "kept");
+        insert_event(&connection, "duplicate", "s1", "duplicate");
+        let cursor = initial_cursor(&connection, "s1");
+        let duplicate_rowid = connection
+            .query_row(
+                "SELECT rowid FROM events WHERE id = 'duplicate'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("duplicate rowid");
+
+        let changed = rewrite_trace_event(
+            &connection,
+            duplicate_rowid,
+            "kept",
+            &serde_json::json!({ "traceImported": true }),
+        )
+        .expect("ignored collision");
+        assert!(!changed);
+        delete_event_row(&connection, duplicate_rowid).expect("delete duplicate");
+
+        let page = list_session_changes_since(&connection, "s1", None, None, Some(cursor))
+            .expect("collision page");
+        assert_eq!(page.deleted_event_ids, vec!["duplicate"]);
+        assert!(page.events.is_empty());
+    }
+
+    #[test]
+    fn rolled_back_writes_leave_no_revision() {
+        let database = seeded_database();
+        let connection = database.connection();
+        let cursor = initial_cursor(&connection, "s1");
+
+        let transaction = connection
+            .unchecked_transaction()
+            .expect("begin transaction");
+        insert_event(&transaction, "rolled-back", "s1", "temporary");
+        transaction.rollback().expect("rollback");
+
+        let page = list_session_changes_since(&connection, "s1", None, None, Some(cursor))
+            .expect("read after rollback");
+        assert!(page.events.is_empty());
+        assert!(page.deleted_event_ids.is_empty());
+        assert_eq!(page.change_cursor, Some(cursor));
+    }
+
+    #[test]
+    fn row_pages_withhold_the_change_cursor_until_the_last_page() {
+        let database = seeded_database();
+        let connection = database.connection();
+        for index in 0..=SESSION_EVENT_PAGE_LIMIT {
+            insert_event(&connection, &format!("e{index}"), "s1", "row");
+        }
+
+        let first = list_session_changes_since(&connection, "s1", Some(0), Some(0), None)
+            .expect("first row page");
+        assert_eq!(first.events.len(), SESSION_EVENT_PAGE_LIMIT);
+        assert!(first.has_more);
+        assert_eq!(first.change_cursor, None);
+
+        let second = list_session_changes_since(
+            &connection,
+            "s1",
+            Some(first.event_cursor),
+            Some(first.raw_output_cursor),
+            None,
+        )
+        .expect("last row page");
+        assert_eq!(ids(&second.events), vec!["e500"]);
+        assert!(!second.has_more);
+        assert_eq!(
+            second.change_cursor,
+            Some(change_feed_head(&connection).expect("feed head"))
+        );
+    }
+
+    #[test]
+    fn revision_pages_do_not_skip_a_busy_session() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "e1", "s1", "zero");
+        let cursor = initial_cursor(&connection, "s1");
+        for index in 0..=SESSION_CHANGE_PAGE_LIMIT {
+            connection
+                .execute(
+                    "UPDATE events SET message = ? WHERE id = 'e1'",
+                    (format!("message {index}"),),
+                )
+                .expect("update event");
+        }
+
+        let first = list_session_changes_since(&connection, "s1", None, None, Some(cursor))
+            .expect("first page");
+        assert!(first.has_more);
+        assert_eq!(
+            first.events.first().map(|event| event.message.as_str()),
+            Some("message 500")
+        );
+        let first_cursor = first.change_cursor.expect("first cursor");
+
+        let second = list_session_changes_since(&connection, "s1", None, None, Some(first_cursor))
+            .expect("second page");
+        assert!(!second.has_more);
+        assert_eq!(
+            second.events.first().map(|event| event.message.as_str()),
+            Some("message 500")
+        );
+        assert!(second.change_cursor.expect("second cursor") > first_cursor);
+    }
+
+    #[test]
+    fn budgeted_revision_pages_continue_after_updates_and_deletes() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "e1", "s1", "one");
+        insert_event(&connection, "e2", "s1", "two");
+        let cursor = initial_cursor(&connection, "s1");
+
+        connection
+            .execute(
+                "UPDATE events SET message = ? WHERE id = 'e1'",
+                ("updated".repeat(100),),
+            )
+            .expect("update event");
+        let update_sequence = connection
+            .query_row(
+                "SELECT MAX(sequence) FROM session_changes WHERE session_id = 's1' AND entity_id = 'e1'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("update sequence");
+        connection
+            .execute("DELETE FROM events WHERE id = 'e2'", [])
+            .expect("delete event");
+
+        let full = list_session_changes_since(&connection, "s1", None, None, Some(cursor))
+            .expect("full page");
+        let budget = change_page_overhead(&full)
+            + serialized_len(full.events.first().expect("updated event")).expect("event bytes");
+        let first = list_session_changes_since_with_budget(
+            &connection,
+            "s1",
+            None,
+            None,
+            Some(cursor),
+            Some(budget),
+        )
+        .expect("first budgeted page");
+        assert_eq!(ids(&first.events), vec!["e1"]);
+        assert!(first.deleted_event_ids.is_empty());
+        assert!(first.has_more);
+        assert_eq!(first.change_cursor, Some(update_sequence));
+        assert!(serialized_len(&first).expect("page bytes") <= budget);
+
+        let second = list_session_changes_since_with_budget(
+            &connection,
+            "s1",
+            None,
+            None,
+            first.change_cursor,
+            Some(budget),
+        )
+        .expect("second budgeted page");
+        assert!(second.events.is_empty());
+        assert_eq!(second.deleted_event_ids, vec!["e2"]);
+        assert!(!second.has_more);
+        assert_eq!(second.change_cursor, full.change_cursor);
+    }
+
+    #[test]
+    fn duplicate_revisions_cost_one_entity_and_advance_the_cursor() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "e1", "s1", "zero");
+        let cursor = initial_cursor(&connection, "s1");
+        connection
+            .execute("UPDATE events SET message = 'one' WHERE id = 'e1'", [])
+            .expect("first update");
+        connection
+            .execute("UPDATE events SET message = 'two' WHERE id = 'e1'", [])
+            .expect("second update");
+        let duplicate_sequence = connection
+            .query_row(
+                "SELECT MAX(sequence) FROM session_changes WHERE session_id = 's1' AND entity_id = 'e1'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("duplicate sequence");
+        insert_event(&connection, "e2", "s1", "next");
+
+        let full = list_session_changes_since(&connection, "s1", None, None, Some(cursor))
+            .expect("full page");
+        let first_event = full
+            .events
+            .iter()
+            .find(|event| event.id == "e1")
+            .expect("first event");
+        let budget =
+            change_page_overhead(&full) + serialized_len(first_event).expect("first event bytes");
+        let first = list_session_changes_since_with_budget(
+            &connection,
+            "s1",
+            None,
+            None,
+            Some(cursor),
+            Some(budget),
+        )
+        .expect("first budgeted page");
+
+        assert_eq!(ids(&first.events), vec!["e1"]);
+        assert_eq!(first.events[0].message, "two");
+        assert_eq!(first.change_cursor, Some(duplicate_sequence));
+        assert!(first.has_more);
+        let second = list_session_changes_since_with_budget(
+            &connection,
+            "s1",
+            None,
+            None,
+            first.change_cursor,
+            Some(budget),
+        )
+        .expect("second budgeted page");
+        assert_eq!(ids(&second.events), vec!["e2"]);
+        assert!(!second.has_more);
+    }
+
+    #[test]
+    fn budgeted_revision_pages_count_raw_output_bytes() {
+        let database = seeded_database();
+        let connection = database.connection();
+        let cursor = initial_cursor(&connection, "s1");
+        insert_raw(&connection, "r1", "s1", &"raw".repeat(100));
+        let raw_sequence = connection
+            .query_row(
+                "SELECT MAX(sequence) FROM session_changes WHERE session_id = 's1' AND entity_id = 'r1'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("raw sequence");
+        insert_event(&connection, "e1", "s1", "after raw");
+
+        let full = list_session_changes_since(&connection, "s1", None, None, Some(cursor))
+            .expect("full page");
+        let budget = change_page_overhead(&full)
+            + serialized_len(full.raw_outputs.first().expect("raw output")).expect("raw bytes");
+        let first = list_session_changes_since_with_budget(
+            &connection,
+            "s1",
+            None,
+            None,
+            Some(cursor),
+            Some(budget),
+        )
+        .expect("first budgeted page");
+
+        assert_eq!(first.raw_outputs.len(), 1);
+        assert!(first.events.is_empty());
+        assert_eq!(first.change_cursor, Some(raw_sequence));
+        assert!(first.has_more);
+        assert!(serialized_len(&first).expect("page bytes") <= budget);
+    }
+
+    #[test]
+    fn oversized_first_revision_still_advances() {
+        let database = seeded_database();
+        let connection = database.connection();
+        let cursor = initial_cursor(&connection, "s1");
+        insert_event(&connection, "huge", "s1", &"answer".repeat(10_000));
+        let head = change_feed_head(&connection).expect("head");
+
+        let page = list_session_changes_since_with_budget(
+            &connection,
+            "s1",
+            None,
+            None,
+            Some(cursor),
+            Some(16),
+        )
+        .expect("oversized page");
+
+        assert_eq!(ids(&page.events), vec!["huge"]);
+        assert_eq!(page.change_cursor, Some(head));
+        assert!(!page.has_more);
+        assert!(serialized_len(&page).expect("page bytes") > 16);
+    }
+
+    #[test]
+    fn a_pruned_session_cursor_and_future_cursor_request_replacement() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "e1", "s1", "current");
+        let head = change_feed_head(&connection).expect("head");
+        connection
+            .execute(
+                "INSERT INTO session_change_watermarks (session_id, pruned_through) VALUES ('s1', ?)",
+                (head,),
+            )
+            .expect("watermark");
+
+        let stale = list_session_changes_since(&connection, "s1", None, None, Some(head - 1))
+            .expect("stale reset");
+        assert!(stale.reset_required);
+        assert_eq!(ids(&stale.events), vec!["e1"]);
+        assert_eq!(stale.change_cursor, Some(head));
+
+        let future = list_session_changes_since(&connection, "s1", None, None, Some(head + 100))
+            .expect("future reset");
+        assert!(future.reset_required);
+        assert_eq!(future.change_cursor, Some(head));
+    }
+
+    #[test]
+    fn trigger_pruning_records_the_session_watermark_and_keeps_the_head() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_event(&connection, "e1", "s1", "one");
+        connection
+            .execute(
+                "UPDATE sqlite_sequence SET seq = 50175 WHERE name = 'session_changes'",
+                [],
+            )
+            .expect("advance sequence near retention boundary");
+        connection
+            .execute("UPDATE events SET message = 'two' WHERE id = 'e1'", [])
+            .expect("trigger pruning");
+
+        let retained: Vec<i64> = connection
+            .prepare("SELECT sequence FROM session_changes ORDER BY sequence")
+            .expect("prepare retained revisions")
+            .query_map([], |row| row.get(0))
+            .expect("read retained revisions")
+            .collect::<Result<_, _>>()
+            .expect("collect retained revisions");
+        let watermark = connection
+            .query_row(
+                "SELECT pruned_through FROM session_change_watermarks WHERE session_id = 's1'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("read watermark");
+        assert_eq!(retained, vec![50176]);
+        assert_eq!(watermark, 1);
+
+        connection
+            .execute("DELETE FROM sessions WHERE id = 's1'", [])
+            .expect("delete session");
+        let orphan_counts = connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM session_changes WHERE session_id = 's1'),
+                   (SELECT COUNT(*) FROM session_change_watermarks WHERE session_id = 's1')",
+                [],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .expect("count orphan feed rows");
+        assert_eq!(orphan_counts, (0, 0));
+        assert_eq!(
+            change_feed_head(&connection).expect("head survives empty feed"),
+            50177
+        );
+    }
+
+    #[test]
+    fn negative_change_cursor_is_rejected() {
+        let database = seeded_database();
+        let connection = database.connection();
+        let error = list_session_changes_since(&connection, "s1", None, None, Some(-1))
+            .expect_err("negative cursor");
+        assert!(matches!(error, ArgmaxError::InvalidInput { .. }));
+    }
+
+    #[test]
+    fn historical_activity_is_enriched_without_rewriting_the_event() {
+        let database = seeded_database();
+        let connection = database.connection();
+        let original = serde_json::json!({"id": "read-1", "name": "Read", "input": {"file_path": "/repo/a.ts"}});
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "read-event".into(),
+                session_id: "s1".into(),
+                r#type: "command.started".into(),
+                message: "Read".into(),
+                payload: original.clone(),
+                created_at: Some(TIME.into()),
+            },
+        )
+        .expect("insert old tool event");
+        let page =
+            list_session_changes_since(&connection, "s1", None, None, None).expect("read tail");
+        let event = page
+            .events
+            .iter()
+            .find(|event| event.id == "read-event")
+            .expect("tool event");
+        assert_eq!(event.payload["activity"]["kind"], "read");
+        assert_eq!(
+            event.payload["activity"]["targets"],
+            serde_json::json!(["/repo/a.ts"])
+        );
+        let stored: String = connection
+            .query_row(
+                "SELECT payload_json FROM events WHERE id = ?",
+                ["read-event"],
+                |row| row.get(0),
+            )
+            .expect("stored event");
+        assert_eq!(
+            serde_json::from_str::<Value>(&stored).expect("stored JSON"),
+            original
+        );
+    }
+
+    #[test]
+    fn historical_rows_gain_semantics_on_read_without_rewriting_payload() {
+        let database = seeded_database();
+        let connection = database.connection();
+        let payload = serde_json::json!({
+            "tool_use_id": "toolu_1", "id": "result-1", "status": "cancelled",
+            "providerInvocationId": "turn-1"
+        });
+        connection.execute(
+            "INSERT INTO events (id, session_id, type, message, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            ("old-result", "s1", "command.completed", "Bash", payload.to_string(), TIME),
+        ).expect("insert historical row");
+
+        let page = list_session_changes_since(&connection, "s1", None, None, None)
+            .expect("read historical row");
+        let event = page
+            .events
+            .iter()
+            .find(|event| event.id == "old-result")
+            .expect("historical row");
+        assert_eq!(
+            event.semantic.context.provider_invocation_id.as_deref(),
+            Some("turn-1")
+        );
+        assert!(matches!(&event.semantic.event,
+            crate::timeline_semantics::SemanticEvent::Tool {
+                tool_use_id: Some(id),
+                outcome: Some(crate::timeline_semantics::ToolOutcome::Cancelled),
+                ..
+            } if id == "toolu_1"
+        ));
+        let stored: String = connection
+            .query_row(
+                "SELECT payload_json FROM events WHERE id = 'old-result'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("stored payload");
+        assert_eq!(
+            serde_json::from_str::<Value>(&stored).expect("stored json"),
+            payload
+        );
+    }
+
+    pub(super) fn seeded_database() -> Database {
+        let database = Database::open_in_memory().expect("open database");
+        let connection = database.connection();
+        seed_connection(&connection);
+        drop(connection);
+        database
+    }
+
+    fn change_page_overhead(page: &SessionEventsSinceResult) -> usize {
+        serialized_len(&SessionEventsSinceResult {
+            event_cursor: page.event_cursor,
+            raw_output_cursor: page.raw_output_cursor,
+            change_cursor: page.change_cursor,
+            ..SessionEventsSinceResult::default()
+        })
+        .expect("page overhead")
+    }
+
+    fn seed_connection(connection: &Connection) {
+        connection
+            .execute(
+                "INSERT INTO projects (id, name, repo_path, current_branch, worktree_location, created_at, updated_at) VALUES ('p1', 'Project', '/tmp/change-feed-project', 'main', '/tmp/worktrees', ?, ?)",
+                (TIME, TIME),
+            )
+            .expect("insert project");
+        connection
+            .execute(
+                "INSERT INTO workspaces (id, project_id, task_label, branch, base_ref, path, state, last_activity_at, created_at, updated_at) VALUES ('w1', 'p1', 'Task', 'main', 'main', '/tmp/change-feed-workspace', 'running', ?, ?, ?)",
+                (TIME, TIME, TIME),
+            )
+            .expect("insert workspace");
+        for session_id in ["s1", "s2"] {
+            connection
+                .execute(
+                    "INSERT INTO sessions (id, workspace_id, provider, model_label, prompt, state, attention, started_at, last_activity_at) VALUES (?, 'w1', 'codex', 'Default', 'Prompt', 'running', 'normal', ?, ?)",
+                    (session_id, TIME, TIME),
+                )
+                .expect("insert session");
+        }
+    }
+
+    fn insert_event(connection: &Connection, id: &str, session_id: &str, message: &str) {
+        insert_typed_event(connection, id, session_id, "message.completed", message);
+    }
+
+    fn insert_typed_event(
+        connection: &Connection,
+        id: &str,
+        session_id: &str,
+        r#type: &str,
+        message: &str,
+    ) {
+        insert_payload_event(
+            connection,
+            id,
+            session_id,
+            r#type,
+            message,
+            serde_json::json!({}),
+        );
+    }
+
+    pub(super) fn insert_payload_event(
+        connection: &Connection,
+        id: &str,
+        session_id: &str,
+        r#type: &str,
+        message: &str,
+        payload: serde_json::Value,
+    ) {
+        persist_timeline_event(
+            connection,
+            &PersistTimelineEventInput {
+                id: id.to_owned(),
+                session_id: session_id.to_owned(),
+                r#type: r#type.to_owned(),
+                message: message.to_owned(),
+                payload,
+                created_at: Some(TIME.to_owned()),
+            },
+        )
+        .expect("insert event");
+    }
+
+    fn insert_raw(connection: &Connection, id: &str, session_id: &str, content: &str) {
+        persist_raw_output(
+            connection,
+            &PersistRawOutputInput {
+                id: id.to_owned(),
+                session_id: session_id.to_owned(),
+                stream: "stdout".to_owned(),
+                content: content.to_owned(),
+                created_at: Some(TIME.to_owned()),
+            },
+        )
+        .expect("insert raw output");
+    }
+
+    fn initial_cursor(connection: &Connection, session_id: &str) -> i64 {
+        list_session_changes_since(connection, session_id, None, None, None)
+            .expect("initial tail")
+            .change_cursor
+            .expect("initial cursor")
+    }
+
+    fn ids(events: &[TimelineEvent]) -> Vec<&str> {
+        events.iter().map(|event| event.id.as_str()).collect()
+    }
+}
+
+#[cfg(test)]
+mod goal_tail_tests {
+    use super::change_feed_tests::{insert_payload_event, seeded_database};
+    use super::*;
+
+    /// The bug this guards: a tool row's `message` is only the tool's name, so
+    /// a goal whose evidence was `git rev-parse` output was judged from lines
+    /// reading `TOOL RESULT: shell` and never met.
+    #[test]
+    fn a_tool_call_carries_its_command_and_output() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_payload_event(
+            &connection,
+            "p",
+            "s1",
+            "user.message",
+            "merge it",
+            json!({}),
+        );
+        insert_payload_event(
+            &connection,
+            "start",
+            "s1",
+            "command.started",
+            "shell",
+            json!({"name": "shell", "input": {"command": "gh pr view 780 --json state"}}),
+        );
+        insert_payload_event(
+            &connection,
+            "end",
+            "s1",
+            "command.completed",
+            "shell",
+            json!({"name": "shell", "result": {"exitCode": 0, "stderr": "", "stdout": "pr_state=MERGED"}}),
+        );
+
+        let tail = goal_transcript_tail(&connection, "s1", 4_000).expect("tail");
+
+        assert_eq!(
+            tail.text,
+            "USER: merge it\nTOOL shell: gh pr view 780 --json state\nTOOL RESULT: pr_state=MERGED"
+        );
+        assert_eq!(tail.tool_calls_in_last_turn, 1);
+    }
+
+    /// Claude records a tool result as `content`, Cursor as a `result` object,
+    /// OpenCode as a `result` string. All three have to reach the evaluator.
+    #[test]
+    fn a_tool_result_is_read_in_every_shape_a_provider_records_it() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_payload_event(
+            &connection,
+            "claude",
+            "s1",
+            "command.completed",
+            "Bash",
+            json!({"content": [{"type": "text", "text": "404 pass / 0 fail"}]}),
+        );
+        insert_payload_event(
+            &connection,
+            "opencode",
+            "s1",
+            "command.completed",
+            "bash",
+            json!({"result": "lint clean"}),
+        );
+        insert_payload_event(
+            &connection,
+            "failed",
+            "s1",
+            "command.completed",
+            "shell",
+            json!({"result": {"exitCode": 2, "stdout": "", "stderr": "no such file"}}),
+        );
+
+        let tail = goal_transcript_tail(&connection, "s1", 4_000)
+            .expect("tail")
+            .text;
+
+        assert!(tail.contains("TOOL RESULT: 404 pass / 0 fail"), "{tail}");
+        assert!(tail.contains("TOOL RESULT: lint clean"), "{tail}");
+        assert!(
+            tail.contains("TOOL RESULT: exit 2\nno such file"),
+            "a check that failed with no stdout is still evidence: {tail}"
+        );
+    }
+
+    /// A result the provider recorded nothing for would otherwise print as a
+    /// bare label, which reads as a command that succeeded silently.
+    #[test]
+    fn a_result_with_no_output_is_left_out() {
+        let database = seeded_database();
+        let connection = database.connection();
+        insert_payload_event(&connection, "p", "s1", "user.message", "go", json!({}));
+        insert_payload_event(
+            &connection,
+            "end",
+            "s1",
+            "command.completed",
+            "mcp__argmax__goal_clear",
+            json!({"name": "mcp__argmax__goal_clear", "result": {"success": true}}),
+        );
+
+        let tail = goal_transcript_tail(&connection, "s1", 4_000)
+            .expect("tail")
+            .text;
+
+        assert_eq!(tail, "USER: go");
+    }
+}
+
+#[cfg(test)]
+mod chat_reference_tests {
+    use super::chat_reference_ids;
+
+    #[test]
+    fn reads_only_references_the_composer_would_draw() {
+        assert_eq!(
+            chat_reference_ids(
+                "a [Billing](argmax://chat/s-1?v=1&e=evt_2) b [Plain](argmax://chat/s2)"
+            ),
+            vec!["s-1", "s2"]
+        );
+    }
+
+    #[test]
+    fn a_bare_link_another_version_or_a_longer_id_grants_nothing() {
+        for text in [
+            "argmax://chat/s1",
+            "[x](argmax://chat/s1?v=2)",
+            "[x](argmax://chat/s1?v=)",
+            "[x](argmax://chat/s1?v=01)",
+            "[x](argmax://chat/s1extra!)",
+            "[x](argmax://chat/s1/more)",
+            "[](argmax://chat/s1)",
+            "[x]( argmax://chat/s1)",
+            "(argmax://chat/s1)",
+            "[x](argmax://chat/s1?e=bad id)",
+            "[x[y]](argmax://chat/s1)",
+            "[multi\nline](argmax://chat/s1)",
+        ] {
+            assert!(chat_reference_ids(text).is_empty(), "{text}");
+        }
+    }
+
+    #[test]
+    fn the_id_must_end_at_the_delimiter_and_a_title_has_a_length_limit() {
+        // `s1` is a prefix of `s10`; a reference to `s10` is not one to `s1`.
+        assert_eq!(chat_reference_ids("[x](argmax://chat/s10)"), vec!["s10"]);
+        let long_title = "t".repeat(121);
+        assert!(chat_reference_ids(&format!("[{long_title}](argmax://chat/s1)")).is_empty());
+        let max_title = "t".repeat(120);
+        assert_eq!(
+            chat_reference_ids(&format!("[{max_title}](argmax://chat/s1)")),
+            vec!["s1"]
+        );
+    }
+
+    #[test]
+    fn the_first_version_key_wins_like_the_composers_parser() {
+        assert!(chat_reference_ids("[x](argmax://chat/s1?v=2&v=1)").is_empty());
+        assert_eq!(
+            chat_reference_ids("[x](argmax://chat/s1?v=1&v=2)"),
+            vec!["s1"]
+        );
+    }
+}

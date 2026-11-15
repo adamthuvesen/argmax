@@ -22,7 +22,7 @@ export function windowLabelFromRuntime(): string | null {
   return typeof label === "string" && label.length > 0 ? label : null;
 }
 
-export function currentWindowLabel(): string {
+function currentWindowLabel(): string {
   return windowLabelFromRuntime() ?? MAIN_WINDOW_LABEL;
 }
 

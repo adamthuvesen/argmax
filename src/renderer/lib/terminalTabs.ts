@@ -57,7 +57,7 @@ const MAX_TERMINAL_WORKSPACES = 6;
 const EMPTY_STATE: WorkspaceTerminalState = Object.freeze({
   tabs: Object.freeze<TerminalTabMeta[]>([]),
   activeTabId: null,
-  showing: false
+  showing: false,
 });
 
 interface WorkspaceEntry {
@@ -108,7 +108,7 @@ function entryFor(workspaceId: string): WorkspaceEntry {
     entry = {
       state: { tabs: [], activeTabId: null, showing: false },
       attachedCount: 0,
-      lastUsedSeq: ++useSeq
+      lastUsedSeq: ++useSeq,
     };
     entries.set(workspaceId, entry);
   }
@@ -150,7 +150,7 @@ export function addTerminalTab(workspaceId: string, label: string): string {
   entry.state = {
     ...entry.state,
     tabs: [...entry.state.tabs, { id, label }],
-    activeTabId: id
+    activeTabId: id,
   };
   touch(entry);
   evictLeastRecentlyUsed();
@@ -161,7 +161,7 @@ export function addTerminalTab(workspaceId: string, label: string): string {
 export function addAgentTerminalTab(
   workspaceId: string,
   terminalId: string,
-  command?: string | null
+  command?: string | null,
 ): string {
   const entry = entryFor(workspaceId);
   const existing = entry.state.tabs.find((tab) => tab.terminalId === terminalId);
@@ -175,7 +175,7 @@ export function addAgentTerminalTab(
   entry.state = {
     ...entry.state,
     tabs: [...entry.state.tabs, { id, label, terminalId }],
-    activeTabId: id
+    activeTabId: id,
   };
   touch(entry);
   evictLeastRecentlyUsed();
@@ -191,7 +191,9 @@ export function closeTerminalTab(workspaceId: string, tabId: string): void {
   if (closing.terminalId) agentTerminalReplays.delete(closing.terminalId);
   const tabs = entry.state.tabs.filter((tab) => tab.id !== tabId);
   const activeTabId =
-    entry.state.activeTabId === tabId ? (tabs[tabs.length - 1]?.id ?? null) : entry.state.activeTabId;
+    entry.state.activeTabId === tabId
+      ? (tabs[tabs.length - 1]?.id ?? null)
+      : entry.state.activeTabId;
   entry.state = { ...entry.state, tabs, activeTabId };
   touch(entry);
   notify();

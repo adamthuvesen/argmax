@@ -203,6 +203,7 @@ struct WireProvidersLaunchInput: Encodable, Sendable {
     var arcId: WireField<String> = .absent
     var arcIsCoordinatorLaunch: WireField<Bool> = .absent
     var autoTier: WireField<WireAutoTier> = .absent
+    var submittedAtMs: WireField<Int> = .absent
 
     enum CodingKeys: String, CodingKey {
         case workspaceId
@@ -222,6 +223,7 @@ struct WireProvidersLaunchInput: Encodable, Sendable {
         case arcId
         case arcIsCoordinatorLaunch
         case autoTier
+        case submittedAtMs
     }
 
     func encode(to encoder: Encoder) throws {
@@ -243,6 +245,7 @@ struct WireProvidersLaunchInput: Encodable, Sendable {
         try arcId.encode(into: &container, forKey: .arcId)
         try arcIsCoordinatorLaunch.encode(into: &container, forKey: .arcIsCoordinatorLaunch)
         try autoTier.encode(into: &container, forKey: .autoTier)
+        try submittedAtMs.encode(into: &container, forKey: .submittedAtMs)
     }
 }
 
@@ -317,6 +320,7 @@ struct WireProvidersSendInput: Encodable, Sendable {
     var agentMode: WireField<WireAgentMode> = .absent
     var attachments: WireField<[WireComposerAttachmentInput]> = .absent
     var agentReferences: WireField<[WireAgentReference]> = .absent
+    var submittedAtMs: WireField<Int> = .absent
 
     enum CodingKeys: String, CodingKey {
         case sessionId
@@ -329,6 +333,7 @@ struct WireProvidersSendInput: Encodable, Sendable {
         case agentMode
         case attachments
         case agentReferences
+        case submittedAtMs
     }
 
     func encode(to encoder: Encoder) throws {
@@ -343,6 +348,7 @@ struct WireProvidersSendInput: Encodable, Sendable {
         try agentMode.encode(into: &container, forKey: .agentMode)
         try attachments.encode(into: &container, forKey: .attachments)
         try agentReferences.encode(into: &container, forKey: .agentReferences)
+        try submittedAtMs.encode(into: &container, forKey: .submittedAtMs)
     }
 }
 

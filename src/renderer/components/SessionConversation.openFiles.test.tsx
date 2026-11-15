@@ -1,6 +1,10 @@
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { baseSession, renderConversation, reviewStub } from "../../test/sessionConversationTestHarness.js";
+import {
+  baseSession,
+  renderConversation,
+  reviewStub,
+} from "../../test/sessionConversationTestHarness.js";
 import type { ArgmaxApi } from "../../shared/types.js";
 
 function reviewWithOpenTabs(overrides: Partial<Parameters<typeof reviewStub>[0]> = {}) {
@@ -10,11 +14,21 @@ function reviewWithOpenTabs(overrides: Partial<Parameters<typeof reviewStub>[0]>
     workspaceFiles: {
       ...stub.workspaceFiles,
       tabs: [
-        { path: "docs/notes.md", isDirty: false, saveState: "idle" as const, externalChange: false },
-        { path: "models/query.sql", isDirty: false, saveState: "idle" as const, externalChange: false }
+        {
+          path: "docs/notes.md",
+          isDirty: false,
+          saveState: "idle" as const,
+          externalChange: false,
+        },
+        {
+          path: "models/query.sql",
+          isDirty: false,
+          saveState: "idle" as const,
+          externalChange: false,
+        },
       ],
-      activeTabPath: "models/query.sql"
-    }
+      activeTabPath: "models/query.sql",
+    },
   };
 }
 
@@ -22,7 +36,7 @@ describe("SessionConversation open-file context", () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.argmax = {
-      prs: { listForSession: vi.fn(() => new Promise(() => {})) }
+      prs: { listForSession: vi.fn(() => new Promise(() => {})) },
     } as unknown as ArgmaxApi;
   });
 
@@ -50,7 +64,7 @@ describe("SessionConversation open-file context", () => {
 
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
     expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(
-      "explain this model\n\nFor context, I have these files open in the editor:\n@models/query.sql\n@docs/notes.md"
+      "explain this model\n\nFor context, I have these files open in the editor:\n@models/query.sql\n@docs/notes.md",
     );
   });
 

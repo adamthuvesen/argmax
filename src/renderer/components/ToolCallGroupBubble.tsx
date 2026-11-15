@@ -1,5 +1,14 @@
 import { ChevronRight } from "lucide-react";
-import { Fragment, memo, useContext, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
+import {
+  Fragment,
+  memo,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+} from "react";
 import {
   buildGroupRows,
   describeToolAction,
@@ -8,7 +17,7 @@ import {
   summarizeToolChangeCounts,
   summarizeToolGroup,
   type ToolCall,
-  type ToolCallGroup
+  type ToolCallGroup,
 } from "../lib/toolCalls.js";
 import { codenameForTool } from "../lib/agentNames.js";
 import type { ActivityMember } from "../lib/turnChildren.js";
@@ -71,19 +80,15 @@ function ToolChildrenWindow({
   defaultToolsExpanded,
   workspaceCwd,
   onOpenFile,
-  onOpenAgent
+  onOpenAgent,
 }: Omit<ToolRowsWindowProps, "rows" | "singletonDisclosure" | "agentCodenames"> & {
   tools: readonly ToolCall[];
 }): JSX.Element {
-  const {
-    visibleItems,
-    hiddenEarlierCount,
-    showEarlier
-  } = useStableTailWindow(tools, {
+  const { visibleItems, hiddenEarlierCount, showEarlier } = useStableTailWindow(tools, {
     initialCount: GROUP_DETAIL_WINDOW,
     pageSize: GROUP_DETAIL_WINDOW_STEP,
     follow,
-    getId: (tool) => tool.id
+    getId: (tool) => tool.id,
   });
   return (
     <div className="tool-call-agent-children">
@@ -112,17 +117,13 @@ function ToolRowsWindow({
   workspaceCwd,
   agentCodenames,
   onOpenFile,
-  onOpenAgent
+  onOpenAgent,
 }: ToolRowsWindowProps): JSX.Element {
-  const {
-    visibleItems,
-    hiddenEarlierCount,
-    showEarlier
-  } = useStableTailWindow(rows, {
+  const { visibleItems, hiddenEarlierCount, showEarlier } = useStableTailWindow(rows, {
     initialCount: GROUP_DETAIL_WINDOW,
     pageSize: GROUP_DETAIL_WINDOW_STEP,
     follow,
-    getId: ({ tool }) => tool.id
+    getId: ({ tool }) => tool.id,
   });
   return (
     <>
@@ -175,7 +176,7 @@ function ToolCallGroupBubbleInner({
   workspaceCwd,
   agentCodenames,
   onOpenFile,
-  onOpenAgent
+  onOpenAgent,
 }: ToolCallGroupBubbleProps): JSX.Element {
   const [userToggle, setUserToggle] = useState<UserToggle | null>(null);
   const [singletonDisclosure, setSingletonDisclosure] = useState<{
@@ -190,24 +191,22 @@ function ToolCallGroupBubbleInner({
   const beatToolId = useContext(ActivityBeatContext);
   const holdsBeat = useMemo(
     () => group.tools.some((tool) => tool.id === beatToolId),
-    [group.tools, beatToolId]
+    [group.tools, beatToolId],
   );
   const summary = useMemo(
     () => summarizeToolGroup(group.tools, !holdsBeat),
-    [group.tools, holdsBeat]
+    [group.tools, holdsBeat],
   );
   const firstTool = group.tools[0];
-  const iconServer = firstTool && firstTool.activity?.kind !== "computer"
-    ? parseMcpToolName(firstTool.name)?.server : null;
+  const iconServer =
+    firstTool && firstTool.activity?.kind !== "computer"
+      ? parseMcpToolName(firstTool.name)?.server
+      : null;
   const hasActivityMembers = Boolean(activityMembers && activityMembers.length > 0);
-  const activityIsLive = activityMembers?.some(
-    (member) => member.kind === "thought" && member.live
-  ) ?? false;
-  const activityHeadline = group.tools.length > 0
-    ? summary.headline
-    : activityIsLive
-      ? "Thinking"
-      : "Thought";
+  const activityIsLive =
+    activityMembers?.some((member) => member.kind === "thought" && member.live) ?? false;
+  const activityHeadline =
+    group.tools.length > 0 ? summary.headline : activityIsLive ? "Thinking" : "Thought";
   const toolIds = useMemo(() => group.tools.map((tool) => tool.id), [group.tools]);
   // A group whose calls all landed in the same instant — every OpenCode and
   // Grok call, most Codex ones — still owns the beat until the cue takes over.
@@ -224,14 +223,14 @@ function ToolCallGroupBubbleInner({
   const firstActivityMember = activityMembers?.[0];
   const detailsId = stableDisclosureId(
     disclosureId ?? "activity-details",
-    firstActivityMember?.id ?? group.id
+    firstActivityMember?.id ?? group.id,
   );
   // Collapsed by default to match Codex. The user clicks the chevron to reveal
   // per-tool rows. defaultExpanded (from Settings) overrides. Error state colors
   // the chevron + status dot on the header without changing expansion.
   const localExpanded =
     userToggle && userToggle.defaultExpanded === defaultExpanded ? userToggle.value : null;
-  const expanded = localExpanded ?? (defaultExpanded ?? false);
+  const expanded = localExpanded ?? defaultExpanded ?? false;
   const toggleExpanded = (value: boolean): void => setUserToggle({ value, defaultExpanded });
 
   // One call in a gap renders as its own row rather than a headline over a
@@ -239,9 +238,10 @@ function ToolCallGroupBubbleInner({
   // reports that work happened, not what ran. Without `!minimal`, a lone
   // `git status --short` was named in full at Minimal and bucketed to "Ran a
   // command" at Compact: level 1 showing more than level 2.
-  const directTool = !hasActivityMembers && !compact && !minimal && group.tools.length === 1
-    ? group.tools[0]
-    : undefined;
+  const directTool =
+    !hasActivityMembers && !compact && !minimal && group.tools.length === 1
+      ? group.tools[0]
+      : undefined;
   let runningTool: ToolCall | null = null;
   for (const tool of group.tools) {
     if (tool.status === "running") runningTool = tool;
@@ -251,16 +251,24 @@ function ToolCallGroupBubbleInner({
   // together, so their call is never seen running and the caption follows the
   // beat owner instead (lib/activityBeat.ts), for as long as the line waves.
   const beatTool = runningTool ?? group.tools.find((tool) => tool.id === beatToolId) ?? null;
-  const beatAction = runningTool ? summary.currentAction : beatTool ? describeToolAction(beatTool) : null;
+  const beatAction = runningTool
+    ? summary.currentAction
+    : beatTool
+      ? describeToolAction(beatTool)
+      : null;
   const livePreviewToolId =
     !minimal && !directTool && !expanded && beatTool && beatAction ? beatTool.id : null;
   const livePreviewText = livePreviewToolId ? beatAction : null;
   const retainedPreview = lastPreviewRef.current;
-  const previewText = livePreviewText ?? (
-    !minimal && !directTool && !expanded && retainedPreview && Date.now() - retainedPreview.shownAt < PREVIEW_DWELL_MS
+  const previewText =
+    livePreviewText ??
+    (!minimal &&
+    !directTool &&
+    !expanded &&
+    retainedPreview &&
+    Date.now() - retainedPreview.shownAt < PREVIEW_DWELL_MS
       ? retainedPreview.text
-      : null
-  );
+      : null);
 
   useLayoutEffect(() => {
     if (minimal || directTool || expanded) {
@@ -275,7 +283,7 @@ function ToolCallGroupBubbleInner({
         lastPreviewRef.current = {
           toolId: livePreviewToolId,
           text: livePreviewText,
-          shownAt: Date.now()
+          shownAt: Date.now(),
         };
       }
       return;
@@ -305,53 +313,49 @@ function ToolCallGroupBubbleInner({
   const {
     visibleItems: visibleActivityMembers,
     hiddenEarlierCount: hiddenActivityMembers,
-    showEarlier: showEarlierActivity
+    showEarlier: showEarlierActivity,
   } = useStableTailWindow(activityMembers ?? [], {
     initialCount: GROUP_DETAIL_WINDOW,
     pageSize: GROUP_DETAIL_WINDOW_STEP,
     follow,
-    getId: (member) => member.id
+    getId: (member) => member.id,
   });
-  const activityBody = hasActivityMembers
-    ? (
-        <>
-          {hiddenActivityMembers > 0 ? (
-            <ShowEarlier
-              noun="activity"
-              count={hiddenActivityMembers}
-              onClick={showEarlierActivity}
+  const activityBody = hasActivityMembers ? (
+    <>
+      {hiddenActivityMembers > 0 ? (
+        <ShowEarlier noun="activity" count={hiddenActivityMembers} onClick={showEarlierActivity} />
+      ) : null}
+      {visibleActivityMembers.map((member) =>
+        member.kind === "thought" ? (
+          <div key={member.id}>{member.node}</div>
+        ) : (
+          <div key={member.id}>
+            <ToolRowsWindow
+              rows={buildGroupRows(member.tools)}
+              follow={follow}
+              defaultToolsExpanded={defaultToolsExpanded}
+              singletonDisclosure={singletonDisclosure}
+              workspaceCwd={workspaceCwd}
+              agentCodenames={agentCodenames}
+              onOpenFile={onOpenFile}
+              onOpenAgent={onOpenAgent}
             />
-          ) : null}
-          {visibleActivityMembers.map((member) => member.kind === "thought"
-            ? <div key={member.id}>{member.node}</div>
-            : (
-                <div key={member.id}>
-                  <ToolRowsWindow
-                    rows={buildGroupRows(member.tools)}
-                    follow={follow}
-                    defaultToolsExpanded={defaultToolsExpanded}
-                    singletonDisclosure={singletonDisclosure}
-                    workspaceCwd={workspaceCwd}
-                    agentCodenames={agentCodenames}
-                    onOpenFile={onOpenFile}
-                    onOpenAgent={onOpenAgent}
-                  />
-                </div>
-              ))}
-        </>
-      )
-    : (
-        <ToolRowsWindow
-          rows={rows}
-          follow={follow}
-          defaultToolsExpanded={defaultToolsExpanded}
-          singletonDisclosure={singletonDisclosure}
-          workspaceCwd={workspaceCwd}
-          agentCodenames={agentCodenames}
-          onOpenFile={onOpenFile}
-          onOpenAgent={onOpenAgent}
-        />
-      );
+          </div>
+        ),
+      )}
+    </>
+  ) : (
+    <ToolRowsWindow
+      rows={rows}
+      follow={follow}
+      defaultToolsExpanded={defaultToolsExpanded}
+      singletonDisclosure={singletonDisclosure}
+      workspaceCwd={workspaceCwd}
+      agentCodenames={agentCodenames}
+      onOpenFile={onOpenFile}
+      onOpenAgent={onOpenAgent}
+    />
+  );
   const activityStatus = activityStatusIsRunning ? "running" : summary.status;
   // State, not a ref: the header only mounts once the group has a second call,
   // and the wave has to measure the line the frame it appears.
@@ -362,9 +366,10 @@ function ToolCallGroupBubbleInner({
   // it then paints the band from the line's left edge, a second head.
   useReadingWave(header, activityStatus === "running" || ownsBeat, paced.shown);
   // A delete is a file change, not a failure; see ToolCallRow.
-  const iconIsDanger = activityStatus === "error"
-    || firstTool?.cancelled === true
-    || summary.iconKind === "agent-stop";
+  const iconIsDanger =
+    activityStatus === "error" ||
+    firstTool?.cancelled === true ||
+    summary.iconKind === "agent-stop";
 
   // A thought already owns its disclosure. Only tool work needs an outer one.
   if (hasActivityMembers && group.tools.length === 0) return <>{activityBody}</>;
@@ -372,6 +377,7 @@ function ToolCallGroupBubbleInner({
   return (
     <div
       className="tool-call-group activity-summary-line"
+      data-testid="tool-call-group"
       data-status={activityStatus}
       data-chevron={minimal ? "hover" : undefined}
       data-expanded={directTool ? undefined : expanded}
@@ -395,6 +401,7 @@ function ToolCallGroupBubbleInner({
           <button
             ref={setHeader}
             className="tool-call-group-header"
+            data-testid="tool-call-group-header"
             data-reading-wave={activityStatus === "running" || ownsBeat ? "true" : undefined}
             type="button"
             aria-expanded={expanded}
@@ -405,11 +412,18 @@ function ToolCallGroupBubbleInner({
           >
             {group.tools.length > 0 ? (
               <span className="activity-icon-slot">
-                {iconServer ? <ServerIcon server={iconServer} />
-                  : <ToolActivityIcon kind={summary.iconKind ?? "tool"} danger={iconIsDanger} />}
+                {iconServer ? (
+                  <ServerIcon server={iconServer} />
+                ) : (
+                  <ToolActivityIcon kind={summary.iconKind ?? "tool"} danger={iconIsDanger} />
+                )}
               </span>
             ) : null}
-            <span className="tool-call-group-eyebrow activity-summary-headline" aria-hidden="true">
+            <span
+              className="tool-call-group-eyebrow activity-summary-headline"
+              data-testid="tool-call-group-eyebrow"
+              aria-hidden="true"
+            >
               {clauses.map((clause, index) => {
                 const [verb, ...tail] = index === 0 ? clause.split(" ") : [];
                 const isNew = !previousClauses.includes(clause);
@@ -417,16 +431,28 @@ function ToolCallGroupBubbleInner({
                 return (
                   <Fragment key={clause}>
                     {index === 0 ? (
-                      <span className="tool-call-group-eyebrow-label reading-wave-text">{verb}</span>
+                      <span
+                        className="tool-call-group-eyebrow-label reading-wave-text"
+                        data-testid="reading-wave-text"
+                      >
+                        {verb}
+                      </span>
                     ) : (
-                      <span className="tool-call-group-eyebrow-detail reading-wave-text">, </span>
+                      <span
+                        className="tool-call-group-eyebrow-detail reading-wave-text"
+                        data-testid="reading-wave-text"
+                      >
+                        ,{" "}
+                      </span>
                     )}
                     {detail ? (
                       <span
                         className="tool-call-group-eyebrow-detail reading-wave-text"
+                        data-testid="reading-wave-text"
                         data-arriving={isNew ? "true" : undefined}
                       >
-                        {index === 0 ? " " : ""}{detail}
+                        {index === 0 ? " " : ""}
+                        {detail}
                       </span>
                     ) : null}
                   </Fragment>
@@ -435,7 +461,9 @@ function ToolCallGroupBubbleInner({
             </span>
             <ChevronRight size={11} className="tool-call-row-chevron" aria-hidden="true" />
             {previewText ? (
-              <span className="tool-call-group-preview" aria-hidden="true">{previewText}</span>
+              <span className="tool-call-group-preview" aria-hidden="true">
+                {previewText}
+              </span>
             ) : null}
             {/* While the group works the headline itself carries the reading
                 wave; the running total arrives when it stops, since a
@@ -451,7 +479,7 @@ function ToolCallGroupBubbleInner({
             ) : null}
           </button>
           {expanded ? (
-            <div id={detailsId} className="tool-call-group-body">
+            <div id={detailsId} className="tool-call-group-body" data-testid="tool-call-group-body">
               {activityBody}
             </div>
           ) : null}

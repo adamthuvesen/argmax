@@ -10,7 +10,7 @@ Session sync imports sessions started in external provider CLIs (such as running
 
 - **Read-only:** Sync never modifies provider transcript files.
 - **Resuming:** Continuing an imported session resumes the underlying provider conversation ID.
-- **Adoption:** When a user sends a message into an imported session, `synced_sessions.adopted` is set to `true` ([session_service.rs](../src-tauri/src/providers/session_service.rs)). Adopted sessions become regular Argmax sessions and are never pruned.
+- **Adoption:** When a user sends a message into an imported session, `synced_sessions.adopted` is set to `true` ([session_service/input.rs](../src-tauri/src/providers/session_service/input.rs)). Adopted sessions become regular Argmax sessions and are never pruned.
 - **Pruning:** Un-adopted sessions outside the active sync window (24 hours or 7 days) or deleted from disk are removed on sweep.
 - **Deleted-chat exclusion:** When Settings permanently deletes a chat, its provider conversation id is retained as a tombstone. Later sweeps skip it even though the provider transcript remains on disk.
 - **Scope:** Only sessions located inside registered Argmax projects are imported. Sessions created by Argmax itself are skipped.

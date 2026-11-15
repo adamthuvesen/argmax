@@ -7,9 +7,10 @@ import {
   Link2,
   PlugZap,
   Puzzle,
-  RefreshCw
+  RefreshCw,
 } from "lucide-react";
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useEffect, useState, type JSX } from "react";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
 import type { ConnectionSummary, ProviderId } from "../../shared/types.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
@@ -23,31 +24,39 @@ type LoadState =
 export function ConnectionCatalog({
   provider,
   workspaceId = null,
-  compact = false
+  compact = false,
 }: {
   provider: ProviderId;
   workspaceId?: string | null;
   compact?: boolean;
 }): JSX.Element {
   const [load, setLoad] = useState<LoadState>({ state: "loading", rows: [] });
-  const loadConnections = useCallback(async (): Promise<void> => {
-    setLoad((current) => ({ state: "loading", rows: current.rows }));
-    try {
-      const rows = await window.argmax?.connections.list({ provider, workspaceId });
-      if (!rows) throw new Error("Connection inventory is unavailable in this preview.");
-      setLoad({ state: "ready", rows });
-    } catch (error) {
+  const { refetch, isAvailable } = useBridgeQuery({
+    key: ["connections.list", provider, workspaceId],
+    read: (api) => api.connections.list({ provider, workspaceId }),
+    onData: (rows) => setLoad({ state: "ready", rows }),
+    onError: (error) =>
       setLoad((current) => ({
         state: "error",
         rows: current.rows,
-        message: error instanceof Error ? error.message : "Could not load connections."
-      }));
-    }
-  }, [provider, workspaceId]);
-
+        message: error instanceof Error ? error.message : "Could not load connections.",
+      })),
+  });
+  const loadConnections = (): void => {
+    setLoad((current) => ({ state: "loading", rows: current.rows }));
+    void refetch();
+  };
   useEffect(() => {
-    void loadConnections();
-  }, [loadConnections]);
+    setLoad((current) =>
+      isAvailable
+        ? { state: "loading", rows: current.rows }
+        : {
+            state: "error",
+            rows: current.rows,
+            message: "Connection inventory is unavailable in this preview.",
+          },
+    );
+  }, [isAvailable, provider, workspaceId]);
 
   const counts = summarize(load.rows);
   return (
@@ -73,7 +82,7 @@ export function ConnectionCatalog({
         <button
           type="button"
           className="connection-refresh"
-          onClick={() => void loadConnections()}
+          onClick={loadConnections}
           disabled={load.state === "loading"}
           aria-label={`Refresh ${PROVIDER_DISPLAY_NAMES[provider]} connections`}
           title="Refresh connections"
@@ -91,12 +100,12 @@ export function ConnectionCatalog({
         </p>
       ) : null}
       {load.rows.length > 0 ? (
-        <ul className="connection-list" aria-label={`${PROVIDER_DISPLAY_NAMES[provider]} connections`}>
+        <ul
+          className="connection-list"
+          aria-label={`${PROVIDER_DISPLAY_NAMES[provider]} connections`}
+        >
           {load.rows.map((connection) => (
-            <ConnectionRow
-              key={`${connection.kind}:${connection.name}`}
-              connection={connection}
-            />
+            <ConnectionRow key={`${connection.kind}:${connection.name}`} connection={connection} />
           ))}
         </ul>
       ) : load.state === "ready" ? (
@@ -146,7 +155,11 @@ function ConnectionRow({ connection }: { connection: ConnectionSummary }): JSX.E
           aria-label={`Copy authentication instructions for ${connection.name}`}
           title={connection.authenticationCommand}
         >
-          {copyState === "copied" ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+          {copyState === "copied" ? (
+            <Check size={13} aria-hidden="true" />
+          ) : (
+            <Copy size={13} aria-hidden="true" />
+          )}
           {copyState === "copied" ? "Copied" : "Login"}
         </button>
       ) : null}
@@ -160,12 +173,10 @@ function summarize(rows: ConnectionSummary[]): {
 } {
   return rows.reduce(
     (counts, row) => ({
-      connected:
-        counts.connected + (row.authentication === "authenticated" ? 1 : 0),
-      needsAuthentication:
-        counts.needsAuthentication + (row.authentication === "required" ? 1 : 0)
+      connected: counts.connected + (row.authentication === "authenticated" ? 1 : 0),
+      needsAuthentication: counts.needsAuthentication + (row.authentication === "required" ? 1 : 0),
     }),
-    { connected: 0, needsAuthentication: 0 }
+    { connected: 0, needsAuthentication: 0 },
   );
 }
 

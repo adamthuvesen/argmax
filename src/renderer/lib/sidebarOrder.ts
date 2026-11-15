@@ -10,9 +10,11 @@
  */
 export function listVisibleSidebarWorkspaceIds(): string[] {
   if (typeof document === "undefined") return [];
-  const rows = document.querySelectorAll<HTMLElement>(".project-list .session-row[data-workspace-id]");
-  return Array.from(rows, (row) => row.dataset.workspaceId).filter(
-    (id): id is string => Boolean(id)
+  const rows = document.querySelectorAll<HTMLElement>(
+    ".project-list .session-row[data-workspace-id]",
+  );
+  return Array.from(rows, (row) => row.dataset.workspaceId).filter((id): id is string =>
+    Boolean(id),
   );
 }
 
@@ -20,7 +22,7 @@ export function listVisibleSidebarWorkspaceIds(): string[] {
 export function selectedSidebarWorkspaceId(): string | null {
   if (typeof document === "undefined") return null;
   const link = document.querySelector<HTMLElement>(
-    '.project-list .session-row[data-workspace-id] [aria-current="true"]'
+    '.project-list .session-row[data-workspace-id] [aria-current="true"]',
   );
   return link?.closest<HTMLElement>(".session-row")?.dataset.workspaceId ?? null;
 }

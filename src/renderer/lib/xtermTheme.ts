@@ -36,7 +36,7 @@ const LIGHT_XTERM_THEME = {
   brightBlue: "#5687a8",
   brightMagenta: "#a55c92",
   brightCyan: "#5b95a1",
-  brightWhite: "#8a857b"
+  brightWhite: "#8a857b",
 } as const;
 
 const DARK_XTERM_THEME = {
@@ -68,7 +68,7 @@ const DARK_XTERM_THEME = {
   brightBlue: "#abc6e0",
   brightMagenta: "#dba8ce",
   brightCyan: "#a3d0d8",
-  brightWhite: "#e3e0d8"
+  brightWhite: "#e3e0d8",
 } as const;
 
 interface XtermThemeObject {
@@ -130,7 +130,12 @@ export function readActiveXtermTheme(): XtermThemeObject {
   // behind xterm carries the see-through ground, and xterm's contrast lift
   // reads only the RGB channels, so it still measures against the right shade.
   const canvas = isWindowTranslucent() ? withZeroAlpha(background) : background;
-  return { ...base, background: canvas, cursorAccent: background, cursor: readCaretColor(base.cursor) };
+  return {
+    ...base,
+    background: canvas,
+    cursorAccent: background,
+    cursor: readCaretColor(base.cursor),
+  };
 }
 
 function withZeroAlpha(color: string): string {

@@ -2,7 +2,19 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, copyFile, cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { loadavg, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -10,11 +22,36 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { connectBridge } from "./bridge-client.mjs";
 import { buildScratchApp, freePort, scratchBinaryPath, startScratchApp } from "./scratch-app.mjs";
 import { verifyBrowserSession } from "./verification/browser.mjs";
-import { checkoutFingerprint, delay, fileSha256, runChecked, terminateRunningCommands, uniqueRunId } from "./verification/common.mjs";
-import { copyIfPresent, listEvidenceFiles, redact, redactEvidenceTextFiles, writeJson, writeNdjson } from "./verification/evidence.mjs";
+import {
+  checkoutFingerprint,
+  delay,
+  fileSha256,
+  runChecked,
+  terminateRunningCommands,
+  uniqueRunId,
+  writeTripwires,
+} from "./verification/common.mjs";
+import {
+  copyIfPresent,
+  listEvidenceFiles,
+  redact,
+  redactEvidenceTextFiles,
+  writeJson,
+  writeNdjson,
+} from "./verification/evidence.mjs";
 import { verifySessionMove } from "./verification/session-move.mjs";
 import { verifyStagedPreservingRevert } from "./verification/workspace-recovery.mjs";
-import { verifyBrowserFocus, verifyBrowserFrames, verifyComposerEditor, verifyComposerReference, verifyForkMergeBack, verifyWorkspaceSettings, verifyVisualizations, workflowDiagnostics, workflowProgress } from "./verification/workflows.mjs";
+import {
+  verifyBrowserFocus,
+  verifyBrowserFrames,
+  verifyComposerEditor,
+  verifyComposerReference,
+  verifyForkMergeBack,
+  verifyWorkspaceSettings,
+  verifyVisualizations,
+  workflowDiagnostics,
+  workflowProgress,
+} from "./verification/workflows.mjs";
 import {
   VERIFICATION_BARRIERS,
   VERIFICATION_CONVERSATION_ID,
@@ -31,8 +68,23 @@ import {
 } from "./verification/provider-fixture.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// A temp HOME does not isolate these: they reach launchd, preferences, the keychain, and package managers.
+const MACHINE_COMMANDS = [
+  "launchctl",
+  "defaults",
+  "brew",
+  "security",
+  "op",
+  "crontab",
+  "systemctl",
+];
 const terminalStates = new Set(["complete", "failed", "cancelled"]);
-const persistentSubagentScenarios = new Set(["persistent-subagent", "persistent-codex-subagent", "persistent-opencode-subagent", "persistent-cursor-subagent"]);
+const persistentSubagentScenarios = new Set([
+  "persistent-subagent",
+  "persistent-codex-subagent",
+  "persistent-opencode-subagent",
+  "persistent-cursor-subagent",
+]);
 const scenarioDefinitionKeys = Object.freeze({
   "chat-resume": "chatResumeFirst",
   "queued-restart": "chatResumeFirst",
@@ -55,10 +107,22 @@ const scenarioDefinitionKeys = Object.freeze({
 });
 // Scenarios that drive the New chat launcher, composer chips, or fork and merge
 // through the native window and so have no remote-browser fallback.
-const nativeOnlyScenarios = ["queued-restart", "session-move", "staged-revert", "composer-reference", "composer-editor", "browser-focus", "browser-frames", "visualizations", "fork-merge", "workspace-settings"];
+const nativeOnlyScenarios = [
+  "queued-restart",
+  "session-move",
+  "staged-revert",
+  "composer-reference",
+  "composer-editor",
+  "browser-focus",
+  "browser-frames",
+  "visualizations",
+  "fork-merge",
+  "workspace-settings",
+];
 
 function providerForScenario(scenario) {
-  if (scenario === "persistent-codex-subagent" || scenario === "codex-user-input") return VERIFICATION_CODEX_PROVIDER;
+  if (scenario === "persistent-codex-subagent" || scenario === "codex-user-input")
+    return VERIFICATION_CODEX_PROVIDER;
   if (scenario === "persistent-opencode-subagent") return VERIFICATION_OPENCODE_PROVIDER;
   if (scenario === "persistent-cursor-subagent") return VERIFICATION_CURSOR_PROVIDER;
   return VERIFICATION_PROVIDER;
@@ -75,7 +139,7 @@ export function parseVerifyArgs(argv) {
     keep: false,
     release: false,
     native: "required",
-    timeoutMs: 90_000
+    timeoutMs: 90_000,
   };
   const valueAfter = (index, flag) => {
     const value = argv[index + 1];
@@ -95,14 +159,27 @@ export function parseVerifyArgs(argv) {
   if (!Object.hasOwn(scenarioDefinitionKeys, options.scenario)) {
     throw new Error(`--scenario must be one of: ${Object.keys(scenarioDefinitionKeys).join(", ")}`);
   }
-  if (!['required', 'auto', 'off'].includes(options.native)) {
+  if (!["required", "auto", "off"].includes(options.native)) {
     throw new Error("--native must be required, auto, or off");
   }
-  if (["session-move", "staged-revert", "composer-reference", "composer-editor", "browser-focus", "browser-frames", "visualizations", "fork-merge", "workspace-settings"].includes(options.scenario)
-      && options.native !== "required") {
+  if (
+    [
+      "session-move",
+      "staged-revert",
+      "composer-reference",
+      "composer-editor",
+      "browser-focus",
+      "browser-frames",
+      "visualizations",
+      "fork-merge",
+      "workspace-settings",
+    ].includes(options.scenario) &&
+    options.native !== "required"
+  ) {
     throw new Error(`${options.scenario} requires native verification`);
   }
-  if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 5000) throw new Error("--timeout must be at least 5 seconds");
+  if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 5000)
+    throw new Error("--timeout must be at least 5 seconds");
   return options;
 }
 
@@ -130,11 +207,15 @@ async function prepareNativeAppBinary(binaryDirectory, sourceBinary) {
   const configDirectory = path.join(repoRoot, "src-tauri");
   const config = JSON.parse(await readFile(path.join(configDirectory, "tauri.conf.json"), "utf8"));
   for (const [source, destination] of Object.entries(config.bundle.resources)) {
-    await cp(path.resolve(configDirectory, source), path.join(resourcesDirectory, destination), { recursive: true });
+    await cp(path.resolve(configDirectory, source), path.join(resourcesDirectory, destination), {
+      recursive: true,
+    });
   }
   await copyFile(sourceBinary, nativeBinary);
   await chmod(nativeBinary, (await stat(sourceBinary)).mode);
-  await writeFile(path.join(contentsDirectory, "Info.plist"), `<?xml version="1.0" encoding="UTF-8"?>
+  await writeFile(
+    path.join(contentsDirectory, "Info.plist"),
+    `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -152,14 +233,16 @@ async function prepareNativeAppBinary(binaryDirectory, sourceBinary) {
   <string>1</string>
 </dict>
 </plist>
-`);
+`,
+  );
   return nativeBinary;
 }
 
 function isolatedEnvironment(home, fixturePath, controlDir, invocationLog, provider) {
   const env = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (!/(TOKEN|SECRET|PASSWORD|API_?KEY|AUTHORIZATION|COOKIE|CREDENTIAL)/i.test(key)) env[key] = value;
+    if (!/(TOKEN|SECRET|PASSWORD|API_?KEY|AUTHORIZATION|COOKIE|CREDENTIAL)/i.test(key))
+      env[key] = value;
   }
   return {
     ...env,
@@ -177,7 +260,7 @@ function isolatedEnvironment(home, fixturePath, controlDir, invocationLog, provi
     [provider.binaryEnv]: fixturePath,
     [provider.homeEnv]: home,
     ARGMAX_VERIFICATION_CONTROL_DIR: controlDir,
-    ARGMAX_VERIFICATION_LOG: invocationLog
+    ARGMAX_VERIFICATION_LOG: invocationLog,
   };
 }
 
@@ -215,19 +298,28 @@ function replayDetails({ report, repoRoot, home, profile, env, fixturePath, prov
       ARGMAX_DATA_DIR: profile,
       ARGMAX_VERIFICATION: "1",
       ARGMAX_VERIFICATION_HOME: home,
-      [provider.binaryEnv]: fixturePath
-    }
+      [provider.binaryEnv]: fixturePath,
+    },
   };
 }
 
 async function initializeRepo(repoPath) {
   await mkdir(repoPath, { recursive: true });
   await runChecked("git", ["init", "-q", "-b", "main"], { cwd: repoPath, timeoutMs: 10_000 });
-  await runChecked("git", ["config", "user.name", "Argmax Verification"], { cwd: repoPath, timeoutMs: 10_000 });
-  await runChecked("git", ["config", "user.email", "verification@argmax.invalid"], { cwd: repoPath, timeoutMs: 10_000 });
+  await runChecked("git", ["config", "user.name", "Argmax Verification"], {
+    cwd: repoPath,
+    timeoutMs: 10_000,
+  });
+  await runChecked("git", ["config", "user.email", "verification@argmax.invalid"], {
+    cwd: repoPath,
+    timeoutMs: 10_000,
+  });
   await writeFile(path.join(repoPath, "README.md"), "# Argmax verification fixture\n");
   await runChecked("git", ["add", "README.md"], { cwd: repoPath, timeoutMs: 10_000 });
-  await runChecked("git", ["commit", "-q", "-m", "verification fixture"], { cwd: repoPath, timeoutMs: 10_000 });
+  await runChecked("git", ["commit", "-q", "-m", "verification fixture"], {
+    cwd: repoPath,
+    timeoutMs: 10_000,
+  });
 }
 
 async function waitForFile(filePath, timeoutMs) {
@@ -241,7 +333,10 @@ async function waitForFile(filePath, timeoutMs) {
 
 async function resolveProjectAndWorkspace(bridge, repoPath, taskLabel) {
   const project = await bridge.call("projects:register", { repoPath });
-  const workspace = await bridge.call("workspaces:create-current", { projectId: project.id, taskLabel });
+  const workspace = await bridge.call("workspaces:create-current", {
+    projectId: project.id,
+    taskLabel,
+  });
   return { project, workspace };
 }
 
@@ -258,7 +353,7 @@ async function launchFixture(bridge, workspaceId, prompt, provider) {
     permissionMode: null,
     cols: 120,
     rows: 32,
-    attachments: null
+    attachments: null,
   });
 }
 
@@ -269,8 +364,14 @@ async function collectUntilTerminal(bridge, sessionId, timeoutMs, initialCursors
   let rawOutputCursor = initialCursors.rawOutputCursor ?? null;
   let changeCursor = initialCursors.changeCursor ?? null;
   for (;;) {
-    if (Date.now() - startedAt > timeoutMs) throw new Error(`session ${sessionId} did not finish within ${timeoutMs}ms`);
-    const batch = await bridge.call("session:events-since", { sessionId, eventCursor, rawOutputCursor, changeCursor });
+    if (Date.now() - startedAt > timeoutMs)
+      throw new Error(`session ${sessionId} did not finish within ${timeoutMs}ms`);
+    const batch = await bridge.call("session:events-since", {
+      sessionId,
+      eventCursor,
+      rawOutputCursor,
+      changeCursor,
+    });
     eventCursor = batch.eventCursor;
     rawOutputCursor = batch.rawOutputCursor;
     changeCursor = batch.changeCursor;
@@ -279,7 +380,8 @@ async function collectUntilTerminal(bridge, sessionId, timeoutMs, initialCursors
     const dashboard = await bridge.call("dashboard:list", {});
     const session = dashboard.sessions.find((entry) => entry.id === sessionId);
     if (!session) throw new Error(`session ${sessionId} disappeared from dashboard`);
-    if (terminalStates.has(session.state)) return { session, records, cursors: { eventCursor, rawOutputCursor, changeCursor } };
+    if (terminalStates.has(session.state))
+      return { session, records, cursors: { eventCursor, rawOutputCursor, changeCursor } };
     await delay(100);
   }
 }
@@ -291,13 +393,20 @@ async function collectUntilText(bridge, sessionId, expected, timeoutMs) {
   let rawOutputCursor = null;
   let changeCursor = null;
   while (Date.now() - startedAt <= timeoutMs) {
-    const batch = await bridge.call("session:events-since", { sessionId, eventCursor, rawOutputCursor, changeCursor });
+    const batch = await bridge.call("session:events-since", {
+      sessionId,
+      eventCursor,
+      rawOutputCursor,
+      changeCursor,
+    });
     eventCursor = batch.eventCursor;
     rawOutputCursor = batch.rawOutputCursor;
     changeCursor = batch.changeCursor;
     records.push(...batch.events.map((event) => ({ kind: "event", ...event })));
     records.push(...batch.rawOutputs.map((output) => ({ kind: "rawOutput", ...output })));
-    if (records.some((record) => String(record.message ?? record.content ?? "").includes(expected))) {
+    if (
+      records.some((record) => String(record.message ?? record.content ?? "").includes(expected))
+    ) {
       return { records, cursors: { eventCursor, rawOutputCursor, changeCursor } };
     }
     await delay(100);
@@ -305,23 +414,69 @@ async function collectUntilText(bridge, sessionId, expected, timeoutMs) {
   throw new Error(`session ${sessionId} did not emit ${expected} within ${timeoutMs}ms`);
 }
 
+// Steps every scripted Claude turn passes. A turn started from the native
+// composer also carries the renderer's `submit`; `first_painted` needs the
+// chat on screen when its answer lands. See docs/performance.md#turn-waterfall.
+const CLAUDE_TURN_STEPS = [
+  "ipc_received",
+  "admitted",
+  "checkpoint_start",
+  "checkpoint_end",
+  "env_ready",
+  "spawn",
+  "initialize_sent",
+  "initialize_ack",
+  "prompt_written",
+  "first_stdout",
+  "cli_init",
+  "first_content",
+  "first_persisted",
+  "first_hint_emitted",
+];
+
+async function waitForTurnWaterfalls(bridge, sessionId, timeoutMs) {
+  const startedAt = Date.now();
+  for (;;) {
+    const turns = (await bridge.call("session:turn-waterfalls", { limit: 20 })).filter(
+      (turn) => turn.sessionId === sessionId,
+    );
+    const complete = turns.filter((turn) => {
+      const names = new Set(turn.stamps.map((stamp) => stamp.name));
+      return CLAUDE_TURN_STEPS.every((name) => names.has(name));
+    });
+    // The follow-up came from the native composer with the chat on screen.
+    const fromComposer = complete.some((turn) =>
+      ["submit", "first_painted"].every((name) => turn.stamps.some((stamp) => stamp.name === name)),
+    );
+    if (complete.length >= 2 && fromComposer) return turns;
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error(`turn waterfalls incomplete: ${JSON.stringify(turns)}`);
+    }
+    await delay(250);
+  }
+}
+
 function assertIncludes(records, expected, label) {
-  if (!records.some((record) => String(record.message ?? record.content ?? "").includes(expected))) {
+  if (
+    !records.some((record) => String(record.message ?? record.content ?? "").includes(expected))
+  ) {
     throw new Error(`${label} missing from normalized and raw provider output: ${expected}`);
   }
 }
 
 function assertRecordIncludes(records, expected, label) {
-  if (!records.some((record) => String(record.content ?? JSON.stringify(record)).includes(expected))) {
+  if (
+    !records.some((record) => String(record.content ?? JSON.stringify(record)).includes(expected))
+  ) {
     throw new Error(`${label} missing from provider records: ${expected}`);
   }
 }
 
 function assertOnlyPendingMessage(entries, expected, label) {
   if (
-    entries.length !== 1
-    || entries[0].id !== expected.id
-    || entries[0].content !== expected.content
+    entries.length !== 1 ||
+    entries[0].id !== expected.id ||
+    entries[0].content !== expected.content
   ) {
     throw new Error(`${label} must contain exactly queued follow-up ${expected.id}`);
   }
@@ -346,12 +501,21 @@ async function runScenario({
   terminate,
   restartBackend,
   timeoutMs,
-  timeline
+  timeline,
 }) {
   const definition = definitionForScenario(scenario);
-  const { project, workspace } = await resolveProjectAndWorkspace(bridge, repoPath, definition.taskLabel ?? definition.prompt);
+  const { project, workspace } = await resolveProjectAndWorkspace(
+    bridge,
+    repoPath,
+    definition.taskLabel ?? definition.prompt,
+  );
   const launched = await launchFixture(bridge, workspace.id, definition.prompt, provider);
-  timeline.push({ at: new Date().toISOString(), type: "session-launched", sessionId: launched.id, workspaceId: workspace.id });
+  timeline.push({
+    at: new Date().toISOString(),
+    type: "session-launched",
+    sessionId: launched.id,
+    workspaceId: workspace.id,
+  });
 
   const workflows = {
     "composer-reference": verifyComposerReference,
@@ -400,8 +564,11 @@ async function runScenario({
     let requestId = null;
     while (Date.now() < deadline) {
       const batch = await bridge.call("session:events-since", { sessionId: launched.id });
-      const question = batch.events.find((event) => event.type === "command.started"
-        && event.payload?.input?.questions?.some((entry) => entry.id === definition.questionId));
+      const question = batch.events.find(
+        (event) =>
+          event.type === "command.started" &&
+          event.payload?.input?.questions?.some((entry) => entry.id === definition.questionId),
+      );
       if (question) {
         requestId = question.payload.input.requestId;
         if (!requestId) throw new Error("Codex question omitted its response request ID");
@@ -414,61 +581,121 @@ async function runScenario({
     const dashboard = await bridge.call("dashboard:list", {});
     const waiting = dashboard.sessions.find((session) => session.id === launched.id);
     if (waiting?.state !== "waiting" || waiting.attention !== "question-asked") {
-      throw new Error(`Pending question has incorrect session state: ${waiting?.state}/${waiting?.attention}`);
+      throw new Error(
+        `Pending question has incorrect session state: ${waiting?.state}/${waiting?.attention}`,
+      );
     }
-    const waitingUi = await verifyUi({ name: "question-waiting", expectedTexts: [definition.questionText], expectIdle: false });
+    const waitingUi = await verifyUi({
+      name: "question-waiting",
+      expectedTexts: [definition.questionText],
+      expectIdle: false,
+    });
     await bridge.call("questions:resolve", {
-      sessionId: launched.id, requestId,
+      sessionId: launched.id,
+      requestId,
       answers: { [definition.questionId]: [definition.expectedAnswer] },
     });
     const result = await collectUntilTerminal(bridge, launched.id, timeoutMs);
-    if (result.session.state !== "complete") throw new Error(`question turn ended in ${result.session.state}`);
+    if (result.session.state !== "complete")
+      throw new Error(`question turn ended in ${result.session.state}`);
     assertIncludes(result.records, definition.visibleText, "same-turn answer");
-    const ui = await verifyUi({ name: "question-answered", expectedTexts: [definition.visibleText], expectIdle: true });
-    return { session: result.session, workspace, records: result.records, browser: [waitingUi, ui] };
+    const ui = await verifyUi({
+      name: "question-answered",
+      expectedTexts: [definition.visibleText],
+      expectIdle: true,
+    });
+    return {
+      session: result.session,
+      workspace,
+      records: result.records,
+      browser: [waitingUi, ui],
+    };
   }
 
   if (scenario === "chat-resume") {
-    await waitForFile(path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeStream}.ready`), timeoutMs);
-    const streamingUi = await verifyUi({ name: "streaming", expectedTexts: ["Verification first turn complete."], expectIdle: false });
+    await waitForFile(
+      path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeStream}.ready`),
+      timeoutMs,
+    );
+    const streamingUi = await verifyUi({
+      name: "streaming",
+      expectedTexts: ["Verification first turn complete."],
+      expectIdle: false,
+    });
     timeline.push({ at: new Date().toISOString(), type: "ui-streaming", ...streamingUi.uiState });
-    await writeFile(path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeStream}.continue`), "continue\n");
+    await writeFile(
+      path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeStream}.continue`),
+      "continue\n",
+    );
 
-    await waitForFile(path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeTool}.ready`), timeoutMs);
-    const toolUi = await verifyUi({ name: "tool-running", expectedTexts: ["Read"], expectIdle: false });
+    await waitForFile(
+      path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeTool}.ready`),
+      timeoutMs,
+    );
+    const toolUi = await verifyUi({
+      name: "tool-running",
+      expectedTexts: ["Read"],
+      expectIdle: false,
+    });
     timeline.push({ at: new Date().toISOString(), type: "ui-tool-running", ...toolUi.uiState });
-    await writeFile(path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeTool}.continue`), "continue\n");
+    await writeFile(
+      path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeTool}.continue`),
+      "continue\n",
+    );
     const first = await collectUntilTerminal(bridge, launched.id, timeoutMs);
-    if (first.session.state !== "complete") throw new Error(`first turn ended in ${first.session.state}`);
-    if (first.session.providerConversationId !== VERIFICATION_CONVERSATION_ID) throw new Error("provider conversation id was not persisted");
+    if (first.session.state !== "complete")
+      throw new Error(`first turn ended in ${first.session.state}`);
+    if (first.session.providerConversationId !== VERIFICATION_CONVERSATION_ID)
+      throw new Error("provider conversation id was not persisted");
     assertIncludes(first.records, VERIFICATION_SCENARIOS.chatResumeFirst.visibleText, "first turn");
 
     const before = await bridge.call("session:events-since", {
       sessionId: launched.id,
       eventCursor: null,
       rawOutputCursor: null,
-      changeCursor: null
+      changeCursor: null,
     });
     await sendInput(launched.id, VERIFICATION_SCENARIOS.chatResumeSecond.prompt);
     const second = await collectUntilTerminal(bridge, launched.id, timeoutMs, before);
-    if (second.session.state !== "complete") throw new Error(`resumed turn ended in ${second.session.state}`);
-    assertIncludes(second.records, VERIFICATION_SCENARIOS.chatResumeSecond.visibleText, "resumed turn");
+    if (second.session.state !== "complete")
+      throw new Error(`resumed turn ended in ${second.session.state}`);
+    assertIncludes(
+      second.records,
+      VERIFICATION_SCENARIOS.chatResumeSecond.visibleText,
+      "resumed turn",
+    );
     const combined = [...first.records, ...second.records];
     const ui = await verifyUi({
       name: "complete",
-      expectedTexts: [VERIFICATION_SCENARIOS.chatResumeFirst.visibleText, VERIFICATION_SCENARIOS.chatResumeSecond.visibleText],
-      expectIdle: true
+      expectedTexts: [
+        VERIFICATION_SCENARIOS.chatResumeFirst.visibleText,
+        VERIFICATION_SCENARIOS.chatResumeSecond.visibleText,
+      ],
+      expectIdle: true,
     });
-    return { session: second.session, workspace, records: combined, browser: [streamingUi, toolUi, ui] };
+    timeline.push({
+      at: new Date().toISOString(),
+      type: "turn-waterfalls",
+      waterfalls: await waitForTurnWaterfalls(bridge, launched.id, timeoutMs),
+    });
+    return {
+      session: second.session,
+      workspace,
+      records: combined,
+      browser: [streamingUi, toolUi, ui],
+    };
   }
 
   if (scenario === "queued-restart") {
     const secondPrompt = VERIFICATION_SCENARIOS.chatResumeSecond.prompt;
-    await waitForFile(path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeStream}.ready`), timeoutMs);
+    await waitForFile(
+      path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeStream}.ready`),
+      timeoutMs,
+    );
     const streamingUi = await verifyUi({
       name: "queued-running",
       expectedTexts: [VERIFICATION_SCENARIOS.chatResumeFirst.visibleText],
-      expectIdle: false
+      expectIdle: false,
     });
     const queuedAction = await queueInput(launched.id, secondPrompt);
     const pendingMessage = queuedAction.queuedMessage;
@@ -480,12 +707,17 @@ async function runScenario({
     assertOnlyPendingMessage(
       queuedDashboard.pendingMessages[launched.id] ?? [],
       expectedQueuedMessage,
-      "dashboard queue before restart"
+      "dashboard queue before restart",
     );
     const beforeRestart = await sqliteSnapshot(databasePath, launched.id);
     await writeJson(path.join(outputDir, "queued-before-restart.json"), beforeRestart);
     const firstTurnDeltaSequence = beforeRestart.events
-      .filter((event) => event.type === "message.delta" && typeof event.message === "string" && event.message.length > 0)
+      .filter(
+        (event) =>
+          event.type === "message.delta" &&
+          typeof event.message === "string" &&
+          event.message.length > 0,
+      )
       .map((event) => ({ id: event.id, message: event.message }));
     if (firstTurnDeltaSequence.length === 0) {
       throw new Error("held first turn did not persist any streamed content before restart");
@@ -493,85 +725,116 @@ async function runScenario({
     const durableBefore = assertOnlyPendingMessage(
       beforeRestart.pendingMessages,
       expectedQueuedMessage,
-      "SQLite queue before restart"
+      "SQLite queue before restart",
     );
     if (durableBefore.deliveryState !== "pending") {
       throw new Error("SQLite queued follow-up was not pending before restart");
     }
-    if (beforeRestart.events.some((event) => event.type === "user.message" && event.message === secondPrompt)) {
+    if (
+      beforeRestart.events.some(
+        (event) => event.type === "user.message" && event.message === secondPrompt,
+      )
+    ) {
       throw new Error("queued follow-up was recorded as a user turn before delivery");
     }
 
     const resumedBridge = await restartBackend();
-    timeline.push({ at: new Date().toISOString(), type: "backend-restarted", sessionId: launched.id });
+    timeline.push({
+      at: new Date().toISOString(),
+      type: "backend-restarted",
+      sessionId: launched.id,
+    });
     await delay(1_000);
     const recoveredDashboard = await resumedBridge.call("dashboard:list", {});
     const recoveredDashboardMessage = assertOnlyPendingMessage(
       recoveredDashboard.pendingMessages[launched.id] ?? [],
       expectedQueuedMessage,
-      "dashboard queue after restart"
+      "dashboard queue after restart",
     );
     if (!["unsent", "delivery-unknown"].includes(recoveredDashboardMessage.recoveryStatus)) {
-      throw new Error("restart did not recover the queued follow-up as paused or delivery-uncertain");
+      throw new Error(
+        "restart did not recover the queued follow-up as paused or delivery-uncertain",
+      );
     }
     const recovered = await sqliteSnapshot(databasePath, launched.id);
     await writeJson(path.join(outputDir, "queued-after-restart.json"), recovered);
     const recoveredFirstTurnDeltaSequence = recovered.events
-      .filter((event) => event.type === "message.delta" && typeof event.message === "string" && event.message.length > 0)
+      .filter(
+        (event) =>
+          event.type === "message.delta" &&
+          typeof event.message === "string" &&
+          event.message.length > 0,
+      )
       .map((event) => ({ id: event.id, message: event.message }));
-    if (JSON.stringify(recoveredFirstTurnDeltaSequence) !== JSON.stringify(firstTurnDeltaSequence)) {
+    if (
+      JSON.stringify(recoveredFirstTurnDeltaSequence) !== JSON.stringify(firstTurnDeltaSequence)
+    ) {
       throw new Error("restart changed the persisted first-turn stream fragments");
     }
     const durableRecovered = assertOnlyPendingMessage(
       recovered.pendingMessages,
       expectedQueuedMessage,
-      "SQLite queue after restart"
+      "SQLite queue after restart",
     );
     if (!["recovered", "delivery_unknown"].includes(durableRecovered.deliveryState)) {
       throw new Error("SQLite did not mark the queued follow-up as recovered");
     }
-    if (recovered.events.some((event) => event.type === "user.message" && event.message === secondPrompt)) {
+    if (
+      recovered.events.some(
+        (event) => event.type === "user.message" && event.message === secondPrompt,
+      )
+    ) {
       throw new Error("recovered queued follow-up replayed without an explicit send");
     }
-    const recoveryLabel = recoveredDashboardMessage.recoveryStatus === "delivery-unknown"
-      ? "Delivery uncertain • check the chat before sending again"
-      : "Paused • not sent";
+    const recoveryLabel =
+      recoveredDashboardMessage.recoveryStatus === "delivery-unknown"
+        ? "Delivery uncertain • check the chat before sending again"
+        : "Paused • not sent";
     const recoveredUi = await verifyUi({
       name: "queued-recovered",
       expectedTexts: [secondPrompt, recoveryLabel],
-      expectIdle: true
+      expectIdle: true,
     });
 
     const beforeSend = await resumedBridge.call("session:events-since", {
       sessionId: launched.id,
       eventCursor: null,
       rawOutputCursor: null,
-      changeCursor: null
+      changeCursor: null,
     });
     const recoveredRecords = [
       ...beforeSend.events.map((event) => ({ kind: "event", ...event })),
-      ...beforeSend.rawOutputs.map((output) => ({ kind: "rawOutput", ...output }))
+      ...beforeSend.rawOutputs.map((output) => ({ kind: "rawOutput", ...output })),
     ];
     const beforeExplicitSend = await sqliteSnapshot(databasePath, launched.id);
     assertOnlyPendingMessage(
       beforeExplicitSend.pendingMessages,
       expectedQueuedMessage,
-      "SQLite queue before explicit Send"
+      "SQLite queue before explicit Send",
     );
-    const userMessagesBeforeExplicitSend = beforeExplicitSend.events
-      .filter((event) => event.type === "user.message" && event.message === secondPrompt);
+    const userMessagesBeforeExplicitSend = beforeExplicitSend.events.filter(
+      (event) => event.type === "user.message" && event.message === secondPrompt,
+    );
     if (userMessagesBeforeExplicitSend.length !== 0) {
       throw new Error("recovered queued follow-up replayed before explicit Send");
     }
     await sendQueuedInput(launched.id, pendingMessage.id, secondPrompt);
     const second = await collectUntilTerminal(resumedBridge, launched.id, timeoutMs, beforeSend);
-    if (second.session.state !== "complete") throw new Error(`recovered follow-up ended in ${second.session.state}`);
-    assertIncludes(second.records, VERIFICATION_SCENARIOS.chatResumeSecond.visibleText, "recovered follow-up");
+    if (second.session.state !== "complete")
+      throw new Error(`recovered follow-up ended in ${second.session.state}`);
+    assertIncludes(
+      second.records,
+      VERIFICATION_SCENARIOS.chatResumeSecond.visibleText,
+      "recovered follow-up",
+    );
     const finalSnapshot = await sqliteSnapshot(databasePath, launched.id);
-    const deliveredUserMessages = finalSnapshot.events
-      .filter((event) => event.type === "user.message" && event.message === secondPrompt);
+    const deliveredUserMessages = finalSnapshot.events.filter(
+      (event) => event.type === "user.message" && event.message === secondPrompt,
+    );
     if (deliveredUserMessages.length !== 1) {
-      throw new Error(`recovered follow-up persisted ${deliveredUserMessages.length} user turns instead of one`);
+      throw new Error(
+        `recovered follow-up persisted ${deliveredUserMessages.length} user turns instead of one`,
+      );
     }
     if (finalSnapshot.pendingMessages.length !== 0) {
       throw new Error("SQLite session queue was not empty after delivering the follow-up");
@@ -584,9 +847,9 @@ async function runScenario({
       name: "queued-complete",
       expectedTexts: [
         VERIFICATION_SCENARIOS.chatResumeFirst.visibleText,
-        VERIFICATION_SCENARIOS.chatResumeSecond.visibleText
+        VERIFICATION_SCENARIOS.chatResumeSecond.visibleText,
       ],
-      expectIdle: true
+      expectIdle: true,
     });
     return {
       session: second.session,
@@ -595,12 +858,24 @@ async function runScenario({
       browser: [streamingUi, recoveredUi, completeUi],
       bridge: resumedBridge,
       assertions: [
-        { name: "held-first-turn-fragments-preserved", ok: true, value: firstTurnDeltaSequence.length },
+        {
+          name: "held-first-turn-fragments-preserved",
+          ok: true,
+          value: firstTurnDeltaSequence.length,
+        },
         { name: "queued-follow-up-persisted-before-restart", ok: true, value: pendingMessage.id },
-        { name: "recovered-follow-up-requires-explicit-send", ok: true, value: recoveredDashboardMessage.recoveryStatus },
-        { name: "recovered-follow-up-delivered-exactly-once", ok: true, value: deliveredUserMessages[0].id },
-        { name: "delivered-follow-up-cleared-from-pending-journal", ok: true }
-      ]
+        {
+          name: "recovered-follow-up-requires-explicit-send",
+          ok: true,
+          value: recoveredDashboardMessage.recoveryStatus,
+        },
+        {
+          name: "recovered-follow-up-delivered-exactly-once",
+          ok: true,
+          value: deliveredUserMessages[0].id,
+        },
+        { name: "delivered-follow-up-cleared-from-pending-journal", ok: true },
+      ],
     };
   }
 
@@ -630,28 +905,78 @@ async function runScenario({
           ? VERIFICATION_SCENARIOS.persistentCursorSubagentSecond
           : VERIFICATION_SCENARIOS.persistentSubagentSecond;
     const first = await collectUntilTerminal(bridge, launched.id, timeoutMs);
-    if (first.session.state !== "complete") throw new Error(`persistent child first turn ended in ${first.session.state}`);
-    if (first.session.providerConversationId !== VERIFICATION_CONVERSATION_ID) throw new Error("persistent child parent conversation id was not persisted");
+    if (first.session.state !== "complete")
+      throw new Error(`persistent child first turn ended in ${first.session.state}`);
+    if (first.session.providerConversationId !== VERIFICATION_CONVERSATION_ID)
+      throw new Error("persistent child parent conversation id was not persisted");
     if (isCodex) {
-      assertRecordIncludes(first.records, `\"tool\":\"spawn_agent\"`, "persistent Codex child spawn");
-      assertRecordIncludes(first.records, `\"receiver_thread_ids\":[\"${subagent.id}\"]`, "persistent Codex child identity");
-      assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent Codex child first response");
+      assertRecordIncludes(
+        first.records,
+        `\"tool\":\"spawn_agent\"`,
+        "persistent Codex child spawn",
+      );
+      assertRecordIncludes(
+        first.records,
+        `\"receiver_thread_ids\":[\"${subagent.id}\"]`,
+        "persistent Codex child identity",
+      );
+      assertRecordIncludes(
+        first.records,
+        firstDefinition.visibleText,
+        "persistent Codex child first response",
+      );
     } else if (isOpencode) {
       assertRecordIncludes(first.records, `\"tool\":\"task\"`, "persistent OpenCode child task");
-      assertRecordIncludes(first.records, `\"sessionId\":\"${subagent.id}\"`, "persistent OpenCode child identity");
-      assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent OpenCode child first response");
+      assertRecordIncludes(
+        first.records,
+        `\"sessionId\":\"${subagent.id}\"`,
+        "persistent OpenCode child identity",
+      );
+      assertRecordIncludes(
+        first.records,
+        firstDefinition.visibleText,
+        "persistent OpenCode child first response",
+      );
     } else if (isCursor) {
-      assertRecordIncludes(first.records, `\"message\":\"task\"`, "persistent Cursor ACP child task");
-      assertRecordIncludes(first.records, `\"agentId\":\"${subagent.id}\"`, "persistent Cursor authoritative child identity");
-      assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent Cursor child first response");
+      assertRecordIncludes(
+        first.records,
+        `\"message\":\"task\"`,
+        "persistent Cursor ACP child task",
+      );
+      assertRecordIncludes(
+        first.records,
+        `\"agentId\":\"${subagent.id}\"`,
+        "persistent Cursor authoritative child identity",
+      );
+      assertRecordIncludes(
+        first.records,
+        firstDefinition.visibleText,
+        "persistent Cursor child first response",
+      );
     } else {
-      assertRecordIncludes(first.records, `\"task_id\":\"${subagent.id}\"`, "persistent child start");
-      assertRecordIncludes(first.records, `\"parent_tool_use_id\":\"${subagent.rootToolUseId}\"`, "persistent child parent linkage");
-      assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent child first response");
+      assertRecordIncludes(
+        first.records,
+        `\"task_id\":\"${subagent.id}\"`,
+        "persistent child start",
+      );
+      assertRecordIncludes(
+        first.records,
+        `\"parent_tool_use_id\":\"${subagent.rootToolUseId}\"`,
+        "persistent child parent linkage",
+      );
+      assertRecordIncludes(
+        first.records,
+        firstDefinition.visibleText,
+        "persistent child first response",
+      );
     }
 
     const resumedBridge = await restartBackend();
-    timeline.push({ at: new Date().toISOString(), type: "backend-restarted", sessionId: launched.id });
+    timeline.push({
+      at: new Date().toISOString(),
+      type: "backend-restarted",
+      sessionId: launched.id,
+    });
     const before = await resumedBridge.call("session:events-since", {
       sessionId: launched.id,
       eventCursor: null,
@@ -660,54 +985,127 @@ async function runScenario({
     });
     await sendInput(launched.id, secondDefinition.prompt);
     const second = await collectUntilTerminal(resumedBridge, launched.id, timeoutMs, before);
-    if (second.session.state !== "complete") throw new Error(`persistent child follow-up ended in ${second.session.state}`);
+    if (second.session.state !== "complete")
+      throw new Error(`persistent child follow-up ended in ${second.session.state}`);
     if (isCodex) {
-      assertRecordIncludes(second.records, `\"tool\":\"resume_agent\"`, "persistent Codex child resume");
-      assertRecordIncludes(second.records, `\"tool\":\"send_input\"`, "persistent Codex child input");
-      assertRecordIncludes(second.records, `\"id\":\"${subagent.followUpToolUseId}\"`, "persistent Codex child follow-up invocation");
-      assertRecordIncludes(second.records, `\"receiver_thread_ids\":[\"${subagent.id}\"]`, "persistent Codex child stable identity");
-      assertRecordIncludes(second.records, `\"status\":\"pending_init\"`, "persistent Codex child restart state");
-      assertRecordIncludes(second.records, secondDefinition.visibleText, "persistent Codex child follow-up response");
+      assertRecordIncludes(
+        second.records,
+        `\"tool\":\"resume_agent\"`,
+        "persistent Codex child resume",
+      );
+      assertRecordIncludes(
+        second.records,
+        `\"tool\":\"send_input\"`,
+        "persistent Codex child input",
+      );
+      assertRecordIncludes(
+        second.records,
+        `\"id\":\"${subagent.followUpToolUseId}\"`,
+        "persistent Codex child follow-up invocation",
+      );
+      assertRecordIncludes(
+        second.records,
+        `\"receiver_thread_ids\":[\"${subagent.id}\"]`,
+        "persistent Codex child stable identity",
+      );
+      assertRecordIncludes(
+        second.records,
+        `\"status\":\"pending_init\"`,
+        "persistent Codex child restart state",
+      );
+      assertRecordIncludes(
+        second.records,
+        secondDefinition.visibleText,
+        "persistent Codex child follow-up response",
+      );
     } else if (isOpencode) {
-      assertRecordIncludes(second.records, `\"task_id\":\"${subagent.id}\"`, "persistent OpenCode child continuation");
-      assertRecordIncludes(second.records, `\"callID\":\"${subagent.followUpToolUseId}\"`, "persistent OpenCode child follow-up invocation");
-      assertRecordIncludes(second.records, secondDefinition.visibleText, "persistent OpenCode child follow-up response");
+      assertRecordIncludes(
+        second.records,
+        `\"task_id\":\"${subagent.id}\"`,
+        "persistent OpenCode child continuation",
+      );
+      assertRecordIncludes(
+        second.records,
+        `\"callID\":\"${subagent.followUpToolUseId}\"`,
+        "persistent OpenCode child follow-up invocation",
+      );
+      assertRecordIncludes(
+        second.records,
+        secondDefinition.visibleText,
+        "persistent OpenCode child follow-up response",
+      );
     } else if (isCursor) {
-      assertRecordIncludes(second.records, `\"resume\":\"${subagent.id}\"`, "persistent Cursor child continuation");
-      assertRecordIncludes(second.records, `\"call_id\":\"${subagent.followUpToolUseId}\"`, "persistent Cursor child follow-up invocation");
-      assertRecordIncludes(second.records, secondDefinition.visibleText, "persistent Cursor child follow-up response");
+      assertRecordIncludes(
+        second.records,
+        `\"resume\":\"${subagent.id}\"`,
+        "persistent Cursor child continuation",
+      );
+      assertRecordIncludes(
+        second.records,
+        `\"call_id\":\"${subagent.followUpToolUseId}\"`,
+        "persistent Cursor child follow-up invocation",
+      );
+      assertRecordIncludes(
+        second.records,
+        secondDefinition.visibleText,
+        "persistent Cursor child follow-up response",
+      );
     } else {
-      assertRecordIncludes(second.records, `\"resumedAgentId\":\"${subagent.id}\"`, "persistent child resume identity");
-      assertRecordIncludes(second.records, `\"tool_use_id\":\"${subagent.followUpToolUseId}\"`, "persistent child follow-up invocation");
-      assertRecordIncludes(second.records, secondDefinition.visibleText, "persistent child follow-up response");
+      assertRecordIncludes(
+        second.records,
+        `\"resumedAgentId\":\"${subagent.id}\"`,
+        "persistent child resume identity",
+      );
+      assertRecordIncludes(
+        second.records,
+        `\"tool_use_id\":\"${subagent.followUpToolUseId}\"`,
+        "persistent child follow-up invocation",
+      );
+      assertRecordIncludes(
+        second.records,
+        secondDefinition.visibleText,
+        "persistent child follow-up response",
+      );
     }
     const agentEvents = await resumedBridge.call("session:agent-events", {
       sessionId: launched.id,
       parentToolUseId: subagent.rootToolUseId,
     });
-    const lifecycle = agentEvents.events.filter((event) => event.type === "agent.started" || event.type === "agent.completed");
+    const lifecycle = agentEvents.events.filter(
+      (event) => event.type === "agent.started" || event.type === "agent.completed",
+    );
     for (const event of lifecycle) {
       const payload = event.payload ?? {};
       if (
-        payload.providerChildSessionId !== subagent.id
-        || payload.providerParentConversationId !== VERIFICATION_CONVERSATION_ID
-        || payload.agentRootToolUseId !== subagent.rootToolUseId
-        || typeof payload.providerInvocationId !== "string"
+        payload.providerChildSessionId !== subagent.id ||
+        payload.providerParentConversationId !== VERIFICATION_CONVERSATION_ID ||
+        payload.agentRootToolUseId !== subagent.rootToolUseId ||
+        typeof payload.providerInvocationId !== "string"
       ) {
         throw new Error("persistent child lifecycle correlation fields were not persisted");
       }
     }
     for (const runId of [subagent.rootToolUseId, subagent.followUpToolUseId]) {
-      if (!lifecycle.some((event) => event.payload?.agentRunId === runId && event.type === "agent.started")) {
+      if (
+        !lifecycle.some(
+          (event) => event.payload?.agentRunId === runId && event.type === "agent.started",
+        )
+      ) {
         throw new Error(`persistent child start for ${runId} was not queryable after restart`);
       }
-      if (!lifecycle.some((event) => event.payload?.agentRunId === runId && event.type === "agent.completed")) {
+      if (
+        !lifecycle.some(
+          (event) => event.payload?.agentRunId === runId && event.type === "agent.completed",
+        )
+      ) {
         throw new Error(`persistent child completion for ${runId} was not queryable after restart`);
       }
     }
     const invocationIds = new Set(lifecycle.map((event) => event.payload?.providerInvocationId));
     if (invocationIds.size < 2) {
-      throw new Error("persistent child runs did not retain distinct provider invocation identities");
+      throw new Error(
+        "persistent child runs did not retain distinct provider invocation identities",
+      );
     }
     timeline.push({
       at: new Date().toISOString(),
@@ -717,16 +1115,15 @@ async function runScenario({
     });
     const browser = [];
     for (const theme of ["light", "dark"]) {
-      browser.push(await verifyUi({
-        name: `persistent-agent-${theme}`,
-        expectedTexts: [],
-        agentExpectedTexts: [
-          firstDefinition.visibleText,
-          secondDefinition.visibleText,
-        ],
-        agentMustSucceed: true,
-        theme,
-      }));
+      browser.push(
+        await verifyUi({
+          name: `persistent-agent-${theme}`,
+          expectedTexts: [],
+          agentExpectedTexts: [firstDefinition.visibleText, secondDefinition.visibleText],
+          agentMustSucceed: true,
+          theme,
+        }),
+      );
     }
     return {
       session: second.session,
@@ -741,48 +1138,84 @@ async function runScenario({
 
   if (scenario === "cancellation") {
     const partial = await collectUntilText(bridge, launched.id, definition.visibleText, timeoutMs);
-    const streamingUi = await verifyUi({ name: "cancellation-streaming", expectedTexts: [definition.visibleText], expectIdle: false });
+    const streamingUi = await verifyUi({
+      name: "cancellation-streaming",
+      expectedTexts: [definition.visibleText],
+      expectIdle: false,
+    });
     await terminate(launched.id);
     const result = await collectUntilTerminal(bridge, launched.id, timeoutMs, partial.cursors);
-    if (result.session.state !== "cancelled") throw new Error(`cancelled scenario ended in ${result.session.state}`);
-    const completeUi = await verifyUi({ name: "cancellation-complete", expectedTexts: [definition.visibleText], expectIdle: true });
-    return { session: result.session, workspace, records: [...partial.records, ...result.records], browser: [streamingUi, completeUi] };
+    if (result.session.state !== "cancelled")
+      throw new Error(`cancelled scenario ended in ${result.session.state}`);
+    const completeUi = await verifyUi({
+      name: "cancellation-complete",
+      expectedTexts: [definition.visibleText],
+      expectIdle: true,
+    });
+    return {
+      session: result.session,
+      workspace,
+      records: [...partial.records, ...result.records],
+      browser: [streamingUi, completeUi],
+    };
   }
 
   const result = await collectUntilTerminal(bridge, launched.id, timeoutMs);
-  if (result.session.state !== "failed") throw new Error(`${scenario} scenario ended in ${result.session.state}`);
+  if (result.session.state !== "failed")
+    throw new Error(`${scenario} scenario ended in ${result.session.state}`);
   assertIncludes(result.records, definition.diagnostic, `${scenario} diagnostic`);
-  const ui = await verifyUi({ name: scenario, expectedTexts: [definition.diagnostic], expectIdle: true });
+  const ui = await verifyUi({
+    name: scenario,
+    expectedTexts: [definition.diagnostic],
+    expectIdle: true,
+  });
   return { session: result.session, workspace, records: result.records, browser: [ui] };
 }
 
 async function sqliteSnapshot(databasePath, sessionId) {
-  const sql = "SELECT json_object('sessions',(SELECT json_group_array(json_object('id',id,'state',state,'provider',provider,'providerConversationId',provider_conversation_id)) FROM sessions),'events',(SELECT json_group_array(json_object('id',id,'sessionId',session_id,'type',type,'message',message,'createdAt',created_at)) FROM events ORDER BY created_at),'rawOutputs',(SELECT json_group_array(json_object('sessionId',session_id,'stream',stream,'content',content,'createdAt',created_at)) FROM raw_outputs ORDER BY created_at),'pendingMessages',(SELECT json_group_array(json_object('id',id,'sessionId',session_id,'content',content,'position',position,'deliveryState',delivery_state,'queuedAt',queued_at)) FROM pending_messages ORDER BY position));";
+  const sql =
+    "SELECT json_object('sessions',(SELECT json_group_array(json_object('id',id,'state',state,'provider',provider,'providerConversationId',provider_conversation_id)) FROM sessions),'events',(SELECT json_group_array(json_object('id',id,'sessionId',session_id,'type',type,'message',message,'createdAt',created_at)) FROM events ORDER BY created_at),'rawOutputs',(SELECT json_group_array(json_object('sessionId',session_id,'stream',stream,'content',content,'createdAt',created_at)) FROM raw_outputs ORDER BY created_at),'pendingMessages',(SELECT json_group_array(json_object('id',id,'sessionId',session_id,'content',content,'position',position,'deliveryState',delivery_state,'queuedAt',queued_at)) FROM pending_messages ORDER BY position));";
   const result = await runChecked("sqlite3", [databasePath, sql], { timeoutMs: 20_000 });
   const all = JSON.parse(result.stdout.trim());
   return {
     sessions: all.sessions.filter((entry) => entry.id === sessionId),
     events: all.events.filter((entry) => entry.sessionId === sessionId),
     rawOutputs: all.rawOutputs.filter((entry) => entry.sessionId === sessionId),
-    pendingMessages: all.pendingMessages.filter((entry) => entry.sessionId === sessionId)
+    pendingMessages: all.pendingMessages.filter((entry) => entry.sessionId === sessionId),
   };
 }
 
 function expectedPersistenceTexts(scenario) {
   if (scenario === "codex-user-input") return [VERIFICATION_SCENARIOS.codexUserInput.visibleText];
   if (scenario === "chat-resume") {
-    return [VERIFICATION_SCENARIOS.chatResumeFirst.visibleText, VERIFICATION_SCENARIOS.chatResumeSecond.visibleText];
+    return [
+      VERIFICATION_SCENARIOS.chatResumeFirst.visibleText,
+      VERIFICATION_SCENARIOS.chatResumeSecond.visibleText,
+    ];
   }
   if (scenario === "queued-restart") return [VERIFICATION_SCENARIOS.chatResumeSecond.visibleText];
   // The result session is the background chat, not the seeded source chat.
-  if (scenario === "composer-reference" || scenario === "composer-editor") return [VERIFICATION_SCENARIOS.composerBackground.visibleText];
+  if (scenario === "composer-reference" || scenario === "composer-editor")
+    return [VERIFICATION_SCENARIOS.composerBackground.visibleText];
   if (scenario === "fork-merge") {
-    return [VERIFICATION_SCENARIOS.forkTurnOne.visibleText, VERIFICATION_SCENARIOS.forkMerge.visibleText];
+    return [
+      VERIFICATION_SCENARIOS.forkTurnOne.visibleText,
+      VERIFICATION_SCENARIOS.forkMerge.visibleText,
+    ];
   }
-  if (scenario === "workspace-settings") return [VERIFICATION_SCENARIOS.workspaceSettings.visibleText];
-  if (scenario === "browser-focus" || scenario === "browser-frames" || scenario === "visualizations") return [VERIFICATION_SCENARIOS.composerSource.visibleText];
+  if (scenario === "workspace-settings")
+    return [VERIFICATION_SCENARIOS.workspaceSettings.visibleText];
+  if (
+    scenario === "browser-focus" ||
+    scenario === "browser-frames" ||
+    scenario === "visualizations"
+  )
+    return [VERIFICATION_SCENARIOS.composerSource.visibleText];
   if (scenario === "session-move") {
-    return [VERIFICATION_SCENARIOS.sessionMoveFirst.visibleText, VERIFICATION_SCENARIOS.sessionMoveSecond.visibleText];
+    return [
+      VERIFICATION_SCENARIOS.sessionMoveFirst.visibleText,
+      VERIFICATION_SCENARIOS.sessionMoveSecond.visibleText,
+    ];
   }
   if (scenario === "persistent-subagent") {
     return [
@@ -841,7 +1274,9 @@ async function terminateProviderForCleanup(bridge, sessionId, report, context) {
 
 export async function runVerification(options) {
   const runId = uniqueRunId();
-  const outputDir = path.resolve(options.outputDir ?? path.join(repoRoot, "scratch", "verification", runId));
+  const outputDir = path.resolve(
+    options.outputDir ?? path.join(repoRoot, "scratch", "verification", runId),
+  );
   await prepareEvidenceDirectory(outputDir);
   const runRoot = await mkdtemp(path.join(tmpdir(), "argmax-verify-"));
   const profile = path.join(runRoot, "profile");
@@ -849,8 +1284,18 @@ export async function runVerification(options) {
   const repoPath = path.join(runRoot, "repo");
   const controlDir = path.join(runRoot, "control");
   const invocationLog = path.join(outputDir, "provider-invocations.ndjson");
-  await Promise.all([mkdir(profile, { recursive: true }), mkdir(home, { recursive: true }), mkdir(controlDir, { recursive: true })]);
-  await writeFile(path.join(profile, "sync.json"), `${JSON.stringify({ claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 })}\n`);
+  await Promise.all([
+    mkdir(profile, { recursive: true }),
+    mkdir(home, { recursive: true }),
+    mkdir(controlDir, { recursive: true }),
+  ]);
+  await writeFile(
+    path.join(profile, "sync.json"),
+    `${JSON.stringify({ claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 })}\n`,
+  );
+  const tripwireLog = path.join(outputDir, "tripwire.log");
+  await writeFile(tripwireLog, "");
+  await writeTripwires(path.join(runRoot, "tripwire"), tripwireLog, MACHINE_COMMANDS);
   await initializeRepo(repoPath);
   let movePath = null;
   if (options.scenario === "session-move") {
@@ -858,7 +1303,10 @@ export async function runVerification(options) {
     await runChecked(
       "git",
       ["worktree", "add", "-q", "-b", "verification-session-move-target", siblingPath],
-      { cwd: repoPath, timeoutMs: 10_000 },
+      {
+        cwd: repoPath,
+        timeoutMs: 10_000,
+      },
     );
     movePath = await realpath(siblingPath);
   }
@@ -867,6 +1315,7 @@ export async function runVerification(options) {
   const provider = providerForScenario(options.scenario);
   const env = {
     ...isolatedEnvironment(home, fixturePath, controlDir, invocationLog, provider),
+    PATH: [path.join(runRoot, "tripwire"), process.env.PATH].join(path.delimiter),
     ...(movePath ? { ARGMAX_VERIFICATION_MOVE_PATH: movePath } : {}),
   };
   const report = {
@@ -880,7 +1329,7 @@ export async function runVerification(options) {
     assertions: [],
     timeline: [],
     process: {},
-    errors: []
+    errors: [],
   };
   let app = null;
   let pendingScratchStart = null;
@@ -904,10 +1353,14 @@ export async function runVerification(options) {
       terminateRunningCommands("SIGTERM");
       await delay(250);
       terminateRunningCommands("SIGKILL");
-      const sessionId = report.timeline.find((entry) => entry.type === "session-launched")?.sessionId;
+      const sessionId = report.timeline.find(
+        (entry) => entry.type === "session-launched",
+      )?.sessionId;
       if (bridge) {
         try {
-          report.debugSnapshot = redact(await bridge.call("system:debug-snapshot", { afterLogSeq: null }));
+          report.debugSnapshot = redact(
+            await bridge.call("system:debug-snapshot", { afterLogSeq: null }),
+          );
         } catch {}
         if (sessionId) {
           try {
@@ -915,11 +1368,11 @@ export async function runVerification(options) {
               sessionId,
               eventCursor: null,
               rawOutputCursor: null,
-              changeCursor: null
+              changeCursor: null,
             });
             await writeNdjson(path.join(outputDir, "timeline.ndjson"), [
               ...batch.events.map((event) => ({ kind: "event", ...event })),
-              ...batch.rawOutputs.map((output) => ({ kind: "rawOutput", ...output }))
+              ...batch.rawOutputs.map((output) => ({ kind: "rawOutput", ...output })),
             ]);
           } catch {}
           await terminateProviderForCleanup(bridge, sessionId, report, "interruption");
@@ -930,7 +1383,9 @@ export async function runVerification(options) {
         try {
           desktopHandle = await desktopStartup;
         } catch (error) {
-          report.errors.push({ message: `desktop startup ended during interruption: ${error.message}` });
+          report.errors.push({
+            message: `desktop startup ended during interruption: ${error.message}`,
+          });
         }
       }
       if (desktopHandle) {
@@ -944,9 +1399,9 @@ export async function runVerification(options) {
               return {
                 title: document.title,
                 bodyText: document.body.innerText.slice(0, 10_000),
-                diagnostics: window.__ARGMAX_VERIFICATION__?.snapshot() ?? null
+                diagnostics: window.__ARGMAX_VERIFICATION__?.snapshot() ?? null,
               };
-            })
+            }),
           };
         } catch (error) {
           report.errors.push({ message: `native interruption evidence failed: ${error.message}` });
@@ -965,7 +1420,9 @@ export async function runVerification(options) {
         try {
           app = await scratchStartup;
         } catch (error) {
-          report.errors.push({ message: `scratch startup ended during interruption: ${error.message}` });
+          report.errors.push({
+            message: `scratch startup ended during interruption: ${error.message}`,
+          });
         }
       }
       if (app) {
@@ -977,16 +1434,28 @@ export async function runVerification(options) {
       }
       if (sessionId && existsSync(databasePath)) {
         try {
-          await writeJson(path.join(outputDir, "database.json"), await sqliteSnapshot(databasePath, sessionId));
+          await writeJson(
+            path.join(outputDir, "database.json"),
+            await sqliteSnapshot(databasePath, sessionId),
+          );
         } catch {}
       }
       await copyIfPresent(path.join(profile, "app.log"), path.join(outputDir, "app.log"));
       await redactEvidenceTextFiles(outputDir);
       report.finishedAt = new Date().toISOString();
       report.keptRunRoot = options.keep ? runRoot : null;
-      if (options.keep) report.replay = replayDetails({ report, repoRoot, home, profile, env, fixturePath, provider });
+      if (options.keep)
+        report.replay = replayDetails({
+          report,
+          repoRoot,
+          home,
+          profile,
+          env,
+          fixturePath,
+          provider,
+        });
       if (!options.keep) await rm(runRoot, { recursive: true, force: true });
-      report.evidenceFiles = [...await listEvidenceFiles(outputDir), "report.json"].sort();
+      report.evidenceFiles = [...(await listEvidenceFiles(outputDir)), "report.json"].sort();
       await writeJson(path.join(outputDir, "report.json"), report);
       process.stderr.write(`INTERRUPTED ${options.scenario} evidence=${outputDir}\n`);
       process.exit(130);
@@ -998,7 +1467,9 @@ export async function runVerification(options) {
   process.once("SIGTERM", onSigterm);
   try {
     if (persistentSubagentScenarios.has(options.scenario) && options.native !== "off") {
-      throw new Error(`${options.scenario} requires --native off because it verifies a scratch backend restart`);
+      throw new Error(
+        `${options.scenario} requires --native off because it verifies a scratch backend restart`,
+      );
     }
     if (nativeOnlyScenarios.includes(options.scenario) && options.native !== "required") {
       throw new Error(`${options.scenario} requires native verification`);
@@ -1013,23 +1484,25 @@ export async function runVerification(options) {
       env: {
         ...process.env,
         VITE_ARGMAX_VERIFICATION: "1",
-        TAURI_CONFIG: JSON.stringify({ build: { frontendDist: "../dist/verification" } })
+        TAURI_CONFIG: JSON.stringify({ build: { frontendDist: "../dist/verification" } }),
       },
       targetDir,
       rendererOutDir,
-      logDir: path.join(outputDir, "build")
+      logDir: path.join(outputDir, "build"),
     });
     if (!existsSync(builtBinary)) throw new Error(`verification binary missing at ${builtBinary}`);
     report.source.afterBuild = await checkoutFingerprint(repoRoot);
-    if (report.source.beforeBuild.sha256 !== report.source.afterBuild.sha256) throw new Error("checkout changed while the verification build was running");
+    if (report.source.beforeBuild.sha256 !== report.source.afterBuild.sha256)
+      throw new Error("checkout changed while the verification build was running");
     const binaryDirectory = path.join(runRoot, "bin");
     const binary = path.join(binaryDirectory, "argmax");
     await mkdir(binaryDirectory, { recursive: true });
     await copyFile(builtBinary, binary);
     await chmod(binary, (await stat(builtBinary)).mode);
-    const nativeBinary = options.native === "off"
-      ? binary
-      : await prepareNativeAppBinary(binaryDirectory, builtBinary);
+    const nativeBinary =
+      options.native === "off"
+        ? binary
+        : await prepareNativeAppBinary(binaryDirectory, builtBinary);
     const binarySha256 = await fileSha256(binary);
     const nativeBinarySha256 = await fileSha256(nativeBinary);
     report.build = {
@@ -1042,15 +1515,21 @@ export async function runVerification(options) {
       rendererDiagnostics: true,
       rendererOutDir,
       targetDir,
-      features: ["custom-protocol", "verification"]
+      features: ["custom-protocol", "verification"],
     };
 
     const remotePort = await freePort();
     const remoteToken = randomUUID().replaceAll("-", "");
-    await writeFile(path.join(profile, "remote.json"), `${JSON.stringify({ enabled: true, port: remotePort, token: remoteToken }, null, 2)}\n`, { mode: 0o600 });
+    await writeFile(
+      path.join(profile, "remote.json"),
+      `${JSON.stringify({ enabled: true, port: remotePort, token: remoteToken }, null, 2)}\n`,
+      { mode: 0o600 },
+    );
     if (options.native !== "off") {
       desktopModule = await import("./verification/desktop.mjs");
-      const prerequisites = await desktopModule.inspectDesktopPrerequisites({ appBinaryPath: nativeBinary });
+      const prerequisites = await desktopModule.inspectDesktopPrerequisites({
+        appBinaryPath: nativeBinary,
+      });
       report.native = { prerequisites };
       if (prerequisites.available) {
         const desktopPort = await freePort();
@@ -1061,7 +1540,7 @@ export async function runVerification(options) {
           outputDir: path.join(outputDir, "native"),
           env: { ...env, ARGMAX_DATA_DIR: profile },
           port: desktopPort,
-          startTimeoutMs: Math.min(options.timeoutMs, 60_000)
+          startTimeoutMs: Math.min(options.timeoutMs, 60_000),
         });
         pendingDesktopConnection = desktopConnection;
         try {
@@ -1070,7 +1549,11 @@ export async function runVerification(options) {
           if (pendingDesktopConnection === desktopConnection) pendingDesktopConnection = null;
         }
         if (interrupting) throw new Error("verification interrupted during native startup");
-        report.coverage = { backend: "real", provider: "fixture-through-production-adapter", ui: "native-webview" };
+        report.coverage = {
+          backend: "real",
+          provider: "fixture-through-production-adapter",
+          ui: "native-webview",
+        };
         report.process.desktop = { driverOwned: true, remotePort };
       } else if (options.native === "required") {
         throw new Error(`native verification unavailable: ${prerequisites.issues.join("; ")}`);
@@ -1084,7 +1567,7 @@ export async function runVerification(options) {
         binary,
         env,
         port: remotePort,
-        readyTimeoutMs: Math.min(options.timeoutMs, 60_000)
+        readyTimeoutMs: Math.min(options.timeoutMs, 60_000),
       });
       pendingScratchStart = scratchStart;
       try {
@@ -1093,10 +1576,17 @@ export async function runVerification(options) {
         if (pendingScratchStart === scratchStart) pendingScratchStart = null;
       }
       if (interrupting) throw new Error("verification interrupted during scratch startup");
-      report.coverage = { backend: "real", provider: "fixture-through-production-adapter", ui: "remote-browser" };
+      report.coverage = {
+        backend: "real",
+        provider: "fixture-through-production-adapter",
+        ui: "remote-browser",
+      };
       report.process.scratch = { pid: app.pid, port: app.port, log: "app.log" };
     }
-    bridge = await connectBridgeWhenReady({ port: remotePort, token: remoteToken }, options.timeoutMs);
+    bridge = await connectBridgeWhenReady(
+      { port: remotePort, token: remoteToken },
+      options.timeoutMs,
+    );
     const health = await bridge.call("health:ping", {});
     report.assertions.push({ name: "backend-ready", ok: Boolean(health) });
     const definition = definitionForScenario(options.scenario);
@@ -1110,25 +1600,34 @@ export async function runVerification(options) {
             name,
             titleIncludes,
             expectedTexts,
-            expectIdle
+            expectIdle,
           });
           report.native.phases ??= [];
           report.native.phases.push(result);
-          if (!result.ok) throw new Error(`native UI verification failed: ${result.errors.join("; ")}`);
+          if (!result.ok)
+            throw new Error(`native UI verification failed: ${result.errors.join("; ")}`);
           return result;
         }
-      : ({ name, expectedTexts, agentExpectedTexts, agentMustSucceed, theme, titleIncludes = defaultTitleIncludes }) => verifyBrowserSession({
-          repoRoot,
-          port: remotePort,
-          token: remoteToken,
-          outputDir,
-          name: `browser-${name}`,
-          titleIncludes,
+      : ({
+          name,
           expectedTexts,
           agentExpectedTexts,
           agentMustSucceed,
-          theme
-        });
+          theme,
+          titleIncludes = defaultTitleIncludes,
+        }) =>
+          verifyBrowserSession({
+            repoRoot,
+            port: remotePort,
+            token: remoteToken,
+            outputDir,
+            name: `browser-${name}`,
+            titleIncludes,
+            expectedTexts,
+            agentExpectedTexts,
+            agentMustSucceed,
+            theme,
+          });
     const recordNativeAction = (result) => {
       report.native.actions ??= [];
       report.native.actions.push(result);
@@ -1136,34 +1635,51 @@ export async function runVerification(options) {
       return result;
     };
     const sendInput = desktopHandle
-      ? async (_sessionId, input) => recordNativeAction(await desktopModule.sendDesktopMessage({ browser: desktopHandle.browser, input }))
-      : (sessionId, input) => bridge.call("providers:send-input", {
-          sessionId,
-          input,
-          provider: null,
-          modelLabel: null,
-          modelId: null,
-          reasoningEffort: null,
-          fastMode: false
-        });
+      ? async (_sessionId, input) =>
+          recordNativeAction(
+            await desktopModule.sendDesktopMessage({ browser: desktopHandle.browser, input }),
+          )
+      : (sessionId, input) =>
+          bridge.call("providers:send-input", {
+            sessionId,
+            input,
+            provider: null,
+            modelLabel: null,
+            modelId: null,
+            reasoningEffort: null,
+            fastMode: false,
+          });
     const queueInput = desktopHandle
-      ? async (sessionId, input) => recordNativeAction(await desktopModule.sendDesktopMessage({
-          browser: desktopHandle.browser,
-          input,
-          sessionId,
-          expectQueued: true
-        }))
-      : () => { throw new Error("queued-restart requires the native composer"); };
+      ? async (sessionId, input) =>
+          recordNativeAction(
+            await desktopModule.sendDesktopMessage({
+              browser: desktopHandle.browser,
+              input,
+              sessionId,
+              expectQueued: true,
+            }),
+          )
+      : () => {
+          throw new Error("queued-restart requires the native composer");
+        };
     const sendQueuedInput = desktopHandle
-      ? async (sessionId, messageId, input) => recordNativeAction(await desktopModule.sendDesktopQueuedMessage({
-          browser: desktopHandle.browser,
-          sessionId,
-          messageId,
-          input
-        }))
-      : () => { throw new Error("queued-restart requires the native queued-message action"); };
+      ? async (sessionId, messageId, input) =>
+          recordNativeAction(
+            await desktopModule.sendDesktopQueuedMessage({
+              browser: desktopHandle.browser,
+              sessionId,
+              messageId,
+              input,
+            }),
+          )
+      : () => {
+          throw new Error("queued-restart requires the native queued-message action");
+        };
     const terminate = desktopHandle
-      ? async (sessionId) => recordNativeAction(await desktopModule.stopDesktopSession({ browser: desktopHandle.browser, sessionId }))
+      ? async (sessionId) =>
+          recordNativeAction(
+            await desktopModule.stopDesktopSession({ browser: desktopHandle.browser, sessionId }),
+          )
       : (sessionId) => bridge.call("providers:terminate", { sessionId });
     const restartBackend = async () => {
       bridge?.close();
@@ -1181,7 +1697,7 @@ export async function runVerification(options) {
           outputDir: path.join(outputDir, "native"),
           env: { ...env, ARGMAX_DATA_DIR: profile },
           port: desktopPort,
-          startTimeoutMs: Math.min(options.timeoutMs, 60_000)
+          startTimeoutMs: Math.min(options.timeoutMs, 60_000),
         });
         pendingDesktopConnection = desktopConnection;
         try {
@@ -1190,7 +1706,11 @@ export async function runVerification(options) {
           if (pendingDesktopConnection === desktopConnection) pendingDesktopConnection = null;
         }
         if (interrupting) throw new Error("verification interrupted during native restart");
-        report.process.desktop.restarted = { driverOwned: true, remotePort, embeddedPort: desktopHandle.port };
+        report.process.desktop.restarted = {
+          driverOwned: true,
+          remotePort,
+          embeddedPort: desktopHandle.port,
+        };
       } else {
         if (!app) throw new Error("scratch backend restart is unavailable");
         report.process.scratch.restart = await app.stop();
@@ -1203,7 +1723,10 @@ export async function runVerification(options) {
         });
         report.process.scratch.restarted = { pid: app.pid, port: app.port };
       }
-      bridge = await connectBridgeWhenReady({ port: remotePort, token: remoteToken }, options.timeoutMs);
+      bridge = await connectBridgeWhenReady(
+        { port: remotePort, token: remoteToken },
+        options.timeoutMs,
+      );
       const health = await bridge.call("health:ping", {});
       if (!health) throw new Error("scratch backend did not become healthy after restart");
       return bridge;
@@ -1232,13 +1755,21 @@ export async function runVerification(options) {
     } catch (error) {
       if (workflowProgress().length) {
         await mkdir(path.join(outputDir, "native"), { recursive: true });
-        await writeJson(path.join(outputDir, "native", "workflow-progress.json"), { failedWith: error.message, passedBefore: workflowProgress(), diagnostics: workflowDiagnostics(), hostLoadAverage: loadavg() });
+        await writeJson(path.join(outputDir, "native", "workflow-progress.json"), {
+          failedWith: error.message,
+          passedBefore: workflowProgress(),
+          diagnostics: workflowDiagnostics(),
+          hostLoadAverage: loadavg(),
+        });
       }
       if (options.scenario === "session-move") {
         const nativeOutput = path.join(outputDir, "native");
         const failurePath = path.join(nativeOutput, "session-move-failure.json");
-        const artifacts = ["session-move-source.png", "session-move-destination.png", "session-move.json"]
-          .filter((name) => existsSync(path.join(nativeOutput, name)));
+        const artifacts = [
+          "session-move-source.png",
+          "session-move-destination.png",
+          "session-move.json",
+        ].filter((name) => existsSync(path.join(nativeOutput, name)));
         await writeJson(failurePath, { message: error.message, repoPath, movePath, artifacts });
         report.native.sessionMove = { failure: failurePath, artifacts };
       }
@@ -1257,30 +1788,49 @@ export async function runVerification(options) {
         browser: desktopHandle.browser,
         workspace: scenarioResult.workspace,
         outputDir: path.join(outputDir, "native"),
-        timeoutMs: options.timeoutMs
+        timeoutMs: options.timeoutMs,
       });
       report.workspaceRecovery = recovery;
       report.assertions.push(...recovery.assertions);
     }
-    report.session = { id: scenarioResult.session.id, workspaceId: scenarioResult.workspace.id, state: scenarioResult.session.state };
-    report.assertions.push({ name: "scenario-state", ok: true, value: scenarioResult.session.state });
+    report.session = {
+      id: scenarioResult.session.id,
+      workspaceId: scenarioResult.workspace.id,
+      state: scenarioResult.session.state,
+    };
+    report.assertions.push({
+      name: "scenario-state",
+      ok: true,
+      value: scenarioResult.session.state,
+    });
     report.assertions.push(...(scenarioResult.assertions ?? []));
     if (scenarioResult.coverage) report.workflowCoverage = scenarioResult.coverage;
     if (persistentSubagentScenarios.has(options.scenario)) {
       report.assertions.push(
         { name: "persistent-child-stable-id", ok: true, value: scenarioResult.nativeChildId },
-        { name: "persistent-child-queryable-after-restart", ok: true, value: scenarioResult.agentEventCount },
+        {
+          name: "persistent-child-queryable-after-restart",
+          ok: true,
+          value: scenarioResult.agentEventCount,
+        },
       );
     }
     await writeNdjson(path.join(outputDir, "timeline.ndjson"), scenarioResult.records);
-    report.debugSnapshot = redact(await bridge.call("system:debug-snapshot", { afterLogSeq: null }));
+    report.debugSnapshot = redact(
+      await bridge.call("system:debug-snapshot", { afterLogSeq: null }),
+    );
     if (desktopHandle) {
       const diagnostics = await desktopHandle.browser.execute(async function readDatabasePath() {
         return window.argmax.system.diagnostics();
       });
       databasePath = diagnostics.databasePath;
-      report.database = { path: databasePath, isolated: path.resolve(databasePath) === path.resolve(profile, "local-state", "argmax.sqlite") };
-      if (!report.database.isolated) throw new Error(`native app escaped its isolated database profile: ${databasePath}`);
+      report.database = {
+        path: databasePath,
+        isolated:
+          path.resolve(databasePath) === path.resolve(profile, "local-state", "argmax.sqlite"),
+      };
+      if (!report.database.isolated)
+        throw new Error(`native app escaped its isolated database profile: ${databasePath}`);
     }
     bridge.close();
     bridge = null;
@@ -1297,33 +1847,54 @@ export async function runVerification(options) {
 
     const persistence = await sqliteSnapshot(databasePath, scenarioResult.session.id);
     await writeJson(path.join(outputDir, "database.json"), persistence);
-    const persistedSession = persistence.sessions.find((entry) => entry.id === scenarioResult.session.id);
-    const persistedMessages = [...persistence.events.map((entry) => entry.message), ...persistence.rawOutputs.map((entry) => entry.content)];
+    const persistedSession = persistence.sessions.find(
+      (entry) => entry.id === scenarioResult.session.id,
+    );
+    const persistedMessages = [
+      ...persistence.events.map((entry) => entry.message),
+      ...persistence.rawOutputs.map((entry) => entry.content),
+    ];
     const persistenceAssertions = [
       { name: "sqlite-session-persisted", ok: Boolean(persistedSession) },
-      { name: "sqlite-terminal-state-persisted", ok: persistedSession?.state === scenarioResult.session.state, value: persistedSession?.state },
+      {
+        name: "sqlite-terminal-state-persisted",
+        ok: persistedSession?.state === scenarioResult.session.state,
+        value: persistedSession?.state,
+      },
       ...expectedPersistenceTexts(options.scenario).map((text) => ({
         name: `sqlite-event-persisted:${text}`,
-        ok: persistedMessages.some((message) => message.includes(text))
-      }))
+        ok: persistedMessages.some((message) => message.includes(text)),
+      })),
     ];
-    if (options.scenario === "chat-resume" || options.scenario === "queued-restart" || options.scenario === "session-move") {
+    if (
+      options.scenario === "chat-resume" ||
+      options.scenario === "queued-restart" ||
+      options.scenario === "session-move"
+    ) {
       persistenceAssertions.push({
         name: "sqlite-provider-conversation-persisted",
-        ok: persistedSession?.providerConversationId === (options.scenario === "session-move"
-          ? VERIFICATION_MOVED_CONVERSATION_ID
-          : VERIFICATION_CONVERSATION_ID),
-        value: persistedSession?.providerConversationId
+        ok:
+          persistedSession?.providerConversationId ===
+          (options.scenario === "session-move"
+            ? VERIFICATION_MOVED_CONVERSATION_ID
+            : VERIFICATION_CONVERSATION_ID),
+        value: persistedSession?.providerConversationId,
       });
     }
     report.assertions.push(...persistenceAssertions);
     const persistenceFailure = persistenceAssertions.find((assertion) => !assertion.ok);
-    if (persistenceFailure) throw new Error(`persistence assertion failed: ${persistenceFailure.name}`);
+    if (persistenceFailure)
+      throw new Error(`persistence assertion failed: ${persistenceFailure.name}`);
 
     report.source.afterRun = await checkoutFingerprint(repoRoot);
-    if (report.source.afterBuild.sha256 !== report.source.afterRun.sha256) throw new Error("checkout changed during verification; evidence does not describe one source state");
-    if (await fileSha256(binary) !== binarySha256) throw new Error("verification binary changed during the run");
-    if (await fileSha256(nativeBinary) !== nativeBinarySha256) throw new Error("native verification binary changed during the run");
+    if (report.source.afterBuild.sha256 !== report.source.afterRun.sha256)
+      throw new Error(
+        "checkout changed during verification; evidence does not describe one source state",
+      );
+    if ((await fileSha256(binary)) !== binarySha256)
+      throw new Error("verification binary changed during the run");
+    if ((await fileSha256(nativeBinary)) !== nativeBinarySha256)
+      throw new Error("native verification binary changed during the run");
     report.assertions.push({ name: "checkout-stable", ok: true });
     report.status = "passed";
   } catch (error) {
@@ -1331,10 +1902,14 @@ export async function runVerification(options) {
     report.errors.push({ message: error.message, stack: error.stack });
   } finally {
     if (interrupting) return { report, outputDir };
-    const launchedSessionId = scenarioResult?.session.id ?? report.timeline.find((entry) => entry.type === "session-launched")?.sessionId;
+    const launchedSessionId =
+      scenarioResult?.session.id ??
+      report.timeline.find((entry) => entry.type === "session-launched")?.sessionId;
     if (bridge) {
       try {
-        report.debugSnapshot ??= redact(await bridge.call("system:debug-snapshot", { afterLogSeq: null }));
+        report.debugSnapshot ??= redact(
+          await bridge.call("system:debug-snapshot", { afterLogSeq: null }),
+        );
       } catch (error) {
         report.errors.push({ message: `debug snapshot failed: ${error.message}` });
       }
@@ -1344,11 +1919,11 @@ export async function runVerification(options) {
             sessionId: launchedSessionId,
             eventCursor: null,
             rawOutputCursor: null,
-            changeCursor: null
+            changeCursor: null,
           });
           const records = [
             ...batch.events.map((event) => ({ kind: "event", ...event })),
-            ...batch.rawOutputs.map((output) => ({ kind: "rawOutput", ...output }))
+            ...batch.rawOutputs.map((output) => ({ kind: "rawOutput", ...output })),
           ];
           await writeNdjson(path.join(outputDir, "timeline.ndjson"), records);
         } catch (error) {
@@ -1370,7 +1945,7 @@ export async function runVerification(options) {
             return {
               title: document.title,
               bodyText: document.body.innerText.slice(0, 10_000),
-              diagnostics: window.__ARGMAX_VERIFICATION__?.snapshot() ?? null
+              diagnostics: window.__ARGMAX_VERIFICATION__?.snapshot() ?? null,
             };
           });
           report.native.failureEvidence = { screenshot, uiState };
@@ -1396,20 +1971,43 @@ export async function runVerification(options) {
         report.errors.push({ message: `scratch cleanup failed: ${error.message}` });
       }
     }
-    if (launchedSessionId && existsSync(databasePath) && !existsSync(path.join(outputDir, "database.json"))) {
+    if (
+      launchedSessionId &&
+      existsSync(databasePath) &&
+      !existsSync(path.join(outputDir, "database.json"))
+    ) {
       try {
-        await writeJson(path.join(outputDir, "database.json"), await sqliteSnapshot(databasePath, launchedSessionId));
+        await writeJson(
+          path.join(outputDir, "database.json"),
+          await sqliteSnapshot(databasePath, launchedSessionId),
+        );
       } catch (error) {
         report.errors.push({ message: `failure database snapshot failed: ${error.message}` });
       }
+    }
+    const machineCalls = (await readFile(tripwireLog, "utf8")).trim();
+    if (machineCalls) {
+      report.status = "failed";
+      report.errors.push({
+        message: `machine-global command attempted: ${machineCalls.split("\n").join(", ")}`,
+      });
     }
     await copyIfPresent(path.join(profile, "app.log"), path.join(outputDir, "app.log"));
     await redactEvidenceTextFiles(outputDir);
     report.finishedAt = new Date().toISOString();
     report.keptRunRoot = options.keep ? runRoot : null;
-    if (options.keep) report.replay = replayDetails({ report, repoRoot, home, profile, env, fixturePath, provider });
+    if (options.keep)
+      report.replay = replayDetails({
+        report,
+        repoRoot,
+        home,
+        profile,
+        env,
+        fixturePath,
+        provider,
+      });
     if (!options.keep) await rm(runRoot, { recursive: true, force: true });
-    report.evidenceFiles = [...await listEvidenceFiles(outputDir), "report.json"].sort();
+    report.evidenceFiles = [...(await listEvidenceFiles(outputDir)), "report.json"].sort();
     await writeJson(path.join(outputDir, "report.json"), report);
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
@@ -1421,8 +2019,12 @@ async function main() {
   try {
     const options = parseVerifyArgs(process.argv.slice(2));
     const { report, outputDir } = await runVerification(options);
-    process.stderr.write(`${report.status === "passed" ? "PASS" : "FAIL"} ${report.scenario} evidence=${outputDir}\n`);
-    process.stdout.write(`${JSON.stringify({ ok: report.status === "passed", scenario: report.scenario, evidence: outputDir, report: path.join(outputDir, "report.json") })}\n`);
+    process.stderr.write(
+      `${report.status === "passed" ? "PASS" : "FAIL"} ${report.scenario} evidence=${outputDir}\n`,
+    );
+    process.stdout.write(
+      `${JSON.stringify({ ok: report.status === "passed", scenario: report.scenario, evidence: outputDir, report: path.join(outputDir, "report.json") })}\n`,
+    );
     process.exitCode = report.status === "passed" ? 0 : 1;
   } catch (error) {
     process.stderr.write(`verification setup failed: ${error.message}\n`);

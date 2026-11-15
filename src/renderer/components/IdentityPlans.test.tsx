@@ -1,30 +1,30 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IdentityPlans } from "./IdentityPlans.js";
-import {
-  resetLedgerPageStateForTests,
-  setCachedUsageRemaining
-} from "../lib/ledgerPageState.js";
+import { resetLedgerPageStateForTests, setCachedUsageRemaining } from "../lib/ledgerPageState.js";
 import type { ArgmaxApi, UsageRemaining } from "../../shared/types.js";
 import { usageRemainingFixture } from "../../test/fixtures/usageRemaining.js";
+import { FIXED_NOW_ISO, freezeClock, isoAgo } from "../../test/fixedClock.js";
+
+freezeClock();
 
 /** The menu is a `ul`; the block renders the `li`s that sit inside it. */
 function renderPlans(onOpenUsage = vi.fn()): void {
   render(
     <ul>
       <IdentityPlans onOpenUsage={onOpenUsage} />
-    </ul>
+    </ul>,
   );
 }
 
 function fresh(overrides: Partial<UsageRemaining> = {}): UsageRemaining {
-  return usageRemainingFixture({ fetchedAt: new Date().toISOString(), ...overrides });
+  return usageRemainingFixture({ fetchedAt: FIXED_NOW_ISO, ...overrides });
 }
 
 function stubRemaining(remaining: UsageRemaining): ReturnType<typeof vi.fn> {
   const read = vi.fn().mockResolvedValue(remaining);
   (globalThis.window as unknown as { argmax: ArgmaxApi }).argmax = {
-    usage: { remaining: read }
+    usage: { remaining: read },
   } as unknown as ArgmaxApi;
   return read;
 }
@@ -47,7 +47,7 @@ describe("IdentityPlans", () => {
       "claude",
       "codex",
       "opencode",
-      "grok"
+      "grok",
     ]);
     // Cursor is Teams, with its remaining on a dashboard we cannot read.
     expect(within(list).queryByText("Cursor")).toBeNull();
@@ -81,10 +81,7 @@ describe("IdentityPlans", () => {
     expect(read).not.toHaveBeenCalled();
 
     cleanup();
-    setCachedUsageRemaining(
-      usageRemainingFixture({ fetchedAt: new Date(Date.now() - 6 * 60_000).toISOString() }),
-      null
-    );
+    setCachedUsageRemaining(usageRemainingFixture({ fetchedAt: isoAgo(6 * 60_000) }), null);
     renderPlans();
 
     await waitFor(() => {

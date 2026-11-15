@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectFolderChangesState } from "../hooks/useProjectFolderChanges.js";
 import { ProjectFolderChangesList } from "./ProjectFolderChanges.js";
@@ -6,14 +6,36 @@ import { ProjectFolderChangesList } from "./ProjectFolderChanges.js";
 function stateStub(): ProjectFolderChangesState {
   return {
     workingFolder: null,
-    groups: [{
-      folder: { id: "context", projectId: "project", name: "primary", rootPath: "/repos/context", isPrimary: true, enabled: true, summary: null },
-      files: [
-        { path: "src/search/index.ts", status: "modified", additions: 1, deletions: 2, staged: false },
-        { path: "src/api/index.ts", status: "modified", additions: 3, deletions: 4, staged: false }
-      ],
-      error: null
-    }],
+    groups: [
+      {
+        folder: {
+          id: "context",
+          projectId: "project",
+          name: "primary",
+          rootPath: "/repos/context",
+          isPrimary: true,
+          enabled: true,
+          summary: null,
+        },
+        files: [
+          {
+            path: "src/search/index.ts",
+            status: "modified",
+            additions: 1,
+            deletions: 2,
+            staged: false,
+          },
+          {
+            path: "src/api/index.ts",
+            status: "modified",
+            additions: 3,
+            deletions: 4,
+            staged: false,
+          },
+        ],
+        error: null,
+      },
+    ],
     error: null,
     selection: null,
     selectedFolder: null,
@@ -23,7 +45,7 @@ function stateStub(): ProjectFolderChangesState {
     selectFile: vi.fn(),
     clearSelection: vi.fn(),
     refresh: vi.fn(),
-    expandContext: vi.fn()
+    expandContext: vi.fn(),
   };
 }
 
@@ -53,7 +75,9 @@ describe("ProjectFolderChangesList", () => {
     render(<ProjectFolderChangesList state={state} />);
 
     expect(screen.queryByText("No changes")).not.toBeInTheDocument();
-    expect(screen.getByText("context").closest("details")).not.toHaveAttribute("open");
+    const folderGroup = screen.getByRole("group");
+    expect(within(folderGroup).getByText("context")).toBeInTheDocument();
+    expect(folderGroup).not.toHaveAttribute("open");
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 
@@ -64,7 +88,9 @@ describe("ProjectFolderChangesList", () => {
     render(<ProjectFolderChangesList state={state} />);
 
     expect(screen.getByText("Unavailable")).toBeVisible();
-    expect(screen.getByRole("status")).toHaveTextContent("Could not load changes: Repository unavailable");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Could not load changes: Repository unavailable",
+    );
     expect(screen.queryByText("No changes")).not.toBeInTheDocument();
   });
 });

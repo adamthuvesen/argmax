@@ -14,7 +14,7 @@ function activeGoal(): Goal {
     maxTurns: 20,
     lastReason: null,
     createdAt: "2026-09-11T10:00:00.000Z",
-    updatedAt: "2026-09-11T10:05:00.000Z"
+    updatedAt: "2026-09-11T10:05:00.000Z",
   };
 }
 
@@ -32,7 +32,7 @@ const goals = {
   set: vi.fn<ArgmaxApi["goals"]["set"]>(),
   get: vi.fn<ArgmaxApi["goals"]["get"]>(),
   list: vi.fn<ArgmaxApi["goals"]["list"]>(),
-  clear: vi.fn<ArgmaxApi["goals"]["clear"]>()
+  clear: vi.fn<ArgmaxApi["goals"]["clear"]>(),
 };
 
 beforeEach(() => {
@@ -55,8 +55,8 @@ describe("SessionComposer goal", () => {
 
     await waitFor(() =>
       expect(goals.set).toHaveBeenCalledWith(
-        expect.objectContaining({ condition: "every test in test/auth passes" })
-      )
+        expect.objectContaining({ condition: "every test in test/auth passes" }),
+      ),
     );
     // Setting a goal starts its own first turn; the composer must not send one too.
     expect(onSendSessionInput).not.toHaveBeenCalled();
@@ -82,25 +82,12 @@ describe("SessionComposer goal", () => {
     expect(goals.set).not.toHaveBeenCalled();
   });
 
-  // The phone shell hides this page's composer stack, so a goal bar inside it
-  // is a goal nobody can stop from a phone.
-  it("keeps the goal bar out of the composer stack when the host draws the composer", async () => {
-    goals.get.mockResolvedValue(activeGoal());
-    renderConversation(baseSession(), [], { nativeComposerFloor: true });
-
-    const bar = await screen.findByRole("region", { name: "Goal" });
-    expect(bar.closest("form")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Clear goal" }));
-    await waitFor(() => expect(goals.clear).toHaveBeenCalledWith({ sessionId: "session-a" }));
-  });
-
   it("tucks the goal bar into the composer this page draws itself", async () => {
     goals.get.mockResolvedValue(activeGoal());
     renderConversation(baseSession(), []);
 
     const bar = await screen.findByRole("region", { name: "Goal" });
-    expect(bar.closest("form")).not.toBeNull();
+    expect(screen.getByRole("form", { name: "Session composer" })).toContainElement(bar);
   });
 
   it("leaves the draft alone when goals are switched off in settings", async () => {

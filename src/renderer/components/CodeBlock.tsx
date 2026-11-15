@@ -1,15 +1,22 @@
 import { Check, Code2, Copy, WrapText } from "lucide-react";
-import { Children, useContext, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import {
-  highlightCode,
+  Children,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type ReactNode,
+} from "react";
+import {
   peekHighlightedCode,
   plainCodeLines,
-  queueHighlight,
+  requestHighlight,
   resolveFenceLang,
   useHighlightThemeAppearance,
-  useHighlighterReady,
   type HighlightAppearance,
-  type HighlightToken
+  type HighlightToken,
 } from "../lib/highlighter.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { StreamingCodeContext } from "./streamingCodeContext.js";
@@ -51,12 +58,9 @@ const FENCE_LABELS: Record<string, string> = {
   sql: "SQL",
   yaml: "YAML",
   yml: "YAML",
-  toml: "TOML"
+  toml: "TOML",
 };
 
-// Non-streaming: highlight synchronously, exactly as before. Streaming: show
-// plain text and schedule the highlight; each new keystroke cancels and
-// reschedules, so shiki runs once, when the fence settles.
 /** Past this many lines a fence still being written stays plain until it
     closes: re-tokenizing it on every throttle tick would cost frames. */
 const LIVE_HIGHLIGHT_MAX_LINES = 400;
@@ -65,24 +69,23 @@ function useCodeHighlight(
   code: string,
   lang: string | null,
   streaming: boolean,
-  appearance: HighlightAppearance
+  appearance: HighlightAppearance,
 ): HighlightToken[][] {
   // A settled fence colored before paints colored; one that has not been
-  // paints plain and queues its highlight, so a chat full of code opens at
+  // paints plain and asks for its colors, so a chat full of code opens at
   // once rather than tokenizing every fence inside its first render.
   const cachedLines = streaming ? null : peekHighlightedCode(code, lang, appearance);
-  const [queued, setQueued] = useState<{ key: string; lines: HighlightToken[][] } | null>(null);
+  const [settled, setSettled] = useState<{ key: string; lines: HighlightToken[][] } | null>(null);
   const settledKey = `${appearance}\u0000${lang}\u0000${code}`;
-  const needsQueue = !streaming && lang !== null && cachedLines === null;
+  const needsRequest = !streaming && lang !== null && cachedLines === null;
   useEffect(() => {
-    if (!needsQueue) return;
-    return queueHighlight(() => {
-      setQueued({ key: settledKey, lines: highlightCode(code, lang, appearance) });
+    if (!needsRequest || lang === null) return;
+    return requestHighlight(code, lang, appearance, (lines) => {
+      if (lines) setSettled({ key: settledKey, lines });
     });
-  }, [needsQueue, settledKey, code, lang, appearance]);
-  const syncLines = streaming
-    ? null
-    : cachedLines ?? (queued?.key === settledKey ? queued.lines : plainCodeLines(code));
+  }, [needsRequest, settledKey, code, lang, appearance]);
+  const settledLines =
+    cachedLines ?? (settled?.key === settledKey ? settled.lines : plainCodeLines(code));
   const [deferred, setDeferred] = useState<{
     code: string;
     lang: string | null;
@@ -92,26 +95,42 @@ function useCodeHighlight(
   const latest = useRef({ code, lang, appearance });
   latest.current = { code, lang, appearance };
   const pending = useRef<number | null>(null);
+  const cancelLive = useRef<(() => void) | null>(null);
 
   // A throttle, not a debounce: a reveal that grows the fence every frame
   // would otherwise keep pushing the highlight back until the fence closed.
+  // Each tick replaces the request still in flight, so a slow worker never
+  // queues stale prefixes.
   useEffect(() => {
     if (!streaming || pending.current !== null) return;
     pending.current = window.setTimeout(() => {
       pending.current = null;
       const current = latest.current;
-      if (current.code.split("\n", LIVE_HIGHLIGHT_MAX_LINES + 1).length > LIVE_HIGHLIGHT_MAX_LINES) return;
-      setDeferred({ ...current, lines: highlightCode(current.code, current.lang, current.appearance, false) });
+      if (!current.lang) return;
+      if (current.code.split("\n", LIVE_HIGHLIGHT_MAX_LINES + 1).length > LIVE_HIGHLIGHT_MAX_LINES)
+        return;
+      cancelLive.current?.();
+      cancelLive.current = requestHighlight(
+        current.code,
+        current.lang,
+        current.appearance,
+        (lines) => {
+          cancelLive.current = null;
+          if (lines) setDeferred({ ...current, lines });
+        },
+        { keep: false },
+      );
     }, LIVE_HIGHLIGHT_INTERVAL_MS);
   }, [streaming, code, lang, appearance]);
   useEffect(
     () => () => {
       if (pending.current !== null) window.clearTimeout(pending.current);
+      cancelLive.current?.();
     },
-    []
+    [],
   );
 
-  if (!streaming) return syncLines as HighlightToken[][];
+  if (!streaming) return settledLines;
   if (!deferred || deferred.lang !== lang || deferred.appearance !== appearance) {
     return plainCodeLines(code);
   }
@@ -119,9 +138,9 @@ function useCodeHighlight(
   if (!code.startsWith(deferred.code)) return plainCodeLines(code);
   // The lines highlighted last time keep their colors; the line that was
   // still being written and everything after it stay plain until the next pass.
-  const settled = deferred.lines.length - 1;
+  const settledCount = deferred.lines.length - 1;
   const settledLength = deferred.code.lastIndexOf("\n") + 1;
-  return [...deferred.lines.slice(0, settled), ...plainCodeLines(code.slice(settledLength))];
+  return [...deferred.lines.slice(0, settledCount), ...plainCodeLines(code.slice(settledLength))];
 }
 
 function extractFenceTag(className: string | undefined): string | null {
@@ -171,7 +190,7 @@ function formatFenceLabel(fenceTag: string | null): string | null {
 
 export function CodeBlock({
   className,
-  children
+  children,
 }: {
   className?: string;
   children?: ReactNode;
@@ -179,10 +198,9 @@ export function CodeBlock({
   const fenceTag = useMemo(() => extractFenceTag(className), [className]);
   const codeText = useMemo(() => collectText(children).replace(/\n$/, ""), [children]);
   const [copyFlash, copy] = useCopyToClipboard();
-  const ready = useHighlighterReady();
   const appearance = useHighlightThemeAppearance();
   const streaming = useContext(StreamingCodeContext);
-  const lang = useMemo(() => (ready ? resolveFenceLang(fenceTag) : null), [ready, fenceTag]);
+  const lang = useMemo(() => resolveFenceLang(fenceTag), [fenceTag]);
   const lines = useCodeHighlight(codeText, lang, streaming, appearance);
   const [wrapLines, setWrapLines] = useState(false);
 
@@ -197,11 +215,12 @@ export function CodeBlock({
   return (
     <div
       className="code-block"
+      data-testid="code-block"
       data-lang={lang ?? undefined}
       data-label={labelTag ?? undefined}
       data-wrap={wrapLines ? "true" : undefined}
     >
-      <div className="code-block-header">
+      <div className="code-block-header" data-testid="code-block-header">
         <div className="code-block-heading">
           <Code2 className="code-block-icon" size={15} strokeWidth={2} aria-hidden="true" />
           {labelTag ? <span className="code-block-lang">{labelTag}</span> : null}
@@ -221,15 +240,25 @@ export function CodeBlock({
             type="button"
             className="code-block-action code-block-copy"
             aria-label="Copy code"
-            title={copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy code"}
+            title={
+              copyFlash === "copied"
+                ? "Copied"
+                : copyFlash === "failed"
+                  ? "Couldn't copy"
+                  : "Copy code"
+            }
             onClick={handleCopy}
           >
-            {copyFlash === "copied" ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+            {copyFlash === "copied" ? (
+              <Check size={15} aria-hidden="true" />
+            ) : (
+              <Copy size={15} aria-hidden="true" />
+            )}
           </button>
         </div>
       </div>
-      <pre className={className ?? ""}>
-        <code className={className ?? ""}>
+      <pre className={className ?? ""} data-testid="code-block-pre">
+        <code className={className ?? ""} data-testid="code-block-code">
           {lines.map((line, index) => (
             <span className="code-block-line" key={index}>
               {line.length === 0 ? (
@@ -253,7 +282,11 @@ export function CodeBlock({
         </code>
       </pre>
       <span className="code-block-status" role="status" aria-live="polite">
-        {copyFlash === "copied" ? "Code copied." : copyFlash === "failed" ? "Could not copy code." : ""}
+        {copyFlash === "copied"
+          ? "Code copied."
+          : copyFlash === "failed"
+            ? "Could not copy code."
+            : ""}
       </span>
     </div>
   );

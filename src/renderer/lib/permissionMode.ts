@@ -46,9 +46,13 @@ export function readStoredProviderPermissionModes(): ProviderPermissionModes {
   } catch {
     stored = null;
   }
-  return Object.fromEntries(Object.keys(PROVIDER_DISPLAY_NAMES).map((provider) => {
-    const value: unknown = stored && typeof stored === "object" && provider in stored
-      ? Reflect.get(stored, provider) : undefined;
-    return [provider, isPermissionMode(value) ? value : fallback];
-  })) as ProviderPermissionModes;
+  return Object.fromEntries(
+    Object.keys(PROVIDER_DISPLAY_NAMES).map((provider) => {
+      const value: unknown =
+        stored && typeof stored === "object" && provider in stored
+          ? Reflect.get(stored, provider)
+          : undefined;
+      return [provider, isPermissionMode(value) ? value : fallback];
+    }),
+  ) as ProviderPermissionModes;
 }

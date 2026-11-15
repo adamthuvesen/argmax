@@ -30,7 +30,7 @@ const PAUSE_SECONDS = 0.4;
 export function useReadingWave(
   container: RefObject<HTMLElement | null> | HTMLElement | null,
   active: boolean,
-  measureKey: string
+  measureKey: string,
 ): void {
   useLayoutEffect(() => {
     const node = container && "current" in container ? container.current : container;
@@ -47,7 +47,11 @@ export function useReadingWave(
         span.style.setProperty("--reading-wave-offset", `${rect.left - start}px`);
         // A truncated line clips its spans; the band only needs to cross what shows.
         let visibleRight = rect.right;
-        for (let clip = span.parentElement; clip && clip !== node.parentElement; clip = clip.parentElement) {
+        for (
+          let clip = span.parentElement;
+          clip && clip !== node.parentElement;
+          clip = clip.parentElement
+        ) {
           if (getComputedStyle(clip).overflowX !== "visible") {
             visibleRight = Math.min(visibleRight, clip.getBoundingClientRect().right);
           }
@@ -61,8 +65,11 @@ export function useReadingWave(
       const speed = travel / PASS_SECONDS;
       const cycle = travel + PAUSE_SECONDS * speed;
       const duration = PASS_SECONDS + PAUSE_SECONDS;
-      if (Math.abs(Number.parseFloat(node.style.getPropertyValue("--reading-wave-cycle")) - cycle) < 0.5) {
-        return;   // same geometry: leave the pass alone
+      if (
+        Math.abs(Number.parseFloat(node.style.getPropertyValue("--reading-wave-cycle")) - cycle) <
+        0.5
+      ) {
+        return; // same geometry: leave the pass alone
       }
 
       // A longer line means a longer cycle, and re-timing the animation would
@@ -71,10 +78,12 @@ export function useReadingWave(
       // change, and only a fresh line takes its phase from the wall clock.
       // jsdom has no Web Animations, and neither has a line whose animation
       // has not started yet; both fall through to the wall-clock anchor.
-      const animation = node.getAnimations?.().find(
-        (candidate) => (candidate as CSSAnimation).animationName === "reading-wave"
+      const animation = node
+        .getAnimations?.()
+        .find((candidate) => (candidate as CSSAnimation).animationName === "reading-wave");
+      const head = Number.parseFloat(
+        getComputedStyle(node).getPropertyValue("--reading-wave-head"),
       );
-      const head = Number.parseFloat(getComputedStyle(node).getPropertyValue("--reading-wave-head"));
       node.style.setProperty("--reading-wave-cycle", `${cycle}px`);
       node.style.setProperty("--reading-wave-duration", `${duration}s`);
       node.style.setProperty("--reading-wave-delay", "0s");

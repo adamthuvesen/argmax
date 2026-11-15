@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 export const SIDEBAR_CHAT_NESTING_STORAGE_KEY = "argmax.sidebar.chatNesting";
-export const SIDEBAR_COLLAPSED_CHATS_STORAGE_KEY = "argmax.sidebar.collapsedChats";
+const SIDEBAR_COLLAPSED_CHATS_STORAGE_KEY = "argmax.sidebar.collapsedChats";
 
 interface SidebarChatNesting {
   nested: boolean;
@@ -13,9 +13,15 @@ function storedSidebarChatNesting(): SidebarChatNesting {
     try {
       const raw = window.localStorage.getItem(SIDEBAR_CHAT_NESTING_STORAGE_KEY);
       const stored: unknown = raw === null ? null : JSON.parse(raw);
-      if (stored && typeof stored === "object" && "nested" in stored && "detachedIds" in stored &&
-        typeof stored.nested === "boolean" && Array.isArray(stored.detachedIds) &&
-        stored.detachedIds.every((id): id is string => typeof id === "string" && id.length > 0)) {
+      if (
+        stored &&
+        typeof stored === "object" &&
+        "nested" in stored &&
+        "detachedIds" in stored &&
+        typeof stored.nested === "boolean" &&
+        Array.isArray(stored.detachedIds) &&
+        stored.detachedIds.every((id): id is string => typeof id === "string" && id.length > 0)
+      ) {
         return { nested: stored.nested, detachedIds: new Set(stored.detachedIds) };
       }
     } catch {
@@ -37,10 +43,13 @@ function publishSidebarChatNesting(next: SidebarChatNesting): void {
   state = next;
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(SIDEBAR_CHAT_NESTING_STORAGE_KEY, JSON.stringify({
-        nested: next.nested,
-        detachedIds: [...next.detachedIds]
-      }));
+      window.localStorage.setItem(
+        SIDEBAR_CHAT_NESTING_STORAGE_KEY,
+        JSON.stringify({
+          nested: next.nested,
+          detachedIds: [...next.detachedIds],
+        }),
+      );
     } catch {
       // The choice still applies when storage is unavailable.
     }
@@ -57,16 +66,25 @@ export function setSidebarChatsNested(nested: boolean): void {
 export function detachSidebarChat(workspaceId: string): void {
   const current = sidebarChatNestingSnapshot();
   if (current.detachedIds.has(workspaceId)) return;
-  publishSidebarChatNesting({ ...current, detachedIds: new Set([...current.detachedIds, workspaceId]) });
+  publishSidebarChatNesting({
+    ...current,
+    detachedIds: new Set([...current.detachedIds, workspaceId]),
+  });
 }
 
 function subscribeSidebarChatNesting(listener: () => void): () => void {
   listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function useSidebarChatNesting(): SidebarChatNesting {
-  return useSyncExternalStore(subscribeSidebarChatNesting, sidebarChatNestingSnapshot, sidebarChatNestingSnapshot);
+  return useSyncExternalStore(
+    subscribeSidebarChatNesting,
+    sidebarChatNestingSnapshot,
+    sidebarChatNestingSnapshot,
+  );
 }
 
 export function loadCollapsedChatIds(): Set<string> {
@@ -74,7 +92,10 @@ export function loadCollapsedChatIds(): Set<string> {
   try {
     const raw = window.localStorage.getItem(SIDEBAR_COLLAPSED_CHATS_STORAGE_KEY);
     const stored: unknown = raw === null ? null : JSON.parse(raw);
-    if (Array.isArray(stored) && stored.every((id): id is string => typeof id === "string" && id.length > 0)) {
+    if (
+      Array.isArray(stored) &&
+      stored.every((id): id is string => typeof id === "string" && id.length > 0)
+    ) {
       return new Set(stored);
     }
   } catch {
@@ -86,7 +107,10 @@ export function loadCollapsedChatIds(): Set<string> {
 export function saveCollapsedChatIds(workspaceIds: ReadonlySet<string>): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(SIDEBAR_COLLAPSED_CHATS_STORAGE_KEY, JSON.stringify([...workspaceIds]));
+    window.localStorage.setItem(
+      SIDEBAR_COLLAPSED_CHATS_STORAGE_KEY,
+      JSON.stringify([...workspaceIds]),
+    );
   } catch {
     // The collapse still applies when storage is unavailable.
   }

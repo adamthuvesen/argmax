@@ -5,9 +5,9 @@
 use tauri::{AppHandle, State};
 
 use super::inputs::SyncSetConfigInput;
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
 use crate::sync::{self, SyncConfig, SyncStatus};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 #[tauri::command(rename = "sync:get-status", async)]
 #[specta::specta]
@@ -105,4 +105,4 @@ fn app_data_dir(app: &AppHandle) -> ArgmaxResult<std::path::PathBuf> {
     })
 }
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;

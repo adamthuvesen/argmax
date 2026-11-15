@@ -1,8 +1,6 @@
-import type { AgentMode } from "../../shared/types.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import type { RenderItem } from "../lib/foldConversation.js";
-import type { ModelPickerSelection } from "../lib/models.js";
 
 export type UserMessageAttachment = {
   filePath: string;
@@ -19,7 +17,7 @@ export async function sendAfterTerminate(
   isRunning: boolean,
   onTerminateSession: (id: string, options?: TerminateSessionOptions) => Promise<void>,
   send: () => Promise<void>,
-  onError: (message: string) => void
+  onError: (message: string) => void,
 ): Promise<boolean> {
   if (isRunning) {
     try {
@@ -39,7 +37,7 @@ export async function sendAfterTerminate(
 }
 
 export function parseUserMessageAttachments(
-  item: Extract<RenderItem, { kind: "user-message" }>
+  item: Extract<RenderItem, { kind: "user-message" }>,
 ): UserMessageAttachment[] {
   const rawAttachments = arrayValue(item.event.payload.attachments) ?? [];
   return rawAttachments
@@ -52,10 +50,3 @@ export function parseUserMessageAttachments(
     })
     .filter((value): value is UserMessageAttachment => Boolean(value));
 }
-
-export type SessionConversationSendInput = (
-  sessionId: string,
-  input: string,
-  model: ModelPickerSelection,
-  agentMode: AgentMode
-) => Promise<void>;

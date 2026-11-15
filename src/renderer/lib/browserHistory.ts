@@ -1,7 +1,7 @@
 /** Address-bar history, persisted independently of native tab navigation. */
 import {
   indexedDbBrowserHistoryStorage,
-  type BrowserHistoryStorage
+  type BrowserHistoryStorage,
 } from "./browserHistoryStorage.js";
 
 export interface BrowserHistoryEntry {
@@ -15,16 +15,26 @@ export interface BrowserHistoryEntry {
 
 export const BROWSER_HISTORY_KEY = "argmax.browser.history";
 const MAX_ENTRIES = 10_000;
-export const MAX_SUGGESTIONS = 6;
+const MAX_SUGGESTIONS = 6;
 
 function isHistoryEntry(entry: unknown): entry is BrowserHistoryEntry {
-  return typeof entry === "object" && entry !== null &&
-    "url" in entry && typeof entry.url === "string" && /^https?:\/\//i.test(entry.url) &&
-    "title" in entry && (entry.title === null || typeof entry.title === "string") &&
-    "visitedAt" in entry && typeof entry.visitedAt === "number" &&
-    Number.isFinite(entry.visitedAt) && entry.visitedAt >= 0 &&
-    (!("visitCount" in entry) || (typeof entry.visitCount === "number" &&
-      Number.isSafeInteger(entry.visitCount) && entry.visitCount >= 0));
+  return (
+    typeof entry === "object" &&
+    entry !== null &&
+    "url" in entry &&
+    typeof entry.url === "string" &&
+    /^https?:\/\//i.test(entry.url) &&
+    "title" in entry &&
+    (entry.title === null || typeof entry.title === "string") &&
+    "visitedAt" in entry &&
+    typeof entry.visitedAt === "number" &&
+    Number.isFinite(entry.visitedAt) &&
+    entry.visitedAt >= 0 &&
+    (!("visitCount" in entry) ||
+      (typeof entry.visitCount === "number" &&
+        Number.isSafeInteger(entry.visitCount) &&
+        entry.visitCount >= 0))
+  );
 }
 
 let cachedEntries: BrowserHistoryEntry[] = [];
@@ -52,7 +62,7 @@ function readLegacyEntries(): BrowserHistoryEntry[] {
 
 function combineEntries(
   existing: BrowserHistoryEntry[],
-  additions: BrowserHistoryEntry[]
+  additions: BrowserHistoryEntry[],
 ): BrowserHistoryEntry[] {
   const merged = new Map(existing.map((entry) => [entry.url, entry]));
   for (const entry of additions) {
@@ -62,17 +72,18 @@ function combineEntries(
       ...latest,
       title: latest.title ?? previous?.title ?? entry.title,
       visitedAt: Math.max(previous?.visitedAt ?? 0, entry.visitedAt),
-      visitCount: Math.max(previous ? (previous.visitCount ?? 1) : 0, entry.visitCount ?? 1)
+      visitCount: Math.max(previous ? (previous.visitCount ?? 1) : 0, entry.visitCount ?? 1),
     });
   }
-  return [...merged.values()]
-    .sort((a, b) => b.visitedAt - a.visitedAt)
-    .slice(0, MAX_ENTRIES);
+  return [...merged.values()].sort((a, b) => b.visitedAt - a.visitedAt).slice(0, MAX_ENTRIES);
 }
 
 function enqueueMutation<T>(mutation: () => Promise<T>): Promise<T> {
   const result = mutationQueue.then(mutation, mutation);
-  mutationQueue = result.then(() => undefined, () => undefined);
+  mutationQueue = result.then(
+    () => undefined,
+    () => undefined,
+  );
   return result;
 }
 
@@ -128,10 +139,12 @@ export async function recordBrowserVisit(url: string, title: string | null): Pro
       url,
       title: title ?? existing?.title ?? null,
       visitedAt: Date.now(),
-      visitCount: (existing?.visitCount ?? (existing ? 1 : 0)) + 1
+      visitCount: (existing?.visitCount ?? (existing ? 1 : 0)) + 1,
     };
-    const entries = [entry, ...cachedEntries.filter((candidate) => candidate.url !== url)]
-      .slice(0, MAX_ENTRIES);
+    const entries = [entry, ...cachedEntries.filter((candidate) => candidate.url !== url)].slice(
+      0,
+      MAX_ENTRIES,
+    );
     cachedEntries = entries;
     await historyStorage.save(entries);
   });
@@ -154,7 +167,7 @@ function addressForm(url: string): string {
  */
 export function completeBrowserAddress(
   typed: string,
-  suggestions: readonly BrowserHistoryEntry[]
+  suggestions: readonly BrowserHistoryEntry[],
 ): { entry: BrowserHistoryEntry; completed: string } | null {
   if (typed.length === 0 || /\s/.test(typed)) return null;
   const needle = typed.toLowerCase();
@@ -177,16 +190,20 @@ export function suggestBrowserHistory(query: string): BrowserHistoryEntry[] {
   if (!needle) return entries.slice(0, MAX_SUGGESTIONS);
   const words = needle.split(/\s+/);
   const now = Date.now();
-  return entries.flatMap((entry) => {
-    const url = entry.url.toLowerCase();
-    const text = `${url} ${(entry.title ?? "").toLowerCase()}`;
-    if (!words.every((word) => text.includes(word))) return [];
-    const address = addressForm(url);
-    const ageDays = Math.max(0, now - entry.visitedAt) / 86_400_000;
-    const score = (address.startsWith(needle) || url.startsWith(needle) ? 20 : 0) +
-      Math.log2(1 + (entry.visitCount ?? 1)) + 10 / (1 + ageDays / 7);
-    return [{ entry, score }];
-  }).sort((a, b) => b.score - a.score || b.entry.visitedAt - a.entry.visitedAt)
+  return entries
+    .flatMap((entry) => {
+      const url = entry.url.toLowerCase();
+      const text = `${url} ${(entry.title ?? "").toLowerCase()}`;
+      if (!words.every((word) => text.includes(word))) return [];
+      const address = addressForm(url);
+      const ageDays = Math.max(0, now - entry.visitedAt) / 86_400_000;
+      const score =
+        (address.startsWith(needle) || url.startsWith(needle) ? 20 : 0) +
+        Math.log2(1 + (entry.visitCount ?? 1)) +
+        10 / (1 + ageDays / 7);
+      return [{ entry, score }];
+    })
+    .sort((a, b) => b.score - a.score || b.entry.visitedAt - a.entry.visitedAt)
     .slice(0, MAX_SUGGESTIONS)
     .map(({ entry }) => entry);
 }

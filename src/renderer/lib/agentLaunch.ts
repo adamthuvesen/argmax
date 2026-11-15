@@ -50,7 +50,7 @@ export function isInternalAgentLaunchMetadata(output: string): boolean {
  */
 export function agentLaunchLabel(
   tool: ToolCall,
-  codename?: string
+  codename?: string,
 ): { title: string; identity: string | null } {
   const name = trimmedString(codename);
   const description = trimmedString(tool.inputFull.description);
@@ -59,10 +59,12 @@ export function agentLaunchLabel(
 }
 
 function agentLaunchPreview(tool: ToolCall): string {
-  return trimmedString(tool.inputPreview)
-    ?? trimmedString(tool.inputFull.description)
-    ?? trimmedString(tool.inputFull.prompt)
-    ?? "Agent";
+  return (
+    trimmedString(tool.inputPreview) ??
+    trimmedString(tool.inputFull.description) ??
+    trimmedString(tool.inputFull.prompt) ??
+    "Agent"
+  );
 }
 
 /** Every launch row names its own state in words, done included: a finished

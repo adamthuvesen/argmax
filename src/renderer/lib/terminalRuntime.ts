@@ -33,7 +33,7 @@ const MAX_TERMINAL_ROWS = 200;
 function boundedTerminalSize(term: Terminal): { cols: number; rows: number } {
   return {
     cols: boundedDimension(term.cols, MIN_TERMINAL_COLS, MAX_TERMINAL_COLS, DEFAULT_TERMINAL_COLS),
-    rows: boundedDimension(term.rows, MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS, DEFAULT_TERMINAL_ROWS)
+    rows: boundedDimension(term.rows, MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS, DEFAULT_TERMINAL_ROWS),
   };
 }
 
@@ -84,7 +84,7 @@ export function syncTerminalSize(runtime: TerminalTabRuntime): void {
  * keys every shell binds, so the same fingers work here. Null leaves the key
  * to xterm.
  */
-export function macEditingKeySequence(event: KeyboardEvent): string | null {
+function macEditingKeySequence(event: KeyboardEvent): string | null {
   if (event.type !== "keydown" || event.ctrlKey || event.shiftKey || event.isComposing) return null;
   if (event.metaKey && !event.altKey) {
     if (event.key === "Backspace") return "\x15"; // ⌘⌫: kill the line (Ctrl+U)
@@ -116,7 +116,7 @@ export function attachTerminalTab(
   tabId: string,
   workspaceId: string,
   container: HTMLElement,
-  existingTerminalId?: string
+  existingTerminalId?: string,
 ): TerminalTabRuntime {
   const existing = runtimes.get(tabId);
   if (existing) {
@@ -155,7 +155,7 @@ export function attachTerminalTab(
     // lift any foreground that lands below WCAG-ish contrast.
     minimumContrastRatio: 4.5,
     allowProposedApi: true,
-    scrollback: 5000
+    scrollback: 5000,
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
@@ -177,7 +177,7 @@ export function attachTerminalTab(
     lastSentSize: null,
     host,
     disposed: false,
-    cleanups: []
+    cleanups: [],
   };
   runtimes.set(tabId, entry);
 
@@ -199,8 +199,8 @@ export function attachTerminalTab(
       "data-background-intensity",
       "data-font",
       "data-font-size",
-      WINDOW_TRANSLUCENT_ATTRIBUTE
-    ]
+      WINDOW_TRANSLUCENT_ATTRIBUTE,
+    ],
   });
   entry.cleanups.push(() => appearanceObserver.disconnect());
 

@@ -2,7 +2,7 @@ use serde::Deserialize;
 use specta::Type;
 
 use crate::browser::chrome_history::{self, ChromeHistoryImport, ChromeProfile};
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 #[derive(Debug, Clone, Deserialize, Type)]
 #[serde(deny_unknown_fields)]

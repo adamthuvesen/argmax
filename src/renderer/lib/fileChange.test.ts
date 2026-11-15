@@ -49,7 +49,7 @@ describe("interpretFileChange — Claude Write", () => {
   it("returns a single create change with parsed hunks", () => {
     const { result, change } = firstChange("Write", {
       file_path: "/tmp/poem.md",
-      content: "line1\nline2\nline3"
+      content: "line1\nline2\nline3",
     });
     expect(result).toHaveLength(1);
     expect(change.kind).toBe("create");
@@ -62,7 +62,7 @@ describe("interpretFileChange — Claude Write", () => {
   it("flags binary content via a NUL byte", () => {
     const { change } = firstChange("Write", {
       file_path: "/tmp/img.bin",
-      content: "abc\x00def"
+      content: "abc\x00def",
     });
     if (change.kind !== "create") throw new Error("bad kind");
     expect(change.hunks).toHaveLength(0);
@@ -83,7 +83,7 @@ describe("interpretFileChange — Claude Edit", () => {
     const { change } = firstChange("Edit", {
       file_path: "/tmp/a.ts",
       old_string: "foo\nbar",
-      new_string: "FOO\nBAR\nBAZ"
+      new_string: "FOO\nBAR\nBAZ",
     });
     expect(change.kind).toBe("edit");
     if (change.kind !== "edit") return;
@@ -97,7 +97,7 @@ describe("interpretFileChange — Claude Edit", () => {
       file_path: "/tmp/a.ts",
       old_string: "x",
       new_string: "y",
-      replace_all: true
+      replace_all: true,
     });
     if (change.kind !== "edit") throw new Error("bad kind");
     expect(change.note).toMatch(/all matches/i);
@@ -105,7 +105,7 @@ describe("interpretFileChange — Claude Edit", () => {
 
   it("returns null when both old and new strings are empty", () => {
     expect(
-      interpretFileChange("Edit", { file_path: "/tmp/a.ts", old_string: "", new_string: "" })
+      interpretFileChange("Edit", { file_path: "/tmp/a.ts", old_string: "", new_string: "" }),
     ).toBeNull();
   });
 });
@@ -117,8 +117,8 @@ describe("interpretFileChange — MultiEdit", () => {
       edits: [
         { old_string: "a", new_string: "A" },
         { old_string: "b\nb2", new_string: "B" },
-        { old_string: "", new_string: "appended" }
-      ]
+        { old_string: "", new_string: "appended" },
+      ],
     });
     if (change.kind !== "edit") throw new Error("bad kind");
     expect(change.hunks.length).toBe(3);
@@ -133,7 +133,7 @@ describe("interpretFileChange — opencode camelCase inputs", () => {
     const { change } = firstChange("edit", {
       filePath: "/tmp/a.ts",
       oldString: "foo\nbar",
-      newString: "FOO\nBAR\nBAZ"
+      newString: "FOO\nBAR\nBAZ",
     });
     expect(change.kind).toBe("edit");
     if (change.kind !== "edit") return;
@@ -145,7 +145,7 @@ describe("interpretFileChange — opencode camelCase inputs", () => {
   it("renders a create diff from filePath/content", () => {
     const { change } = firstChange("write", {
       filePath: "/tmp/new.ts",
-      content: "hello\nworld"
+      content: "hello\nworld",
     });
     expect(change.kind).toBe("create");
     if (change.kind !== "create") return;
@@ -157,7 +157,7 @@ describe("interpretFileChange — opencode camelCase inputs", () => {
       filePath: "/tmp/a.ts",
       oldString: "x",
       newString: "y",
-      replaceAll: true
+      replaceAll: true,
     });
     if (change.kind !== "edit") throw new Error("bad kind");
     expect(change.note).toMatch(/all matches/i);
@@ -172,10 +172,10 @@ describe("interpretFileChange — Codex file_change", () => {
         {
           path: "b.ts",
           kind: "update",
-          update: { unified_diff: "@@ -1,1 +1,1 @@\n-old\n+new" }
+          update: { unified_diff: "@@ -1,1 +1,1 @@\n-old\n+new" },
         },
-        { path: "c.ts", kind: "delete" }
-      ]
+        { path: "c.ts", kind: "delete" },
+      ],
     });
     if (!result) throw new Error("no result");
     expect(result).toHaveLength(3);
@@ -186,7 +186,7 @@ describe("interpretFileChange — Codex file_change", () => {
 
   it("falls back to before/after when no unified_diff is present", () => {
     const { change } = firstChange("file_change", {
-      changes: [{ path: "x.ts", kind: "update", before: "a", after: "b" }]
+      changes: [{ path: "x.ts", kind: "update", before: "a", after: "b" }],
     });
     if (change.kind !== "edit") throw new Error("bad kind");
     expect(change.addCount).toBe(1);
@@ -208,9 +208,9 @@ describe("interpretFileChange — Codex file_change", () => {
           path: "/repo/model.sql",
           kind: "update",
           unified_diff:
-            "diff --git a/model.sql b/model.sql\nindex 111..222 100644\n--- a/model.sql\n+++ b/model.sql\n@@ -1,3 +1,4 @@\n one\n-two\n+two CHANGED\n+four\n three\n"
-        }
-      ]
+            "diff --git a/model.sql b/model.sql\nindex 111..222 100644\n--- a/model.sql\n+++ b/model.sql\n@@ -1,3 +1,4 @@\n one\n-two\n+two CHANGED\n+four\n three\n",
+        },
+      ],
     });
     if (change.kind !== "edit") throw new Error("bad kind");
     expect(change.addCount).toBe(2);
@@ -224,9 +224,9 @@ describe("interpretFileChange — Codex file_change", () => {
           path: "/repo/new.yml",
           kind: "add",
           unified_diff:
-            "diff --git a/new.yml b/new.yml\nnew file mode 100644\n--- /dev/null\n+++ b/new.yml\n@@ -0,0 +1,2 @@\n+alpha\n+beta\n"
-        }
-      ]
+            "diff --git a/new.yml b/new.yml\nnew file mode 100644\n--- /dev/null\n+++ b/new.yml\n@@ -0,0 +1,2 @@\n+alpha\n+beta\n",
+        },
+      ],
     });
     if (change.kind !== "create") throw new Error("bad kind");
     expect(change.addCount).toBe(2);
@@ -241,9 +241,9 @@ describe("interpretFileChange — Codex file_change", () => {
         {
           path: "/repo/new.md",
           kind: { type: "add", move_path: null },
-          diff: "# New file\n\nBody\n"
-        }
-      ]
+          diff: "# New file\n\nBody\n",
+        },
+      ],
     });
     expect(change.kind).toBe("create");
     if (change.kind !== "create") return;
@@ -257,9 +257,9 @@ describe("interpretFileChange — Codex file_change", () => {
         {
           path: "/repo/gone.md",
           kind: { type: "delete" },
-          diff: ""
-        }
-      ]
+          diff: "",
+        },
+      ],
     });
     expect(change).toEqual({ kind: "delete", path: "/repo/gone.md" });
   });
@@ -267,8 +267,8 @@ describe("interpretFileChange — Codex file_change", () => {
   it("prefers the content Codex did send over a measured diff", () => {
     const { change } = firstChange("file_change", {
       changes: [
-        { path: "/repo/new.yml", kind: "add", content: "alpha\n", unified_diff: "@@ -0,0 +1,9 @@" }
-      ]
+        { path: "/repo/new.yml", kind: "add", content: "alpha\n", unified_diff: "@@ -0,0 +1,9 @@" },
+      ],
     });
     if (change.kind !== "create") throw new Error("bad kind");
     expect(change.addCount).toBe(1);
@@ -280,7 +280,7 @@ describe("interpretFileChange — Grok", () => {
     const { change } = firstChange("search_replace", {
       file_path: "/repo/greet.ts",
       old_string: 'return "hello";',
-      new_string: 'return "hi there";'
+      new_string: 'return "hi there";',
     });
     expect(change.kind).toBe("edit");
     if (change.kind !== "edit") return;
@@ -300,7 +300,7 @@ describe("interpretFileChange — Cursor", () => {
     const { change } = firstChange("editToolCall", {
       path: "x.ts",
       old_string: "a",
-      new_string: "b"
+      new_string: "b",
     });
     expect(change.kind).toBe("edit");
   });
@@ -316,7 +316,8 @@ describe("interpretFileChange — Cursor", () => {
   it("reads the diff an edit hands over", () => {
     const { change } = firstChange("edit", {
       path: "/repo/greet.ts",
-      unified_diff: '@@ -1,3 +1,3 @@\n export function greet() {\n-  return "hello";\n+  return "hi there";\n }'
+      unified_diff:
+        '@@ -1,3 +1,3 @@\n export function greet() {\n-  return "hello";\n+  return "hi there";\n }',
     });
     expect(change.kind).toBe("edit");
     if (change.kind !== "edit") return;
@@ -329,7 +330,7 @@ describe("interpretFileChange — Cursor", () => {
   it("reads a diff with no left side as a create", () => {
     const { change } = firstChange("edit", {
       path: "/repo/note.txt",
-      unified_diff: "@@ -0,0 +1,2 @@\n+alpha\n+beta"
+      unified_diff: "@@ -0,0 +1,2 @@\n+alpha\n+beta",
     });
     expect(change.kind).toBe("create");
     if (change.kind !== "create") return;
@@ -339,14 +340,14 @@ describe("interpretFileChange — Cursor", () => {
   it("keeps create and delete operations when no content hunk exists", () => {
     const created = firstChange("edit", {
       path: "/repo/empty.txt",
-      operation: "create"
+      operation: "create",
     }).change;
     expect(created.kind).toBe("create");
     if (created.kind === "create") expect(created.addCount).toBe(0);
 
     const deleted = firstChange("edit", {
       path: "/repo/gone.txt",
-      operation: "delete"
+      operation: "delete",
     }).change;
     expect(deleted).toEqual({ kind: "delete", path: "/repo/gone.txt" });
   });
@@ -355,7 +356,7 @@ describe("interpretFileChange — Cursor", () => {
     const { change } = firstChange("edit", {
       path: "/repo/greet.ts",
       old_string: "a",
-      new_string: "b"
+      new_string: "b",
     });
     expect(change.kind).toBe("edit");
   });

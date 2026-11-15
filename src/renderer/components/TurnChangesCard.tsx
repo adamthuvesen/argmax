@@ -7,7 +7,7 @@ import {
   Hash,
   SquareCode,
   Terminal,
-  type LucideIcon
+  type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState, type JSX } from "react";
 import { displayPath } from "../lib/displayPath.js";
@@ -25,13 +25,13 @@ const FAMILY_ICONS: Record<FileFamily, LucideIcon> = {
   rust: Cog,
   data: Braces,
   shell: Terminal,
-  doc: FileText
+  doc: FileText,
 };
 
 const KIND_LABELS: Record<TurnFileChange["kind"], string> = {
   create: "Created",
   edit: "Edited",
-  delete: "Deleted"
+  delete: "Deleted",
 };
 
 /**
@@ -46,7 +46,7 @@ export function TurnChangesCard({
   defaultExpanded = true,
   onOpenDiff,
   onOpenFile,
-  onOpenReview
+  onOpenReview,
 }: {
   changes: readonly TurnFileChange[];
   workspaceCwd?: string | null;
@@ -73,10 +73,10 @@ export function TurnChangesCard({
         return {
           change,
           name: slash === -1 ? shown : shown.slice(slash + 1),
-          relativePath: shown
+          relativePath: shown,
         };
       }),
-    [changes, workspaceCwd]
+    [changes, workspaceCwd],
   );
 
   if (rows.length === 0) return null;
@@ -84,7 +84,11 @@ export function TurnChangesCard({
   const fileLabel = `${totals.files} ${totals.files === 1 ? "file" : "files"} changed`;
 
   return (
-    <section className="turn-changes" data-expanded={expanded ? "true" : undefined}>
+    <section
+      className="turn-changes"
+      data-testid="turn-changes"
+      data-expanded={expanded ? "true" : undefined}
+    >
       <div className="turn-changes-head">
         <button
           type="button"
@@ -122,6 +126,7 @@ export function TurnChangesCard({
                 type="button"
                 key={change.path}
                 className="turn-changes-row"
+                data-testid="turn-changes-row"
                 data-family={family}
                 data-kind={change.kind}
                 aria-label={`${KIND_LABELS[change.kind]} ${relativePath}`}

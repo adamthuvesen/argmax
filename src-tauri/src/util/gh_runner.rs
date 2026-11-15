@@ -3,14 +3,14 @@
 
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 fn gh_command(cwd: String, args: Vec<String>) -> tokio::process::Command {
     let mut command = tokio::process::Command::new("gh");
     command.current_dir(cwd).args(args);
     // Finder and Dock launches omit Homebrew paths from the inherited PATH.
     #[cfg(unix)]
-    command.env("PATH", crate::util::login_shell::path());
+    command.env("PATH", argmax_process::login_shell::path());
     command
 }
 

@@ -28,7 +28,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const ROW_LABELS: ReadonlyArray<[string, number]> = [
   ["Mon", 0],
   ["Wed", 2],
-  ["Fri", 4]
+  ["Fri", 4],
 ];
 
 /**
@@ -71,7 +71,7 @@ function layout(days: readonly ActivityHeatmapDay[]): { cells: Cell[]; columns: 
       column,
       row: slot % ROWS,
       monthStart: at.getDate() === 1,
-      month: at.getMonth()
+      month: at.getMonth(),
     });
   });
   return { cells, columns };

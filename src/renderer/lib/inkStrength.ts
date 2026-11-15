@@ -27,7 +27,7 @@ export const INK_STRENGTH_HINTS: Readonly<Record<InkStrength, string>> = {
   7: "The ink Argmax ships.",
   8: "A step stronger.",
   9: "Strong.",
-  10: "Strongest. Near-black on paper, near-white on charcoal."
+  10: "Strongest. Near-black on paper, near-white on charcoal.",
 };
 
 export function toInkStrength(raw: string | number | null | undefined): InkStrength | null {

@@ -6,7 +6,7 @@ import {
   formatMetric,
   formatPercent,
   formatTokens,
-  formatUsd
+  formatUsd,
 } from "./usageFormat.js";
 import {
   isEstimatedProvider,
@@ -15,7 +15,7 @@ import {
   providerLabel,
   providerValue,
   shareOfTotal,
-  type UsageMetric
+  type UsageMetric,
 } from "./usagePresentation.js";
 
 /**
@@ -43,7 +43,7 @@ export function UsageProviderRows({
   summary,
   metric,
   selected,
-  onSelect
+  onSelect,
 }: {
   summary: UsageSummary;
   metric: UsageMetric;
@@ -61,7 +61,11 @@ export function UsageProviderRows({
       {/* Named the way the figure above is, so the card reads as two parts:
           the total, then who it is made of. */}
       <p className="usage-eyebrow">By provider</p>
-      <ul className="usage-provider-rows" aria-label="Usage by provider" data-narrowed={selected ? "true" : "false"}>
+      <ul
+        className="usage-provider-rows"
+        aria-label="Usage by provider"
+        data-narrowed={selected ? "true" : "false"}
+      >
         {rows.map((row) => {
           const value = providerValue(row, metric);
           const share = row.available ? shareOfTotal(value, total) : null;
@@ -85,7 +89,13 @@ export function UsageProviderRows({
                   focusable="false"
                 >
                   <rect className="usage-provider-bar-track" x="0" y="1" width="100" height="1" />
-                  <rect className="usage-provider-bar-fill" x="0" y="0" width={barWidth(share)} height="3" />
+                  <rect
+                    className="usage-provider-bar-fill"
+                    x="0"
+                    y="0"
+                    width={barWidth(share)}
+                    height="3"
+                  />
                 </svg>
               ) : null}
               <span className="usage-provider-body">
@@ -116,7 +126,7 @@ export function UsageProviderRows({
                         metric === "cost"
                           ? `${formatTokens(processedTokens(row.tokens))} tokens`
                           : formatUsd(row.costUsd),
-                        estimated
+                        estimated,
                       )}
                     </>
                   ) : (
@@ -139,7 +149,9 @@ export function UsageProviderRows({
                   type="button"
                   className="usage-provider-toggle"
                   aria-pressed={pressed}
-                  title={pressed ? "Show every provider" : `Show only ${providerLabel(row.provider)}`}
+                  title={
+                    pressed ? "Show every provider" : `Show only ${providerLabel(row.provider)}`
+                  }
                   onClick={() => onSelect(pressed ? null : row.provider)}
                 >
                   {body}

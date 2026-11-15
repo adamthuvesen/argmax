@@ -16,16 +16,19 @@ export function SkeletonPane({ label = "Loading" }: { label?: string }): JSX.Ele
   return (
     <div className="skeleton-pane" role="status" aria-busy="true" aria-label={label}>
       <div className="skeleton-header">
-        <div className="loading-block skeleton-block-title" />
-        <div className="loading-block skeleton-block-subtitle" />
+        <div data-testid="loading-block" className="loading-block skeleton-block-title" />
+        <div data-testid="loading-block" className="loading-block skeleton-block-subtitle" />
       </div>
       <div className="skeleton-rows">
         {ROW_KEYS.map((key) => (
-          <div className="skeleton-row" key={key}>
-            <div className="loading-block skeleton-row-avatar" />
+          <div className="skeleton-row" data-testid="skeleton-row" key={key}>
+            <div data-testid="loading-block" className="loading-block skeleton-row-avatar" />
             <div className="skeleton-row-body">
-              <div className="loading-block skeleton-row-line" />
-              <div className="loading-block skeleton-row-line skeleton-row-line-short" />
+              <div data-testid="loading-block" className="loading-block skeleton-row-line" />
+              <div
+                data-testid="loading-block"
+                className="loading-block skeleton-row-line skeleton-row-line-short"
+              />
             </div>
           </div>
         ))}

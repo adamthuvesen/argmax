@@ -16,16 +16,16 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::application::session_launch::{self, LaunchSpec};
-use crate::application::validation::{NonEmptyString, Prompt, SessionId};
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::database::Database;
-use crate::persistence::routines::{self, RoutineAuthor, RoutineLaunchFields, RoutineRunTarget};
-use crate::persistence::time::now_iso;
 use crate::providers::inputs::ProvidersSendInput;
 use crate::providers::session_service::{self, ProviderSessionService};
-use crate::providers::{AgentMode, ProviderId, ReasoningEffort};
-use crate::util::sync::LockOrRecover;
-use crate::workspaces::WorkspaceService;
+use crate::workspaces::orchestration::WorkspaceService;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::{AgentMode, ProviderId, ReasoningEffort};
+use argmax_contracts::validation::{NonEmptyString, Prompt, SessionId};
+use argmax_store::database::Database;
+use argmax_store::routines::{self, RoutineAuthor, RoutineLaunchFields, RoutineRunTarget};
+use argmax_store::sync::LockOrRecover;
+use argmax_store::time::now_iso;
 use chrono::Utc;
 
 use super::schedule;
@@ -367,13 +367,13 @@ pub(crate) async fn fire_routine(
         // A scheduled/routine launch is never attached to an Arc today.
         arc_id: None,
         arc_is_coordinator_launch: false,
-        author: crate::persistence::authorship::PromptAuthor::unattested(),
+        author: argmax_store::authorship::PromptAuthor::unattested(),
     };
     let outcome = match spec.validate() {
         Ok(spec) => {
             let project = {
                 let connection = database.read_connection();
-                crate::persistence::projects::require_project(&connection, &fields.project_id)
+                argmax_store::projects::require_project(&connection, &fields.project_id)
             };
             match project {
                 Ok(project) => {
@@ -449,7 +449,7 @@ enum FollowUpOutcome {
 async fn send_routine_follow_up(
     providers: &Arc<ProviderSessionService>,
     fields: &RoutineLaunchFields,
-    provider: crate::providers::ProviderId,
+    provider: argmax_contracts::validation::ProviderId,
     session_id: &str,
     carry_model: bool,
 ) -> FollowUpOutcome {
@@ -476,6 +476,7 @@ async fn send_routine_follow_up(
     };
     let result = providers
         .send_scheduled_input(ProvidersSendInput {
+            submitted_at_ms: None,
             session_id,
             input,
             provider,
@@ -623,8 +624,8 @@ impl StaysScheduled {
 fn resolve_routine_permissions(
     provider: &str,
     default_agent: &crate::default_agent::DefaultAgent,
-) -> Option<(ProviderId, crate::providers::PermissionMode)> {
-    let provider = crate::providers::runtime::parse_provider(provider).ok()?;
+) -> Option<(ProviderId, argmax_contracts::validation::PermissionMode)> {
+    let provider = argmax_contracts::validation::parse_provider(provider).ok()?;
     Some((provider, default_agent.permission_mode_for(provider)))
 }
 
@@ -640,10 +641,10 @@ fn record_scheduled_run(
     let Some(arc_id) = fields.arc_id.as_deref() else {
         return;
     };
-    let mut event = crate::persistence::arc_events::NewArcEvent::new(
+    let mut event = argmax_store::arc_events::NewArcEvent::new(
         format!("scheduled:{}:{fired_at}", fields.id),
         arc_id,
-        crate::persistence::arc_events::ArcEventKind::ScheduledRun,
+        argmax_store::arc_events::ArcEventKind::ScheduledRun,
         fields.name.clone(),
     );
     event.occurred_at = Some(fired_at.to_string());
@@ -655,7 +656,7 @@ fn record_scheduled_run(
         .find(|line| !line.trim().is_empty())
         .map(str::to_string);
     let connection = database.connection();
-    if let Err(error) = crate::persistence::arc_events::record_arc_event(&connection, &event) {
+    if let Err(error) = argmax_store::arc_events::record_arc_event(&connection, &event) {
         tracing::warn!(routine_id = %fields.id, ?error, "failed to record the arc timeline row for a scheduled run");
     }
 }
@@ -667,7 +668,7 @@ enum ArcCoordinatorResolution {
     /// Paused or done: not a failure, just nothing to deliver this occurrence.
     Skip,
     /// Active with no live coordinator — missing, or its workspace is
-    /// archiving/archived (see `crate::persistence::arcs::arc_is_live`).
+    /// archiving/archived (see `argmax_store::arcs::arc_is_live`).
     NoCoordinator,
     Coordinator(String),
 }
@@ -679,14 +680,14 @@ fn resolve_arc_coordinator(
     let Some(arc_id) = arc_id else {
         return ArcCoordinatorResolution::NoCoordinator;
     };
-    let arc = match crate::persistence::arcs::get_arc(connection, arc_id) {
+    let arc = match argmax_store::arcs::get_arc(connection, arc_id) {
         Ok(arc) => arc,
         Err(_) => return ArcCoordinatorResolution::NoCoordinator,
     };
-    if !matches!(arc.state, crate::persistence::arcs::ArcState::Active) {
+    if !matches!(arc.state, argmax_store::arcs::ArcState::Active) {
         return ArcCoordinatorResolution::Skip;
     }
-    match crate::persistence::arcs::arc_is_live(connection, &arc) {
+    match argmax_store::arcs::arc_is_live(connection, &arc) {
         Ok(true) => ArcCoordinatorResolution::Coordinator(
             arc.coordinator_session_id
                 .expect("arc_is_live implies a coordinator session id"),
@@ -700,13 +701,14 @@ fn resolve_arc_coordinator(
 mod tests {
     use super::*;
     use crate::default_agent::DefaultAgent;
-    use crate::persistence::sessions::{persist_session, PersistSessionInput};
-    use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
     use crate::providers::runtime::{
         BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeHandle,
     };
-    use crate::providers::{PermissionMode, ProviderLaunchInput};
-    use crate::sessions::state::SessionState;
+    use crate::providers::ProviderLaunchInput;
+    use argmax_contracts::sessions::state::SessionState;
+    use argmax_contracts::validation::PermissionMode;
+    use argmax_store::sessions::{persist_session, PersistSessionInput};
+    use argmax_store::workspaces::{persist_workspace, PersistWorkspaceInput};
     use std::collections::HashMap;
 
     #[tokio::test]
@@ -739,7 +741,7 @@ mod tests {
         let dependencies = SchedulerDependencies {
             database: Arc::clone(&database),
             workspaces: WorkspaceService::new(Arc::clone(&database)),
-            providers: ProviderSessionService::new(Arc::clone(&database)),
+            providers: ProviderSessionService::builder(Arc::clone(&database)).build(),
             runs: Arc::new(RoutineRuns::default()),
             app_data_dir: data_dir.path().to_path_buf(),
         };
@@ -966,7 +968,10 @@ mod tests {
                 .push(input.session_id.clone());
             self.provider_models
                 .lock_or_recover("recorded provider/model")
-                .push((input.provider.as_str().to_string(), input.model_id.clone()));
+                .push((
+                    input.provider.as_str().to_string(),
+                    input.model_id.to_string(),
+                ));
             self.launched.notify_one();
             Box::pin(async {
                 Err(ArgmaxError::service(
@@ -1050,7 +1055,7 @@ mod tests {
         arc_coordinator_routine(&database, "r1", "arc-1");
         let fields = arc_coordinator_fields(&database, "r1");
 
-        let providers = ProviderSessionService::new(Arc::clone(&database));
+        let providers = ProviderSessionService::builder(Arc::clone(&database)).build();
         let workspaces = Arc::new(WorkspaceService::new(Arc::clone(&database)));
         let outcome = fire_routine(
             &database,
@@ -1086,7 +1091,7 @@ mod tests {
         arc_coordinator_routine(&database, "r1", "arc-1");
         let fields = arc_coordinator_fields(&database, "r1");
 
-        let providers = ProviderSessionService::new(Arc::clone(&database));
+        let providers = ProviderSessionService::builder(Arc::clone(&database)).build();
         let workspaces = Arc::new(WorkspaceService::new(Arc::clone(&database)));
         let outcome = fire_routine(
             &database,
@@ -1119,8 +1124,9 @@ mod tests {
         arc_coordinator_routine(&database, "r1", "arc-1");
 
         let launcher = Arc::new(RecordingLauncher::default());
-        let providers =
-            ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+        let providers = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(launcher.clone())
+            .build();
         let workspaces = Arc::new(WorkspaceService::new(Arc::clone(&database)));
         let default_agent = test_default_agent();
 
@@ -1182,8 +1188,9 @@ mod tests {
         );
 
         let launcher = Arc::new(RecordingLauncher::default());
-        let providers =
-            ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+        let providers = ProviderSessionService::builder(Arc::clone(&database))
+            .launcher(launcher.clone())
+            .build();
         let workspaces = Arc::new(WorkspaceService::new(Arc::clone(&database)));
         let default_agent = test_default_agent();
 

@@ -2,9 +2,18 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import { BROWSER_PAGE_OPEN_KEY, SIDEBAR_CLAUDE_ARTIFACTS_KEY } from "./lib/uiPreferences.js";
-import { closeSettings, openSettings, setupAppTestMocks, snapshot } from "../test/appTestHarness.js";
+import {
+  closeSettings,
+  openSettings,
+  setupAppTestMocks,
+  snapshot,
+} from "../test/appTestHarness.js";
 import type { BrowserAgentOpenEvent } from "../shared/types.js";
-import { BROWSER_PAGE_OWNER_ID, getBrowserTabs, resetBrowserTabsForTests } from "./lib/browserPanel.js";
+import {
+  BROWSER_PAGE_OWNER_ID,
+  getBrowserTabs,
+  resetBrowserTabsForTests,
+} from "./lib/browserPanel.js";
 
 async function renderApp(): Promise<void> {
   render(<App />);
@@ -47,14 +56,24 @@ describe("App browser page", () => {
     await renderApp();
     fireEvent.click(screen.getByRole("button", { name: "Artifacts" }));
     expect(await screen.findByRole("region", { name: "Browser" })).toBeInTheDocument();
-    await waitFor(() => expect(open).toHaveBeenCalledWith(expect.objectContaining({ url: "https://claude.ai/artifacts" })));
+    await waitFor(() =>
+      expect(open).toHaveBeenCalledWith(
+        expect.objectContaining({ url: "https://claude.ai/artifacts" }),
+      ),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Artifacts" }));
-    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).filter((tab) => tab.url === "https://claude.ai/artifacts")).toHaveLength(1);
+    expect(
+      getBrowserTabs(BROWSER_PAGE_OWNER_ID).filter(
+        (tab) => tab.url === "https://claude.ai/artifacts",
+      ),
+    ).toHaveLength(1);
   });
 
   it("swaps to the artifacts page while Browser is open, and leaves no page painted over a chat", async () => {
     window.localStorage.setItem(SIDEBAR_CLAUDE_ARTIFACTS_KEY, "true");
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 40, 800, 600));
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(300, 40, 800, 600),
+    );
     // Native visibility per tab: open shows a page, set-bounds shows or hides it.
     const shown = new Map<string, boolean>();
     const api = window.argmax!.browser;
@@ -68,9 +87,13 @@ describe("App browser page", () => {
       shown.set(input.tabId, input.visible);
       return setBounds(input);
     });
-    const visibleUrls = (): string[] => [...shown]
-      .filter(([, visible]) => visible)
-      .map(([tabId]) => getBrowserTabs(BROWSER_PAGE_OWNER_ID).find((tab) => tab.id === tabId)?.url ?? tabId);
+    const visibleUrls = (): string[] =>
+      [...shown]
+        .filter(([, visible]) => visible)
+        .map(
+          ([tabId]) =>
+            getBrowserTabs(BROWSER_PAGE_OWNER_ID).find((tab) => tab.id === tabId)?.url ?? tabId,
+        );
     await renderApp();
 
     fireEvent.click(screen.getByRole("button", { name: "Browser" }));
@@ -166,10 +189,15 @@ describe("App browser page", () => {
     fireEvent.keyDown(document, { key: "b", metaKey: true });
     const review = await screen.findByRole("complementary", { name: "Review panel" });
     fireEvent.click(within(review).getByRole("button", { name: "New workspace tab" }));
-    fireEvent.change(within(review).getByRole("textbox", { name: "Search or enter a URL" }), { target: { value: "https://example.com" } });
+    fireEvent.change(within(review).getByRole("textbox", { name: "Search or enter a URL" }), {
+      target: { value: "https://example.com" },
+    });
     fireEvent.click(within(review).getByRole("button", { name: "Open address" }));
 
-    expect(within(review).getByRole("tab", { name: /example\.com/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(review).getByRole("tab", { name: /example\.com/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     expect(within(review).getByRole("group", { name: "Browser" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Browser" })).not.toBeInTheDocument();
   });
@@ -186,19 +214,43 @@ describe("App browser page", () => {
     expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument();
     expect(emitAgentOpen).toBeDefined();
 
-    act(() => emitAgentOpen!({ sessionId: snapshot.sessions[0].id, tabId: "agent-1", url: "https://example.com" }));
+    act(() =>
+      emitAgentOpen!({
+        sessionId: snapshot.sessions[0].id,
+        tabId: "agent-1",
+        url: "https://example.com",
+      }),
+    );
     const review = await screen.findByRole("complementary", { name: "Review panel" });
-    expect(within(review).getByRole("tab", { name: "Browser" })).toHaveAttribute("aria-selected", "true");
+    expect(within(review).getByRole("tab", { name: "Browser" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     expect(within(review).getByRole("group", { name: "Browser" })).toBeInTheDocument();
 
     fireEvent.click(within(review).getByRole("button", { name: "New workspace tab" }));
     fireEvent.click(within(review).getByRole("button", { name: "Files" }));
-    act(() => emitAgentOpen!({ sessionId: snapshot.sessions[0].id, tabId: "agent-2", url: "https://example.com/next" }));
-    expect(within(review).getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
+    act(() =>
+      emitAgentOpen!({
+        sessionId: snapshot.sessions[0].id,
+        tabId: "agent-2",
+        url: "https://example.com/next",
+      }),
+    );
+    expect(within(review).getByRole("tab", { name: "Files" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
 
     fireEvent.keyDown(document, { key: "b", metaKey: true });
     expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument();
-    act(() => emitAgentOpen!({ sessionId: snapshot.sessions[0].id, tabId: "agent-3", url: "https://example.com/last" }));
+    act(() =>
+      emitAgentOpen!({
+        sessionId: snapshot.sessions[0].id,
+        tabId: "agent-3",
+        url: "https://example.com/last",
+      }),
+    );
     expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument();
   });
 });

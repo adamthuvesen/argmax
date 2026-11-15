@@ -12,8 +12,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::context::FollowUpContext;
-use super::table::{Difficulty, TaskKind};
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::routing::{Difficulty, TaskKind};
 
 const JEV_URL: &str = "https://api.typesafe.ai/v1/systemone";
 const JEV_MODEL: &str = "jev-latest";
@@ -229,7 +229,7 @@ pub async fn classify_choice(
 }
 
 async fn post(body: &Value, api_key: &str, timeout: Duration) -> ArgmaxResult<Value> {
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    crate::util::tls::install_crypto_provider();
     let client = reqwest::Client::builder()
         .connect_timeout(timeout)
         .timeout(timeout)
@@ -558,9 +558,12 @@ mod tests {
             downgrade_safe: true,
             routes: vec![super::super::context::ContextRoute {
                 id: "R0".to_string(),
-                provider: crate::ipc::validation::ProviderId::Codex,
-                model_id: "gpt-6-astra".to_string(),
-                effort: Some(crate::ipc::validation::ReasoningEffort::Xhigh),
+                provider: argmax_contracts::validation::ProviderId::Codex,
+                model_id: crate::providers::model_catalogue::ModelId::resolve(
+                    argmax_contracts::validation::ProviderId::Codex,
+                    "gpt-6-astra",
+                ),
+                effort: Some(argmax_contracts::validation::ReasoningEffort::Xhigh),
                 user_task: Some("Investigate the hard bug".to_string()),
             }],
         };

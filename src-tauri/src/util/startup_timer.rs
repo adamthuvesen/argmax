@@ -6,7 +6,7 @@
 // `setup.enter` absorbs Tauri builder/plugin init plus config-window webview
 // creation, which Tauri runs immediately before the setup hook.
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;

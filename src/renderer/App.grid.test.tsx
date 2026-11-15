@@ -16,14 +16,17 @@ import {
   setupAppTestMocks,
   snapshot,
   terminateProvider,
-  workspaceRow
+  workspaceRow,
 } from "../test/appTestHarness.js";
 import { startedAgentName } from "../test/agentRowName.js";
 import {
   getWorkspaceTerminalState as getWorkspaceTerminalStateForTest,
-  resetTerminalTabsForTests
+  resetTerminalTabsForTests,
 } from "./lib/terminalTabs.js";
 import { CHAT_VERBOSITY_KEY } from "./lib/uiPreferences.js";
+import { FIXED_NOW_ISO, freezeClock } from "../test/fixedClock.js";
+
+freezeClock();
 
 function gridWorkspace(index: number, taskLabel: string): DashboardSnapshot["workspaces"][number] {
   const baseWorkspace = snapshot.workspaces[0];
@@ -36,7 +39,7 @@ function gridWorkspace(index: number, taskLabel: string): DashboardSnapshot["wor
     path: `/tmp/worktrees/grid-${index}`,
     state: "complete",
     sharedWorkspace: false,
-    lastActivityAt: `2026-05-08T16:0${index}:00.000Z`
+    lastActivityAt: `2026-05-08T16:0${index}:00.000Z`,
   };
 }
 
@@ -52,7 +55,7 @@ function gridSession(index: number, prompt: string): DashboardSnapshot["sessions
     state: "complete",
     attention: "review-ready",
     completedAt: `2026-05-08T16:0${index}:00.000Z`,
-    lastActivityAt: `2026-05-08T16:0${index}:00.000Z`
+    lastActivityAt: `2026-05-08T16:0${index}:00.000Z`,
   };
 }
 
@@ -64,7 +67,7 @@ function paneWorkspace(
   index: number,
   taskLabel: string,
   slug: string,
-  overrides: Partial<DashboardSnapshot["workspaces"][number]> = {}
+  overrides: Partial<DashboardSnapshot["workspaces"][number]> = {},
 ): DashboardSnapshot["workspaces"][number] {
   return workspaceRow({
     id: `workspace-${index}`,
@@ -72,14 +75,14 @@ function paneWorkspace(
     branch: `argmax/${slug}`,
     path: `/tmp/worktrees/${slug}`,
     lastActivityAt: `2026-05-08T16:0${index + 2}:00.000Z`,
-    ...overrides
+    ...overrides,
   });
 }
 
 function paneSession(
   index: number,
   taskLabel: string,
-  overrides: Partial<DashboardSnapshot["sessions"][number]> = {}
+  overrides: Partial<DashboardSnapshot["sessions"][number]> = {},
 ): DashboardSnapshot["sessions"][number] {
   const finishedAt = `2026-05-08T16:0${index + 2}:00.000Z`;
   return sessionRow({
@@ -89,7 +92,7 @@ function paneSession(
     prompt: taskLabel,
     completedAt: finishedAt,
     lastActivityAt: finishedAt,
-    ...overrides
+    ...overrides,
   });
 }
 
@@ -98,13 +101,13 @@ function fireGridDragEvent(
   type: "dragover" | "drop",
   clientX: number,
   clientY: number,
-  dataTransfer: { types: never[]; getData: ReturnType<typeof vi.fn>; dropEffect: string }
+  dataTransfer: { types: never[]; getData: ReturnType<typeof vi.fn>; dropEffect: string },
 ): void {
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperties(event, {
     clientX: { value: clientX },
     clientY: { value: clientY },
-    dataTransfer: { value: dataTransfer }
+    dataTransfer: { value: dataTransfer },
   });
   fireEvent(target, event);
 }
@@ -128,7 +131,7 @@ vi.mock("./components/TerminalTabsPanel.js", async () => {
           data-visible={String(visible)}
         />
       );
-    }
+    },
   };
 });
 
@@ -150,7 +153,7 @@ describe("App grid", () => {
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
-      sessions: [...snapshot.sessions, secondSession]
+      sessions: [...snapshot.sessions, secondSession],
     });
 
     render(<App />);
@@ -181,21 +184,22 @@ describe("App grid", () => {
   });
 
   it("closes only the archived pane when multiple panes are open", async () => {
-    const secondWorkspace = paneWorkspace(2, "Split target", "split-target", { sharedWorkspace: true });
+    const secondWorkspace = paneWorkspace(2, "Split target", "split-target", {
+      sharedWorkspace: true,
+    });
     const secondSession = paneSession(2, "Split target");
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
-      sessions: [...snapshot.sessions, secondSession]
+      sessions: [...snapshot.sessions, secondSession],
     });
     archiveWorkspace.mockResolvedValue({
       workspace: { ...secondWorkspace, state: "archived" },
-      recoveryPath: "/tmp/workspace-archive/workspace-2"
+      recoveryPath: "/tmp/workspace-archive/workspace-2",
     });
 
     render(<App />);
 
-    // Open first session
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByRole("region", { name: "Conversation" });
 
@@ -213,7 +217,7 @@ describe("App grid", () => {
     fireEvent.click(lastArchiveButton);
 
     await waitFor(() =>
-      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-2", force: false })
+      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-2", force: false }),
     );
 
     // Grid now has only 1 pane (the first one)
@@ -230,7 +234,7 @@ describe("App grid", () => {
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
-      sessions: [...snapshot.sessions, secondSession]
+      sessions: [...snapshot.sessions, secondSession],
     });
 
     render(<App />);
@@ -242,17 +246,24 @@ describe("App grid", () => {
 
     await waitFor(() => {
       // Two .session-multigrid-row elements (one per row).
-      const rows = document.querySelectorAll(".session-multigrid-row");
+      const rows = screen.getAllByRole("group", { name: /^Pane row \d+$/ });
       expect(rows).toHaveLength(2);
     });
   });
 
   it("opens the first grid pane when a sidebar session is pointer-dropped onto the launcher", async () => {
-    const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+    const bounds = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
       .mockReturnValue(new DOMRect(50, 50, 800, 600));
     const pointer = (target: Element | Window, type: string, clientX: number): void => {
       // jsdom lacks PointerEvent, so preserve the coordinates and pointer ID.
-      const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX, clientY: 100 });
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX,
+        clientY: 100,
+      });
       Object.defineProperty(event, "pointerId", { value: 1 });
       fireEvent(target, event);
     };
@@ -284,10 +295,12 @@ describe("App grid", () => {
 
     expect(await screen.findByRole("region", { name: "New chat for Argmax" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
-    expect(screen.queryByText("The grid is full. Close a pane to start a new chat here.")).not.toBeInTheDocument();
-    const rows = document.querySelectorAll(".session-multigrid-row");
+    expect(
+      screen.queryByText("The grid is full. Close a pane to start a new chat here."),
+    ).not.toBeInTheDocument();
+    const rows = screen.getAllByRole("group", { name: /^Pane row \d+$/ });
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(2);
+    expect(within(rows[0]).getAllByTestId("session-multigrid-cell")).toHaveLength(2);
   });
 
   it("moves composer focus with the active pane between new chat and an existing chat", async () => {
@@ -341,22 +354,22 @@ describe("App grid", () => {
     fireEvent.change(chatPrompt, { target: { value: "Keep this draft intact" } });
     chatPrompt.focus();
     chatPrompt.setSelectionRange(9, 9);
-    expect(document.activeElement).toBe(chatPrompt);
+    expect(chatPrompt).toHaveFocus();
 
     await act(async () => {
       dashboardDeltaListener?.({
         projects: [
           {
             ...snapshot.projects[0],
-            currentBranch: "argmax/refreshed-branch"
-          }
-        ]
+            currentBranch: "argmax/refreshed-branch",
+          },
+        ],
       });
       await Promise.resolve();
     });
 
-    expect(document.activeElement).toBe(chatPrompt);
-    expect(document.activeElement).not.toBe(launcherPrompt);
+    expect(chatPrompt).toHaveFocus();
+    expect(launcherPrompt).not.toHaveFocus();
     expect(chatPrompt).toHaveValue("Keep this draft intact");
     expect(chatPrompt.selectionStart).toBe(9);
     expect(chatPrompt.selectionEnd).toBe(9);
@@ -382,7 +395,7 @@ describe("App grid", () => {
       ...snapshot.projects[0],
       id: "project-2",
       name: "Sidecar",
-      repoPath: "/tmp/sidecar"
+      repoPath: "/tmp/sidecar",
     };
     mockDashboardSnapshot({ ...snapshot, projects: [snapshot.projects[0], secondProject] });
     window.localStorage.setItem("argmax.newSessionMode", "embedded");
@@ -416,7 +429,7 @@ describe("App grid", () => {
     const freshWorkspace = {
       ...snapshot.workspaces[0],
       id: "workspace-2",
-      taskLabel: "Embedded task"
+      taskLabel: "Embedded task",
     };
     createCurrentWorkspace.mockResolvedValue(freshWorkspace);
 
@@ -425,8 +438,8 @@ describe("App grid", () => {
       id: "session-embedded-fresh",
       workspaceId: "workspace-2",
       prompt: "Implement embedded early stop feature",
-      startedAt: new Date().toISOString(),
-      state: "running" as const
+      startedAt: FIXED_NOW_ISO,
+      state: "running" as const,
     };
     launchProvider.mockResolvedValue(freshSession);
 
@@ -438,11 +451,13 @@ describe("App grid", () => {
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-embedded-fresh"));
     await waitFor(() =>
-      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-2", force: true })
+      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-2", force: true }),
     );
 
     const restoredLauncher = await screen.findByRole("region", { name: "New chat for Argmax" });
-    expect(within(restoredLauncher).getByLabelText("Task prompt")).toHaveValue("Implement embedded early stop feature");
+    expect(within(restoredLauncher).getByLabelText("Task prompt")).toHaveValue(
+      "Implement embedded early stop feature",
+    );
   });
 
   it("hands a routed chat stopped early back to the launcher on its Router tier, not the routed model", async () => {
@@ -454,9 +469,15 @@ describe("App grid", () => {
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
 
     const launcher = await screen.findByRole("region", { name: "New chat for Argmax" });
-    fireEvent.change(within(launcher).getByLabelText("Task prompt"), { target: { value: "Rename the helper" } });
+    fireEvent.change(within(launcher).getByLabelText("Task prompt"), {
+      target: { value: "Rename the helper" },
+    });
 
-    createCurrentWorkspace.mockResolvedValue({ ...snapshot.workspaces[0], id: "workspace-2", taskLabel: "Routed task" });
+    createCurrentWorkspace.mockResolvedValue({
+      ...snapshot.workspaces[0],
+      id: "workspace-2",
+      taskLabel: "Routed task",
+    });
     launchProvider.mockResolvedValue({
       ...snapshot.sessions[0],
       id: "session-routed",
@@ -465,8 +486,8 @@ describe("App grid", () => {
       provider: "grok" as const,
       modelId: "grok-4.7",
       autoTier: "balanced",
-      startedAt: new Date().toISOString(),
-      state: "running" as const
+      startedAt: FIXED_NOW_ISO,
+      state: "running" as const,
     });
 
     fireEvent.click(within(launcher).getByTitle("Start agent"));
@@ -475,19 +496,22 @@ describe("App grid", () => {
 
     await screen.findByRole("region", { name: "New chat for Argmax" });
     expect(JSON.parse(window.localStorage.getItem("argmax.launch.model") ?? "null")).toMatchObject({
-      autoTier: "balanced"
+      autoTier: "balanced",
     });
   });
 
   it("opens an agent activity pane from an agent row without showing child prose in the parent chat", async () => {
     window.localStorage.removeItem(CHAT_VERBOSITY_KEY);
-    const promptText = "Find the renderer entry points and note the important files before reporting back. ".repeat(9).trim();
+    const promptText =
+      "Find the renderer entry points and note the important files before reporting back. "
+        .repeat(9)
+        .trim();
     const data: DashboardSnapshot = {
       ...snapshot,
       sessions: snapshot.sessions.map((session) => ({
         ...session,
         state: "complete" as const,
-        completedAt: "2026-05-08T15:55:00.000Z"
+        completedAt: "2026-05-08T15:55:00.000Z",
       })),
       events: [
         {
@@ -496,7 +520,7 @@ describe("App grid", () => {
           type: "command.completed",
           message: "tool_result",
           payload: { tool_use_id: "task-1", content: "**Agent finished.**\n\n1. Parser found." },
-          createdAt: "2026-05-08T15:54:04.000Z"
+          createdAt: "2026-05-08T15:54:04.000Z",
         },
         {
           id: "child-message",
@@ -504,7 +528,7 @@ describe("App grid", () => {
           type: "message.completed",
           message: "Subagent found parser.",
           payload: { parent_tool_use_id: "task-1" },
-          createdAt: "2026-05-08T15:54:03.000Z"
+          createdAt: "2026-05-08T15:54:03.000Z",
         },
         {
           id: "child-prompt-echo",
@@ -512,7 +536,7 @@ describe("App grid", () => {
           type: "message.completed",
           message: promptText,
           payload: { parent_tool_use_id: "task-1" },
-          createdAt: "2026-05-08T15:54:02.500Z"
+          createdAt: "2026-05-08T15:54:02.500Z",
         },
         {
           id: "task-start",
@@ -524,10 +548,10 @@ describe("App grid", () => {
             name: "Task",
             input: {
               description: "Map renderer",
-              prompt: promptText
-            }
+              prompt: promptText,
+            },
           },
-          createdAt: "2026-05-08T15:54:02.000Z"
+          createdAt: "2026-05-08T15:54:02.000Z",
         },
         {
           id: "parent-message",
@@ -535,7 +559,7 @@ describe("App grid", () => {
           type: "message.completed",
           message: "I will delegate this.",
           payload: {},
-          createdAt: "2026-05-08T15:54:01.000Z"
+          createdAt: "2026-05-08T15:54:01.000Z",
         },
         {
           id: "user-message",
@@ -543,9 +567,9 @@ describe("App grid", () => {
           type: "user.message",
           message: "Map this",
           payload: {},
-          createdAt: "2026-05-08T15:54:00.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:00.000Z",
+        },
+      ],
     };
     mockDashboardSnapshot(data);
 
@@ -564,17 +588,27 @@ describe("App grid", () => {
     expect(within(pane).getByRole("heading", { name: "Map renderer" })).toBeInTheDocument();
     // The brief shows on open, capped, and its chip folds it away.
     expect(within(pane).getAllByText(promptText)).toHaveLength(1);
-    const collapseInstructions = within(pane).getByRole("button", { name: "Collapse instructions" });
+    const collapseInstructions = within(pane).getByRole("button", {
+      name: "Collapse instructions",
+    });
     expect(collapseInstructions).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(collapseInstructions);
     expect(within(pane).queryByText(promptText)).toBeNull();
-    expect(within(pane).getByRole("button", { name: "Expand instructions" })).toHaveAttribute("aria-expanded", "false");
+    expect(within(pane).getByRole("button", { name: "Expand instructions" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     const childMessage = within(pane).getByText("Subagent found parser.");
     const result = within(pane).getByRole("region", { name: "Agent result" });
-    expect(childMessage.compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(
+      childMessage.compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
     expect(within(result).getByText("Agent finished.").tagName).toBe("STRONG");
     expect(within(result).getByText("Parser found.")).toBeInTheDocument();
-    expect(sessionAgentEvents).toHaveBeenCalledWith({ sessionId: "session-1", parentToolUseId: "task-1" });
+    expect(sessionAgentEvents).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      parentToolUseId: "task-1",
+    });
   });
 
   it("dismisses an agent pane when sidebar navigation replaces its parent session", async () => {
@@ -595,12 +629,12 @@ describe("App grid", () => {
             name: "Task",
             input: {
               description: "Map renderer",
-              prompt: "Find renderer files."
-            }
+              prompt: "Find renderer files.",
+            },
           },
-          createdAt: "2026-05-08T15:54:02.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:02.000Z",
+        },
+      ],
     });
 
     render(<App />);
@@ -620,97 +654,118 @@ describe("App grid", () => {
     expect(within(grid).getAllByRole("region", { name: "Follow up task" })).toHaveLength(1);
   });
 
-  it.each(["transcript", "panel"])("shows the session's subagents when opened from the %s", async (entryPoint) => {
-    mockDashboardSnapshot({
-      ...snapshot,
-      sessions: snapshot.sessions.map((session) => ({
-        ...session,
-        state: "running" as const,
-        completedAt: null
-      })),
-      events: [
-        {
-          id: "task-2",
-          sessionId: "session-1",
-          type: "command.started",
-          message: "Task",
-          payload: { id: "task-2", name: "Task", input: { description: "Write tests", prompt: "Add coverage." } },
-          createdAt: "2026-05-08T15:54:03.000Z"
-        },
-        {
-          id: "task-1",
-          sessionId: "session-1",
-          type: "command.started",
-          message: "Task",
-          payload: { id: "task-1", name: "Task", input: { description: "Map renderer", prompt: "Find renderer files." } },
-          createdAt: "2026-05-08T15:54:02.000Z"
-        },
-        {
-          id: "user-message",
-          sessionId: "session-1",
-          type: "user.message",
-          message: "Map this",
-          payload: {},
-          createdAt: "2026-05-08T15:54:00.000Z"
-        }
-      ]
-    });
+  it.each(["transcript", "panel"])(
+    "shows the session's subagents when opened from the %s",
+    async (entryPoint) => {
+      mockDashboardSnapshot({
+        ...snapshot,
+        sessions: snapshot.sessions.map((session) => ({
+          ...session,
+          state: "running" as const,
+          completedAt: null,
+        })),
+        events: [
+          {
+            id: "task-2",
+            sessionId: "session-1",
+            type: "command.started",
+            message: "Task",
+            payload: {
+              id: "task-2",
+              name: "Task",
+              input: { description: "Write tests", prompt: "Add coverage." },
+            },
+            createdAt: "2026-05-08T15:54:03.000Z",
+          },
+          {
+            id: "task-1",
+            sessionId: "session-1",
+            type: "command.started",
+            message: "Task",
+            payload: {
+              id: "task-1",
+              name: "Task",
+              input: { description: "Map renderer", prompt: "Find renderer files." },
+            },
+            createdAt: "2026-05-08T15:54:02.000Z",
+          },
+          {
+            id: "user-message",
+            sessionId: "session-1",
+            type: "user.message",
+            message: "Map this",
+            payload: {},
+            createdAt: "2026-05-08T15:54:00.000Z",
+          },
+        ],
+      });
 
-    render(<App />);
+      render(<App />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    if (entryPoint === "panel") {
-      fireEvent.keyDown(document, { key: "b", metaKey: true });
-      const panel = await screen.findByRole("complementary", { name: "Review panel" });
-      expect(within(panel).getByRole("tab", { name: "New tab", selected: true })).toBeInTheDocument();
-      fireEvent.click(within(panel).getByRole("button", { name: "Agents" }));
-    } else {
-      fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
-    }
-    const tablist = await screen.findByRole("tablist", { name: "Subagents and multitasks" });
-    expect(within(tablist).getAllByRole("tab")).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: startedAgentName("Write tests") }));
+      fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+      if (entryPoint === "panel") {
+        fireEvent.keyDown(document, { key: "b", metaKey: true });
+        const panel = await screen.findByRole("complementary", { name: "Review panel" });
+        expect(
+          within(panel).getByRole("tab", { name: "New tab", selected: true }),
+        ).toBeInTheDocument();
+        fireEvent.click(within(panel).getByRole("button", { name: "Agents" }));
+      } else {
+        fireEvent.click(
+          await screen.findByRole("button", { name: startedAgentName("Map renderer") }),
+        );
+      }
+      const tablist = await screen.findByRole("tablist", { name: "Subagents and multitasks" });
+      expect(within(tablist).getAllByRole("tab")).toHaveLength(2);
+      fireEvent.click(screen.getByRole("button", { name: startedAgentName("Write tests") }));
 
-    const tabLabels = within(tablist).getAllByRole("tab").map((tab) => tab.textContent);
-    expect(tabLabels).toHaveLength(2);
-    // Each spawn gets its own distinct scientist codename as the tab label.
-    expect(new Set(tabLabels).size).toBe(2);
-    // The chat row and the tab derive the codename from the same toolUseId, so
-    // the same spawn must carry the same name at both call sites. The tab's
-    // title tooltip holds the task description that pairs it with its row.
-    for (const tab of within(tablist).getAllByRole("tab")) {
-      const description = tab.getAttribute("title");
-      expect(description).toBeTruthy();
-      expect(
-        screen.getByRole("button", { name: `Started agent ${tab.textContent} — ${description}` })
-      ).toBeInTheDocument();
-    }
-    // Both subagents share the session's review panel — no extra grid column.
-    expect(document.querySelectorAll(".session-multigrid-cell")).toHaveLength(1);
+      const tabLabels = within(tablist)
+        .getAllByRole("tab")
+        .map((tab) => tab.textContent);
+      expect(tabLabels).toHaveLength(2);
+      // Each spawn gets its own distinct scientist codename as the tab label.
+      expect(new Set(tabLabels).size).toBe(2);
+      // The chat row and the tab derive the codename from the same toolUseId, so
+      // the same spawn must carry the same name at both call sites. The tab's
+      // title tooltip holds the task description that pairs it with its row.
+      for (const tab of within(tablist).getAllByRole("tab")) {
+        const description = tab.getAttribute("title");
+        expect(description).toBeTruthy();
+        expect(
+          screen.getByRole("button", { name: `Started agent ${tab.textContent} — ${description}` }),
+        ).toBeInTheDocument();
+      }
+      // Both subagents share the session's review panel — no extra grid column.
+      expect(screen.getAllByTestId("session-multigrid-cell")).toHaveLength(1);
 
-    expect(screen.getByRole("tab", { name: "Knuth" })).toHaveAttribute("aria-selected", "true");
-    // Both transcripts stay mounted; the inactive one is hidden, not unmounted.
-    expect(document.getElementById("review-agent-task-1")).toHaveAttribute("aria-hidden", "true");
-    expect(document.getElementById("review-agent-task-2")).not.toHaveAttribute("aria-hidden");
+      expect(screen.getByRole("tab", { name: "Knuth" })).toHaveAttribute("aria-selected", "true");
+      // Both transcripts stay mounted; the inactive one is hidden, not unmounted.
+      expect(screen.queryByTestId("review-agent-task-1")).toHaveAttribute("aria-hidden", "true");
+      expect(screen.queryByTestId("review-agent-task-2")).not.toHaveAttribute("aria-hidden");
 
-    fireEvent.click(screen.getByRole("tab", { name: "Gauss" }));
-    await waitFor(() => {
-      expect(screen.getByRole("tab", { name: "Gauss" })).toHaveAttribute("aria-selected", "true");
-    });
-    expect(document.getElementById("review-agent-task-1")).not.toHaveAttribute("aria-hidden");
+      fireEvent.click(screen.getByRole("tab", { name: "Gauss" }));
+      await waitFor(() => {
+        expect(screen.getByRole("tab", { name: "Gauss" })).toHaveAttribute("aria-selected", "true");
+      });
+      expect(screen.queryByTestId("review-agent-task-1")).not.toHaveAttribute("aria-hidden");
 
-    expect(screen.getByRole("button", { name: "All agents 2" })).toBeInTheDocument();
-    if (entryPoint === "panel") {
-      fireEvent.keyDown(document, { key: "b", metaKey: true });
-      expect(screen.queryByRole("tablist", { name: "Subagents and multitasks" })).toBeNull();
-      fireEvent.keyDown(document, { key: "b", metaKey: true });
-      const strip = await screen.findByRole("tablist", { name: "Workspace tabs" });
-      expect(within(strip).getByRole("tab", { name: "New tab", selected: true })).toBeInTheDocument();
-      fireEvent.click(within(strip).getByRole("tab", { name: "Agents" }));
-      const reopenedTabs = await screen.findByRole("tablist", { name: "Subagents and multitasks" });
-      expect(within(reopenedTabs).getAllByRole("tab")).toHaveLength(2);
-    }
-  });
+      expect(screen.getByRole("button", { name: "All agents 2" })).toBeInTheDocument();
+      if (entryPoint === "panel") {
+        fireEvent.keyDown(document, { key: "b", metaKey: true });
+        expect(screen.queryByRole("tablist", { name: "Subagents and multitasks" })).toBeNull();
+        fireEvent.keyDown(document, { key: "b", metaKey: true });
+        const strip = await screen.findByRole("tablist", { name: "Workspace tabs" });
+        expect(
+          within(strip).getByRole("tab", { name: "New tab", selected: true }),
+        ).toBeInTheDocument();
+        fireEvent.click(within(strip).getByRole("tab", { name: "Agents" }));
+        const reopenedTabs = await screen.findByRole("tablist", {
+          name: "Subagents and multitasks",
+        });
+        expect(within(reopenedTabs).getAllByRole("tab")).toHaveLength(2);
+      }
+    },
+  );
 
   it("prunes a superseded subagent tab on session stop while keeping the panel", async () => {
     const prompt = "Map renderer";
@@ -722,8 +777,12 @@ describe("App grid", () => {
           sessionId: "session-1",
           type: "command.started",
           message: "Task",
-          payload: { id: "task-b", name: "Task", input: { description: "Write tests", prompt: "Add coverage." } },
-          createdAt: "2026-05-08T15:54:03.000Z"
+          payload: {
+            id: "task-b",
+            name: "Task",
+            input: { description: "Write tests", prompt: "Add coverage." },
+          },
+          createdAt: "2026-05-08T15:54:03.000Z",
         },
         {
           id: "failed-start",
@@ -733,9 +792,9 @@ describe("App grid", () => {
           payload: {
             id: "item_1",
             name: "spawn_agent",
-            input: { prompt, receiver_thread_ids: [], sender_thread_id: "thread-parent" }
+            input: { prompt, receiver_thread_ids: [], sender_thread_id: "thread-parent" },
           },
-          createdAt: "2026-05-08T15:54:02.000Z"
+          createdAt: "2026-05-08T15:54:02.000Z",
         },
         {
           id: "user-message",
@@ -743,9 +802,9 @@ describe("App grid", () => {
           type: "user.message",
           message: "Map this",
           payload: {},
-          createdAt: "2026-05-08T15:54:00.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:00.000Z",
+        },
+      ],
     });
 
     render(<App />);
@@ -772,9 +831,13 @@ describe("App grid", () => {
               id: "item_2",
               name: "spawn_agent",
               status: "completed",
-              input: { prompt, receiver_thread_ids: ["thread-child"], sender_thread_id: "thread-parent" }
+              input: {
+                prompt,
+                receiver_thread_ids: ["thread-child"],
+                sender_thread_id: "thread-parent",
+              },
             },
-            createdAt: "2026-05-08T15:54:05.000Z"
+            createdAt: "2026-05-08T15:54:05.000Z",
           },
           {
             id: "retry-start",
@@ -784,11 +847,11 @@ describe("App grid", () => {
             payload: {
               id: "item_2",
               name: "spawn_agent",
-              input: { prompt, receiver_thread_ids: [], sender_thread_id: "thread-parent" }
+              input: { prompt, receiver_thread_ids: [], sender_thread_id: "thread-parent" },
             },
-            createdAt: "2026-05-08T15:54:04.000Z"
-          }
-        ]
+            createdAt: "2026-05-08T15:54:04.000Z",
+          },
+        ],
       });
       await Promise.resolve();
     });
@@ -801,8 +864,8 @@ describe("App grid", () => {
         sessions: snapshot.sessions.map((session) => ({
           ...session,
           state: "complete" as const,
-          completedAt: "2026-05-08T15:54:06.000Z"
-        }))
+          completedAt: "2026-05-08T15:54:06.000Z",
+        })),
       });
       await Promise.resolve();
     });
@@ -814,7 +877,9 @@ describe("App grid", () => {
     });
     expect(screen.getByRole("button", { name: "All agents 2" })).toBeInTheDocument();
     expect(screen.getAllByRole("region", { name: /^Agent activity: / })).toHaveLength(1);
-    expect(screen.getByRole("region", { name: /^Agent activity: .+ — Map renderer$/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: /^Agent activity: .+ — Map renderer$/ }),
+    ).toBeInTheDocument();
   });
 
   it("renders imported child tool rows instead of the limited-data notice", async () => {
@@ -823,7 +888,7 @@ describe("App grid", () => {
       sessions: snapshot.sessions.map((session) => ({
         ...session,
         state: "complete" as const,
-        completedAt: "2026-05-08T15:55:00.000Z"
+        completedAt: "2026-05-08T15:55:00.000Z",
       })),
       events: [
         {
@@ -835,9 +900,9 @@ describe("App grid", () => {
             id: "trace-read-1",
             parent_tool_use_id: "task-1",
             traceImported: true,
-            traceNoOutput: true
+            traceNoOutput: true,
           },
-          createdAt: "2026-05-08T15:54:03.500Z"
+          createdAt: "2026-05-08T15:54:03.500Z",
         },
         {
           id: "child-read",
@@ -849,9 +914,9 @@ describe("App grid", () => {
             name: "Read",
             parent_tool_use_id: "task-1",
             traceImported: true,
-            input: { file_path: "src/renderer/App.tsx" }
+            input: { file_path: "src/renderer/App.tsx" },
           },
-          createdAt: "2026-05-08T15:54:03.000Z"
+          createdAt: "2026-05-08T15:54:03.000Z",
         },
         {
           id: "task-start",
@@ -863,10 +928,10 @@ describe("App grid", () => {
             name: "Task",
             input: {
               description: "Map renderer",
-              prompt: "Find renderer files."
-            }
+              prompt: "Find renderer files.",
+            },
           },
-          createdAt: "2026-05-08T15:54:02.000Z"
+          createdAt: "2026-05-08T15:54:02.000Z",
         },
         {
           id: "user-message",
@@ -874,9 +939,9 @@ describe("App grid", () => {
           type: "user.message",
           message: "Map this",
           payload: {},
-          createdAt: "2026-05-08T15:54:00.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:00.000Z",
+        },
+      ],
     });
 
     render(<App />);
@@ -888,7 +953,11 @@ describe("App grid", () => {
     // This suite runs at Steps, where a single call is its own row rather than
     // a summary to open.
     expect(within(pane).getByRole("button", { name: "Read App.tsx" })).toBeInTheDocument();
-    expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
+    expect(
+      within(pane).queryByText(
+        "This provider reported the agent launch, but did not stream child activity.",
+      ),
+    ).toBeNull();
   });
 
   it("renders the agent instructions prompt as markdown", async () => {
@@ -896,14 +965,14 @@ describe("App grid", () => {
       "Find the **renderer** entry points.",
       "",
       "- Read `src/renderer/App.tsx` first.",
-      "- Keep it short."
+      "- Keep it short.",
     ].join("\n");
     mockDashboardSnapshot({
       ...snapshot,
       sessions: snapshot.sessions.map((session) => ({
         ...session,
         state: "complete" as const,
-        completedAt: "2026-05-08T15:55:00.000Z"
+        completedAt: "2026-05-08T15:55:00.000Z",
       })),
       events: [
         {
@@ -916,10 +985,10 @@ describe("App grid", () => {
             name: "Task",
             input: {
               description: "Map renderer",
-              prompt: promptText
-            }
+              prompt: promptText,
+            },
           },
-          createdAt: "2026-05-08T15:54:02.000Z"
+          createdAt: "2026-05-08T15:54:02.000Z",
         },
         {
           id: "user-message",
@@ -927,9 +996,9 @@ describe("App grid", () => {
           type: "user.message",
           message: "Map this",
           payload: {},
-          createdAt: "2026-05-08T15:54:00.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:00.000Z",
+        },
+      ],
     });
 
     render(<App />);
@@ -939,7 +1008,9 @@ describe("App grid", () => {
 
     const pane = await screen.findByRole("region", { name: /^Agent activity: / });
     expect(within(pane).getByText("renderer").tagName).toBe("STRONG");
-    expect(within(pane).getByRole("button", { name: "Open src/renderer/App.tsx" })).toBeInTheDocument();
+    expect(
+      within(pane).getByRole("button", { name: "Open src/renderer/App.tsx" }),
+    ).toBeInTheDocument();
     expect(within(pane).getByText("Keep it short.").tagName).toBe("LI");
   });
 
@@ -959,10 +1030,10 @@ describe("App grid", () => {
             input: {
               prompt,
               receiver_thread_ids: [],
-              sender_thread_id: "thread-parent"
-            }
+              sender_thread_id: "thread-parent",
+            },
           },
-          createdAt: "2026-05-08T15:54:02.000Z"
+          createdAt: "2026-05-08T15:54:02.000Z",
         },
         {
           id: "user-message",
@@ -970,9 +1041,9 @@ describe("App grid", () => {
           type: "user.message",
           message: "Map this",
           payload: {},
-          createdAt: "2026-05-08T15:54:00.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:00.000Z",
+        },
+      ],
     });
 
     render(<App />);
@@ -996,10 +1067,10 @@ describe("App grid", () => {
               input: {
                 prompt,
                 receiver_thread_ids: ["thread-child"],
-                sender_thread_id: "thread-parent"
-              }
+                sender_thread_id: "thread-parent",
+              },
             },
-            createdAt: "2026-05-08T15:54:05.000Z"
+            createdAt: "2026-05-08T15:54:05.000Z",
           },
           {
             id: "retry-start",
@@ -1012,12 +1083,12 @@ describe("App grid", () => {
               input: {
                 prompt,
                 receiver_thread_ids: [],
-                sender_thread_id: "thread-parent"
-              }
+                sender_thread_id: "thread-parent",
+              },
             },
-            createdAt: "2026-05-08T15:54:04.000Z"
-          }
-        ]
+            createdAt: "2026-05-08T15:54:04.000Z",
+          },
+        ],
       });
       await Promise.resolve();
     });
@@ -1025,24 +1096,30 @@ describe("App grid", () => {
     // While the parent session runs, the earlier spawn may be a live parallel
     // agent — the retry completing must not hide it or force-close its pane.
     expect(screen.getByRole("region", { name: /^Agent activity: / })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: startedAgentName("Map renderer") })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: startedAgentName("Map renderer") })).toHaveLength(
+      2,
+    );
 
     await act(async () => {
       dashboardDeltaListener?.({
         sessions: snapshot.sessions.map((session) => ({
           ...session,
           state: "complete" as const,
-          completedAt: "2026-05-08T15:54:06.000Z"
-        }))
+          completedAt: "2026-05-08T15:54:06.000Z",
+        })),
       });
       await Promise.resolve();
     });
 
     await waitFor(() => {
-      expect(document.getElementById("review-agent-item_1")).toBeNull();
-      expect(screen.getByRole("region", { name: /^Agent activity: .+ — Map renderer$/ })).toBeInTheDocument();
+      expect(screen.queryByTestId("review-agent-item_1")).toBeNull();
+      expect(
+        screen.getByRole("region", { name: /^Agent activity: .+ — Map renderer$/ }),
+      ).toBeInTheDocument();
     });
-    expect(screen.getAllByRole("button", { name: startedAgentName("Map renderer") })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: startedAgentName("Map renderer") })).toHaveLength(
+      1,
+    );
   });
 
   it("polls agent events while an agent pane is still running", async () => {
@@ -1059,10 +1136,10 @@ describe("App grid", () => {
             name: "Task",
             input: {
               description: "Map renderer",
-              prompt: "Find renderer files."
-            }
+              prompt: "Find renderer files.",
+            },
           },
-          createdAt: "2026-05-08T15:54:02.000Z"
+          createdAt: "2026-05-08T15:54:02.000Z",
         },
         {
           id: "user-message",
@@ -1070,9 +1147,9 @@ describe("App grid", () => {
           type: "user.message",
           message: "Map this",
           payload: {},
-          createdAt: "2026-05-08T15:54:00.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:00.000Z",
+        },
+      ],
     });
 
     // Only the poll's own interval is faked, so a tick can be driven straight
@@ -1103,7 +1180,7 @@ describe("App grid", () => {
         ...session,
         provider: "cursor" as const,
         state: "complete" as const,
-        completedAt: "2026-05-08T15:55:00.000Z"
+        completedAt: "2026-05-08T15:55:00.000Z",
       })),
       events: [
         {
@@ -1116,9 +1193,9 @@ describe("App grid", () => {
             providerInvocationId: "invoke-task",
             name: "task",
             input: { _toolName: "task", description: "Map renderer" },
-            result: { durationMs: 34, isBackground: true }
+            result: { durationMs: 34, isBackground: true },
           },
-          createdAt: "2026-05-08T15:54:02.120Z"
+          createdAt: "2026-05-08T15:54:02.120Z",
         },
         {
           id: "task-start",
@@ -1129,29 +1206,31 @@ describe("App grid", () => {
             call_id: "call-task",
             providerInvocationId: "invoke-task",
             name: "task",
-            input: { _toolName: "task", description: "Map renderer" }
+            input: { _toolName: "task", description: "Map renderer" },
           },
-          createdAt: "2026-05-08T15:54:02.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:02.000Z",
+        },
+      ],
     });
     const completedChild = {
-      events: [{
-        id: "child-done",
-        sessionId: "session-1",
-        type: "agent.completed",
-        message: "Agent completed",
-        payload: {
-          providerInvocationId: "invoke-task",
-          providerChildSessionId: "child-task",
-          agentRootToolUseId: "call-task",
-          agentRunId: "call-task",
-          status: "completed",
-          traceImported: true
+      events: [
+        {
+          id: "child-done",
+          sessionId: "session-1",
+          type: "agent.completed",
+          message: "Agent completed",
+          payload: {
+            providerInvocationId: "invoke-task",
+            providerChildSessionId: "child-task",
+            agentRootToolUseId: "call-task",
+            agentRunId: "call-task",
+            status: "completed",
+            traceImported: true,
+          },
+          createdAt: "2026-05-08T15:54:08.000Z",
+          rowCursor: 3,
         },
-        createdAt: "2026-05-08T15:54:08.000Z",
-        rowCursor: 3
-      }],
+      ],
       rawOutputs: [],
       eventCursor: 3,
       rawOutputCursor: 0,
@@ -1159,13 +1238,14 @@ describe("App grid", () => {
       deletedEventIds: [],
       deletedRawOutputIds: [],
       resetRequired: false,
-      hasMore: false
+      hasMore: false,
     } satisfies SessionEventsSinceResult;
     let resolveAgentEvents!: (value: SessionEventsSinceResult) => void;
     sessionAgentEvents.mockImplementation(
-      () => new Promise((resolve) => {
-        resolveAgentEvents = resolve;
-      })
+      () =>
+        new Promise((resolve) => {
+          resolveAgentEvents = resolve;
+        }),
     );
 
     render(<App />);
@@ -1175,7 +1255,7 @@ describe("App grid", () => {
     await waitFor(() => {
       expect(sessionAgentEvents).toHaveBeenCalledWith({
         sessionId: "session-1",
-        parentToolUseId: "call-task"
+        parentToolUseId: "call-task",
       });
     });
     await act(async () => {
@@ -1202,10 +1282,10 @@ describe("App grid", () => {
             name: "Task",
             input: {
               description: "Map renderer",
-              prompt: "Find renderer files."
-            }
+              prompt: "Find renderer files.",
+            },
           },
-          createdAt: "2026-05-08T15:54:02.000Z"
+          createdAt: "2026-05-08T15:54:02.000Z",
         },
         {
           id: "user-message",
@@ -1213,9 +1293,9 @@ describe("App grid", () => {
           type: "user.message",
           message: "Map this",
           payload: {},
-          createdAt: "2026-05-08T15:54:00.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:00.000Z",
+        },
+      ],
     });
     let resolveAgentEvents!: (value: SessionEventsSinceResult) => void;
     sessionAgentEvents
@@ -1223,9 +1303,19 @@ describe("App grid", () => {
         () =>
           new Promise((resolve) => {
             resolveAgentEvents = resolve;
-          })
+          }),
       )
-      .mockResolvedValue({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+      .mockResolvedValue({
+        events: [],
+        rawOutputs: [],
+        eventCursor: 0,
+        rawOutputCursor: 0,
+        changeCursor: null,
+        deletedEventIds: [],
+        deletedRawOutputIds: [],
+        resetRequired: false,
+        hasMore: false,
+      });
 
     render(<App />);
 
@@ -1237,18 +1327,40 @@ describe("App grid", () => {
     // textContent, so match on the leading word.
     const startsWithThinkingWord = (text: string | null): boolean =>
       THINKING_WORDS.some((word) => text?.startsWith(word) ?? false);
-    expect(startsWithThinkingWord(within(pane).getByTestId("thinking-label").textContent)).toBe(true);
-    expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
+    expect(startsWithThinkingWord(within(pane).getByTestId("thinking-label").textContent)).toBe(
+      true,
+    );
+    expect(
+      within(pane).queryByText(
+        "This provider reported the agent launch, but did not stream child activity.",
+      ),
+    ).toBeNull();
 
     await act(async () => {
-      resolveAgentEvents({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+      resolveAgentEvents({
+        events: [],
+        rawOutputs: [],
+        eventCursor: 0,
+        rawOutputCursor: 0,
+        changeCursor: null,
+        deletedEventIds: [],
+        deletedRawOutputIds: [],
+        resetRequired: false,
+        hasMore: false,
+      });
       await Promise.resolve();
     });
 
     await waitFor(() => {
-      expect(startsWithThinkingWord(within(pane).getByTestId("thinking-label").textContent)).toBe(true);
+      expect(startsWithThinkingWord(within(pane).getByTestId("thinking-label").textContent)).toBe(
+        true,
+      );
     });
-    expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
+    expect(
+      within(pane).queryByText(
+        "This provider reported the agent launch, but did not stream child activity.",
+      ),
+    ).toBeNull();
   });
 
   it("shows the limited-data notice only after an agent finishes without child activity", async () => {
@@ -1257,7 +1369,7 @@ describe("App grid", () => {
       sessions: snapshot.sessions.map((session) => ({
         ...session,
         state: "complete" as const,
-        completedAt: "2026-05-08T15:55:00.000Z"
+        completedAt: "2026-05-08T15:55:00.000Z",
       })),
       events: [
         {
@@ -1266,7 +1378,7 @@ describe("App grid", () => {
           type: "command.completed",
           message: "tool_result",
           payload: { tool_use_id: "task-1", content: "Done without child stream." },
-          createdAt: "2026-05-08T15:54:04.000Z"
+          createdAt: "2026-05-08T15:54:04.000Z",
         },
         {
           id: "task-start",
@@ -1278,10 +1390,10 @@ describe("App grid", () => {
             name: "Task",
             input: {
               description: "Map renderer",
-              prompt: "Find renderer files."
-            }
+              prompt: "Find renderer files.",
+            },
           },
-          createdAt: "2026-05-08T15:54:02.000Z"
+          createdAt: "2026-05-08T15:54:02.000Z",
         },
         {
           id: "user-message",
@@ -1289,9 +1401,9 @@ describe("App grid", () => {
           type: "user.message",
           message: "Map this",
           payload: {},
-          createdAt: "2026-05-08T15:54:00.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:00.000Z",
+        },
+      ],
     });
 
     render(<App />);
@@ -1301,7 +1413,11 @@ describe("App grid", () => {
 
     const pane = await screen.findByRole("region", { name: /^Agent activity: / });
     expect(within(pane).queryByTestId("thinking-label")).toBeNull();
-    expect(within(pane).getByText("This provider reported the agent launch, but did not stream child activity.")).toBeInTheDocument();
+    expect(
+      within(pane).getByText(
+        "This provider reported the agent launch, but did not stream child activity.",
+      ),
+    ).toBeInTheDocument();
     expect(within(pane).getByText("Done without child stream.")).toBeInTheDocument();
   });
 
@@ -1319,10 +1435,10 @@ describe("App grid", () => {
             name: "Task",
             input: {
               description: "Map renderer",
-              prompt: "Find renderer files."
-            }
+              prompt: "Find renderer files.",
+            },
           },
-          createdAt: "2026-05-08T15:54:02.000Z"
+          createdAt: "2026-05-08T15:54:02.000Z",
         },
         {
           id: "user-message",
@@ -1330,16 +1446,16 @@ describe("App grid", () => {
           type: "user.message",
           message: "Map this",
           payload: {},
-          createdAt: "2026-05-08T15:54:00.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:00.000Z",
+        },
+      ],
     });
     let resolveAgentEvents!: (value: SessionEventsSinceResult) => void;
     sessionAgentEvents.mockImplementation(
       () =>
         new Promise((resolve) => {
           resolveAgentEvents = resolve;
-        })
+        }),
     );
 
     // Only the poll's own interval is faked, so ticks can be driven straight
@@ -1360,7 +1476,17 @@ describe("App grid", () => {
 
     expect(sessionAgentEvents).toHaveBeenCalledTimes(1);
     await act(async () => {
-      resolveAgentEvents({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+      resolveAgentEvents({
+        events: [],
+        rawOutputs: [],
+        eventCursor: 0,
+        rawOutputCursor: 0,
+        changeCursor: null,
+        deletedEventIds: [],
+        deletedRawOutputIds: [],
+        resetRequired: false,
+        hasMore: false,
+      });
       await Promise.resolve();
     });
   });
@@ -1371,7 +1497,7 @@ describe("App grid", () => {
       sessions: snapshot.sessions.map((session) => ({
         ...session,
         state: "complete" as const,
-        completedAt: "2026-05-08T15:55:00.000Z"
+        completedAt: "2026-05-08T15:55:00.000Z",
       })),
       events: [
         {
@@ -1380,7 +1506,7 @@ describe("App grid", () => {
           type: "command.completed",
           message: "tool_result",
           payload: { tool_use_id: "task-1", content: "Done." },
-          createdAt: "2026-05-08T15:54:04.000Z"
+          createdAt: "2026-05-08T15:54:04.000Z",
         },
         {
           id: "task-start",
@@ -1392,10 +1518,10 @@ describe("App grid", () => {
             name: "Task",
             input: {
               description: "Map renderer",
-              prompt: "Find renderer files."
-            }
+              prompt: "Find renderer files.",
+            },
           },
-          createdAt: "2026-05-08T15:54:02.000Z"
+          createdAt: "2026-05-08T15:54:02.000Z",
         },
         {
           id: "user-message",
@@ -1403,9 +1529,9 @@ describe("App grid", () => {
           type: "user.message",
           message: "Map this",
           payload: {},
-          createdAt: "2026-05-08T15:54:00.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:00.000Z",
+        },
+      ],
     });
 
     // Only the poll's own interval is faked, so ticks can be driven straight
@@ -1435,7 +1561,7 @@ describe("App grid", () => {
       path: "/tmp/worktrees/fresh-task",
       state: "running",
       sharedWorkspace: true,
-      lastActivityAt: "2026-05-08T16:10:00.000Z"
+      lastActivityAt: "2026-05-08T16:10:00.000Z",
     });
     const newSession = sessionRow({
       id: "session-new",
@@ -1448,7 +1574,7 @@ describe("App grid", () => {
       attention: "normal",
       startedAt: "2026-05-08T16:10:00.000Z",
       completedAt: null,
-      lastActivityAt: "2026-05-08T16:10:00.000Z"
+      lastActivityAt: "2026-05-08T16:10:00.000Z",
     });
     createCurrentWorkspace.mockResolvedValue(newWorkspace);
     launchProvider.mockResolvedValue(newSession);
@@ -1465,12 +1591,12 @@ describe("App grid", () => {
             name: "Task",
             input: {
               description: "Map renderer",
-              prompt: "Find renderer files."
-            }
+              prompt: "Find renderer files.",
+            },
           },
-          createdAt: "2026-05-08T15:54:02.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:02.000Z",
+        },
+      ],
     });
     window.localStorage.setItem("argmax.newSessionMode", "full");
 
@@ -1482,7 +1608,7 @@ describe("App grid", () => {
 
     fireEvent.keyDown(document, { key: "n", metaKey: true });
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
-      target: { value: "Fresh task" }
+      target: { value: "Fresh task" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Start agent" }));
 
@@ -1508,7 +1634,10 @@ describe("App grid", () => {
     expect(window.localStorage.getItem("argmax.newSessionMode")).toBe("full");
     fireEvent.keyDown(document, { key: ",", metaKey: true });
     await screen.findByRole("group", { name: "Chat panes" });
-    expect(screen.getByRole("button", { name: "Build dashboard" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: "Build dashboard" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
 
     fireEvent.keyDown(document, { key: "n", metaKey: true });
 
@@ -1516,12 +1645,17 @@ describe("App grid", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Chat panes" })).toBeNull();
     expect(screen.queryByRole("region", { name: "New chat for Argmax" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Build dashboard" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("button", { name: "Build dashboard" })).not.toHaveAttribute(
+      "aria-current",
+    );
 
     // Esc dismisses the full launcher and restores the grid view.
     fireEvent.keyDown(document, { key: "Escape" });
     expect(await screen.findByRole("group", { name: "Chat panes" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Build dashboard" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: "Build dashboard" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
   });
 
   it("opens the Cmd+N launcher below when the focused row already has 2 panes", async () => {
@@ -1530,7 +1664,7 @@ describe("App grid", () => {
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
-      sessions: [...snapshot.sessions, secondSession]
+      sessions: [...snapshot.sessions, secondSession],
     });
 
     window.localStorage.setItem("argmax.newSessionMode", "embedded");
@@ -1546,10 +1680,10 @@ describe("App grid", () => {
     fireEvent.keyDown(document, { key: "n", metaKey: true });
 
     expect(await screen.findByRole("region", { name: "New chat for Argmax" })).toBeInTheDocument();
-    const rows = document.querySelectorAll(".session-multigrid-row");
+    const rows = screen.getAllByRole("group", { name: /^Pane row \d+$/ });
     expect(rows).toHaveLength(2);
-    expect(rows[0]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(2);
-    expect(rows[1]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(1);
+    expect(within(rows[0]).getAllByTestId("session-multigrid-cell")).toHaveLength(2);
+    expect(within(rows[1]).getAllByTestId("session-multigrid-cell")).toHaveLength(1);
   });
 
   it("highlights and drops a sidebar session even when dataTransfer payloads are empty", async () => {
@@ -1558,7 +1692,7 @@ describe("App grid", () => {
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
-      sessions: [...snapshot.sessions, secondSession]
+      sessions: [...snapshot.sessions, secondSession],
     });
 
     render(<App />);
@@ -1566,36 +1700,43 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByRole("region", { name: "Conversation" });
 
-    const dropTargetRow = screen.getByRole("button", { name: "Drop target" }).closest(".session-row-wrap");
-    if (!(dropTargetRow instanceof HTMLElement)) throw new Error("Expected sidebar session row wrapper");
+    const dropTargetRow = screen.getByRole("button", { name: "Drop target" });
 
     fireEvent.dragStart(dropTargetRow, {
       dataTransfer: {
         setData: vi.fn(),
         setDragImage: vi.fn(),
-        effectAllowed: "move"
-      }
+        effectAllowed: "move",
+      },
     });
 
     const dropOverlay = await waitFor(() => {
-      const overlay = document.querySelector<HTMLElement>(".multigrid-drop-overlay");
-      if (!overlay) throw new Error("Expected drop overlay to render");
-      return overlay;
+      return screen.getByRole("group", { name: "Drop chat here" });
     });
     Object.defineProperty(dropOverlay, "getBoundingClientRect", {
       configurable: true,
-      value: () => ({ width: 800, height: 600, top: 0, right: 800, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+      value: () => ({
+        width: 800,
+        height: 600,
+        top: 0,
+        right: 800,
+        bottom: 600,
+        left: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
     });
 
     const dataTransfer = {
       types: [],
       getData: vi.fn(() => ""),
-      dropEffect: "move"
+      dropEffect: "move",
     };
     fireGridDragEvent(dropOverlay, "dragover", 790, 300, dataTransfer);
     await waitFor(() => {
       expect(within(dropOverlay).getByText("Split right")).toBeInTheDocument();
-      expect(document.querySelector('.multigrid-drop-zone[data-position="right"]')).toBeInTheDocument();
+      expect(screen.getByTestId("multigrid-drop-zone")).toHaveAttribute("data-position", "right");
     });
 
     fireGridDragEvent(dropOverlay, "drop", 790, 300, dataTransfer);
@@ -1610,18 +1751,18 @@ describe("App grid", () => {
       [2, "Upper right"],
       [3, "Bottom left"],
       [4, "Bottom right"],
-      [5, "Replacement pane"]
+      [5, "Replacement pane"],
     ] as const;
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [
         ...snapshot.workspaces,
-        ...paneFixtures.map(([index, label]) => gridWorkspace(index, label))
+        ...paneFixtures.map(([index, label]) => gridWorkspace(index, label)),
       ],
       sessions: [
         ...snapshot.sessions,
-        ...paneFixtures.map(([index, label]) => gridSession(index, label))
-      ]
+        ...paneFixtures.map(([index, label]) => gridSession(index, label)),
+      ],
     });
 
     render(<App />);
@@ -1635,25 +1776,38 @@ describe("App grid", () => {
       expect(rows).toHaveLength(2);
       const [firstRow, secondRow] = rows;
       if (!firstRow || !secondRow) throw new Error("Expected two pane rows");
-      expect(within(firstRow).getAllByRole("region", { name: /^(Build dashboard|Upper right)$/ })).toHaveLength(2);
-      expect(within(secondRow).getAllByRole("region", { name: /^(Bottom left|Bottom right)$/ })).toHaveLength(2);
+      expect(
+        within(firstRow).getAllByRole("region", { name: /^(Build dashboard|Upper right)$/ }),
+      ).toHaveLength(2);
+      expect(
+        within(secondRow).getAllByRole("region", { name: /^(Bottom left|Bottom right)$/ }),
+      ).toHaveLength(2);
     });
 
-    const sourceRow = screen.getByRole("button", { name: "Replacement pane" }).closest(".session-row-wrap");
-    if (!(sourceRow instanceof HTMLElement)) throw new Error("Expected sidebar session row wrapper");
+    const sourceRow = screen.getByRole("button", { name: "Replacement pane" });
     fireEvent.dragStart(sourceRow, {
       dataTransfer: {
         setData: vi.fn(),
         setDragImage: vi.fn(),
-        effectAllowed: "move"
-      }
+        effectAllowed: "move",
+      },
     });
 
     const targetPane = screen.getByRole("region", { name: "Bottom right" });
     const dropOverlay = await within(targetPane).findByRole("group", { name: "Drop chat here" });
     Object.defineProperty(dropOverlay, "getBoundingClientRect", {
       configurable: true,
-      value: () => ({ width: 800, height: 600, top: 0, right: 800, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+      value: () => ({
+        width: 800,
+        height: 600,
+        top: 0,
+        right: 800,
+        bottom: 600,
+        left: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
     });
     const dataTransfer = { types: [], getData: vi.fn(() => ""), dropEffect: "move" };
 
@@ -1664,7 +1818,7 @@ describe("App grid", () => {
     await waitFor(() => {
       expect(screen.queryByRole("region", { name: "Bottom right" })).toBeNull();
       expect(screen.getByRole("region", { name: "Replacement pane" })).toBeInTheDocument();
-      expect(document.querySelectorAll(".session-multigrid-cell")).toHaveLength(4);
+      expect(screen.getAllByTestId("session-multigrid-cell")).toHaveLength(4);
     });
   });
 
@@ -1672,18 +1826,18 @@ describe("App grid", () => {
     const paneFixtures = [
       [2, "Upper right"],
       [3, "Bottom left"],
-      [4, "Bottom right"]
+      [4, "Bottom right"],
     ] as const;
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [
         ...snapshot.workspaces,
-        ...paneFixtures.map(([index, label]) => gridWorkspace(index, label))
+        ...paneFixtures.map(([index, label]) => gridWorkspace(index, label)),
       ],
       sessions: [
         ...snapshot.sessions,
-        ...paneFixtures.map(([index, label]) => gridSession(index, label))
-      ]
+        ...paneFixtures.map(([index, label]) => gridSession(index, label)),
+      ],
     });
 
     render(<App />);
@@ -1694,21 +1848,30 @@ describe("App grid", () => {
     }
     await screen.findByRole("region", { name: "Bottom right" });
 
-    const sourceRow = screen.getByRole("button", { name: "Build dashboard" }).closest(".session-row-wrap");
-    if (!(sourceRow instanceof HTMLElement)) throw new Error("Expected sidebar session row wrapper");
+    const sourceRow = screen.getByRole("button", { name: "Build dashboard" });
     fireEvent.dragStart(sourceRow, {
       dataTransfer: {
         setData: vi.fn(),
         setDragImage: vi.fn(),
-        effectAllowed: "move"
-      }
+        effectAllowed: "move",
+      },
     });
 
     const targetPane = screen.getByRole("region", { name: "Bottom right" });
     const dropOverlay = await within(targetPane).findByRole("group", { name: "Drop chat here" });
     Object.defineProperty(dropOverlay, "getBoundingClientRect", {
       configurable: true,
-      value: () => ({ width: 800, height: 600, top: 0, right: 800, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+      value: () => ({
+        width: 800,
+        height: 600,
+        top: 0,
+        right: 800,
+        bottom: 600,
+        left: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
     });
     const dataTransfer = { types: [], getData: vi.fn(() => ""), dropEffect: "move" };
 
@@ -1720,10 +1883,16 @@ describe("App grid", () => {
       const rows = screen.getAllByRole("group", { name: /^Pane row/ });
       const [firstRow, secondRow] = rows;
       if (!firstRow || !secondRow) throw new Error("Expected two pane rows");
-      expect(within(firstRow).getAllByRole("region", { name: /^(Bottom right|Upper right)$/ }).map((pane) => pane.getAttribute("aria-label")))
-        .toEqual(["Bottom right", "Upper right"]);
-      expect(within(secondRow).getAllByRole("region", { name: /^(Bottom left|Build dashboard)$/ }).map((pane) => pane.getAttribute("aria-label")))
-        .toEqual(["Bottom left", "Build dashboard"]);
+      expect(
+        within(firstRow)
+          .getAllByRole("region", { name: /^(Bottom right|Upper right)$/ })
+          .map((pane) => pane.getAttribute("aria-label")),
+      ).toEqual(["Bottom right", "Upper right"]);
+      expect(
+        within(secondRow)
+          .getAllByRole("region", { name: /^(Bottom left|Build dashboard)$/ })
+          .map((pane) => pane.getAttribute("aria-label")),
+      ).toEqual(["Bottom left", "Build dashboard"]);
     });
   });
 
@@ -1732,16 +1901,19 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     fireEvent.click(await screen.findByRole("button", { name: "Files" }));
     const panel = await screen.findByRole("complementary", { name: "Review panel" });
-    const handle = within(panel).getByRole("group", { name: "Review panes" }).previousElementSibling;
+    // oxlint-disable-next-line argmax/no-node-access -- the resize handle is aria-hidden and unnamed; its only handle is sitting just before the Review panes group
+    const handle = within(panel).getByRole("group", {
+      name: "Review panes",
+    }).previousElementSibling;
     if (!(handle instanceof HTMLElement)) throw new Error("Expected the sidebar resize handle");
     vi.spyOn(panel, "getBoundingClientRect").mockReturnValue(new DOMRect(600, 0, 500, 700));
     fireEvent.mouseDown(handle, { clientX: 600 });
-    expect(document.querySelector('[data-browser-overlay="true"]')).not.toBeNull();
+    expect(screen.getByTestId("session-panel-resize-shield")).toBeInTheDocument();
     fireEvent.mouseMove(document, { clientX: 650 });
     fireEvent.blur(window);
     expect(document.body.style.cursor).toBe("");
     expect(document.body.style.userSelect).toBe("");
-    expect(document.querySelector('[data-browser-overlay="true"]')).toBeNull();
+    expect(screen.queryByTestId("session-panel-resize-shield")).toBeNull();
     expect(window.localStorage.getItem("argmax.session.rightPanel.pinnedWidth")).toBe("450");
 
     fireEvent.mouseMove(document, { clientX: 700 });
@@ -1755,7 +1927,7 @@ describe("App grid", () => {
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
-      sessions: [...snapshot.sessions, secondSession]
+      sessions: [...snapshot.sessions, secondSession],
     });
 
     render(<App />);
@@ -1766,11 +1938,22 @@ describe("App grid", () => {
 
     const handle = await screen.findByRole("separator", { name: /Resize Build dashboard/ });
     const grid = screen.getByRole("group", { name: "Chat panes" });
+    // oxlint-disable-next-line argmax/no-node-access -- the test sizes the grid's first row element, which is the structural child of the grid
     const row = grid.firstElementChild;
     if (!(row instanceof HTMLElement)) throw new Error("Expected a grid row");
     Object.defineProperty(row, "getBoundingClientRect", {
       configurable: true,
-      value: () => ({ width: 1200, height: 600, top: 0, right: 1200, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+      value: () => ({
+        width: 1200,
+        height: 600,
+        top: 0,
+        right: 1200,
+        bottom: 600,
+        left: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
     });
     const before = row.style.gridTemplateColumns;
 
@@ -1782,7 +1965,7 @@ describe("App grid", () => {
       expect(row.style.gridTemplateColumns).not.toBe(before);
     });
     const frWidths = [...row.style.gridTemplateColumns.matchAll(/([\d.]+)fr/g)].map((match) =>
-      Number(match[1])
+      Number(match[1]),
     );
     expect(Math.min(...frWidths)).toBeGreaterThanOrEqual(MIN_RESIZABLE_CELL_WIDTH_PX - 1);
   });
@@ -1797,7 +1980,7 @@ describe("App grid", () => {
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace, thirdWorkspace, fourthWorkspace],
-      sessions: [...snapshot.sessions, secondSession, thirdSession, fourthSession]
+      sessions: [...snapshot.sessions, secondSession, thirdSession, fourthSession],
     });
 
     render(<App />);
@@ -1815,11 +1998,25 @@ describe("App grid", () => {
     if (!(firstRow instanceof HTMLElement) || !(secondRow instanceof HTMLElement)) {
       throw new Error("Expected two grid rows");
     }
-    expect(within(firstRow).getAllByRole("region", { name: /^(Build dashboard|Wide pane)$/ })).toHaveLength(2);
-    expect(within(secondRow).getAllByRole("region", { name: /^(Dropped pane|Bottom right)$/ })).toHaveLength(2);
+    expect(
+      within(firstRow).getAllByRole("region", { name: /^(Build dashboard|Wide pane)$/ }),
+    ).toHaveLength(2);
+    expect(
+      within(secondRow).getAllByRole("region", { name: /^(Dropped pane|Bottom right)$/ }),
+    ).toHaveLength(2);
     Object.defineProperty(firstRow, "getBoundingClientRect", {
       configurable: true,
-      value: () => ({ width: 1200, height: 600, top: 0, right: 1200, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+      value: () => ({
+        width: 1200,
+        height: 600,
+        top: 0,
+        right: 1200,
+        bottom: 600,
+        left: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
     });
     const before = firstRow.style.gridTemplateColumns;
     expect(secondRow.style.gridTemplateColumns).toBe(before);
@@ -1834,7 +2031,7 @@ describe("App grid", () => {
       expect(secondRow.style.gridTemplateColumns).toBe(firstRow.style.gridTemplateColumns);
     });
     const frWidths = [...firstRow.style.gridTemplateColumns.matchAll(/([\d.]+)fr/g)].map((match) =>
-      Number(match[1])
+      Number(match[1]),
     );
     expect(Math.min(...frWidths)).toBeGreaterThanOrEqual(MIN_RESIZABLE_CELL_WIDTH_PX - 1);
   });
@@ -1845,7 +2042,7 @@ describe("App grid", () => {
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
-      sessions: [...snapshot.sessions, secondSession]
+      sessions: [...snapshot.sessions, secondSession],
     });
 
     render(<App />);
@@ -1871,7 +2068,10 @@ describe("App grid", () => {
     fireEvent.keyDown(document, { key: "j", metaKey: true });
 
     expect(await screen.findByRole("group", { name: "Chat panes" })).toBeInTheDocument();
-    expect(await screen.findByTestId("terminal-tabs-panel")).toHaveAttribute("data-visible", "true");
+    expect(await screen.findByTestId("terminal-tabs-panel")).toHaveAttribute(
+      "data-visible",
+      "true",
+    );
 
     fireEvent.keyDown(document, { key: "j", metaKey: true });
 
@@ -1889,7 +2089,7 @@ describe("App grid", () => {
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: [...snapshot.workspaces, secondWorkspace],
-      sessions: [...snapshot.sessions, secondSession]
+      sessions: [...snapshot.sessions, secondSession],
     });
 
     render(<App />);
@@ -1898,7 +2098,10 @@ describe("App grid", () => {
     await screen.findByRole("region", { name: "Conversation" });
     fireEvent.keyDown(document, { key: "j", metaKey: true });
     await waitFor(() => {
-      expect(screen.getByTestId("terminal-tabs-panel")).toHaveAttribute("data-workspace", "workspace-1");
+      expect(screen.getByTestId("terminal-tabs-panel")).toHaveAttribute(
+        "data-workspace",
+        "workspace-1",
+      );
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Other session" }));
@@ -1908,7 +2111,10 @@ describe("App grid", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
     await waitFor(() => {
-      expect(screen.getByTestId("terminal-tabs-panel")).toHaveAttribute("data-workspace", "workspace-1");
+      expect(screen.getByTestId("terminal-tabs-panel")).toHaveAttribute(
+        "data-workspace",
+        "workspace-1",
+      );
     });
     expect(getWorkspaceTerminalStateForTest("workspace-1").tabs).toHaveLength(1);
   });
@@ -1937,16 +2143,24 @@ describe("App grid", () => {
           sessionId: "session-1",
           type: "command.started",
           message: "Task",
-          payload: { id: "task-2", name: "Task", input: { description: "Write tests", prompt: "Add coverage." } },
-          createdAt: "2026-05-08T15:54:03.000Z"
+          payload: {
+            id: "task-2",
+            name: "Task",
+            input: { description: "Write tests", prompt: "Add coverage." },
+          },
+          createdAt: "2026-05-08T15:54:03.000Z",
         },
         {
           id: "task-1",
           sessionId: "session-1",
           type: "command.started",
           message: "Task",
-          payload: { id: "task-1", name: "Task", input: { description: "Map renderer", prompt: "Find renderer files." } },
-          createdAt: "2026-05-08T15:54:02.000Z"
+          payload: {
+            id: "task-1",
+            name: "Task",
+            input: { description: "Map renderer", prompt: "Find renderer files." },
+          },
+          createdAt: "2026-05-08T15:54:02.000Z",
         },
         {
           id: "user-message",
@@ -1954,9 +2168,9 @@ describe("App grid", () => {
           type: "user.message",
           message: "Map this",
           payload: {},
-          createdAt: "2026-05-08T15:54:00.000Z"
-        }
-      ]
+          createdAt: "2026-05-08T15:54:00.000Z",
+        },
+      ],
     });
 
     // Only the poll's own interval is faked, so a tick can be driven straight
@@ -1977,8 +2191,14 @@ describe("App grid", () => {
       sessionAgentEvents.mock.calls.filter((call) => call[0].parentToolUseId === "task-1").length;
 
     await waitFor(() => {
-      expect(sessionAgentEvents).toHaveBeenCalledWith({ sessionId: "session-1", parentToolUseId: "task-1" });
-      expect(sessionAgentEvents).toHaveBeenCalledWith({ sessionId: "session-1", parentToolUseId: "task-2" });
+      expect(sessionAgentEvents).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        parentToolUseId: "task-1",
+      });
+      expect(sessionAgentEvents).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        parentToolUseId: "task-2",
+      });
     });
 
     const task2Calls = (): number =>
@@ -1998,5 +2218,4 @@ describe("App grid", () => {
       expect(task1Calls()).toBeGreaterThan(before);
     });
   });
-
 });

@@ -17,7 +17,7 @@ export function validationMessage(error: unknown): string {
       .map((issue) =>
         issue && typeof issue === "object" && "message" in issue
           ? (issue as { message?: unknown }).message
-          : undefined
+          : undefined,
       )
       .filter((message): message is string => typeof message === "string" && message !== "");
     if (messages.length > 0) return messages.join(" ");

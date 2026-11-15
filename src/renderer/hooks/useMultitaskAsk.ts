@@ -14,7 +14,7 @@ import { useSessionTimeline } from "./useSessionTimeline.js";
 export function useMultitaskAsk(
   sessionId: string | null,
   wanted: boolean,
-  onLoadSessionEvents?: (sessionId: string) => Promise<void>
+  onLoadSessionEvents?: (sessionId: string) => Promise<void>,
 ): string | null {
   const watched = wanted ? sessionId : null;
   const { events } = useSessionTimeline(watched);

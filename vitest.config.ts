@@ -8,7 +8,10 @@ const shared = {
   // less spawn cost. Measured 9% faster at CI's four workers. `isolate: false`
   // was measured too and rejected: the DOM project fails outright, and the
   // node project only gains a second.
-  pool: "threads" as const
+  pool: "threads" as const,
+  // Shared CI runners run the heavier render tests 4-5x slower than a laptop, past the
+  // 5 s default; a real hang still fails.
+  testTimeout: process.env.CI ? 20_000 : 5_000,
 };
 
 export default defineConfig({
@@ -20,7 +23,7 @@ export default defineConfig({
     // `// @vitest-environment jsdom` docblock, which still wins per file.
     projects: [
       { test: { ...shared, name: "logic", environment: "node", include: ["src/**/*.test.ts"] } },
-      { test: { ...shared, name: "dom", environment: "jsdom", include: ["src/**/*.test.tsx"] } }
+      { test: { ...shared, name: "dom", environment: "jsdom", include: ["src/**/*.test.tsx"] } },
     ],
     // Coverage is a report, not a gate — no thresholds. CI prints the
     // text-summary; the json-summary is there for tooling that wants numbers.
@@ -29,7 +32,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text-summary", "json-summary"],
-      include: ["src/shared/**", "src/renderer/lib/**"]
-    }
-  }
+      include: ["src/shared/**", "src/renderer/lib/**"],
+    },
+  },
 });

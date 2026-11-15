@@ -16,9 +16,9 @@ use crate::activity::{
     ActivityStreaks, ActivitySummary, ActivityTotals, ActivityWindow, HEATMAP_DAYS,
     MAX_PULL_REQUESTS, MAX_REVIEWS,
 };
-use crate::error::ArgmaxResult;
-use crate::persistence::activity::{self as storage, PullRequestRow, ReviewRow};
-use crate::persistence::projects;
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::activity::{self as storage, PullRequestRow, ReviewRow};
+use argmax_store::projects;
 
 /// A ledger row with its instant already parsed and its local day resolved.
 #[derive(Debug, Clone)]
@@ -738,8 +738,8 @@ fn median_cycle_seconds(cycles: &[i64]) -> Option<i64> {
 mod tests {
     use super::*;
     use crate::activity::{ActivityScanPhase, ActivityWindow};
-    use crate::persistence::projects::{PersistProjectInput, ProjectSettings};
-    use crate::persistence::Database;
+    use argmax_store::projects::{PersistProjectInput, ProjectSettings};
+    use argmax_store::Database;
 
     const STOCKHOLM: Tz = chrono_tz::Europe::Stockholm;
 

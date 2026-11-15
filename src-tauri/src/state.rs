@@ -15,9 +15,7 @@ use crate::browser::registry::BrowserTabRegistry;
 use crate::checks::service::CheckService;
 use crate::dock::{DockBadgeService, TauriDockBadgeSink};
 use crate::gh::poller::GhPoller;
-use crate::ipc::validation::ThemeMode;
 use crate::notifications::{NotificationService, NotificationSink};
-use crate::persistence::Database;
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::discovery::ProviderDiscovery;
 use crate::providers::session_service::ProviderSessionService;
@@ -27,7 +25,10 @@ use crate::session_control::SessionLaunchServer;
 use crate::skills::registry::SkillRegistry;
 use crate::terminal::service::TerminalService;
 use crate::util::startup_timer::StartupTimer;
-use crate::workspaces::WorkspaceService;
+use crate::workspaces::orchestration::WorkspaceService;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ThemeMode;
+use argmax_store::Database;
 
 pub type LiveNotificationService = NotificationService<Box<dyn NotificationSink>>;
 pub type LiveDockBadgeService = DockBadgeService<TauriDockBadgeSink<tauri::Wry>>;
@@ -107,8 +108,7 @@ pub struct AppState {
     /// Most recent destructive chat-history preview. The candidate ids and
     /// cutoff are held together so confirmation applies exactly what the user
     /// reviewed, then revalidates those rows before deletion.
-    pub chat_cleanup_plan:
-        std::sync::Mutex<Option<crate::persistence::chat_cleanup::ChatCleanupPlan>>,
+    pub chat_cleanup_plan: std::sync::Mutex<Option<argmax_store::chat_cleanup::ChatCleanupPlan>>,
     pub routine_runs: Arc<crate::routines::scheduler::RoutineRuns>,
     /// Skill discovery, held here so its per-provider cache survives across
     /// calls: a fresh registry per `skills:list` re-walks every skill tree.
@@ -129,7 +129,7 @@ pub struct AppState {
     pub browser_theme: std::sync::Mutex<ThemeMode>,
     pub browser_content_blocking:
         tokio::sync::Mutex<crate::browser::content_blocking::ContentBlockingState>,
-    pub(crate) pending_browser_opens: std::sync::Mutex<crate::ipc::browser::PendingBrowserOpens>,
+    pub(crate) pending_browser_opens: std::sync::Mutex<crate::browser::tabs::PendingBrowserOpens>,
     /// Sessions torn off into windows of their own, by window label.
     pub chat_windows: crate::windows::ChatWindows,
 }
@@ -189,12 +189,15 @@ impl AppState {
 
     /// The app data directory, or the one error every profile-backed handler
     /// reports when setup never resolved one.
-    pub fn require_app_data_dir(&self) -> crate::error::ArgmaxResult<&Path> {
+    pub fn require_app_data_dir(&self) -> argmax_contracts::error::ArgmaxResult<&Path> {
         self.app_data_dir
             .get()
             .map(PathBuf::as_path)
             .ok_or_else(|| {
-                crate::error::ArgmaxError::service("APP_DATA_DIR", "app data dir unavailable")
+                argmax_contracts::error::ArgmaxError::service(
+                    "APP_DATA_DIR",
+                    "app data dir unavailable",
+                )
             })
     }
 
@@ -204,4 +207,35 @@ impl AppState {
             ..Self::default()
         }
     }
+}
+
+/// Run a blocking database read off the macOS main thread.
+///
+/// Tauri resolves a sync `#[tauri::command]` body inline on the main thread, so
+/// a 24 ms dashboard read is 24 ms the window cannot draw or handle input. The
+/// `async` flag is not the fix — it is `tokio::spawn`, which parks a shared
+/// worker that provider IO and the `dashboard:delta` emit loop also need.
+/// `spawn_blocking` uses the pool sized for exactly this.
+pub(crate) async fn read_off_main<T, F>(read: F) -> ArgmaxResult<T>
+where
+    F: FnOnce() -> ArgmaxResult<T> + Send + 'static,
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(read)
+        .await
+        .map_err(|error| ArgmaxError::service("DATABASE_READ_JOIN", error.to_string()))?
+}
+
+pub(crate) fn live_database(state: &AppState) -> ArgmaxResult<Arc<Database>> {
+    state.db.get().cloned().ok_or_else(|| {
+        // A recorded open failure is the whole story; without one, boot is
+        // simply still in flight.
+        match state.db_open_error.get() {
+            Some(reason) => ArgmaxError::service("DATABASE_NOT_READY", reason),
+            None => ArgmaxError::service(
+                "DATABASE_NOT_READY",
+                "database is not initialized (startup may still be in progress)",
+            ),
+        }
+    })
 }

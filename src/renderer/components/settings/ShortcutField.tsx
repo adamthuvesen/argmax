@@ -12,7 +12,7 @@ export function ShortcutField({
   value,
   defaultValue,
   validate,
-  onChange
+  onChange,
 }: {
   ariaLabel: string;
   value: string;

@@ -1,11 +1,12 @@
 import { useState } from "react";
+import { resolveModelId } from "../../shared/providerModels.js";
 import type { SessionSummary } from "../../shared/types.js";
 import { isAutoTier } from "../lib/models.js";
 import {
   routeSwitchDirection,
   routeSwitchElapsed,
   type RoutedModel,
-  type RouteSwitch
+  type RouteSwitch,
 } from "../lib/routeSwitch.js";
 
 // A routed chat opened within this long of its launch is shown the router's
@@ -40,9 +41,9 @@ function routedModel(session: SessionSummary | null): RoutedModel | null {
   if (!session || !isAutoTier(session.autoTier)) return null;
   return {
     provider: session.provider,
-    modelId: session.modelId,
+    modelId: resolveModelId(session.provider, session.modelId),
     modelLabel: session.modelLabel,
-    reasoningEffort: session.reasoningEffort ?? null
+    reasoningEffort: session.reasoningEffort ?? null,
   };
 }
 
@@ -69,7 +70,7 @@ export function useRouteSwitch(session: SessionSummary | null): RouteSwitch | nu
   const [tracked, setTracked] = useState<Tracked>(() => ({
     sessionId,
     route,
-    routeSwitch: session && route ? launchSwitch(session, route) : null
+    routeSwitch: session && route ? launchSwitch(session, route) : null,
   }));
   if (tracked.sessionId === sessionId && sameRoute(tracked.route, route)) {
     return tracked.routeSwitch;
@@ -85,7 +86,7 @@ export function useRouteSwitch(session: SessionSummary | null): RouteSwitch | nu
       from: tracked.route,
       to: route,
       direction: routeSwitchDirection(tracked.route, route),
-      reason: session.autoRoute ?? null
+      reason: session.autoRoute ?? null,
     };
   }
   const next: Tracked = { sessionId, route, routeSwitch };
@@ -101,12 +102,12 @@ export function useRouteSwitch(session: SessionSummary | null): RouteSwitch | nu
  */
 export function useRouteSwitchElapsed(
   routeSwitch: RouteSwitch | null | undefined,
-  durationMs: number
+  durationMs: number,
 ): number | null {
   const id = routeSwitch?.id ?? null;
   const read = (): { id: number | null; elapsed: number | null } => ({
     id,
-    elapsed: routeSwitch ? routeSwitchElapsed(routeSwitch, durationMs) : null
+    elapsed: routeSwitch ? routeSwitchElapsed(routeSwitch, durationMs) : null,
   });
   const [seen, setSeen] = useState(read);
   if (seen.id === id) return seen.elapsed;

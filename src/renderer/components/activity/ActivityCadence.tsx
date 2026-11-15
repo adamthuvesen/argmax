@@ -6,7 +6,7 @@ import {
   cadenceReading,
   peakHour,
   peakWeekday,
-  type ActivityPeak
+  type ActivityPeak,
 } from "./activityPresentation.js";
 
 /**
@@ -23,7 +23,32 @@ const CHART_HEIGHT = 132;
 const CHART_TOP = 18;
 const CHART_BOTTOM = 22;
 /** The 24-hour chart is too dense for a figure over every bar. */
-const HOUR_LABELS = ["0", "", "", "", "", "", "6", "", "", "", "", "", "12", "", "", "", "", "", "18", "", "", "", "", "23"];
+const HOUR_LABELS = [
+  "0",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "6",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "12",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "18",
+  "",
+  "",
+  "",
+  "",
+  "23",
+];
 
 interface BarChartProps {
   values: readonly number[];
@@ -45,7 +70,7 @@ function BarChart({
   gap,
   showEveryValue,
   peak,
-  title
+  title,
 }: BarChartProps): JSX.Element {
   const plotHeight = CHART_HEIGHT - CHART_TOP - CHART_BOTTOM;
   const base = CHART_TOP + plotHeight;
@@ -109,7 +134,7 @@ function BarChart({
 
 export function ActivityCadence({
   cadence,
-  commits
+  commits,
 }: {
   cadence: Cadence;
   /** The window's commit count, so the card can name what it is describing. */

@@ -29,7 +29,7 @@ interface MascotProps {
 const MOOD_LABEL: Record<MascotMood, string> = {
   idle: "Fox mascot",
   sleepy: "Fox mascot, dozing",
-  sad: "Fox mascot, looking concerned"
+  sad: "Fox mascot, looking concerned",
 };
 
 const SHADES_LABEL = "Fox mascot, in sunglasses";
@@ -42,6 +42,19 @@ function parseGrid(source: string): ReadonlyArray<string> {
 // off the base drawing and holds for every expression.
 const GRID: ReadonlyArray<string> = parseGrid(baseSprite);
 const GRID_W = GRID[0].length;
+
+/** An expression file is an overlay: `-` lets the base sprite's pixel through. */
+function withExpression(overlay: string): ReadonlyArray<string> {
+  const face = parseGrid(overlay);
+  if (face.length !== GRID.length || face.some((row) => row.length !== GRID_W)) {
+    throw new Error(
+      `Mascot overlay must be ${GRID_W}x${GRID.length}, the size of assets/fox-mascot.txt`,
+    );
+  }
+  return GRID.map((row, y) =>
+    Array.from(row, (cell, x) => (face[y].charAt(x) === "-" ? cell : face[y].charAt(x))).join(""),
+  );
+}
 
 // The sprite is wide and short, so the viewBox is squared off below it: the fox
 // keeps the top of a square mark, and callers still size it with one number.
@@ -57,7 +70,7 @@ const LAYERS: ReadonlyArray<{ cell: string; className: string }> = [
   { cell: "t", className: "mascot-cream-shade" },
   { cell: "x", className: "mascot-nose" },
   { cell: "p", className: "mascot-blush" },
-  { cell: "w", className: "mascot-eyes" }
+  { cell: "w", className: "mascot-eyes" },
 ];
 
 interface SpriteRect {
@@ -103,17 +116,16 @@ function coverCells(grid: ReadonlyArray<string>, cell: string): SpriteRect[] {
 
 type SpriteLayers = ReadonlyArray<{ className: string; rects: SpriteRect[] }>;
 
-function layersFor(source: string): SpriteLayers {
-  const grid = parseGrid(source);
+function layersFor(grid: ReadonlyArray<string>): SpriteLayers {
   return LAYERS.map(({ cell, className }) => ({ className, rects: coverCells(grid, cell) }));
 }
 
 // Built once at module load, not per render: the sprites never change.
 const SPRITE_LAYERS: Record<SpriteName, SpriteLayers> = {
-  base: layersFor(baseSprite),
-  wink: layersFor(winkSprite),
-  sleepy: layersFor(sleepySprite),
-  shades: layersFor(shadesSprite)
+  base: layersFor(GRID),
+  wink: layersFor(withExpression(winkSprite)),
+  sleepy: layersFor(withExpression(sleepySprite)),
+  shades: layersFor(withExpression(shadesSprite)),
 };
 
 const PET_DURATION_MS = 700;
@@ -134,7 +146,7 @@ export function Mascot({
   type = "button",
   disabled,
   title,
-  shades = false
+  shades = false,
 }: MascotProps): JSX.Element | null {
   const ariaLabel = label ?? (shades ? SHADES_LABEL : MOOD_LABEL[mood]);
   const classes = ["mascot", className].filter(Boolean).join(" ");
@@ -180,6 +192,7 @@ export function Mascot({
           {rects.map((rect) => (
             <rect
               key={`${rect.x}-${rect.y}`}
+              data-testid="mascot-mark"
               x={rect.x}
               y={rect.y}
               width={rect.width}

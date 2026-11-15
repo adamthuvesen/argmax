@@ -2,7 +2,7 @@ import { interpretFileChange } from "../lib/fileChange.js";
 import {
   displayToolInput,
   isAgentMessageToolName,
-  isOpaqueCiphertext
+  isOpaqueCiphertext,
 } from "../lib/toolArguments.js";
 import {
   displayBashCommand,
@@ -10,7 +10,7 @@ import {
   getToolTypeBucket,
   isBashLikeTool,
   unwrapBashCommand,
-  type ToolCall
+  type ToolCall,
 } from "../lib/toolCalls.js";
 import { isInternalAgentLaunchMetadata } from "../lib/agentLaunch.js";
 
@@ -23,7 +23,7 @@ export const REDUNDANT_INPUT_KEYS = new Set([
   "path",
   "relative_path",
   "streamContent",
-  "text"
+  "text",
 ]);
 // A diff the provider handed over is drawn by the file-change card below, so
 // it is not also an argument. Only redundant once that card is rendering it:
@@ -42,7 +42,7 @@ export const RENDERED_DIFF_INPUT_KEYS = new Set([
   "patch",
   "replace_all",
   "replaceAll",
-  "unified_diff"
+  "unified_diff",
 ]);
 export const BASH_COMMAND_INPUT_KEYS = ["command", "cmd", "shell_command", "script"] as const;
 // Claude's Bash carries `description` + `timeout`; Codex uses `timeout_ms`.
@@ -58,7 +58,7 @@ export const REDUNDANT_BASH_INPUT_KEYS = new Set([
   "runInBackground",
   "timeout",
   "timeout_ms",
-  "yield_time_ms"
+  "yield_time_ms",
 ]);
 
 export function pickString(input: Record<string, unknown>, keys: readonly string[]): string | null {
@@ -85,14 +85,14 @@ export function visibleInputForTool(tool: ToolCall): Record<string, unknown> {
 
 export function hasNonRedundantInput(
   input: Record<string, unknown>,
-  redundantKeys: ReadonlySet<string> = REDUNDANT_INPUT_KEYS
+  redundantKeys: ReadonlySet<string> = REDUNDANT_INPUT_KEYS,
 ): boolean {
   return Object.keys(input).some((key) => !redundantKeys.has(key));
 }
 
 export function nonRedundantInput(
   input: Record<string, unknown>,
-  redundantKeys: ReadonlySet<string>
+  redundantKeys: ReadonlySet<string>,
 ): Record<string, unknown> {
   return Object.fromEntries(Object.entries(input).filter(([key]) => !redundantKeys.has(key)));
 }
@@ -129,14 +129,14 @@ export function hasVisibleToolOutput(tool: ToolCall, output: string | null): boo
  *  file, or nested activity. A command that printed nothing is not a disclosure. */
 export function toolCallHasExpandableDetail(
   tool: ToolCall,
-  options?: { hasLeadingContent?: boolean }
+  options?: { hasLeadingContent?: boolean },
 ): boolean {
   const changes = interpretFileChange(tool.name, tool.inputFull);
   if (changes && changes.length > 0) return true;
 
   const visibleInput = visibleInputForTool(tool);
   const bashCommand = isBashLikeTool(tool.name)
-    ? pickString(tool.inputFull, BASH_COMMAND_INPUT_KEYS) ?? tool.inputPreview
+    ? (pickString(tool.inputFull, BASH_COMMAND_INPUT_KEYS) ?? tool.inputPreview)
     : null;
   const fullCommand = bashCommand ? unwrapBashCommand(bashCommand) : null;
   const showCommandBlock = fullCommand !== null && fullCommand.includes("\n");

@@ -1,24 +1,10 @@
 import type { SessionSummary, TimelineEvent } from "../../shared/types.js";
 import { decodeTimelineEvent, type ProjectSourceActivity } from "./canonicalTimeline.js";
 import { compactionNoticeFor, type CompactionNotice } from "./compaction.js";
-import {
-  mergeMultitaskNotice,
-  multitaskNoticeFor,
-  type MultitaskNotice
-} from "./multitask.js";
-import {
-  projectMoveNoticeFor,
-  type ProjectMoveNotice
-} from "./projectMove.js";
-import {
-  providerSwitchNoticeFor,
-  type ProviderSwitchNotice
-} from "./providerSwitch.js";
-import {
-  isAgentToolName,
-  type ConversationItem,
-  type ToolCall
-} from "./toolCalls.js";
+import { mergeMultitaskNotice, multitaskNoticeFor, type MultitaskNotice } from "./multitask.js";
+import { projectMoveNoticeFor, type ProjectMoveNotice } from "./projectMove.js";
+import { providerSwitchNoticeFor, type ProviderSwitchNotice } from "./providerSwitch.js";
+import { isAgentToolName, type ConversationItem, type ToolCall } from "./toolCalls.js";
 import { foldTurnToolItems, type TurnToolItem } from "./turnToolItems.js";
 import { foldTodoEvents, type TodoList } from "./todoList.js";
 
@@ -47,11 +33,11 @@ export type RenderItem =
  */
 export function foldConversationItems(
   conversationEvents: readonly TimelineEvent[],
-  toolCalls: readonly ToolCall[]
+  toolCalls: readonly ToolCall[],
 ): ConversationItem[] {
   const items: ConversationItem[] = [
     ...conversationEvents.map((event) => ({ kind: "message" as const, event })),
-    ...toolCalls.map((tool) => ({ kind: "tool" as const, tool }))
+    ...toolCalls.map((tool) => ({ kind: "tool" as const, tool })),
   ];
   const itemTime = (item: ConversationItem): string =>
     item.kind === "message" ? item.event.createdAt : item.tool.createdAt;
@@ -72,7 +58,7 @@ export function foldConversationItems(
  */
 export function foldRenderItems(
   conversationItems: readonly ConversationItem[],
-  session: SessionSummary | null | undefined
+  session: SessionSummary | null | undefined,
 ): RenderItem[] {
   const out: RenderItem[] = [];
   // Preserve the historical fallback keys from the old transport-level tool
@@ -96,16 +82,14 @@ export function foldRenderItems(
     }
   }
   finishFallbackRun();
-  let pending:
-    | {
-        assistantEvents: TimelineEvent[];
-        steerEvents: TimelineEvent[];
-        toolItems: TurnToolItem[];
-        multitasks: MultitaskNotice[];
-        firstId: string | null;
-        touchedTodo?: boolean;
-      }
-    | null = null;
+  let pending: {
+    assistantEvents: TimelineEvent[];
+    steerEvents: TimelineEvent[];
+    toolItems: TurnToolItem[];
+    multitasks: MultitaskNotice[];
+    firstId: string | null;
+    touchedTodo?: boolean;
+  } | null = null;
   let activeTurnId: string | null = null;
   const todoEvents: TimelineEvent[] = [];
   // A subagent's child rows belong to the launch that spawned them, not to
@@ -154,7 +138,7 @@ export function foldRenderItems(
     if (key) {
       const lists = [
         ...(pending ? [pending.multitasks] : []),
-        ...out.flatMap((candidate) => (candidate.kind === "turn" ? [candidate.multitasks] : []))
+        ...out.flatMap((candidate) => (candidate.kind === "turn" ? [candidate.multitasks] : [])),
       ];
       for (const list of lists) {
         const at = list.findIndex((candidate) => candidate.childSessionId === key);
@@ -171,7 +155,7 @@ export function foldRenderItems(
         steerEvents: [],
         toolItems: [],
         multitasks: [],
-        firstId: activeTurnId
+        firstId: activeTurnId,
       };
     }
     pending.multitasks.push(notice);
@@ -183,12 +167,13 @@ export function foldRenderItems(
   let deferredNotes: RenderItem[] = [];
   const pushSessionNote = (event: TimelineEvent): void => {
     const canonical = decodeTimelineEvent(event);
-    const activity = canonical.kind === "lifecycle" && canonical.name === "note" ? canonical.sourceActivity : null;
+    const activity =
+      canonical.kind === "lifecycle" && canonical.name === "note" ? canonical.sourceActivity : null;
     const item: RenderItem = {
       kind: "session-note",
       id: `session-note-${event.id}`,
       message: event.message,
-      ...(activity ? { sourceActivity: activity } : {})
+      ...(activity ? { sourceActivity: activity } : {}),
     };
     if (pending) deferredNotes.push(item);
     else out.push(item);
@@ -212,7 +197,7 @@ export function foldRenderItems(
         toolItems: foldTurnToolItems(pending.toolItems),
         assistantTimestamps: pending.assistantEvents.map((e) => Date.parse(e.createdAt)),
         ...(todo ? { todo } : {}),
-        multitasks: pending.multitasks
+        multitasks: pending.multitasks,
       });
     }
     pending = null;
@@ -246,19 +231,11 @@ export function foldRenderItems(
       pushMultitask(item.event);
       continue;
     }
-    if (
-      item.kind === "message" &&
-      canonical?.kind === "lifecycle" &&
-      canonical.name === "note"
-    ) {
+    if (item.kind === "message" && canonical?.kind === "lifecycle" && canonical.name === "note") {
       pushSessionNote(item.event);
       continue;
     }
-    if (
-      item.kind === "message" &&
-      canonical?.kind === "lifecycle" &&
-      canonical.name === "moved"
-    ) {
+    if (item.kind === "message" && canonical?.kind === "lifecycle" && canonical.name === "moved") {
       flush();
       const id = `project-move-${item.event.id}`;
       out.push({ kind: "project-move", id, notice: projectMoveNoticeFor(item.event) });
@@ -293,11 +270,7 @@ export function foldRenderItems(
       activeTurnId = `turn-after-${pushCompaction(item.event)}`;
       continue;
     }
-    if (
-      item.kind === "message" &&
-      canonical?.kind === "message" &&
-      canonical.role === "user"
-    ) {
+    if (item.kind === "message" && canonical?.kind === "message" && canonical.role === "user") {
       // Steering is guidance inside the active native turn. Keep it in the
       // same render item so the TurnBlock, live state, timer, and tool
       // ownership survive while the user bubble remains in chronological
@@ -309,7 +282,7 @@ export function foldRenderItems(
             steerEvents: [],
             toolItems: [],
             multitasks: [],
-            firstId: activeTurnId
+            firstId: activeTurnId,
           };
         }
         pending.steerEvents.push(item.event);
@@ -328,7 +301,7 @@ export function foldRenderItems(
         steerEvents: [],
         toolItems: [],
         multitasks: [],
-        firstId: activeTurnId
+        firstId: activeTurnId,
       };
     }
     if (item.kind === "message") {
@@ -362,8 +335,8 @@ export function foldRenderItems(
         type: "user.message",
         message: session.prompt,
         payload: { source: "composer" },
-        createdAt: session.startedAt
-      }
+        createdAt: session.startedAt,
+      },
     });
   }
   return out;

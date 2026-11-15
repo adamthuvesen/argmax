@@ -11,13 +11,13 @@ use super::{
     argmax_protocol_error, protocol::SessionControlError, protocol_error, ARGMAX_BIN_ENV,
     SESSION_LAUNCH_SOCKET_ENV, SESSION_LAUNCH_TOKEN_ENV,
 };
-use crate::{
-    persistence::{
-        after_turn::{delete_after_turn, find_after_turn, insert_after_turn, AfterTurnAction},
-        app_settings::browser_tools_enabled,
-        database::Database,
-    },
-    providers::ProviderLaunchInput,
+use crate::providers::mcp_injection::ClaudeMcpLaunch;
+use crate::providers::ProviderLaunchInput;
+use argmax_contracts::validation::ProviderId;
+use argmax_store::{
+    after_turn::{delete_after_turn, find_after_turn, insert_after_turn, AfterTurnAction},
+    app_settings::{browser_tools_enabled, claude_mcp_choice},
+    database::Database,
 };
 
 #[derive(Clone)]
@@ -122,13 +122,13 @@ pub(super) struct CredentialState {
 #[derive(Clone)]
 pub(super) struct ParentLaunchSettings {
     pub(super) session_id: String,
-    pub(super) provider: crate::providers::ProviderId,
+    pub(super) provider: argmax_contracts::validation::ProviderId,
     pub(super) model_label: String,
     pub(super) model_id: String,
-    pub(super) reasoning_effort: Option<crate::providers::ReasoningEffort>,
+    pub(super) reasoning_effort: Option<argmax_contracts::validation::ReasoningEffort>,
     pub(super) fast_mode: bool,
-    pub(super) permission_mode: crate::providers::PermissionMode,
-    pub(super) agent_mode: crate::providers::AgentMode,
+    pub(super) permission_mode: argmax_contracts::validation::PermissionMode,
+    pub(super) agent_mode: argmax_contracts::validation::AgentMode,
 }
 
 /// A linked repository this launch's project allows, resolved at launch time.
@@ -150,6 +150,9 @@ pub struct SessionLaunchProcessConfig {
     /// first turn saw.
     linked_roots: Vec<LinkedRoot>,
     project_overview: Option<String>,
+    /// The user's "MCP at turn start" preset, resolved for this launch. Only
+    /// a Claude launch reads it; every other provider gets the default.
+    claude_mcp: ClaudeMcpLaunch,
 }
 
 impl std::fmt::Debug for SessionLaunchProcessConfig {
@@ -159,6 +162,7 @@ impl std::fmt::Debug for SessionLaunchProcessConfig {
             .field("socket_path", &self.socket_path)
             .field("token", &"[redacted]")
             .field("argmax_bin", &self.argmax_bin)
+            .field("claude_mcp", &self.claude_mcp)
             .finish()
     }
 }
@@ -186,6 +190,7 @@ impl SessionLaunchProcessConfig {
             browser_tools: true,
             linked_roots: Vec::new(),
             project_overview: None,
+            claude_mcp: ClaudeMcpLaunch::default(),
             socket_path: PathBuf::from(socket_path),
             token: token.to_string(),
             argmax_bin: PathBuf::from(argmax_bin),
@@ -201,6 +206,12 @@ impl SessionLaunchProcessConfig {
     #[cfg(test)]
     pub fn with_project_overview(mut self, overview: &str) -> Self {
         self.project_overview = Some(overview.to_string());
+        self
+    }
+
+    #[cfg(test)]
+    pub fn with_claude_mcp(mut self, claude_mcp: ClaudeMcpLaunch) -> Self {
+        self.claude_mcp = claude_mcp;
         self
     }
 
@@ -234,18 +245,19 @@ impl SessionLaunchProcessConfig {
     pub fn project_overview(&self) -> Option<&str> {
         self.project_overview.as_deref()
     }
+
+    pub fn claude_mcp(&self) -> &ClaudeMcpLaunch {
+        &self.claude_mcp
+    }
 }
 
 fn project_overview_for_session(database: &Database, session_id: &str) -> Option<String> {
     let connection = database.read_connection();
-    let result = (|| -> crate::error::ArgmaxResult<Option<String>> {
-        let session = crate::persistence::sessions::find_session_by_id(&connection, session_id)?;
-        let workspace = crate::persistence::workspaces::find_workspace_by_id(
-            &connection,
-            &session.workspace_id,
-        )?;
-        let project =
-            crate::persistence::projects::require_project(&connection, &workspace.project_id)?;
+    let result = (|| -> argmax_contracts::error::ArgmaxResult<Option<String>> {
+        let session = argmax_store::sessions::find_session_by_id(&connection, session_id)?;
+        let workspace =
+            argmax_store::workspaces::find_workspace_by_id(&connection, &session.workspace_id)?;
+        let project = argmax_store::projects::require_project(&connection, &workspace.project_id)?;
         Ok(project
             .overview
             .and_then(|overview| overview.saved)
@@ -267,12 +279,10 @@ fn project_overview_for_session(database: &Database, session_id: &str) -> Option
 fn linked_roots_for_session(database: &Database, session_id: &str) -> Vec<LinkedRoot> {
     let connection = database.read_connection();
     let repos = (|| {
-        let session = crate::persistence::sessions::find_session_by_id(&connection, session_id)?;
-        let workspace = crate::persistence::workspaces::find_workspace_by_id(
-            &connection,
-            &session.workspace_id,
-        )?;
-        crate::persistence::linked_repos::list_workspace_linked_repos(&connection, &workspace.id)
+        let session = argmax_store::sessions::find_session_by_id(&connection, session_id)?;
+        let workspace =
+            argmax_store::workspaces::find_workspace_by_id(&connection, &session.workspace_id)?;
+        argmax_store::linked_repos::list_workspace_linked_repos(&connection, &workspace.id)
     })();
     match repos {
         Ok(repos) => repos
@@ -324,7 +334,7 @@ impl SessionLaunchRegistry {
                 session_id: input.session_id.clone(),
                 provider: input.provider,
                 model_label: input.model_label.clone(),
-                model_id: input.model_id.clone(),
+                model_id: input.model_id.to_string(),
                 reasoning_effort: input.reasoning_effort,
                 fast_mode: input.fast_mode,
                 permission_mode: input.permission_mode,
@@ -336,6 +346,16 @@ impl SessionLaunchRegistry {
         // same answer: a chat the user started, and a chat one of their agents
         // started, carry the same tool surface.
         let browser_tools = browser_tools_enabled(&self.inner.database.read_connection());
+        // Resolved per launch, so a preset change or an edited config file
+        // reaches the next turn without a restart.
+        let claude_mcp = if input.provider == ProviderId::Claude {
+            let choice = claude_mcp_choice(&self.inner.database.read_connection());
+            ClaudeMcpLaunch::resolve(&choice, || {
+                crate::connections::claude_own_servers_for_user(Some(&input.workspace_path))
+            })
+        } else {
+            ClaudeMcpLaunch::default()
+        };
         let linked_roots = linked_roots_for_session(&self.inner.database, &input.session_id);
         let project_overview =
             project_overview_for_session(&self.inner.database, &input.session_id);
@@ -346,6 +366,7 @@ impl SessionLaunchRegistry {
             browser_tools,
             linked_roots,
             project_overview,
+            claude_mcp,
         }
     }
 
@@ -548,15 +569,16 @@ fn random_bearer_token() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::{
+    use crate::providers::model_catalogue::ModelId;
+    use crate::session_control::server::SessionLaunchServer;
+    use argmax_contracts::sessions::state::SessionState;
+    use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
+    use argmax_store::{
         after_turn::{list_after_turn, ArchiveRequest, MoveDestinationRecord, MoveRequest},
         projects::{persist_project, PersistProjectInput, ProjectSettings},
         sessions::{persist_session, PersistSessionInput},
         workspaces::{persist_workspace, PersistWorkspaceInput},
     };
-    use crate::providers::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
-    use crate::session_control::server::SessionLaunchServer;
-    use crate::sessions::state::SessionState;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
@@ -656,7 +678,7 @@ mod tests {
             workspace_path: PathBuf::from("/tmp/repo"),
             prompt: "parent prompt".to_string(),
             model_label: "GPT-5.6 Sol".to_string(),
-            model_id: "gpt-5.6-sol".to_string(),
+            model_id: ModelId::resolve(ProviderId::Codex, "gpt-5.6-sol"),
             reasoning_effort: Some(ReasoningEffort::High),
             fast_mode: true,
             resume_conversation_id: None,
@@ -672,7 +694,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn every_issue_reads_the_projects_enabled_linked_roots_from_the_database() {
-        use crate::persistence::linked_repos::{
+        use argmax_store::linked_repos::{
             add_linked_repo, list_linked_repos, set_linked_repo_enabled, set_linked_repo_summary,
             LinkedRepoInput,
         };
@@ -738,7 +760,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn each_launch_reads_saved_overview_and_never_an_unapplied_draft() {
-        use crate::persistence::project_overviews::{
+        use argmax_store::project_overviews::{
             begin_generation, complete_generation, edit_overview, OverviewDocument, OverviewEdit,
         };
         let database = database_with_sessions(&["session-1"]);

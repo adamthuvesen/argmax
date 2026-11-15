@@ -38,7 +38,7 @@ export function dispatchedCommandNames({
   hasSession,
   canMultitask,
   canCloud = false,
-  goalEnabled
+  goalEnabled,
 }: {
   hasSession: boolean;
   canMultitask: boolean;
@@ -77,5 +77,5 @@ export const SKILL_SOURCE_LABELS: Record<SkillSource, string> = {
   workspace: "Project",
   "codex-prompt": "Prompt",
   plugin: "Plugin",
-  system: "System"
+  system: "System",
 };

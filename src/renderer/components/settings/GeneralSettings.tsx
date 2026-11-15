@@ -1,4 +1,5 @@
 import { ArrowRight } from "lucide-react";
+import { systemActions } from "../../data/bridgeActions.js";
 import { showErrorToast } from "../../state/toast.js";
 import { useState, type JSX } from "react";
 import type { DetectedIde, IdeId } from "../../../shared/types.js";
@@ -6,13 +7,13 @@ import {
   isLinkTarget,
   persistLinkTarget,
   readStoredLinkTarget,
-  type LinkTarget
+  type LinkTarget,
 } from "../../lib/linkTarget.js";
 import {
   backgroundSendChordProblem,
   DEFAULT_BACKGROUND_SEND_SHORTCUT,
   resetBackgroundSendShortcut,
-  writeBackgroundSendShortcut
+  writeBackgroundSendShortcut,
 } from "../../lib/backgroundSend.js";
 import { formatChord } from "../../lib/shortcutChord.js";
 import { useBackgroundSendShortcut } from "../../hooks/useBackgroundSendShortcut.js";
@@ -20,7 +21,7 @@ import type { NewSessionMode } from "../../lib/newSessionMode.js";
 import {
   ESCAPE_STOPS_CHAT_KEY,
   useBooleanUiPreference,
-  type FollowUpDelivery
+  type FollowUpDelivery,
 } from "../../lib/uiPreferences.js";
 import { ShortcutField } from "./ShortcutField.js";
 import { WindowSnapshotSettings } from "./WindowSnapshotSettings.js";
@@ -30,7 +31,7 @@ import {
   SettingNote,
   SettingRow,
   SettingsListPicker,
-  Toggle
+  Toggle,
 } from "./settingsPrimitives.js";
 
 export function GeneralSettings({
@@ -47,7 +48,7 @@ export function GeneralSettings({
   detectedIdes,
   defaultIde,
   onDefaultIdeChange,
-  onOpenProjects
+  onOpenProjects,
 }: {
   newSessionMode: NewSessionMode;
   onNewSessionModeChange: (mode: NewSessionMode) => void;
@@ -69,7 +70,7 @@ export function GeneralSettings({
   const [linkTarget, setLinkTarget] = useState<LinkTarget>(readStoredLinkTarget);
   const [escapeStopsChat, setEscapeStopsChat] = useBooleanUiPreference(
     ESCAPE_STOPS_CHAT_KEY,
-    false
+    false,
   );
   const backgroundSendShortcut = useBackgroundSendShortcut();
   const [testNotificationStatus, setTestNotificationStatus] = useState<string | null>(null);
@@ -82,16 +83,17 @@ export function GeneralSettings({
   };
 
   const handleTestNotification = async (): Promise<void> => {
-    if (!window.argmax?.system?.testNotification) {
+    const system = systemActions();
+    if (!system?.testNotification) {
       showErrorToast("Test notifications need the desktop app.");
       return;
     }
     setIsTestingNotification(true);
     setTestNotificationStatus(null);
     try {
-      await window.argmax.system.testNotification();
+      await system.testNotification();
       setTestNotificationStatus(
-        "Test notification sent. No banner? Check System Settings > Notifications > Argmax."
+        "Test notification sent. No banner? Check System Settings > Notifications > Argmax.",
       );
     } catch (error) {
       showErrorToast(error instanceof Error ? error.message : "Failed to send notification");
@@ -114,7 +116,7 @@ export function GeneralSettings({
               onChange={(v) => onNewSessionModeChange(v as NewSessionMode)}
               options={[
                 { value: "embedded", label: "In grid" },
-                { value: "full", label: "Full view" }
+                { value: "full", label: "Full view" },
               ]}
             />
           }
@@ -147,7 +149,7 @@ export function GeneralSettings({
               onChange={(value) => onFollowUpDeliveryChange(value as FollowUpDelivery)}
               options={[
                 { value: "queue", label: "Queue" },
-                { value: "steer", label: "Steer" }
+                { value: "steer", label: "Steer" },
               ]}
             />
           }
@@ -223,7 +225,7 @@ export function GeneralSettings({
               onChange={(next) => onKeepAwakeEnabledChange(next === "yes")}
               options={[
                 { value: "no", label: "No" },
-                { value: "yes", label: "Yes" }
+                { value: "yes", label: "Yes" },
               ]}
             />
           }
@@ -242,14 +244,18 @@ export function GeneralSettings({
               // A default that isn't detected (e.g. the factory Cursor default
               // on a machine without Cursor) shows as "Ask each time" — the
               // effective behavior — instead of a dangling option.
-              value={defaultIde && detectedIdes.some((entry) => entry.id === defaultIde) ? defaultIde : ""}
+              value={
+                defaultIde && detectedIdes.some((entry) => entry.id === defaultIde)
+                  ? defaultIde
+                  : ""
+              }
               onChange={(next) => {
                 onDefaultIdeChange(next === "" ? null : next);
               }}
               disabled={detectedIdes.length === 0}
               options={[
                 { value: "", label: "Ask each time" },
-                ...detectedIdes.map((entry) => ({ value: entry.id, label: entry.label }))
+                ...detectedIdes.map((entry) => ({ value: entry.id, label: entry.label })),
               ]}
             />
           }
@@ -265,7 +271,7 @@ export function GeneralSettings({
               onChange={pickLinkTarget}
               options={[
                 { value: "system", label: "Default browser" },
-                { value: "argmax", label: "Argmax browser" }
+                { value: "argmax", label: "Argmax browser" },
               ]}
             />
           }

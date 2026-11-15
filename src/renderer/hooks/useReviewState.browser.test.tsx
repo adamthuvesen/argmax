@@ -14,7 +14,7 @@ import {
   rememberBrowserUrl,
   requestAgentBrowserOpen,
   resetBrowserSurfaceForTests,
-  resetBrowserTabsForTests
+  resetBrowserTabsForTests,
 } from "../lib/browserPanel.js";
 import type { BrowserTabInfo } from "../../shared/types.js";
 import { useReviewState } from "./useReviewState.js";
@@ -29,10 +29,18 @@ function stubBridge(): void {
     configurable: true,
     writable: true,
     value: {
-      browser: { onNewTab: (listener: (event: { tabId: string; url: string }) => void) => { nativeNewTabListener = listener; return () => undefined; } },
-      review: { listChangedFiles: vi.fn().mockResolvedValue([]), loadDiff: vi.fn().mockResolvedValue(null) },
-      workspace: { listFiles: vi.fn().mockResolvedValue([]) }
-    }
+      browser: {
+        onNewTab: (listener: (event: { tabId: string; url: string }) => void) => {
+          nativeNewTabListener = listener;
+          return () => undefined;
+        },
+      },
+      review: {
+        listChangedFiles: vi.fn().mockResolvedValue([]),
+        loadDiff: vi.fn().mockResolvedValue(null),
+      },
+      workspace: { listFiles: vi.fn().mockResolvedValue([]) },
+    },
   });
 }
 
@@ -40,7 +48,7 @@ function renderPanel(claimsBrowserRequests: boolean, sessionId?: string) {
   return renderHook(
     ({ claims }: { claims: boolean }) =>
       useReviewState(null, { claimsBrowserRequests: claims, sessionId }),
-    { initialProps: { claims: claimsBrowserRequests } }
+    { initialProps: { claims: claimsBrowserRequests } },
   );
 }
 
@@ -66,7 +74,11 @@ describe("useReviewState — browser mode", () => {
     expect(panel.result.current.browserRequest).toMatchObject({ url, newTab: true });
     const existing = getBrowserTabs("session-1")[0];
     act(() => panel.result.current.openBrowser(url));
-    expect(panel.result.current.browserRequest).toMatchObject({ url, tabId: existing.id, newTab: false });
+    expect(panel.result.current.browserRequest).toMatchObject({
+      url,
+      tabId: existing.id,
+      newTab: false,
+    });
     expect(panel.result.current.mode).toBe("browser");
   });
 
@@ -81,7 +93,10 @@ describe("useReviewState — browser mode", () => {
 
   it("keeps a browser tab when native close fails and removes it after a successful retry", async () => {
     const panel = renderPanel(true, "close-browser");
-    const close = vi.fn().mockRejectedValueOnce(new Error("close failed")).mockResolvedValue(undefined);
+    const close = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("close failed"))
+      .mockResolvedValue(undefined);
     const browserApi = window.argmax?.browser;
     if (!browserApi) throw new Error("Missing browser bridge");
     Object.assign(browserApi, { close });
@@ -100,7 +115,9 @@ describe("useReviewState — browser mode", () => {
       panel.result.current.tabs!.close(browser.id);
       await Promise.resolve();
     });
-    await waitFor(() => expect(panel.result.current.tabs!.items.some((tab) => tab.id === browser.id)).toBe(false));
+    await waitFor(() =>
+      expect(panel.result.current.tabs!.items.some((tab) => tab.id === browser.id)).toBe(false),
+    );
     expect(getBrowserTabs("close-browser")).toHaveLength(0);
     act(() => panel.result.current.tabs!.reopenClosed());
     expect(getBrowserTabs("close-browser")[0].url).toBe("https://example.com");
@@ -115,48 +132,65 @@ describe("useReviewState — browser mode", () => {
     act(() => panel.result.current.tabs!.close(`browser:${restored.id}`));
     expect(close).not.toHaveBeenCalled();
     expect(getBrowserTabs("unmaterialized")).toHaveLength(0);
-    expect(panel.result.current.tabs!.items.some((tab) => tab.id === `browser:${restored.id}`)).toBe(false);
+    expect(
+      panel.result.current.tabs!.items.some((tab) => tab.id === `browser:${restored.id}`),
+    ).toBe(false);
     expect(panel.result.current.tabs!.canReopen).toBe(true);
   });
 
-  it.each([true, false])("focuses a promoted page only when closing the active page (%s)", async (closeActive) => {
-    const close = vi.fn().mockResolvedValue(undefined);
-    Object.assign(window.argmax?.browser ?? {}, { close });
-    const panel = renderPanel(true, "close-page-focus");
-    act(() => panel.result.current.tabs!.openBrowser("https://example.com/first"));
-    act(() => panel.result.current.tabs!.openBrowser("https://example.com/second"));
-    const pages = getBrowserTabs("close-page-focus");
-    for (const page of pages) {
-      const request = getBrowserTabFocusRequest(page.id);
-      if (request !== null) consumeBrowserTabFocusRequest(page.id, request);
-    }
-    const closing = pages[closeActive ? 1 : 0];
-    const survivor = pages[closeActive ? 0 : 1];
-    markBrowserTabMaterialized(closing.id);
-    expect(getBrowserTabFocusRequest(survivor.id)).toBeNull();
-    await act(async () => {
-      panel.result.current.tabs!.close(`browser:${closing.id}`);
-      await Promise.resolve();
-    });
-    expect(panel.result.current.tabs!.paneTabIds).toEqual([`browser:${survivor.id}`]);
-    if (closeActive) expect(getBrowserTabFocusRequest(survivor.id)).not.toBeNull();
-    else expect(getBrowserTabFocusRequest(survivor.id)).toBeNull();
-  });
+  it.each([true, false])(
+    "focuses a promoted page only when closing the active page (%s)",
+    async (closeActive) => {
+      const close = vi.fn().mockResolvedValue(undefined);
+      Object.assign(window.argmax?.browser ?? {}, { close });
+      const panel = renderPanel(true, "close-page-focus");
+      act(() => panel.result.current.tabs!.openBrowser("https://example.com/first"));
+      act(() => panel.result.current.tabs!.openBrowser("https://example.com/second"));
+      const pages = getBrowserTabs("close-page-focus");
+      for (const page of pages) {
+        const request = getBrowserTabFocusRequest(page.id);
+        if (request !== null) consumeBrowserTabFocusRequest(page.id, request);
+      }
+      const closing = pages[closeActive ? 1 : 0];
+      const survivor = pages[closeActive ? 0 : 1];
+      markBrowserTabMaterialized(closing.id);
+      expect(getBrowserTabFocusRequest(survivor.id)).toBeNull();
+      await act(async () => {
+        panel.result.current.tabs!.close(`browser:${closing.id}`);
+        await Promise.resolve();
+      });
+      expect(panel.result.current.tabs!.paneTabIds).toEqual([`browser:${survivor.id}`]);
+      if (closeActive) expect(getBrowserTabFocusRequest(survivor.id)).not.toBeNull();
+      else expect(getBrowserTabFocusRequest(survivor.id)).toBeNull();
+    },
+  );
 
   it("preserves close focus when the native registry push arrives before the close reply", async () => {
     let resolveClose: () => void = () => undefined;
-    const pendingClose = new Promise<void>((resolve) => { resolveClose = resolve; });
+    const pendingClose = new Promise<void>((resolve) => {
+      resolveClose = resolve;
+    });
     Object.assign(window.argmax?.browser ?? {}, { close: vi.fn().mockReturnValue(pendingClose) });
     const panel = renderPanel(true, "registry-before-close");
     act(() => panel.result.current.tabs!.openBrowser("https://example.com/first"));
     act(() => panel.result.current.tabs!.openBrowser("https://example.com/second"));
     const [survivor, closing] = getBrowserTabs("registry-before-close");
-    const registryTabs = [survivor, closing].map((tab) => ({ tabId: tab.id, ownerSessionId: null, url: tab.url, title: null, loading: false, group: null }));
+    const registryTabs = [survivor, closing].map((tab) => ({
+      tabId: tab.id,
+      ownerSessionId: null,
+      url: tab.url,
+      title: null,
+      loading: false,
+      group: null,
+    }));
     act(() => applyBrowserTabs(registryTabs));
     act(() => panel.result.current.tabs!.close(`browser:${closing.id}`));
     act(() => applyBrowserTabs([registryTabs[0]]));
     expect(panel.result.current.tabs!.paneTabIds).toEqual([`browser:${closing.id}`]);
-    await act(async () => { resolveClose(); await pendingClose; });
+    await act(async () => {
+      resolveClose();
+      await pendingClose;
+    });
     expect(panel.result.current.tabs!.paneTabIds).toEqual([`browser:${survivor.id}`]);
     expect(getBrowserTabFocusRequest(survivor.id)).not.toBeNull();
     expect(panel.result.current.isPanelOpen).toBe(true);
@@ -168,8 +202,12 @@ describe("useReviewState — browser mode", () => {
     act(() => panel.result.current.tabs!.openBrowser("https://example.com/first"));
     act(() => panel.result.current.splitMode("changes", "bottom"));
     const before = panel.result.current.tabs!.paneTabIds;
-    act(() => { createBrowserTab("background-tabs", "https://example.com/background"); });
-    expect(panel.result.current.tabs!.items.filter((tab) => tab.kind === "browser")).toHaveLength(2);
+    act(() => {
+      createBrowserTab("background-tabs", "https://example.com/background");
+    });
+    expect(panel.result.current.tabs!.items.filter((tab) => tab.kind === "browser")).toHaveLength(
+      2,
+    );
     expect(panel.result.current.tabs!.paneTabIds).toEqual(before);
     expect(panel.result.current.layout.activeIndex).toBe(1);
   });
@@ -182,7 +220,9 @@ describe("useReviewState — browser mode", () => {
     act(() => nativeNewTabListener?.({ tabId: source.id, url: "https://example.com/background" }));
     expect(getBrowserTabs("native-new-tabs")).toHaveLength(2);
     expect(panel.result.current.mode).toBe("changes");
-    expect(panel.result.current.tabs!.items.filter((tab) => tab.kind === "browser")).toHaveLength(2);
+    expect(panel.result.current.tabs!.items.filter((tab) => tab.kind === "browser")).toHaveLength(
+      2,
+    );
     panel.unmount();
     act(() => nativeNewTabListener?.({ tabId: source.id, url: "https://example.com/unmounted" }));
     expect(getBrowserTabs("native-new-tabs")).toHaveLength(3);
@@ -195,7 +235,9 @@ describe("useReviewState — browser mode", () => {
     const source = getBrowserTabs("native-split")[0];
     act(() => panel.result.current.splitMode("changes", "bottom"));
     act(() => nativeNewTabListener?.({ tabId: source.id, url: "https://example.com/next" }));
-    expect(panel.result.current.tabs!.paneTabIds[0]).toBe(`browser:${getBrowserTabs("native-split")[1].id}`);
+    expect(panel.result.current.tabs!.paneTabIds[0]).toBe(
+      `browser:${getBrowserTabs("native-split")[1].id}`,
+    );
     expect(panel.result.current.mode).toBe("changes");
     expect(panel.result.current.layout.activeIndex).toBe(1);
     expect(panel.result.current.browserRequest?.newTab).toBe(false);
@@ -203,29 +245,53 @@ describe("useReviewState — browser mode", () => {
 
   it("waits for browser registry hydration before pruning unresolved restored tabs", async () => {
     let resolveSnapshot: (value: { tabs: BrowserTabInfo[] }) => void = () => undefined;
-    const initialSnapshot = new Promise<{ tabs: BrowserTabInfo[] }>((resolve) => { resolveSnapshot = resolve; });
+    const initialSnapshot = new Promise<{ tabs: BrowserTabInfo[] }>((resolve) => {
+      resolveSnapshot = resolve;
+    });
     Object.assign(window.argmax?.browser ?? {}, {
       onTabs: vi.fn().mockReturnValue(() => undefined),
       onAgentOpen: vi.fn().mockReturnValue(() => undefined),
-      listTabs: vi.fn().mockReturnValue(initialSnapshot)
+      listTabs: vi.fn().mockReturnValue(initialSnapshot),
     });
-    localStorage.setItem("argmax.reviewPanel.layout.hydrating", JSON.stringify({
-      version: 2,
-      tabs: [
-        { id: "browser:hydrating", kind: "browser", browserTabId: "hydrating" },
-        { id: "browser:missing", kind: "browser", browserTabId: "missing" }
-      ],
-      paneTabIds: ["browser:hydrating", "browser:missing"], activeIndex: 1, ratio: 0.5
-    }));
+    localStorage.setItem(
+      "argmax.reviewPanel.layout.hydrating",
+      JSON.stringify({
+        version: 2,
+        tabs: [
+          { id: "browser:hydrating", kind: "browser", browserTabId: "hydrating" },
+          { id: "browser:missing", kind: "browser", browserTabId: "missing" },
+        ],
+        paneTabIds: ["browser:hydrating", "browser:missing"],
+        activeIndex: 1,
+        ratio: 0.5,
+      }),
+    );
     const panel = renderPanel(true, "hydrating");
     expect(panel.result.current.tabs!.items).toHaveLength(2);
     expect(panel.result.current.tabs!.paneTabIds).toEqual(["browser:hydrating", "browser:missing"]);
     await act(async () => {
-      resolveSnapshot({ tabs: [{ tabId: "hydrating", ownerSessionId: "hydrating", url: "https://example.com/restored", title: null, loading: false, group: null }] });
+      resolveSnapshot({
+        tabs: [
+          {
+            tabId: "hydrating",
+            ownerSessionId: "hydrating",
+            url: "https://example.com/restored",
+            title: null,
+            loading: false,
+            group: null,
+          },
+        ],
+      });
       await initialSnapshot;
     });
-    await waitFor(() => expect(panel.result.current.tabs!.items.some((tab) => tab.id === "browser:missing")).toBe(false));
-    expect(panel.result.current.tabs!.items.some((tab) => tab.id === "browser:hydrating")).toBe(true);
+    await waitFor(() =>
+      expect(panel.result.current.tabs!.items.some((tab) => tab.id === "browser:missing")).toBe(
+        false,
+      ),
+    );
+    expect(panel.result.current.tabs!.items.some((tab) => tab.id === "browser:hydrating")).toBe(
+      true,
+    );
     expect(panel.result.current.tabs!.paneTabIds).toEqual(["browser:hydrating"]);
   });
 
@@ -234,7 +300,7 @@ describe("useReviewState — browser mode", () => {
     // drag them to this window's coordinates through browser:set-bounds.
     window.localStorage.setItem(
       "argmax.reviewPanel.layout.session-1",
-      JSON.stringify({ modes: ["browser"], activeIndex: 0, ratio: 0.5 })
+      JSON.stringify({ modes: ["browser"], activeIndex: 0, ratio: 0.5 }),
     );
     window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: "chat-1" } } };
 
@@ -264,7 +330,11 @@ describe("useReviewState — browser mode", () => {
     act(() => first.result.current.openBrowser());
     act(() => {
       rememberBrowserUrl("https://example.com/current-page", "session-a");
-      updateBrowserTabState(getBrowserTabs("session-a")[0].id, "https://example.com/current-page", null);
+      updateBrowserTabState(
+        getBrowserTabs("session-a")[0].id,
+        "https://example.com/current-page",
+        null,
+      );
     });
     first.unmount();
 
@@ -287,7 +357,7 @@ describe("useReviewState — browser mode", () => {
     expect(mine.result.current.browserOwner).toBe(true);
     expect(mine.result.current.browserRequest).toMatchObject({
       url: "https://example.com",
-      tabId: "agent-1"
+      tabId: "agent-1",
     });
     // Focus does not enter into it: the pane showing the session does.
     expect(other.result.current.mode).toBe("changes");
@@ -355,7 +425,9 @@ describe("useReviewState — browser mode", () => {
     expect(claiming.result.current.browserOwner).toBe(true);
     expect(claiming.result.current.browserRequest?.url).toBe("https://argmax.dev");
     expect(claiming.result.current.browserRequest?.newTab).toBe(true);
-    expect(claiming.result.current.browserRequest?.tabId).toBe(getBrowserTabs(LAUNCHER_BROWSER_SCOPE_ID)[0]?.id);
+    expect(claiming.result.current.browserRequest?.tabId).toBe(
+      getBrowserTabs(LAUNCHER_BROWSER_SCOPE_ID)[0]?.id,
+    );
     expect(idle.result.current.mode).toBe("changes");
     expect(idle.result.current.browserOwner).toBe(false);
   });

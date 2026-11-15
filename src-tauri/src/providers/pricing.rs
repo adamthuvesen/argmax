@@ -1,5 +1,6 @@
-use crate::usage::records::UsageRecordTokens;
-use crate::util::sync::LockOrRecover;
+use argmax_contracts::usage::UsageCounts;
+use argmax_contracts::usage::UsageRecordTokens;
+use argmax_store::sync::LockOrRecover;
 use std::{
     collections::HashSet,
     sync::{Mutex, OnceLock},
@@ -16,15 +17,6 @@ pub struct ModelPricing {
     pub output: f64,
     pub cache_read: f64,
     pub cache_write: f64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct UsageCounts {
-    pub input: u64,
-    pub output: u64,
-    pub cache_read: u64,
-    pub cache_write: u64,
 }
 
 pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
@@ -53,7 +45,9 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "composer-2.5" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "grok-4.7-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "cursor-grok-4.6-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
-    "gemini-3.8-flash-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "gemini-4-hydrogen-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "gemini-4-carbon-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "gemini-4-argon-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "gpt-5.6-luna-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "gpt-5.6-terra-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "gpt-5.6-sol-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
@@ -94,6 +88,7 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
 
 static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_map! {
     "openrouter/deepseek/deepseek-v4.1-flash" => ModelPricing { input: 0.15, output: 0.6, cache_read: 0.003, cache_write: 0.15 },
+    "claude-fable-5-2" => ModelPricing { input: 8.0, output: 40.0, cache_read: 0.2, cache_write: 10.0 },
     "claude-fable-5" => ModelPricing { input: 10.0, output: 50.0, cache_read: 1.0, cache_write: 12.5 },
     "claude-sonnet-5" => ModelPricing { input: 2.0, output: 10.0, cache_read: 0.2, cache_write: 2.5 },
     "claude-opus-4-8" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
@@ -127,6 +122,7 @@ static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_
     "gpt-5.4-pro" => ModelPricing { input: 30.0, output: 180.0, cache_read: 0.0, cache_write: 0.0 },
     "gpt-5.5" => ModelPricing { input: 5.0, output: 30.0, cache_read: 0.5, cache_write: 0.0 },
     "gpt-5.5-pro" => ModelPricing { input: 30.0, output: 180.0, cache_read: 0.0, cache_write: 0.0 },
+    "gpt-6.1-terra" => ModelPricing { input: 1.0, output: 5.0, cache_read: 0.05, cache_write: 1.25 },
     "o4-mini" => ModelPricing { input: 1.1, output: 4.4, cache_read: 0.275, cache_write: 0.0 },
     "claude-opus-4-8-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "claude-opus-4-7-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
@@ -134,6 +130,7 @@ static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_
     "gemini-3.5-flash" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "gemini-3.6-flash-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "gemini-3.7-flash-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
+    "gemini-3.8-flash-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "cursor-grok-4.5-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
 };
 
@@ -232,6 +229,21 @@ fn logged_unknown_models() -> &'static Mutex<HashSet<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::model_catalogue::{CATALOGUE_MODELS, SUCCESSOR_MODEL_IDS};
+
+    #[test]
+    fn every_catalogue_model_and_retired_id_has_a_price() {
+        let catalogue = CATALOGUE_MODELS
+            .iter()
+            .flat_map(|model| std::iter::once(model.model_id).chain(model.fast_mode_model_id));
+        let retired = SUCCESSOR_MODEL_IDS.iter().map(|(_, retired, _)| *retired);
+        for model_id in catalogue.chain(retired) {
+            assert!(
+                list_price(model_id).is_some(),
+                "{model_id} has no price. Add it to MODEL_PRICING in src-tauri/src/providers/pricing.rs, or to STORED_MODEL_PRICING_ALIASES for a retired id"
+            );
+        }
+    }
 
     #[test]
     fn strips_date_suffix() {

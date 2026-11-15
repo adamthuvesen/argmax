@@ -8,7 +8,8 @@
  */
 
 /** Tags whose presence means the HTML flavor carries structure worth keeping. */
-const STRUCTURAL_TAG = /<(ul|ol|li|table|thead|tbody|tr|pre|code|h[1-6]|blockquote|strong|b|em|i|a|img)\b/i;
+const STRUCTURAL_TAG =
+  /<(ul|ol|li|table|thead|tbody|tr|pre|code|h[1-6]|blockquote|strong|b|em|i|a|img)\b/i;
 
 export function shouldPreferHtmlFlavor(html: string): boolean {
   return STRUCTURAL_TAG.test(html);

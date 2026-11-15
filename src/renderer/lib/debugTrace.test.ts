@@ -6,14 +6,19 @@ import {
   formatDelta,
   formatLatency,
   summarizeProtocolLine,
-  traceLabels
+  traceLabels,
 } from "./debugTrace.js";
 
 function event(id: string, type: string, createdAt: string, message = ""): TimelineEvent {
   return { id, sessionId: "s1", type, message, payload: {}, createdAt };
 }
 
-function raw(id: string, content: string, createdAt: string, stream: RawProviderOutput["stream"] = "stdout"): RawProviderOutput {
+function raw(
+  id: string,
+  content: string,
+  createdAt: string,
+  stream: RawProviderOutput["stream"] = "stdout",
+): RawProviderOutput {
   return { id, sessionId: "s1", stream, content, createdAt };
 }
 
@@ -21,14 +26,20 @@ describe("buildTraceRows", () => {
   it("interleaves events and raw output in time order", () => {
     const rows = buildTraceRows(
       [event("e1", "assistant.message", "2026-09-01T10:00:01.000Z")],
-      [raw("r1", "first", "2026-09-01T10:00:00.000Z"), raw("r2", "third", "2026-09-01T10:00:02.000Z")]
+      [
+        raw("r1", "first", "2026-09-01T10:00:00.000Z"),
+        raw("r2", "third", "2026-09-01T10:00:02.000Z"),
+      ],
     );
 
     expect(rows.map((row) => row.id)).toEqual(["raw:r1:0", "event:e1", "raw:r2:0"]);
   });
 
   it("splits a multi-line chunk into one row per line and skips blanks", () => {
-    const rows = buildTraceRows([], [raw("r1", '{"type":"system"}\n\n{"type":"result"}\n', "2026-09-01T10:00:00.000Z")]);
+    const rows = buildTraceRows(
+      [],
+      [raw("r1", '{"type":"system"}\n\n{"type":"result"}\n', "2026-09-01T10:00:00.000Z")],
+    );
 
     expect(rows.map((row) => row.summary)).toEqual(["system", "result"]);
   });
@@ -36,7 +47,7 @@ describe("buildTraceRows", () => {
   it("reports the gap to the previous row so stalls are visible", () => {
     const rows = buildTraceRows(
       [],
-      [raw("r1", "a", "2026-09-01T10:00:00.000Z"), raw("r2", "b", "2026-09-01T10:00:03.500Z")]
+      [raw("r1", "a", "2026-09-01T10:00:00.000Z"), raw("r2", "b", "2026-09-01T10:00:03.500Z")],
     );
 
     expect(rows[0]?.deltaMs).toBe(0);
@@ -46,7 +57,7 @@ describe("buildTraceRows", () => {
   it("keeps the verbatim line for copying even when the summary redacts it", () => {
     const line = JSON.stringify({
       type: "assistant",
-      message: { content: [{ type: "thinking", thinking: "long private reasoning" }] }
+      message: { content: [{ type: "thinking", thinking: "long private reasoning" }] },
     });
     const [row] = buildTraceRows([], [raw("r1", line, "2026-09-01T10:00:00.000Z")]);
 
@@ -63,39 +74,51 @@ describe("buildTraceRows", () => {
 
     expect(JSON.parse(row?.detail ?? "{}")).toEqual({
       kind: "unknown",
-      reason: "unsupported-type"
+      reason: "unsupported-type",
     });
     expect(row?.detail).not.toContain("large prompt");
-    expect(row?.raw).toBe(JSON.stringify({
-      type: source.type,
-      message: source.message,
-      payload: source.payload
-    }, null, 2));
+    expect(row?.raw).toBe(
+      JSON.stringify(
+        {
+          type: source.type,
+          message: source.message,
+          payload: source.payload,
+        },
+        null,
+        2,
+      ),
+    );
   });
 
   it("keeps malformed persisted events inspectable", () => {
     const source = {
       ...event("e1", "message.completed", "2026-09-01T10:00:00.000Z", "malformed event"),
-      payload: null
+      payload: null,
     } as unknown as TimelineEvent;
     const [row] = buildTraceRows([source], []);
 
     expect(JSON.parse(row?.detail ?? "{}")).toEqual({
       kind: "unknown",
-      reason: "invalid-payload"
+      reason: "invalid-payload",
     });
-    expect(row?.raw).toBe(JSON.stringify({
-      type: source.type,
-      message: source.message,
-      payload: null
-    }, null, 2));
+    expect(row?.raw).toBe(
+      JSON.stringify(
+        {
+          type: source.type,
+          message: source.message,
+          payload: null,
+        },
+        null,
+        2,
+      ),
+    );
   });
 });
 
 describe("filterTraceRows", () => {
   const rows = buildTraceRows(
     [event("e1", "assistant.message", "2026-09-01T10:00:01.000Z", "hello there")],
-    [raw("r1", "boom", "2026-09-01T10:00:00.000Z", "stderr")]
+    [raw("r1", "boom", "2026-09-01T10:00:00.000Z", "stderr")],
   );
 
   it("filters by source", () => {
@@ -106,7 +129,9 @@ describe("filterTraceRows", () => {
   it("filters by label and by case-insensitive search", () => {
     expect(filterTraceRows(rows, { source: "all", label: "stderr", query: "" })).toHaveLength(1);
     expect(filterTraceRows(rows, { source: "all", label: "all", query: "HELLO" })).toHaveLength(1);
-    expect(filterTraceRows(rows, { source: "all", label: "all", query: "nothing" })).toHaveLength(0);
+    expect(filterTraceRows(rows, { source: "all", label: "all", query: "nothing" })).toHaveLength(
+      0,
+    );
   });
 
   it("lists labels scoped to the active source", () => {
@@ -122,12 +147,17 @@ describe("summarizeProtocolLine", () => {
   });
 
   it("names the tools in a tool_use turn", () => {
-    const line = JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash" }] } });
+    const line = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Bash" }] },
+    });
     expect(summarizeProtocolLine(line)).toBe("assistant · tool_use Bash");
   });
 
   it("includes the subtype", () => {
-    expect(summarizeProtocolLine(JSON.stringify({ type: "system", subtype: "init" }))).toBe("system · init");
+    expect(summarizeProtocolLine(JSON.stringify({ type: "system", subtype: "init" }))).toBe(
+      "system · init",
+    );
   });
 });
 

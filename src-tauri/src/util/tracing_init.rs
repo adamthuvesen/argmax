@@ -6,8 +6,8 @@
 // before tracing is up — that's intentional, the alternative is two
 // inits which `tracing::subscriber::set_global_default` does not allow.
 //
-// Debug builds: pretty stderr layer + IPC-latency layer.
-// Release builds: JSON stderr layer + IPC-latency layer + optional JSON
+// Debug builds: pretty stderr layer + recent-log layer.
+// Release builds: JSON stderr layer + recent-log layer + optional JSON
 // rolling-file layer under `${user_data}/logs/argmax.log` when a
 // user-data directory is supplied.
 //
@@ -18,7 +18,6 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
-use std::time::Duration;
 
 use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context, SubscriberExt};
@@ -26,7 +25,6 @@ use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter, Layer};
 
-use crate::util::ipc_latency::IpcLatencyRegistry;
 use crate::util::log_buffer::{LogBuffer, LogEntry};
 
 /// Default filter when `RUST_LOG` is unset. Argmax modules at debug,
@@ -34,7 +32,6 @@ use crate::util::log_buffer::{LogBuffer, LogEntry};
 const DEFAULT_FILTER: &str = "info,argmax_lib=debug";
 
 pub struct TracingHandles {
-    pub ipc_latency: Arc<IpcLatencyRegistry>,
     pub logs: Arc<LogBuffer>,
     // Holds the rolling-file appender's flush guard alive. Dropping it
     // would flush pending writes and detach the worker.
@@ -64,16 +61,6 @@ pub fn init(user_data_dir: Option<&Path>) -> Result<&'static TracingHandles, Ini
     Ok(HANDLES.get().expect("just set"))
 }
 
-/// Returns the global IPC latency registry. Panics if `init` has not run.
-/// Commands that record latency should call this once and cache the Arc.
-pub fn ipc_latency() -> Arc<IpcLatencyRegistry> {
-    HANDLES
-        .get()
-        .expect("tracing not initialized")
-        .ipc_latency
-        .clone()
-}
-
 pub fn recent_logs() -> Vec<LogEntry> {
     HANDLES
         .get()
@@ -90,13 +77,9 @@ pub fn recent_logs_since(after_seq: Option<u64>) -> Vec<LogEntry> {
 }
 
 fn build_subscriber(user_data_dir: Option<&Path>) -> TracingHandles {
-    let ipc_latency = Arc::new(IpcLatencyRegistry::new());
     let logs = Arc::new(LogBuffer::default());
     let env_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(DEFAULT_FILTER));
-    let latency_layer = IpcLatencyLayer {
-        registry: ipc_latency.clone(),
-    };
     let recent_log_layer = RecentLogLayer {
         buffer: logs.clone(),
     };
@@ -110,10 +93,8 @@ fn build_subscriber(user_data_dir: Option<&Path>) -> TracingHandles {
             .with(env_filter)
             .with(stderr_layer)
             .with(recent_log_layer)
-            .with(latency_layer)
             .init();
         return TracingHandles {
-            ipc_latency,
             logs,
             _file_guard: None,
         };
@@ -150,11 +131,9 @@ fn build_subscriber(user_data_dir: Option<&Path>) -> TracingHandles {
         .with(stderr_layer)
         .with(file_layer)
         .with(recent_log_layer)
-        .with(latency_layer)
         .init();
 
     TracingHandles {
-        ipc_latency,
         logs,
         _file_guard: file_guard,
     }
@@ -219,58 +198,5 @@ impl tracing::field::Visit for LogVisitor {
 
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         self.record_value(field, format!("{value:?}"));
-    }
-}
-
-/// Tracing layer that pulls `channel` (string) + `latency_ms` (u64) fields
-/// out of any event and records the pair into the IPC latency registry.
-struct IpcLatencyLayer {
-    registry: Arc<IpcLatencyRegistry>,
-}
-
-impl<S> Layer<S> for IpcLatencyLayer
-where
-    S: Subscriber + for<'a> LookupSpan<'a>,
-{
-    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-        let mut visitor = LatencyVisitor::default();
-        event.record(&mut visitor);
-        if let (Some(channel), Some(latency_ms)) = (visitor.channel, visitor.latency_ms) {
-            self.registry
-                .record(&channel, Duration::from_millis(latency_ms));
-        }
-    }
-}
-
-#[derive(Default)]
-struct LatencyVisitor {
-    channel: Option<String>,
-    latency_ms: Option<u64>,
-}
-
-impl tracing::field::Visit for LatencyVisitor {
-    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        if field.name() == "channel" {
-            self.channel = Some(value.to_owned());
-        }
-    }
-
-    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-        if field.name() == "latency_ms" {
-            self.latency_ms = Some(value);
-        }
-    }
-
-    fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
-        if field.name() == "latency_ms" && value >= 0 {
-            self.latency_ms = Some(value as u64);
-        }
-    }
-
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        if field.name() == "channel" {
-            let s = format!("{value:?}");
-            self.channel = Some(s.trim_matches('"').to_owned());
-        }
     }
 }

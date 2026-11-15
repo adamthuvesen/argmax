@@ -1,8 +1,9 @@
 use super::{
-    document, VisualizationArtifact, VisualizationControlValues, VisualizationFormat,
-    VisualizationMode, VisualizationRead, VisualizationWidgetState,
+    document, VisualizationArtifact, VisualizationControlValues, VisualizationRead,
+    VisualizationWidgetState,
 };
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::visualizations::{VisualizationFormat, VisualizationMode};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use regex::Regex;
 use serde_json::json;
@@ -639,7 +640,7 @@ mod tests {
         assert!(store.read("other", &artifact.id).is_err());
         crate::attachments::store::AttachmentStore::from_data_dir(dir.path())
             .prune_session(
-                &crate::ipc::validation::SessionId::try_from("session".to_string()).unwrap(),
+                &argmax_contracts::validation::SessionId::try_from("session".to_string()).unwrap(),
             )
             .unwrap();
         assert!(store.read("session", &artifact.id).is_err());

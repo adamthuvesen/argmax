@@ -10,9 +10,9 @@ describe("withToast", () => {
   it("leaves no toast behind on success", async () => {
     const [toasts, setToast] = collect();
 
-    await expect(withToast(() => Promise.resolve(), setToast, "Could not rename chat.")).resolves.toBe(
-      true
-    );
+    await expect(
+      withToast(() => Promise.resolve(), setToast, "Could not rename chat."),
+    ).resolves.toBe(true);
     expect(toasts).toEqual([]);
   });
 
@@ -22,7 +22,7 @@ describe("withToast", () => {
 
     await expect(withToast(failing, setToast, "Could not rename chat.")).resolves.toBe(false);
     expect(toasts).toEqual([
-      { kind: "error", message: "Could not rename chat.", detail: "no such column: pinned" }
+      { kind: "error", message: "Could not rename chat.", detail: "no such column: pinned" },
     ]);
   });
 
@@ -33,12 +33,12 @@ describe("withToast", () => {
     await withToast(
       () => Promise.reject(new Error("Could not rename chat.")),
       setToast,
-      "Could not rename chat."
+      "Could not rename chat.",
     );
 
     expect(toasts).toEqual([
       { kind: "error", message: "Could not rename chat." },
-      { kind: "error", message: "Could not rename chat." }
+      { kind: "error", message: "Could not rename chat." },
     ]);
   });
 });

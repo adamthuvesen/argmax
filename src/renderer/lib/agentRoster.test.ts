@@ -16,7 +16,7 @@ function run(overrides: Partial<ToolCall> & Pick<ToolCall, "toolUseId" | "create
     error: null,
     backgroundLaunch: false,
     parentToolUseId: null,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -25,12 +25,29 @@ describe("buildAgentRoster", () => {
     const identity = {
       providerParentConversationId: "parent",
       providerChildSessionId: "child",
-      agentRootToolUseId: "spawn"
+      agentRootToolUseId: "spawn",
     };
-    const roster = buildAgentRoster([
-      run({ toolUseId: "spawn", createdAt: "2026-09-13T10:00:00Z", completedAt: "2026-09-13T10:01:00Z", status: "done", inputFull: { description: "Initial review" }, ...identity }),
-      run({ toolUseId: "follow-up", createdAt: "2026-09-13T10:02:00Z", status: "running", inputFull: { description: "Check the fix" }, parentToolUseId: "spawn", ...identity })
-    ], new Map([[`spawn\u0000parent\u0000child`, "Gauss"]]));
+    const roster = buildAgentRoster(
+      [
+        run({
+          toolUseId: "spawn",
+          createdAt: "2026-09-13T10:00:00Z",
+          completedAt: "2026-09-13T10:01:00Z",
+          status: "done",
+          inputFull: { description: "Initial review" },
+          ...identity,
+        }),
+        run({
+          toolUseId: "follow-up",
+          createdAt: "2026-09-13T10:02:00Z",
+          status: "running",
+          inputFull: { description: "Check the fix" },
+          parentToolUseId: "spawn",
+          ...identity,
+        }),
+      ],
+      new Map([[`spawn\u0000parent\u0000child`, "Gauss"]]),
+    );
 
     expect(roster.entries).toHaveLength(1);
     expect(roster.entries[0]).toMatchObject({
@@ -38,7 +55,7 @@ describe("buildAgentRoster", () => {
       title: "Check the fix",
       status: "running",
       rootToolUseId: "spawn",
-      latestTransitionAt: "2026-09-13T10:02:00Z"
+      latestTransitionAt: "2026-09-13T10:02:00Z",
     });
     expect(roster).toMatchObject({ running: 1, completed: 0, failed: 0 });
   });
@@ -47,12 +64,28 @@ describe("buildAgentRoster", () => {
     const identity = {
       providerParentConversationId: "parent",
       providerChildSessionId: "child",
-      agentRootToolUseId: "spawn"
+      agentRootToolUseId: "spawn",
     };
-    const roster = buildAgentRoster([
-      run({ toolUseId: "spawn", createdAt: "2026-09-13T10:00:00Z", completedAt: "2026-09-13T10:01:00Z", status: "done", ...identity }),
-      run({ toolUseId: "follow-up", createdAt: "2026-09-13T10:02:00Z", completedAt: "2026-09-13T10:03:00Z", status: "error", parentToolUseId: "spawn", ...identity })
-    ], new Map());
+    const roster = buildAgentRoster(
+      [
+        run({
+          toolUseId: "spawn",
+          createdAt: "2026-09-13T10:00:00Z",
+          completedAt: "2026-09-13T10:01:00Z",
+          status: "done",
+          ...identity,
+        }),
+        run({
+          toolUseId: "follow-up",
+          createdAt: "2026-09-13T10:02:00Z",
+          completedAt: "2026-09-13T10:03:00Z",
+          status: "error",
+          parentToolUseId: "spawn",
+          ...identity,
+        }),
+      ],
+      new Map(),
+    );
 
     expect(roster.entries).toHaveLength(1);
     expect(roster.entries[0]?.status).toBe("error");
@@ -61,19 +94,21 @@ describe("buildAgentRoster", () => {
   });
 
   it("keeps native children with a reused raw tool id distinct", () => {
-    const tools = ["child-a", "child-b"].map((child, index) => run({
-      toolUseId: "task-reused",
-      createdAt: `2026-09-13T10:0${index}:00Z`,
-      providerParentConversationId: "parent",
-      providerChildSessionId: child,
-      agentRootToolUseId: "task-reused"
-    }));
+    const tools = ["child-a", "child-b"].map((child, index) =>
+      run({
+        toolUseId: "task-reused",
+        createdAt: `2026-09-13T10:0${index}:00Z`,
+        providerParentConversationId: "parent",
+        providerChildSessionId: child,
+        agentRootToolUseId: "task-reused",
+      }),
+    );
 
     const roster = buildAgentRoster(tools, new Map());
 
     expect(roster.entries.map((entry) => entry.id)).toEqual([
       "native-agent:task-reused:parent:child-a",
-      "native-agent:task-reused:parent:child-b"
+      "native-agent:task-reused:parent:child-b",
     ]);
   });
 });

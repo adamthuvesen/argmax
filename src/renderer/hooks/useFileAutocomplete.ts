@@ -42,7 +42,7 @@ const CHAT_ROW_LIMIT = 5;
  */
 export function parseFileQuery(
   input: string,
-  caret: number
+  caret: number,
 ): { triggerStart: number; query: string } | null {
   if (caret < 1) return null;
   const upto = input.slice(0, caret);
@@ -123,14 +123,14 @@ export function useFileAutocomplete({
   inputRef,
   source,
   chats = NO_CHATS,
-  ownSessionId = null
+  ownSessionId = null,
 }: UseFileAutocompleteArgs): FileAutocompleteState {
   const [caret, setCaret] = useState(0);
   const [selectionIndex, setSelectionIndex] = useState(0);
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
   const cacheRef = useRef<Map<string, FileAutocompleteEntry[]>>(new Map());
   const [entriesBySource, setEntriesBySource] = useState<Map<string, FileAutocompleteEntry[]>>(
-    new Map()
+    new Map(),
   );
   const inflightRef = useRef(new Set<string>());
 
@@ -189,7 +189,7 @@ export function useFileAutocomplete({
       });
   }, [trigger, source, key]);
 
-  const allEntries = key ? entriesBySource.get(key) ?? null : null;
+  const allEntries = key ? (entriesBySource.get(key) ?? null) : null;
 
   const fileEntries = useMemo(() => {
     if (!trigger || !allEntries) return [] as FileAutocompleteEntry[];
@@ -201,7 +201,7 @@ export function useFileAutocomplete({
     const rankedPaths = searchFilePaths(
       allEntries.map((entry) => entry.path),
       trigger.query,
-      POPOVER_LIMIT
+      POPOVER_LIMIT,
     );
     const out: FileAutocompleteEntry[] = [];
     for (const path of rankedPaths) {
@@ -242,12 +242,12 @@ export function useFileAutocomplete({
               path: chat.sessionId,
               title: chat.title,
               projectName: chat.projectName,
-              snippet: hit.snippet.replace(/<\/?b>/g, "")
+              snippet: hit.snippet.replace(/<\/?b>/g, ""),
             });
           }
           setContentHits({ query: chatQuery, entries });
         },
-        () => undefined
+        () => undefined,
       );
     }, CHAT_CONTENT_DEBOUNCE_MS);
     return () => {
@@ -264,19 +264,21 @@ export function useFileAutocomplete({
         kind: "chat",
         path: chat.sessionId,
         title: chat.title,
-        projectName: chat.projectName
+        projectName: chat.projectName,
       }));
     const taken = new Set(byTitle.map((entry) => entry.path));
     const byContent =
       contentHits.query === chatQuery
-        ? contentHits.entries.filter((entry) => !taken.has(entry.path) && entry.path !== ownSessionId)
+        ? contentHits.entries.filter(
+            (entry) => !taken.has(entry.path) && entry.path !== ownSessionId,
+          )
         : [];
     return [...byTitle, ...byContent].slice(0, CHAT_ROW_LIMIT);
   }, [chatQuery, chats, contentHits, ownSessionId]);
 
   const filteredEntries = useMemo(
     () => [...fileEntries, ...chatEntries],
-    [fileEntries, chatEntries]
+    [fileEntries, chatEntries],
   );
 
   // Reset the dismissed flag when the trigger boundary moves — either
@@ -326,7 +328,7 @@ export function useFileAutocomplete({
         setCaret(nextCaret);
       });
     },
-    [trigger, input, caret, setInput, inputRef]
+    [trigger, input, caret, setInput, inputRef],
   );
 
   const onSelectionChange = useCallback((nextCaret: number): void => {
@@ -364,7 +366,7 @@ export function useFileAutocomplete({
         }
       }
     },
-    [popoverOpen, filteredEntries, selectionIndex, selectEntry, trigger]
+    [popoverOpen, filteredEntries, selectionIndex, selectEntry, trigger],
   );
 
   return {
@@ -374,6 +376,6 @@ export function useFileAutocomplete({
     setSelectionIndex,
     selectEntry,
     onKeyDown,
-    onSelectionChange
+    onSelectionChange,
   };
 }

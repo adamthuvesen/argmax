@@ -1,0 +1,370 @@
+{
+  "about": "The one home for latency targets. Keys are bench-latency metric ids (row, or row:field for navigation). stat is the percentile the target holds at. Add a target only with a source.",
+  "targets": {
+    "boot.first-paint": {
+      "stat": "p95",
+      "ms": 500,
+      "source": "docs/plan/latency.md target rule: boot is a ceiling, process to first paint <= 500 ms"
+    },
+    "sidebar.group.toggle:painted": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: direct manipulation (keystroke, hover, toggle) painted <= 50 ms"
+    },
+    "sidebar.archived.expand:painted": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: direct manipulation (keystroke, hover, toggle) painted <= 50 ms"
+    },
+    "sidebar.hide-show:painted": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: direct manipulation (keystroke, hover, toggle) painted <= 50 ms"
+    },
+    "composer.keystroke:painted": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: direct manipulation (keystroke, hover, toggle) painted <= 50 ms"
+    },
+    "session.switch.first-visit:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "session.switch.first-visit:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "session.switch.first-visit:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "session.switch.revisit:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "session.switch.revisit:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "session.switch.revisit:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "session.switch.longest:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "session.switch.longest:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md first targets: 12k-event chat painted <= 100 ms"
+    },
+    "session.switch.longest:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "palette.open:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "palette.open:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "palette.open:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "palette.query:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "palette.query:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "palette.query:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "palette.tab.Files:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "palette.tab.Files:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "palette.tab.Files:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "settings.open:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "settings.open:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "settings.open:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "settings.section:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "settings.section:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "settings.section:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "page.usage:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "page.usage:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "page.usage:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "page.activity:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "page.activity:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "page.activity:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "page.schedule:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "page.schedule:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "page.schedule:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "page.new-chat:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "page.new-chat:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "page.new-chat:settled": {
+      "stat": "p95",
+      "ms": 150,
+      "source": "docs/plan/latency.md first targets: new chat launcher settled <= 150 ms"
+    },
+    "launcher.picker.Switch model:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "launcher.picker.Switch model:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "launcher.picker.Switch model:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "launcher.picker.Switch model effort:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "launcher.picker.Switch model effort:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "launcher.picker.Switch model effort:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "launcher.picker.Switch project:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "launcher.picker.Switch project:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "launcher.picker.Switch project:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "launcher.picker.Switch branch:shown": {
+      "stat": "p95",
+      "ms": 30,
+      "source": "docs/plan/latency.md first targets: branch picker <= 30 ms (baseline 66 ms is the shown time)"
+    },
+    "launcher.picker.Switch branch:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "launcher.picker.Switch branch:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "workspace.tab.Changes:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "workspace.tab.Changes:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "workspace.tab.Changes:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "workspace.tab.Files:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "workspace.tab.Files:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "workspace.tab.Files:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "workspace.tab.Terminal:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "workspace.tab.Terminal:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "workspace.tab.Terminal:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "workspace.tab.Pull requests:shown": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: navigation shown <= 50 ms"
+    },
+    "workspace.tab.Pull requests:painted": {
+      "stat": "p95",
+      "ms": 100,
+      "source": "docs/plan/latency.md target rule: navigation painted <= 100 ms"
+    },
+    "workspace.tab.Pull requests:settled": {
+      "stat": "p95",
+      "ms": 300,
+      "source": "docs/plan/latency.md target rule: navigation settled <= 300 ms"
+    },
+    "session.switch.first-visit:gap": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md first targets: max frame gap during a switch <= 50 ms"
+    },
+    "session.switch.revisit:gap": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md first targets: max frame gap during a switch <= 50 ms"
+    },
+    "session.switch.longest:gap": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md first targets: max frame gap during a switch <= 50 ms"
+    },
+    "send.newChat.ack": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: commands that start work, acknowledgement painted <= 50 ms"
+    },
+    "send.followUp.ack": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md target rule: commands that start work, acknowledgement painted <= 50 ms"
+    },
+    "real.newChat.spawn": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md first targets: new chat, click to CLI spawn <= 50 ms"
+    },
+    "real.followUp.spawn": {
+      "stat": "p95",
+      "ms": 50,
+      "source": "docs/plan/latency.md first targets: follow-up, click to CLI spawn <= 50 ms"
+    },
+    "real.followUp.prompt_written": {
+      "stat": "p80",
+      "ms": 200,
+      "source": "docs/plan/latency.md first targets: real Claude follow-up, click to CLI ready <= 200 ms with an 80% hit rate (CLI ready read as prompt_written)"
+    }
+  }
+}

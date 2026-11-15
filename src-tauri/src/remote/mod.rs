@@ -1,8 +1,8 @@
 // Optional remote bridge.
 //
 // When `remote.json` in the app data dir says `enabled: true`, an axum server
-// binds 127.0.0.1:<port> and serves the renderer bundle plus a token-gated
-// WebSocket that proxies the same IPC channels the desktop webview uses. The
+// binds 127.0.0.1:<port> and serves the iPhone app a token-gated WebSocket
+// that proxies the same IPC channels the desktop webview uses. The
 // listener is loopback-only on purpose: Tailscale Serve owns tailnet exposure,
 // so nothing here should ever bind 0.0.0.0.
 //
@@ -56,12 +56,6 @@ pub struct RemoteConfig {
     /// `enabled` — notifications are useful even without the WS bridge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ntfy_topic: Option<String>,
-    /// Mobile page URL pushes deep-link into — the same base the pairing QR
-    /// encodes, so a notification opens wherever the phone was paired.
-    /// Re-derived from the tailnet probe whenever Settings saves, because the
-    /// publisher runs far from the async probe and needs it at boot too.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mobile_url: Option<String>,
     /// Direct-to-Apple push for the native remote app. Absent means disabled,
     /// which is also what a partially filled block means — see
     /// [`ApnsConfig::credentials`].
@@ -78,7 +72,6 @@ impl RemoteConfig {
             port: DEFAULT_PORT,
             token: generate_token(),
             ntfy_topic: None,
-            mobile_url: None,
             apns: ApnsConfig::default(),
         }
     }
@@ -235,14 +228,14 @@ fn is_valid_token(token: &str) -> bool {
 pub fn update_config(
     app_data_dir: &Path,
     edit: impl FnOnce(&mut RemoteConfig),
-) -> crate::error::ArgmaxResult<RemoteConfig> {
+) -> argmax_contracts::error::ArgmaxResult<RemoteConfig> {
     let _guard = CONFIG_UPDATE_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let path = app_data_dir.join(CONFIG_FILE_NAME);
     let mut config = match std::fs::read_to_string(&path) {
         Ok(body) => parse_config(&body).map_err(|error| {
-            crate::error::ArgmaxError::service(
+            argmax_contracts::error::ArgmaxError::service(
                 "REMOTE_CONFIG_MALFORMED",
                 format!(
                     "{} is malformed ({error}); fix or delete it",
@@ -252,7 +245,7 @@ pub fn update_config(
         })?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => RemoteConfig::disabled(),
         Err(error) => {
-            return Err(crate::error::ArgmaxError::service(
+            return Err(argmax_contracts::error::ArgmaxError::service(
                 "REMOTE_CONFIG_READ",
                 format!("failed to read {}: {error}", path.display()),
             ))
@@ -266,16 +259,19 @@ pub fn update_config(
 /// Persist `remote.json` atomically, so a crash mid-write cannot leave a
 /// truncated file that loads as a fresh token. Failures are returned loudly so
 /// the Settings panel can tell the user the change did not stick.
-pub fn save_config(app_data_dir: &Path, config: &RemoteConfig) -> crate::error::ArgmaxResult<()> {
+pub fn save_config(
+    app_data_dir: &Path,
+    config: &RemoteConfig,
+) -> argmax_contracts::error::ArgmaxResult<()> {
     let path = app_data_dir.join(CONFIG_FILE_NAME);
     let write_error = |error: std::io::Error| {
-        crate::error::ArgmaxError::service(
+        argmax_contracts::error::ArgmaxError::service(
             "REMOTE_CONFIG_WRITE",
             format!("failed to write {}: {error}", path.display()),
         )
     };
     let body = serde_json::to_vec_pretty(config).map_err(|error| {
-        crate::error::ArgmaxError::service("REMOTE_CONFIG_ENCODE", error.to_string())
+        argmax_contracts::error::ArgmaxError::service("REMOTE_CONFIG_ENCODE", error.to_string())
     })?;
     let mut file = tempfile::NamedTempFile::new_in(app_data_dir).map_err(write_error)?;
     std::io::Write::write_all(&mut file, &body).map_err(write_error)?;
@@ -348,9 +344,10 @@ pub fn apply(app: &tauri::AppHandle, config: RemoteConfig) {
 /// the phone that just registered. Takes `&AppState`, not the `AppHandle`,
 /// because the phone pairs itself over the bridge, where there is none.
 pub fn apply_push(state: &crate::state::AppState, config: &RemoteConfig) {
-    let ntfy_publisher = config.ntfy_topic.clone().map(|topic| {
-        std::sync::Arc::new(ntfy::NtfyPublisher::new(topic, config.mobile_url.clone()))
-    });
+    let ntfy_publisher = config
+        .ntfy_topic
+        .clone()
+        .map(|topic| std::sync::Arc::new(ntfy::NtfyPublisher::new(topic)));
     let apns_publisher = build_apns_publisher(state, config);
     if let Ok(mut ntfy) = state.ntfy.write() {
         *ntfy = ntfy_publisher;
@@ -501,6 +498,16 @@ mod tests {
         assert!(config.enabled);
         assert_eq!(config.port, 9001);
         assert_eq!(config.token, "0123456789abcdef0123456789abcdef");
+    }
+
+    /// Files written before the mobile web client was removed still carry it.
+    #[test]
+    fn a_legacy_mobile_url_field_is_ignored() {
+        let config = parse_config(
+            r#"{"enabled":true,"port":9001,"token":"0123456789abcdef0123456789abcdef","mobile_url":"http://x/mobile.html"}"#,
+        )
+        .expect("legacy file loads");
+        assert!(config.enabled);
     }
 
     /// An empty or hand-shortened token would authenticate an empty bearer.

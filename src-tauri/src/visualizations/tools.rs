@@ -1,14 +1,16 @@
-use super::{store::VisualizationStore, VisualizationArtifact, VisualizationMode};
+use super::{store::VisualizationStore, VisualizationArtifact};
 use crate::providers::flush_queue::DashboardDelta;
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::{
-        events::{persist_timeline_event_if_absent, PersistTimelineEventInput},
-        sessions::find_session_by_id,
-        workspaces::find_workspace_by_id,
-        Database,
+use crate::state::AppState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::visualizations::VisualizationMode;
+use argmax_store::{
+    events::{
+        event_rowid_in_session, persist_timeline_event_if_absent, turn_origin_event,
+        visualization_is_published, PersistTimelineEventInput,
     },
-    state::AppState,
+    sessions::find_session_by_id,
+    workspaces::find_workspace_by_id,
+    Database,
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
 use rmcp::schemars;
@@ -70,7 +72,7 @@ pub async fn ingest(
     input: VisualizationSource,
     stable: bool,
 ) -> ArgmaxResult<VisualizationArtifact> {
-    let db = crate::ipc::live_database(state)?;
+    let db = crate::state::live_database(state)?;
     let roots = allowed_roots(&db, session, state)?;
     let reference_id = input
         .source_event_id
@@ -79,7 +81,7 @@ pub async fn ingest(
         .transpose()?;
     let store = store(state)?;
     let session = session.to_string();
-    crate::ipc::read_off_main(move || {
+    crate::state::read_off_main(move || {
         store.ingest(
             &session,
             input.html.as_deref(),
@@ -100,32 +102,14 @@ fn canonical_reference_id(
     session: &str,
     event_id: &str,
 ) -> ArgmaxResult<String> {
-    use rusqlite::OptionalExtension;
-    let source_row: Option<i64> = connection
-        .query_row(
-            "SELECT rowid FROM events WHERE session_id = ?1 AND id = ?2",
-            [session, event_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(crate::persistence::sqlite_error)?;
+    let source_row = event_rowid_in_session(connection, session, event_id)?;
     let source_row = source_row.ok_or_else(|| {
         ArgmaxError::service(
             "VISUALIZATION_INVALID",
             "Visualization source event does not belong to this chat",
         )
     })?;
-    let origin: Option<(String, String)> = connection.query_row(
-        "SELECT id, payload_json FROM events WHERE session_id = ?1 AND rowid <= ?2 AND type = 'user.message' AND COALESCE(json_extract(payload_json, '$.delivery'), '') <> 'steer' AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL ORDER BY rowid DESC LIMIT 1",
-        rusqlite::params![session, source_row], |row| Ok((row.get(0)?, row.get(1)?)),
-    ).optional().map_err(crate::persistence::sqlite_error)?;
-    let (id, payload) = match origin {
-        Some(origin) => origin,
-        None => connection.query_row(
-            "SELECT id, payload_json FROM events WHERE session_id = ?1 AND rowid <= ?2 ORDER BY rowid ASC LIMIT 1",
-            rusqlite::params![session, source_row], |row| Ok((row.get(0)?, row.get(1)?)),
-        ).map_err(crate::persistence::sqlite_error)?,
-    };
+    let (id, payload) = turn_origin_event(connection, session, source_row)?;
     let payload: serde_json::Value = serde_json::from_str(&payload)
         .map_err(|error| ArgmaxError::service("VISUALIZATION_INVALID", error.to_string()))?;
     Ok(payload
@@ -174,7 +158,7 @@ pub async fn preview(
     let store = store(state)?;
     let owner = session.to_string();
     let id = artifact.id.clone();
-    let read = crate::ipc::read_off_main(move || store.read(&owner, &id)).await?;
+    let read = crate::state::read_off_main(move || store.read(&owner, &id)).await?;
     let mut result = VisualizationPreviewResult {
         draft_id: artifact.id.clone(),
         artifact,
@@ -194,11 +178,11 @@ pub async fn preview(
                 result.diagnostics = capture.diagnostics;
                 if let Some(attachments) = state.attachments.get() {
                     let session_id =
-                        crate::ipc::validation::SessionId::try_from(session.to_string())
+                        argmax_contracts::validation::SessionId::try_from(session.to_string())
                             .map_err(ArgmaxError::invalid)?;
                     match attachments.save_bytes(
                         &session_id,
-                        crate::ipc::validation::AttachmentMimeType::ImagePng,
+                        argmax_contracts::validation::AttachmentMimeType::ImagePng,
                         &capture.png,
                     ) {
                         Ok(saved) => result.screenshot_path = Some(saved.file_path),
@@ -232,15 +216,16 @@ pub async fn publish(
     session: &str,
     id: &str,
 ) -> ArgmaxResult<VisualizationArtifact> {
-    let db = crate::ipc::live_database(state)?;
+    let db = crate::state::live_database(state)?;
     find_session_by_id(&db.read_connection(), session)?;
     let store = store(state)?;
     let owner = session.to_string();
     let artifact_id = id.to_string();
-    let artifact = crate::ipc::read_off_main(move || store.artifact(&owner, &artifact_id)).await?;
+    let artifact =
+        crate::state::read_off_main(move || store.artifact(&owner, &artifact_id)).await?;
     let event = {
         let conn = db.connection();
-        let published:bool=conn.query_row("SELECT EXISTS(SELECT 1 FROM events WHERE session_id=?1 AND type='visualization.published' AND json_extract(payload_json,'$.artifactId')=?2)",(session,id),|row|row.get(0)).map_err(crate::persistence::sqlite_error)?;
+        let published = visualization_is_published(&conn, session, id)?;
         if published {
             None
         } else {
@@ -269,12 +254,12 @@ pub async fn publish(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::{
+    use argmax_contracts::sessions::state::SessionState;
+    use argmax_store::{
         projects::{persist_project, PersistProjectInput, ProjectSettings},
         sessions::{persist_session, PersistSessionInput},
         workspaces::{persist_workspace, PersistWorkspaceInput},
     };
-    use crate::sessions::state::SessionState;
     fn state(root: &Path) -> AppState {
         let state = AppState::new();
         state.app_data_dir.set(root.to_path_buf()).unwrap();
@@ -357,20 +342,16 @@ mod tests {
         let db = state.db.get().unwrap();
         let count:i64=db.read_connection().query_row("SELECT COUNT(*) FROM events WHERE session_id='s' AND type='visualization.published'",[],|row|row.get(0)).unwrap();
         assert_eq!(count, 1);
-        let events = crate::persistence::events::list_session_events_since(
-            &db.read_connection(),
-            "s",
-            None,
-            None,
-        )
-        .unwrap();
+        let events =
+            argmax_store::events::list_session_events_since(&db.read_connection(), "s", None, None)
+                .unwrap();
         let event = events
             .events
             .iter()
             .find(|event| event.r#type == "visualization.published")
             .unwrap();
         assert!(
-            matches!(&event.semantic.event,crate::persistence::timeline_semantics::SemanticEvent::Visualization{artifact_id,..} if artifact_id==&preview.draft_id)
+            matches!(&event.semantic.event,argmax_store::timeline_semantics::SemanticEvent::Visualization{artifact_id,..} if artifact_id==&preview.draft_id)
         );
         assert!(publish(&state, "missing", &preview.draft_id).await.is_err());
     }
@@ -403,7 +384,7 @@ mod tests {
     }
     #[tokio::test]
     async fn legacy_identity_survives_cross_client_and_two_history_copies() {
-        use crate::persistence::events::{persist_copied_event, persist_timeline_event};
+        use argmax_store::events::{persist_copied_event, persist_timeline_event};
         let dir = tempfile::tempdir().unwrap();
         let state = state(dir.path());
         let db = state.db.get().unwrap();

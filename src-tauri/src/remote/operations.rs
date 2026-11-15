@@ -6,15 +6,16 @@ use std::future::Future;
 use std::sync::LazyLock;
 use std::time::Duration;
 
-use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::database::Database;
-use crate::persistence::sqlite_error;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::database::Database;
+use argmax_store::remote_operations::{
+    admit_operation, find_operation, save_outcome, saved_outcome,
+};
 
 static RUN_ID: LazyLock<String> = LazyLock::new(|| Uuid::new_v4().to_string());
 
@@ -54,33 +55,12 @@ fn admit(
         .map(|byte| format!("{byte:02x}"))
         .collect();
     let connection = db.connection();
-    let inserted = connection
-        .execute(
-            "INSERT OR IGNORE INTO remote_operations
-         (client_id, operation_id, request_digest, run_id, created_at)
-         VALUES (?1, ?2, ?3, ?4, datetime('now'))",
-            (
-                identity.client_id.to_string(),
-                identity.operation_id.to_string(),
-                &digest,
-                run_id,
-            ),
-        )
-        .map_err(sqlite_error)?;
-    if inserted == 1 {
+    let client_id = identity.client_id.to_string();
+    let operation_id = identity.operation_id.to_string();
+    if admit_operation(&connection, &client_id, &operation_id, &digest, run_id)? {
         return Ok(Admission::Execute);
     }
-    let (stored_digest, owner, outcome): (String, String, Option<String>) = connection
-        .query_row(
-            "SELECT request_digest, run_id, outcome_json FROM remote_operations
-         WHERE client_id = ?1 AND operation_id = ?2",
-            (
-                identity.client_id.to_string(),
-                identity.operation_id.to_string(),
-            ),
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .map_err(sqlite_error)?;
+    let (stored_digest, owner, outcome) = find_operation(&connection, &client_id, &operation_id)?;
     if stored_digest != digest {
         return Err(ArgmaxError::service(
             "REMOTE_OPERATION_MISMATCH",
@@ -137,11 +117,11 @@ where
             // slot indefinitely. The client retries this same identity.
             for _ in 0..20 {
                 tokio::time::sleep(Duration::from_millis(100)).await;
-                let saved: Option<String> = db.read_connection().query_row(
-                    "SELECT outcome_json FROM remote_operations WHERE client_id = ?1 AND operation_id = ?2",
-                    (identity.client_id.to_string(), identity.operation_id.to_string()),
-                    |row| row.get(0),
-                ).optional().map_err(sqlite_error)?.flatten();
+                let saved = saved_outcome(
+                    &db.read_connection(),
+                    &identity.client_id.to_string(),
+                    &identity.operation_id.to_string(),
+                )?;
                 if let Some(saved) = saved {
                     return decode_outcome(&saved);
                 }
@@ -153,9 +133,11 @@ where
         }
         Admission::Execute => {
             let result = outcome(action().await);
-            let saved = db.connection().execute(
-                "UPDATE remote_operations SET outcome_json = ?3 WHERE client_id = ?1 AND operation_id = ?2",
-                (identity.client_id.to_string(), identity.operation_id.to_string(), result.to_string()),
+            let saved = save_outcome(
+                &db.connection(),
+                &identity.client_id.to_string(),
+                &identity.operation_id.to_string(),
+                &result.to_string(),
             );
             if let Err(error) = saved {
                 tracing::error!(%error, "remote action completed but its outcome could not be saved");

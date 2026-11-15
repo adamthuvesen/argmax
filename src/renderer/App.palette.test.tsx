@@ -16,20 +16,29 @@ describe("App unified search palette", () => {
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: Array.from({ length: 51 }, (_, index) => ({
-        ...snapshot.workspaces[0], id: `workspace-${index}`, taskLabel: index === 50 ? "Zircon chat" : `Task ${index}`
+        ...snapshot.workspaces[0],
+        id: `workspace-${index}`,
+        taskLabel: index === 50 ? "Zircon chat" : `Task ${index}`,
       })),
       sessions: Array.from({ length: 51 }, (_, index) => ({
-        ...snapshot.sessions[0], id: `session-${index}`, workspaceId: `workspace-${index}`
+        ...snapshot.sessions[0],
+        id: `session-${index}`,
+        workspaceId: `workspace-${index}`,
       })),
-      projects: [...snapshot.projects, ...Array.from({ length: 41 }, (_, index) => ({
-        ...snapshot.projects[0], id: `project-extra-${index}`, name: index === 40 ? "Zircon project" : `Project ${index}`
-      }))]
+      projects: [
+        ...snapshot.projects,
+        ...Array.from({ length: 41 }, (_, index) => ({
+          ...snapshot.projects[0],
+          id: `project-extra-${index}`,
+          name: index === 40 ? "Zircon project" : `Project ${index}`,
+        })),
+      ],
     });
     render(<App />);
     await screen.findByRole("button", { name: "Task 0" });
     fireEvent.keyDown(document, { key: "k", metaKey: true });
     fireEvent.change(await screen.findByRole("searchbox", { name: "Command palette query" }), {
-      target: { value: "Zircon" }
+      target: { value: "Zircon" },
     });
     expect(screen.getByRole("option", { name: /Zircon chat/ })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Zircon project/ })).toBeInTheDocument();
@@ -46,7 +55,7 @@ describe("App unified search palette", () => {
     expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Files");
     expect(screen.getByRole("searchbox", { name: "Command palette query" })).toHaveAttribute(
       "placeholder",
-      "Search files…"
+      "Search files…",
     );
   });
 

@@ -13,12 +13,12 @@ function makeState(selectionIndex: number, commandCount = 1): SlashAutocompleteS
       label: `Command ${index}`,
       hint: `Runs command ${index}`,
       icon: ListChecks,
-      run: vi.fn()
-    }
+      run: vi.fn(),
+    },
   }));
   const skills = Array.from({ length: 20 }, (_, index) => ({
     kind: "skill" as const,
-    skill: { name: `skill-${index}`, description: `Skill ${index}`, source: "user" as const }
+    skill: { name: `skill-${index}`, description: `Skill ${index}`, source: "user" as const },
   }));
   return {
     popoverOpen: true,
@@ -29,7 +29,7 @@ function makeState(selectionIndex: number, commandCount = 1): SlashAutocompleteS
     setSelectionIndex: vi.fn(),
     selectItem: vi.fn(),
     dismiss: vi.fn(),
-    onKeyDown: vi.fn()
+    onKeyDown: vi.fn(),
   };
 }
 
@@ -91,7 +91,7 @@ describe("SlashCommandMenu", () => {
       <div>
         <button type="button">elsewhere</button>
         <SlashCommandMenu state={state} />
-      </div>
+      </div>,
     );
 
     fireEvent.mouseDown(screen.getByText("skill-2"));
@@ -106,7 +106,7 @@ describe("SlashCommandMenu", () => {
     render(
       <div onWheel={parentWheel}>
         <SlashCommandMenu state={makeState(0)} />
-      </div>
+      </div>,
     );
 
     fireEvent.wheel(screen.getByRole("listbox", { name: "Slash commands" }));

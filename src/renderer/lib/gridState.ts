@@ -60,7 +60,8 @@ export function findWorkspaceCell(grid: GridState, workspaceId: string): GridCoo
     if (!row) continue;
     for (let c = 0; c < row.length; c++) {
       const cell = row[c];
-      if (cell && isSessionCell(cell) && cell.workspaceId === workspaceId) return { row: r, col: c };
+      if (cell && isSessionCell(cell) && cell.workspaceId === workspaceId)
+        return { row: r, col: c };
     }
   }
   return null;
@@ -79,7 +80,7 @@ export function findLauncherCell(grid: GridState): GridCoord | null {
 
 function replaceCell(rows: GridCell[][], coord: GridCoord, cell: GridCell): GridCell[][] {
   return rows.map((row, r) =>
-    r === coord.row ? row.map((c, j) => (j === coord.col ? cell : c)) : row
+    r === coord.row ? row.map((c, j) => (j === coord.col ? cell : c)) : row,
   );
 }
 
@@ -113,7 +114,7 @@ export function findSessionCell(grid: GridState, sessionId: string): GridCoord |
 function replaceWorkspaceContext(
   grid: GridState,
   target: GridCoord,
-  cell: SessionGridCell
+  cell: SessionGridCell,
 ): GridState {
   const targetCell = grid.rows[target.row]?.[target.col];
   if (!targetCell) return grid;
@@ -129,10 +130,10 @@ function insertCellInRow(
   rows: GridCell[][],
   rowIndex: number,
   colIndex: number,
-  cell: GridCell
+  cell: GridCell,
 ): GridCell[][] {
   return rows.map((row, r) =>
-    r === rowIndex ? [...row.slice(0, colIndex), cell, ...row.slice(colIndex)] : row
+    r === rowIndex ? [...row.slice(0, colIndex), cell, ...row.slice(colIndex)] : row,
   );
 }
 
@@ -144,21 +145,24 @@ function insertInAvailableRow(
   grid: GridState,
   cell: GridCell,
   preferred: GridCoord,
-  rowCap: number
+  rowCap: number,
 ): GridState | null {
   const rowIndexes = [
     preferred.row,
-    ...grid.rows.map((_, rowIndex) => rowIndex).filter((rowIndex) => rowIndex !== preferred.row)
+    ...grid.rows.map((_, rowIndex) => rowIndex).filter((rowIndex) => rowIndex !== preferred.row),
   ];
-  const rowIndex = rowIndexes.find((candidate) => (grid.rows[candidate]?.length ?? rowCap) < rowCap);
+  const rowIndex = rowIndexes.find(
+    (candidate) => (grid.rows[candidate]?.length ?? rowCap) < rowCap,
+  );
   if (rowIndex === undefined) return null;
 
   const row = grid.rows[rowIndex];
   if (!row) return null;
-  const colIndex = rowIndex === preferred.row ? Math.min(preferred.col + 1, row.length) : row.length;
+  const colIndex =
+    rowIndex === preferred.row ? Math.min(preferred.col + 1, row.length) : row.length;
   return {
     rows: insertCellInRow(grid.rows, rowIndex, colIndex, cell),
-    focused: { row: rowIndex, col: colIndex }
+    focused: { row: rowIndex, col: colIndex },
   };
 }
 
@@ -176,7 +180,7 @@ export function openWorkspaceInGrid(
   grid: GridState,
   cell: SessionGridCell,
   modifiers: { ctrlOrMeta: boolean; alt: boolean },
-  layout?: { maxColumns?: number }
+  layout?: { maxColumns?: number },
 ): GridState {
   const existing = findWorkspaceCell(grid, cell.workspaceId);
   if (existing) return { ...grid, focused: existing };
@@ -193,21 +197,21 @@ export function openWorkspaceInGrid(
   if (modifiers.ctrlOrMeta && canSplit && focusedRow && focusedRow.length < rowCap) {
     return {
       rows: insertCellInRow(grid.rows, fr, fc + 1, cell),
-      focused: { row: fr, col: fc + 1 }
+      focused: { row: fr, col: fc + 1 },
     };
   }
 
   if (modifiers.ctrlOrMeta && canSplit && focusedRow && grid.rows.length < MAX_ROWS) {
     return {
       rows: insertRow(grid.rows, fr + 1, cell),
-      focused: { row: fr + 1, col: 0 }
+      focused: { row: fr + 1, col: 0 },
     };
   }
 
   if (modifiers.alt && canSplit && grid.rows.length < MAX_ROWS) {
     return {
       rows: insertRow(grid.rows, fr + 1, cell),
-      focused: { row: fr + 1, col: 0 }
+      focused: { row: fr + 1, col: 0 },
     };
   }
 
@@ -222,7 +226,7 @@ export function openWorkspaceInGrid(
 export function openLauncherInGrid(
   grid: GridState,
   cell: LauncherGridCell,
-  layout?: { maxColumns?: number }
+  layout?: { maxColumns?: number },
 ): GridState {
   const existing = findLauncherCell(grid);
   if (existing) return { ...grid, focused: existing };
@@ -240,14 +244,14 @@ export function openLauncherInGrid(
   if (focusedRow.length < rowCap) {
     return {
       rows: insertCellInRow(grid.rows, fr, fc + 1, cell),
-      focused: { row: fr, col: fc + 1 }
+      focused: { row: fr, col: fc + 1 },
     };
   }
 
   if (grid.rows.length < MAX_ROWS) {
     return {
       rows: insertRow(grid.rows, fr + 1, cell),
-      focused: { row: fr + 1, col: 0 }
+      focused: { row: fr + 1, col: 0 },
     };
   }
 
@@ -266,7 +270,7 @@ export function dropWorkspaceInGrid(
   grid: GridState,
   cell: SessionGridCell,
   target: GridCoord & { position: SplitPosition },
-  layout?: { maxColumns?: number }
+  layout?: { maxColumns?: number },
 ): GridState {
   const existing = findWorkspaceCell(grid, cell.workspaceId);
   if (existing) {
@@ -278,7 +282,7 @@ export function dropWorkspaceInGrid(
     const rows = replaceCell(
       replaceCell(grid.rows, existing, targetCell),
       { row: target.row, col: target.col },
-      grid.rows[existing.row]?.[existing.col] ?? cell
+      grid.rows[existing.row]?.[existing.col] ?? cell,
     );
     return { rows, focused: { row: target.row, col: target.col } };
   }
@@ -302,7 +306,7 @@ export function dropWorkspaceInGrid(
     const insertCol = position === "left" ? tc : tc + 1;
     return {
       rows: insertCellInRow(grid.rows, tr, insertCol, cell),
-      focused: { row: tr, col: insertCol }
+      focused: { row: tr, col: insertCol },
     };
   }
 
@@ -310,7 +314,7 @@ export function dropWorkspaceInGrid(
     const insertRowIndex = position === "above" ? tr : tr + 1;
     return {
       rows: insertRow(grid.rows, insertRowIndex, cell),
-      focused: { row: insertRowIndex, col: 0 }
+      focused: { row: insertRowIndex, col: 0 },
     };
   }
 
@@ -353,7 +357,7 @@ export function setLauncherProject(grid: GridState, projectId: string): GridStat
 export function revertSessionToLauncher(
   grid: GridState,
   sessionId: string,
-  projectId: string
+  projectId: string,
 ): GridState {
   const coord = findSessionCell(grid, sessionId);
   if (!coord) {
@@ -381,7 +385,7 @@ export function focusedCell(grid: GridState): GridCell | null {
 
 export function terminalWorkspaceId(
   grid: GridState,
-  fallbacks: readonly (string | null | undefined)[]
+  fallbacks: readonly (string | null | undefined)[],
 ): string | null {
   const focused = focusedCell(grid);
   if (focused && isSessionCell(focused)) return focused.workspaceId;

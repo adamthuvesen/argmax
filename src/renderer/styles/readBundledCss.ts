@@ -24,7 +24,7 @@ export function readBundledCss(entryPath: string): string {
       (match, importPath: string) => {
         if (/^https?:/i.test(importPath)) return match;
         return read(resolve(dir, importPath));
-      }
+      },
     );
   }
 

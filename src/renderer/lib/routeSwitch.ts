@@ -2,7 +2,7 @@ import {
   MODEL_PRICING,
   normalizeModelId,
   REASONING_EFFORTS,
-  type ReasoningEffort
+  type ReasoningEffort,
 } from "../../shared/providerModels.js";
 import type { ProviderId } from "../../shared/types.js";
 
@@ -81,7 +81,7 @@ const PACE: Omit<RouteSwitchPace, "delayMs"> = {
   flushMs: 1800,
   ringMs: 1400,
   inkMs: 2800,
-  captionMs: 4500
+  captionMs: 4500,
 };
 
 // A launch waits for the new chat's pane to finish fading in (280ms) before
@@ -104,7 +104,7 @@ export function routeSwitchMotionMs(routeSwitch: RouteSwitch | null | undefined)
 export function routeSwitchElapsed(
   routeSwitch: RouteSwitch,
   durationMs: number,
-  now = Date.now()
+  now = Date.now(),
 ): number | null {
   const elapsed = Math.max(0, now - routeSwitch.at);
   return elapsed < durationMs ? elapsed : null;
@@ -113,7 +113,10 @@ export function routeSwitchElapsed(
 /** Splits two labels at the first word that differs, so only the words that
  *  changed roll: "Balance → Opus 5.5" → "Balance → Fable 5.1" rolls only the
  *  model. */
-export function splitAtChange(from: string, to: string): [prefix: string, fromRest: string, toRest: string] {
+export function splitAtChange(
+  from: string,
+  to: string,
+): [prefix: string, fromRest: string, toRest: string] {
   let common = 0;
   while (common < from.length && common < to.length && from[common] === to[common]) common += 1;
   // A label that only grows ("Balance" → "Balance → Opus 5.5") keeps what it

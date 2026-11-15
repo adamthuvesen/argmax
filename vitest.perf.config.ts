@@ -6,6 +6,6 @@ export default defineConfig({
     globals: true,
     setupFiles: ["src/test/setup.ts"],
     include: ["src/test/perf.test.ts"],
-    exclude: ["**/node_modules/**", "**/dist/**"]
-  }
+    exclude: ["**/node_modules/**", "**/dist/**"],
+  },
 });

@@ -1,4 +1,3 @@
-use rmcp::schemars;
 pub mod document;
 pub mod preview;
 pub mod store;
@@ -7,18 +6,7 @@ pub mod tools;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub enum VisualizationFormat {
-    Html,
-    Image,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub enum VisualizationMode {
-    Wide,
-}
+use argmax_contracts::visualizations::{VisualizationFormat, VisualizationMode};
 
 #[derive(Debug, Clone, Deserialize, Serialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -57,12 +45,12 @@ pub(crate) fn copy_history_artifacts(
     connection: &rusqlite::Connection,
     source_session: &str,
     target_session: &str,
-) -> crate::error::ArgmaxResult<()> {
+) -> argmax_contracts::error::ArgmaxResult<()> {
     let Some(path) = connection.path().filter(|path| !path.is_empty()) else {
         return Ok(());
     };
     let data_dir = std::path::Path::new(path).parent().ok_or_else(|| {
-        crate::error::ArgmaxError::service(
+        argmax_contracts::error::ArgmaxError::service(
             "VISUALIZATION_STORAGE",
             "Database has no data directory",
         )

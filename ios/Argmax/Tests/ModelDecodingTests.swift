@@ -17,6 +17,39 @@ final class ModelDecodingTests: XCTestCase {
         return try JSONDecoder().decode(DashboardSnapshot.self, from: Data(contentsOf: url))
     }
 
+    /// An older host sends fewer columns and a newer one sends more. The
+    /// generated models take both: the phone ships apart from the Mac.
+    func testGeneratedResponsesTolerateMissingOptionalAndUnknownKeys() throws {
+        let session = try JSONDecoder().decode(SessionSummary.self, from: Data("""
+        {"id":"s","workspaceId":"w","provider":"claude","modelLabel":"Opus","modelId":"opus","prompt":"Go",
+         "state":"a-new-state","attention":"normal","startedAt":"1","lastActivityAt":"1","imported":false,
+         "launchKind":"agent","aColumnFromTheFuture":{"nested":true}}
+        """.utf8))
+        XCTAssertEqual(session.state, .unknown("a-new-state"))
+        XCTAssertNil(session.reasoningEffort)
+        XCTAssertNil(session.arcId)
+        XCTAssertNil(session.completedAt)
+
+        let page = try JSONDecoder().decode(TranscriptPage.self, from: Data("""
+        {"events":[{"id":"e","sessionId":"s","type":"message.completed","message":"Hi","payload":{},"createdAt":"1"}],
+         "rawOutputs":[],"eventCursor":9007199254740993,"rawOutputCursor":0,"deletedEventIds":[],
+         "deletedRawOutputIds":[],"resetRequired":false,"hasMore":false,"aColumnFromTheFuture":1}
+        """.utf8))
+        XCTAssertEqual(page.eventCursor, 9007199254740993)
+        XCTAssertNil(page.changeCursor)
+        XCTAssertNil(page.events[0].semantic)
+        XCTAssertNil(page.events[0].rowCursor)
+
+        let workspace = try JSONDecoder().decode(TranscriptWorkspaceMetadata.self, from: Data("""
+        {"id":"w","taskLabel":"A chat"}
+        """.utf8))
+        XCTAssertNil(workspace.path)
+
+        let delta = try JSONDecoder().decode(DashboardDelta.self, from: Data("{}".utf8))
+        XCTAssertNil(delta.sessions)
+        XCTAssertNil(delta.resyncRequired)
+    }
+
     func testDecodesACapturedDashboardList() throws {
         let snapshot = try loadFixture()
         XCTAssertEqual(snapshot.sessions.count, 9)

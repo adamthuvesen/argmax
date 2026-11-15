@@ -6,7 +6,7 @@ import type {
   WorkspaceFilePreview,
   WorkspaceFileStat,
   WorkspaceFileWriteResult,
-  WorkspaceTarget
+  WorkspaceTarget,
 } from "../../shared/types.js";
 
 type ReviewTarget = WorkspaceTarget;
@@ -17,14 +17,29 @@ export interface ReviewIpcDispatch {
   loadDiff: (
     filePath: string,
     comparison?: ReviewComparison,
-    contextLines?: number
+    contextLines?: number,
   ) => Promise<WorkspaceDiff>;
   stageFile: (filePath: string, revision: string) => Promise<void>;
   unstageFile: (filePath: string, revision: string) => Promise<void>;
   revertFile: (filePath: string, revision: string) => Promise<void>;
-  stageHunk: (filePath: string, revision: string, hunkIndex: number, contextLines?: number | null) => Promise<void>;
-  unstageHunk: (filePath: string, revision: string, hunkIndex: number, contextLines?: number | null) => Promise<void>;
-  revertHunk: (filePath: string, revision: string, hunkIndex: number, contextLines?: number | null) => Promise<void>;
+  stageHunk: (
+    filePath: string,
+    revision: string,
+    hunkIndex: number,
+    contextLines?: number | null,
+  ) => Promise<void>;
+  unstageHunk: (
+    filePath: string,
+    revision: string,
+    hunkIndex: number,
+    contextLines?: number | null,
+  ) => Promise<void>;
+  revertHunk: (
+    filePath: string,
+    revision: string,
+    hunkIndex: number,
+    contextLines?: number | null,
+  ) => Promise<void>;
   listFiles: () => Promise<WorkspaceFileEntry[]>;
   readFile: (filePath: string) => Promise<WorkspaceFilePreview>;
   /** Returns null when the IPC bridge is unavailable (e.g. vitest). */
@@ -33,7 +48,7 @@ export interface ReviewIpcDispatch {
   writeFile: (
     filePath: string,
     content: string,
-    expectedMtimeMs: number | null
+    expectedMtimeMs: number | null,
   ) => Promise<WorkspaceFileWriteResult> | null;
 }
 
@@ -79,15 +94,36 @@ export function reviewIpcDispatch(target: ReviewTarget): ReviewIpcDispatch {
     },
     stageHunk: (filePath, revision, hunkIndex, contextLines) => {
       if (!window.argmax) return noBridge();
-      return window.argmax.review.stageHunk({ kind, id, filePath, revision, hunkIndex, contextLines: contextLines ?? null });
+      return window.argmax.review.stageHunk({
+        kind,
+        id,
+        filePath,
+        revision,
+        hunkIndex,
+        contextLines: contextLines ?? null,
+      });
     },
     unstageHunk: (filePath, revision, hunkIndex, contextLines) => {
       if (!window.argmax) return noBridge();
-      return window.argmax.review.unstageHunk({ kind, id, filePath, revision, hunkIndex, contextLines: contextLines ?? null });
+      return window.argmax.review.unstageHunk({
+        kind,
+        id,
+        filePath,
+        revision,
+        hunkIndex,
+        contextLines: contextLines ?? null,
+      });
     },
     revertHunk: (filePath, revision, hunkIndex, contextLines) => {
       if (!window.argmax) return noBridge();
-      return window.argmax.review.revertHunk({ kind, id, filePath, revision, hunkIndex, contextLines: contextLines ?? null });
+      return window.argmax.review.revertHunk({
+        kind,
+        id,
+        filePath,
+        revision,
+        hunkIndex,
+        contextLines: contextLines ?? null,
+      });
     },
     listFiles: () => {
       if (!window.argmax) return noBridge();
@@ -107,6 +143,6 @@ export function reviewIpcDispatch(target: ReviewTarget): ReviewIpcDispatch {
       // External files are read-only; the editor treats null as "cannot save".
       if (!window.argmax || isExternalFilePath(filePath)) return null;
       return window.argmax.workspace.writeFile({ kind, id }, filePath, content, expectedMtimeMs);
-    }
+    },
   };
 }

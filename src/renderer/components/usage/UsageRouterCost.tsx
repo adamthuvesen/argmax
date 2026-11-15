@@ -1,10 +1,21 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect, useId, useRef, useState, type CSSProperties, type JSX } from "react";
-import type { RouterCostSummary, RouterModelCost, RouterTierCost, UsageWindow } from "../../../shared/types.js";
+import type {
+  RouterCostSummary,
+  RouterModelCost,
+  RouterTierCost,
+  UsageWindow,
+} from "../../../shared/types.js";
 import { modelLabelFor } from "../../../shared/providerModels.js";
 import { formatElapsedSeconds } from "../../formatElapsed.js";
 import { AUTO_TIER_SHORT_LABELS } from "../../lib/models.js";
-import { formatCount, formatPercent, formatTokens, formatUsd, formatUsdRate } from "./usageFormat.js";
+import {
+  formatCount,
+  formatPercent,
+  formatTokens,
+  formatUsd,
+  formatUsdRate,
+} from "./usageFormat.js";
 import { providerLabel } from "./usagePresentation.js";
 
 /** Same cadence as the ledger above it. */
@@ -87,7 +98,7 @@ const DECISION_LABELS: Record<string, string> = {
   fallback: "Launch · fallback",
   kept: "Follow-up · kept",
   reroute: "Follow-up · rerouted",
-  escalate: "Escalated"
+  escalate: "Escalated",
 };
 
 function DecisionBreakdown({ tier }: { tier: RouterTierCost }): JSX.Element {
@@ -106,16 +117,27 @@ function DecisionBreakdown({ tier }: { tier: RouterTierCost }): JSX.Element {
             <th scope="col">Task</th>
             <th scope="col">Model · effort</th>
             <th scope="col">Decision · reason</th>
-            <th scope="col" className="usage-table-num">Decisions</th>
-            <th scope="col" className="usage-table-num">Turns</th>
+            <th scope="col" className="usage-table-num">
+              Decisions
+            </th>
+            <th scope="col" className="usage-table-num">
+              Turns
+            </th>
           </tr>
         </thead>
         <tbody>
           {tier.decisions.map((decision) => (
-            <tr key={JSON.stringify([
-              decision.provider, decision.modelId, decision.reasoningEffort,
-              decision.kind, decision.difficulty, decision.decision, decision.reason
-            ])}>
+            <tr
+              key={JSON.stringify([
+                decision.provider,
+                decision.modelId,
+                decision.reasoningEffort,
+                decision.kind,
+                decision.difficulty,
+                decision.decision,
+                decision.reason,
+              ])}
+            >
               <th scope="row">
                 {decision.kind ?? "Not classified"}
                 <span className="usage-router-note">
@@ -125,7 +147,8 @@ function DecisionBreakdown({ tier }: { tier: RouterTierCost }): JSX.Element {
               <td>
                 {modelName(decision)}
                 <span className="usage-router-note">
-                  {providerLabel(decision.provider)} · {decision.reasoningEffort ?? "No effort recorded"}
+                  {providerLabel(decision.provider)} ·{" "}
+                  {decision.reasoningEffort ?? "No effort recorded"}
                 </span>
               </td>
               <td>
@@ -171,7 +194,7 @@ const FIGURES: readonly Figure[] = [
     group: "spend",
     header: "Cost",
     value: (tier) => (pricedTurnsOf(tier) > 0 ? totalCost(tier) : null),
-    format: formatTierCost
+    format: formatTierCost,
   },
   {
     group: "spend",
@@ -180,14 +203,14 @@ const FIGURES: readonly Figure[] = [
       const priced = pricedTurnsOf(tier);
       return priced > 0 ? totalCost(tier) / priced : null;
     },
-    format: formatTierCost
+    format: formatTierCost,
   },
   {
     group: "tokens",
     header: "Out / turn",
     title: "Median output tokens per turn; input and cache reads are left out",
     value: (tier) => tier.medianTurnOutputTokens,
-    format: (value, tier) => `${estimatedMark(tier)}${formatTokens(value)}`
+    format: (value, tier) => `${estimatedMark(tier)}${formatTokens(value)}`,
   },
   {
     group: "tokens",
@@ -197,17 +220,22 @@ const FIGURES: readonly Figure[] = [
       pricedTurnsOf(tier) > 0 && tier.pricedOutputTokens > 0
         ? (totalCost(tier) / tier.pricedOutputTokens) * 1_000_000
         : null,
-    format: (value, tier) => `${estimatedMark(tier)}${formatUsdRate(value)}`
+    format: (value, tier) => `${estimatedMark(tier)}${formatUsdRate(value)}`,
   },
-  { group: "pace", header: "Turn time", value: (tier) => tier.medianTurnSeconds, format: formatSeconds },
+  {
+    group: "pace",
+    header: "Turn time",
+    value: (tier) => tier.medianTurnSeconds,
+    format: formatSeconds,
+  },
   {
     group: "pace",
     header: "Tok / s",
     title: "Output tokens per second of turn time, approval waits excluded",
     value: (tier) => tier.outputTokensPerSecond,
-    format: (value, tier) => (value === null ? "—" : `${estimatedMark(tier)}${Math.round(value)}`)
+    format: (value, tier) => (value === null ? "—" : `${estimatedMark(tier)}${Math.round(value)}`),
   },
-  { group: "pace", header: "Escalations", value: (tier) => tier.escalations, format: formatCount }
+  { group: "pace", header: "Escalations", value: (tier) => tier.escalations, format: formatCount },
 ];
 
 /**
@@ -227,11 +255,17 @@ function figureHeat(tiers: readonly RouterTierCost[]): Array<Array<number | null
       if (known.length < 2) return 0;
       const high = Math.max(...known);
       return high > 0 ? value / high : 0;
-    })
+    }),
   );
 }
 
-function TierRow({ tier, heat }: { tier: RouterTierCost; heat: Array<number | null> }): JSX.Element {
+function TierRow({
+  tier,
+  heat,
+}: {
+  tier: RouterTierCost;
+  heat: Array<number | null>;
+}): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
   const pricedTurns = pricedTurnsOf(tier);
@@ -273,7 +307,11 @@ function TierRow({ tier, heat }: { tier: RouterTierCost; heat: Array<number | nu
           const value = figure.value(tier);
           const level = heat[index];
           return (
-            <td key={`${figure.group}:${figure.header}`} className="usage-table-num" data-group={figure.group}>
+            <td
+              key={`${figure.group}:${figure.header}`}
+              className="usage-table-num"
+              data-group={figure.group}
+            >
               {value === null ? (
                 <span className="usage-router-none">—</span>
               ) : (
@@ -306,7 +344,7 @@ function TierRow({ tier, heat }: { tier: RouterTierCost; heat: Array<number | nu
  */
 export function RouterCostCard({
   usageWindow,
-  visible
+  visible,
 }: {
   usageWindow: UsageWindow;
   visible: boolean;
@@ -351,10 +389,18 @@ export function RouterCostCard({
                 spend from tokens from time without reading every header. */}
             <tr className="usage-router-groups">
               <td />
-              <th scope="colgroup" colSpan={2} data-group="volume">Volume</th>
-              <th scope="colgroup" colSpan={2} data-group="spend">Spend</th>
-              <th scope="colgroup" colSpan={2} data-group="tokens">Tokens</th>
-              <th scope="colgroup" colSpan={2} data-group="pace">Pace</th>
+              <th scope="colgroup" colSpan={2} data-group="volume">
+                Volume
+              </th>
+              <th scope="colgroup" colSpan={2} data-group="spend">
+                Spend
+              </th>
+              <th scope="colgroup" colSpan={2} data-group="tokens">
+                Tokens
+              </th>
+              <th scope="colgroup" colSpan={2} data-group="pace">
+                Pace
+              </th>
             </tr>
             <tr>
               <th scope="col">Tier</th>

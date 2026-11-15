@@ -1,4 +1,4 @@
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_shell::ShellExt;

@@ -6,13 +6,13 @@ import {
   getCachedUsageRemainingError,
   recordUsageRemainingFailure,
   resetLedgerPageStateForTests,
-  setCachedUsageRemaining
+  setCachedUsageRemaining,
 } from "./ledgerPageState.js";
 import {
   lookUpUsageRemaining,
   remainingFiguresAreOld,
   summarizeProviderRemaining,
-  summarizeProviderWithHeld
+  summarizeProviderWithHeld,
 } from "./usageRemainingLookup.js";
 
 const NOW = Date.parse("2026-10-04T08:00:00Z");
@@ -28,12 +28,24 @@ function remaining(fetchedAt: string, percent = 62): UsageRemaining {
         message: null,
         messageUrl: null,
         windows: [
-          { id: "5h", label: "5-hour", remainingPercent: percent, resetsAt: "2026-10-04T10:00:00Z" },
-          { id: "week", label: "Weekly", remainingPercent: 90, resetsAt: null }
-        ]
+          {
+            id: "5h",
+            label: "5-hour",
+            remainingPercent: percent,
+            resetsAt: "2026-10-04T10:00:00Z",
+          },
+          { id: "week", label: "Weekly", remainingPercent: 90, resetsAt: null },
+        ],
       },
-      { provider: "codex", kind: "api_key", planLabel: null, message: null, messageUrl: null, windows: [] }
-    ]
+      {
+        provider: "codex",
+        kind: "api_key",
+        planLabel: null,
+        message: null,
+        messageUrl: null,
+        windows: [],
+      },
+    ],
   };
 }
 
@@ -54,7 +66,7 @@ describe("lookUpUsageRemaining", () => {
 
     const [first, second] = await Promise.all([
       lookUpUsageRemaining({ now: NOW }),
-      lookUpUsageRemaining({ now: NOW })
+      lookUpUsageRemaining({ now: NOW }),
     ]);
 
     expect(fetchRemaining).toHaveBeenCalledOnce();
@@ -146,9 +158,23 @@ describe("figures held across a failed account", () => {
   const failed = (fetchedAt: string): UsageRemaining => ({
     fetchedAt,
     providers: [
-      { provider: "claude", kind: "error", planLabel: null, message: "expired", messageUrl: null, windows: [] },
-      { provider: "codex", kind: "api_key", planLabel: null, message: null, messageUrl: null, windows: [] }
-    ]
+      {
+        provider: "claude",
+        kind: "error",
+        planLabel: null,
+        message: "expired",
+        messageUrl: null,
+        windows: [],
+      },
+      {
+        provider: "codex",
+        kind: "api_key",
+        planLabel: null,
+        message: null,
+        messageUrl: null,
+        windows: [],
+      },
+    ],
   });
 
   it("falls back to the last windows an account reported, with the time they were true", () => {

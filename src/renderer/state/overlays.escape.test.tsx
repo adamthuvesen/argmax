@@ -4,7 +4,7 @@ import {
   overlaysSnapshot,
   resetOverlaysForTests,
   showSettings,
-  useOverlayEscape
+  useOverlayEscape,
 } from "./overlays.js";
 
 describe("useOverlayEscape", () => {
@@ -22,7 +22,7 @@ describe("useOverlayEscape", () => {
       const event = new KeyboardEvent("keydown", {
         key: "Escape",
         bubbles: true,
-        cancelable: true
+        cancelable: true,
       });
       input.dispatchEvent(event);
 
@@ -37,7 +37,11 @@ describe("useOverlayEscape", () => {
     renderHook(() => useOverlayEscape());
     showSettings();
 
-    const consumed = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    const consumed = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
     consumed.preventDefault();
     document.dispatchEvent(consumed);
     fireEvent.keyDown(document, { key: "Escape", repeat: true });

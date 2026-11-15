@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   baseSession,
   event,
-  renderConversation
+  renderConversation,
 } from "../../test/sessionConversationTestHarness.js";
 
 const architectureSource = {
@@ -11,41 +11,58 @@ const architectureSource = {
   title: "Architecture",
   kind: "file",
   location: "docs/architecture.md",
-  guidance: "Before runtime edits"
+  guidance: "Before runtime edits",
 };
 
 describe("SessionConversation project source session note", () => {
   afterEach(cleanup);
 
   it("keeps the latest thinking turn live when a source note follows it", () => {
-    renderConversation(baseSession({ state: "running" }), [
-      event("note", "session.note", "Read project source: Architecture", "2026-05-12T15:00:02.000Z", {
-        operation: "project-source", action: "read", source: architectureSource
-      }),
-      event("thought", "message.delta", "Checking the current architecture", "2026-05-12T15:00:01.000Z", { thinking: true }),
-      event("prompt", "user.message", "Check the architecture", "2026-05-12T15:00:00.000Z")
-    ], { thinkingDisplay: "collapsed" });
-    expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute("aria-expanded", "true");
+    renderConversation(
+      baseSession({ state: "running" }),
+      [
+        event(
+          "note",
+          "session.note",
+          "Read project source: Architecture",
+          "2026-05-12T15:00:02.000Z",
+          {
+            operation: "project-source",
+            action: "read",
+            source: architectureSource,
+          },
+        ),
+        event(
+          "thought",
+          "message.delta",
+          "Checking the current architecture",
+          "2026-05-12T15:00:01.000Z",
+          {
+            thinking: true,
+          },
+        ),
+        event("prompt", "user.message", "Check the architecture", "2026-05-12T15:00:00.000Z"),
+      ],
+      { thinkingDisplay: "collapsed" },
+    );
+    expect(screen.getByRole("button", { name: "Thinking" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     expect(screen.getByText("Checking the current architecture")).toBeInTheDocument();
   });
 
   it("expands a read project source note with truncated retrieval details", () => {
     renderConversation(baseSession({ state: "complete" }), [
-      event(
-        "note",
-        "session.note",
-        "Project source note.",
-        "2026-05-12T15:02:00.000Z",
-        {
-          operation: "project-source",
-          action: "read",
-          source: architectureSource,
-          readAt: "2026-05-12T15:02:00.000Z",
-          location: "/checkout/docs/architecture.md",
-          truncated: true
-        }
-      ),
-      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z")
+      event("note", "session.note", "Project source note.", "2026-05-12T15:02:00.000Z", {
+        operation: "project-source",
+        action: "read",
+        source: architectureSource,
+        readAt: "2026-05-12T15:02:00.000Z",
+        location: "/checkout/docs/architecture.md",
+        truncated: true,
+      }),
+      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z"),
     ]);
 
     const summary = screen.getByLabelText("Read project source: Architecture");
@@ -59,33 +76,34 @@ describe("SessionConversation project source session note", () => {
 
   it("shows an added project source note without read verification copy", () => {
     renderConversation(baseSession({ state: "complete" }), [
-      event(
-        "note",
-        "session.note",
-        "Project source note.",
-        "2026-05-12T15:02:00.000Z",
-        {
-          operation: "project-source",
-          action: "added",
-          source: architectureSource,
-          at: "2026-05-12T15:02:00.000Z"
-        }
-      ),
-      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z")
+      event("note", "session.note", "Project source note.", "2026-05-12T15:02:00.000Z", {
+        operation: "project-source",
+        action: "added",
+        source: architectureSource,
+        at: "2026-05-12T15:02:00.000Z",
+      }),
+      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z"),
     ]);
 
     expect(screen.getByLabelText("Added project source: Architecture")).toBeTruthy();
-    expect(
-      screen.getByText(/Listed for future reference, not read or verified/ )
-    ).toBeTruthy();
+    expect(screen.getByText(/Listed for future reference, not read or verified/)).toBeTruthy();
   });
 
   it("does not draw linked-repository read notes in the chat", () => {
     renderConversation(baseSession({ state: "complete" }), [
-      event("note", "session.note", "Read linked repository file: shared/README.md", "2026-05-12T15:02:00.000Z", {
-        operation: "linked-repo", action: "read", linkedRepo: "shared", path: "README.md"
-      }),
-      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z")
+      event(
+        "note",
+        "session.note",
+        "Read linked repository file: shared/README.md",
+        "2026-05-12T15:02:00.000Z",
+        {
+          operation: "linked-repo",
+          action: "read",
+          linkedRepo: "shared",
+          path: "README.md",
+        },
+      ),
+      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z"),
     ]);
 
     expect(screen.getByText("Done")).toBeTruthy();
@@ -94,23 +112,17 @@ describe("SessionConversation project source session note", () => {
 
   it("falls back to a generic message when project source payload lacks source id", () => {
     renderConversation(baseSession({ state: "complete" }), [
-      event(
-        "note",
-        "session.note",
-        "Project source note.",
-        "2026-05-12T15:02:00.000Z",
-        {
-          operation: "project-source",
-          action: "read",
-          source: {
-            title: "Architecture",
-            kind: "file",
-            location: "docs/architecture.md"
-          },
-          readAt: "2026-05-12T15:02:00.000Z"
-        }
-      ),
-      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z")
+      event("note", "session.note", "Project source note.", "2026-05-12T15:02:00.000Z", {
+        operation: "project-source",
+        action: "read",
+        source: {
+          title: "Architecture",
+          kind: "file",
+          location: "docs/architecture.md",
+        },
+        readAt: "2026-05-12T15:02:00.000Z",
+      }),
+      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z"),
     ]);
 
     expect(screen.queryByLabelText("Read project source: Architecture")).toBeNull();

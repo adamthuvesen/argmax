@@ -4,7 +4,7 @@
 // and milestone transitions and publishes a `DashboardDelta` so the renderer
 // can re-render PR status without polling itself.
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::{Arc, Mutex},
@@ -13,15 +13,13 @@ use std::{
 
 use tauri::async_runtime::JoinHandle;
 
-use crate::error::ArgmaxResult;
-use crate::persistence::dashboard::{
-    list_recently_completed_session_ids, list_running_session_ids,
-};
-use crate::persistence::database::Database;
-use crate::persistence::gh::{list_open_gh_pr_session_ids, list_session_prs, GhPrRecord};
-use crate::persistence::pr_watches::{list_pr_watches, watched_pr_state};
-use crate::persistence::projects::MergeCleanup;
 use crate::providers::flush_queue::DashboardDelta;
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::dashboard::{list_recently_completed_session_ids, list_running_session_ids};
+use argmax_store::database::Database;
+use argmax_store::gh::{list_open_gh_pr_session_ids, list_session_prs, GhPrRecord};
+use argmax_store::pr_watches::{list_pr_watches, watched_pr_state};
+use argmax_store::projects::MergeCleanup;
 
 use super::service::GhService;
 use super::watch::{run_watch_pass, PrWatchNoticeHook};
@@ -81,7 +79,7 @@ pub struct MergedPrContext {
 }
 
 /// Optional hook fired when a PR with WORK evidence on a session belonging to
-/// a *live* Arc (see `crate::persistence::arcs::arc_is_live`) transitions to
+/// a *live* Arc (see `argmax_store::arcs::arc_is_live`) transitions to
 /// checks failing, checks passing, or merged. The caller notifies the Arc's
 /// coordinator; the poller owns the deduplication. Independent of
 /// `on_check_failure` / `on_pr_merged`: a live Arc's member gets this instead
@@ -367,13 +365,14 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
     // already merged and would never enter the ordinary polling set.
     let repaired_workspaces = {
         let conn = inner.database.connection();
-        let sessions =
-            crate::persistence::gh::list_session_ids_needing_pr_evidence_repair(&conn, 16)?;
+        let sessions = argmax_store::gh::list_session_ids_needing_pr_evidence_repair(&conn, 16)?;
         let mut workspaces = Vec::new();
         let mut seen = HashSet::new();
         for session_id in sessions {
             super::service::repair_session_pr_evidence(&conn, &session_id)?;
-            for workspace in crate::gh::workspaces_for_pr_refresh(&conn, &session_id)? {
+            for workspace in
+                argmax_store::workspaces::workspaces_for_pr_refresh(&conn, &session_id)?
+            {
                 if seen.insert(workspace.id.clone()) {
                     workspaces.push(workspace);
                 }
@@ -401,12 +400,12 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
     // after the fanout below would only ever see this tick's own write.
     let prior_pr_states = {
         let conn = inner.database.read_connection();
-        crate::persistence::gh::snapshot_gh_pr_states(&conn)?
+        argmax_store::gh::snapshot_gh_pr_states(&conn)?
     };
 
     // Bounded-concurrency fanout — one stuck `gh` no longer holds the
     // remaining sessions hostage.
-    let tick_started_at = crate::persistence::time::now_iso();
+    let tick_started_at = argmax_store::time::now_iso();
     let mut refreshed_sessions = Vec::new();
     for chunk in session_ids.chunks(TICK_CONCURRENCY) {
         let mut join_set = tokio::task::JoinSet::new();
@@ -505,7 +504,7 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
         {
             let conn = inner.database.connection();
             for transition in transitions.iter().filter(|entry| entry.publish) {
-                let affected = match crate::gh::workspaces_for_pr_refresh(
+                let affected = match argmax_store::workspaces::workspaces_for_pr_refresh(
                     &conn,
                     &transition.context.session_id,
                 ) {
@@ -592,7 +591,8 @@ fn pollable_sessions(database: &Arc<Database>) -> ArgmaxResult<PollableSessions>
         .collect();
     let mut all = Vec::new();
     for session_id in active.into_iter().chain(open_pr_only.iter().cloned()) {
-        let git_workspace = conn.query_row("SELECT EXISTS (SELECT 1 FROM sessions s JOIN workspaces w ON w.id = s.workspace_id WHERE s.id = ? AND w.kind = 'git')", [&session_id], |row| row.get::<_, bool>(0)).map_err(crate::persistence::sqlite_error)?;
+        let git_workspace =
+            argmax_store::sessions::session_is_in_git_workspace(&conn, &session_id)?;
         if git_workspace {
             all.push(session_id);
         }
@@ -721,7 +721,7 @@ fn detect_transition(
     session_id: &str,
     latest: &GhPrRecord,
     reserved_checkouts: &mut HashSet<String>,
-    prior_pr_states: &crate::persistence::gh::PersistedPrStates,
+    prior_pr_states: &argmax_store::gh::PersistedPrStates,
 ) -> Option<Transition> {
     let association = {
         let conn = inner.database.read_connection();
@@ -845,7 +845,7 @@ fn detect_transition(
                                 &latest.updated_at,
                             );
                             let conn = inner.database.read_connection();
-                            crate::persistence::session_messages::session_message_exists(
+                            argmax_store::session_messages::session_message_exists(
                                 &conn,
                                 &message_id,
                             )
@@ -1045,23 +1045,23 @@ fn detect_transition(
 }
 
 /// The session's Arc, only when that Arc is live (see
-/// `crate::persistence::arcs::arc_is_live`). A lookup error is treated as "no
+/// `argmax_store::arcs::arc_is_live`). A lookup error is treated as "no
 /// live Arc" — the poller retries every tick, and this only ever widens or
 /// narrows which of two notification paths a transition takes, never drops
 /// it outright.
 fn live_arc_for_session(
     inner: &Arc<PollerInner>,
     session_id: &str,
-) -> Option<crate::persistence::arcs::ArcRecord> {
+) -> Option<argmax_store::arcs::ArcRecord> {
     let conn = inner.database.connection();
-    let arc = match crate::persistence::arcs::find_session_arc(&conn, session_id) {
+    let arc = match argmax_store::arcs::find_session_arc(&conn, session_id) {
         Ok(arc) => arc?,
         Err(error) => {
             tracing::warn!(%session_id, %error, "gh poller: could not resolve session's arc");
             return None;
         }
     };
-    match crate::persistence::arcs::arc_is_live(&conn, &arc) {
+    match argmax_store::arcs::arc_is_live(&conn, &arc) {
         Ok(true) => Some(arc),
         Ok(false) => None,
         Err(error) => {
@@ -1079,11 +1079,7 @@ fn reserve_checkout(
     reserved: &mut HashSet<String>,
 ) -> bool {
     let conn = inner.database.read_connection();
-    match conn.query_row(
-        "SELECT path FROM workspaces WHERE id = ?1",
-        [workspace_id],
-        |row| row.get::<_, String>(0),
-    ) {
+    match argmax_store::workspaces::workspace_path(&conn, workspace_id) {
         Ok(path) => reserved.insert(path),
         Err(error) => {
             tracing::warn!(%workspace_id, %error, "gh poller: could not reserve checkout");
@@ -1097,12 +1093,10 @@ fn reserve_checkout(
 /// expensive mistake, so treat it as opted out and retry next tick.
 fn merge_cleanup(inner: &Arc<PollerInner>, workspace_id: &str) -> MergeCleanup {
     let conn = inner.database.connection();
-    crate::persistence::projects::workspace_merge_cleanup(&conn, workspace_id).unwrap_or_else(
-        |error| {
-            tracing::warn!(%workspace_id, ?error, "gh poller: merge cleanup lookup failed");
-            MergeCleanup::Off
-        },
-    )
+    argmax_store::projects::workspace_merge_cleanup(&conn, workspace_id).unwrap_or_else(|error| {
+        tracing::warn!(%workspace_id, ?error, "gh poller: merge cleanup lookup failed");
+        MergeCleanup::Off
+    })
 }
 
 /// Persisted twin of the in-memory ledger, so a restart mid-failure does not
@@ -1111,7 +1105,7 @@ fn merge_cleanup(inner: &Arc<PollerInner>, workspace_id: &str) -> MergeCleanup {
 /// a live checkout costs more than a missed follow-up.
 fn already_launched(inner: &Arc<PollerInner>, workspace_id: &str, latest: &GhPrRecord) -> bool {
     let conn = inner.database.connection();
-    crate::persistence::gh::check_failure_launched_in_workspace(
+    argmax_store::gh::check_failure_launched_in_workspace(
         &conn,
         workspace_id,
         latest.pr_number,
@@ -1127,12 +1121,10 @@ fn already_launched(inner: &Arc<PollerInner>, workspace_id: &str, latest: &GhPrR
 /// error counts as watched, for the same reason as `already_launched`.
 fn pr_is_watched(inner: &Arc<PollerInner>, project_id: &str, pr_number: i64) -> bool {
     let conn = inner.database.read_connection();
-    crate::persistence::pr_watches::pr_has_watch(&conn, project_id, pr_number).unwrap_or_else(
-        |error| {
-            tracing::warn!(%project_id, pr_number, ?error, "gh poller: PR watch lookup failed");
-            true
-        },
-    )
+    argmax_store::pr_watches::pr_has_watch(&conn, project_id, pr_number).unwrap_or_else(|error| {
+        tracing::warn!(%project_id, pr_number, ?error, "gh poller: PR watch lookup failed");
+        true
+    })
 }
 
 /// A session in this workspace still watches the merged PR. A lookup error
@@ -1144,16 +1136,11 @@ fn merged_pr_has_watch(
     pr_number: i64,
 ) -> bool {
     let conn = inner.database.read_connection();
-    conn.query_row(
-        "SELECT EXISTS (SELECT 1 FROM pr_watches w JOIN sessions s ON s.id = w.session_id
-         WHERE s.workspace_id = ?1 AND w.project_id = ?2 AND w.pr_number = ?3)",
-        rusqlite::params![workspace_id, project_id, pr_number],
-        |row| row.get::<_, bool>(0),
-    )
-    .unwrap_or_else(|error| {
-        tracing::warn!(%workspace_id, ?error, "gh poller: PR watch guard failed");
-        true
-    })
+    argmax_store::pr_watches::workspace_has_pr_watch(&conn, workspace_id, project_id, pr_number)
+        .unwrap_or_else(|error| {
+            tracing::warn!(%workspace_id, ?error, "gh poller: PR watch guard failed");
+            true
+        })
 }
 
 /// A turn is still live in the checkout. Skip *without* recording the ledger:
@@ -1161,14 +1148,7 @@ fn merged_pr_has_watch(
 /// next tick after that turn settles fires it.
 fn workspace_is_busy(inner: &Arc<PollerInner>, workspace_id: &str) -> bool {
     let conn = inner.database.connection();
-    conn.query_row(
-        "SELECT EXISTS (SELECT 1 FROM sessions s JOIN workspaces w ON w.id = s.workspace_id
-         JOIN workspaces target ON target.id = ?1
-         WHERE w.path = target.path AND s.state IN ('running', 'waiting', 'blocked'))",
-        [workspace_id],
-        |row| row.get::<_, bool>(0),
-    )
-    .unwrap_or_else(|error| {
+    argmax_store::workspaces::checkout_has_live_turn(&conn, workspace_id).unwrap_or_else(|error| {
         tracing::warn!(%workspace_id, ?error, "gh poller: running-session guard failed");
         true
     })
@@ -1185,9 +1165,8 @@ fn resolve_workspace_id_for_pr_action(
     latest: &GhPrRecord,
 ) -> ArgmaxResult<Option<(String, String)>> {
     let conn = database.connection();
-    let session = crate::persistence::sessions::find_session_by_id(&conn, session_id)?;
-    let workspace =
-        crate::persistence::workspaces::find_workspace_by_id(&conn, &session.workspace_id)?;
+    let session = argmax_store::sessions::find_session_by_id(&conn, session_id)?;
+    let workspace = argmax_store::workspaces::find_workspace_by_id(&conn, &session.workspace_id)?;
     if list_session_prs(&conn, session_id)?.iter().any(|pr| {
         pr.pr_number == latest.pr_number
             && pr.relationship == "worked"
@@ -1203,7 +1182,7 @@ fn resolve_workspace_id_for_pr_action(
 
 fn workspace_prs_are_merged(inner: &Arc<PollerInner>, workspace_id: &str) -> bool {
     let conn = inner.database.read_connection();
-    match crate::persistence::workspaces::find_workspace_by_id(&conn, workspace_id) {
+    match argmax_store::workspaces::find_workspace_by_id(&conn, workspace_id) {
         Ok(workspace) => {
             let primary_is_merged_work = workspace.prs.iter().any(|pr| {
                 pr.is_primary
@@ -1211,16 +1190,8 @@ fn workspace_prs_are_merged(inner: &Arc<PollerInner>, workspace_id: &str) -> boo
                     && pr.pr_state.as_deref() == Some("MERGED")
                     && pr.refresh_error.is_none()
             });
-            let unfinished_work = conn.query_row(
-                "SELECT EXISTS (
-                    SELECT 1 FROM session_pr_links links
-                    JOIN sessions s ON s.id = links.session_id
-                    JOIN gh_pull_requests pr ON pr.project_id = links.project_id AND pr.pr_number = links.pr_number
-                    WHERE s.workspace_id = ?1 AND links.relationship = 'worked'
-                      AND links.dismissed_at IS NULL
-                      AND (pr.pr_state IS NOT 'MERGED' OR pr.refresh_error IS NOT NULL)
-                )", [workspace_id], |row| row.get::<_, bool>(0),
-            );
+            let unfinished_work =
+                argmax_store::workspaces::has_unfinished_pr_work(&conn, workspace_id);
             match unfinished_work {
                 Ok(unfinished) => primary_is_merged_work && !unfinished,
                 Err(error) => {
@@ -1239,14 +1210,14 @@ fn workspace_prs_are_merged(inner: &Arc<PollerInner>, workspace_id: &str) -> boo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::ArgmaxError;
-    use crate::persistence::gh::{record_gh_pr_observation, upsert_gh_pr, PrAttribution};
-    use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
-    use crate::persistence::sessions::{persist_session, PersistSessionInput};
-    use crate::persistence::time::now_iso;
-    use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
-    use crate::sessions::state::SessionState;
     use crate::util::gh_runner::GhRunner;
+    use argmax_contracts::error::ArgmaxError;
+    use argmax_contracts::sessions::state::SessionState;
+    use argmax_store::gh::{record_gh_pr_observation, upsert_gh_pr, PrAttribution};
+    use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
+    use argmax_store::sessions::{persist_session, PersistSessionInput};
+    use argmax_store::time::now_iso;
+    use argmax_store::workspaces::{persist_workspace, PersistWorkspaceInput};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
     use tempfile::TempDir;
@@ -1416,14 +1387,14 @@ mod tests {
     /// Archiving on merge is opt-in per project; the fixture starts opted out.
     fn enable_archive_on_merge(database: &Arc<Database>) {
         let conn = database.connection();
-        let mut settings = crate::persistence::projects::require_project(&conn, "p1")
+        let mut settings = argmax_store::projects::require_project(&conn, "p1")
             .expect("project settings")
             .settings;
         settings.merge_cleanup = MergeCleanup::Archive;
-        crate::persistence::projects::update_project_settings(&conn, "p1", &settings)
+        argmax_store::projects::update_project_settings(&conn, "p1", &settings)
             .expect("enable archive on merge");
         assert_eq!(
-            crate::persistence::projects::workspace_merge_cleanup(&conn, "w1")
+            argmax_store::projects::workspace_merge_cleanup(&conn, "w1")
                 .expect("workspace merge cleanup"),
             MergeCleanup::Archive,
         );
@@ -1489,7 +1460,7 @@ mod tests {
             [],
         ).unwrap();
         for session_id in ["s1", "s2"] {
-            crate::persistence::gh::record_session_pr_evidence(
+            argmax_store::gh::record_session_pr_evidence(
                 &conn,
                 session_id,
                 48,
@@ -1503,7 +1474,7 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM gh_pr", [], |row| row.get(0))
             .unwrap();
         assert_eq!(legacy_count, 0);
-        let mut ids = crate::gh::workspaces_for_pr_refresh(&conn, "s1")
+        let mut ids = argmax_store::workspaces::workspaces_for_pr_refresh(&conn, "s1")
             .unwrap()
             .into_iter()
             .map(|workspace| workspace.id)
@@ -1525,7 +1496,7 @@ mod tests {
                 "INSERT INTO sessions (id, workspace_id, provider, model_label, prompt, state, attention, started_at, completed_at, last_activity_at)
                  SELECT 's2', workspace_id, provider, model_label, prompt, 'complete', attention, started_at, completed_at, '2026-09-15T00:00:00Z' FROM sessions WHERE id = 's1'", [],
             ).unwrap();
-            crate::persistence::gh::record_session_pr_evidence(
+            argmax_store::gh::record_session_pr_evidence(
                 &conn,
                 "s1",
                 100,
@@ -1538,8 +1509,8 @@ mod tests {
             newer.session_id = "s2".into();
             newer.pr_number = 101;
             newer.pr_state = Some("MERGED".into());
-            crate::persistence::gh::store_gh_pr_observation(&conn, &newer).unwrap();
-            crate::persistence::gh::record_session_pr_evidence(
+            argmax_store::gh::store_gh_pr_observation(&conn, &newer).unwrap();
+            argmax_store::gh::record_session_pr_evidence(
                 &conn,
                 "s2",
                 101,
@@ -1605,7 +1576,7 @@ mod tests {
         let reference = record_explicit_pr(&database, 200, "OPEN", "failure", "feature/x");
         {
             let conn = database.connection();
-            crate::persistence::gh::record_session_pr_evidence(
+            argmax_store::gh::record_session_pr_evidence(
                 &conn,
                 "s1",
                 200,
@@ -1632,7 +1603,7 @@ mod tests {
         let failure = record_explicit_pr(&database, 100, "OPEN", "failure", "feature/x");
         {
             let conn = database.connection();
-            crate::persistence::gh::record_session_pr_evidence(
+            argmax_store::gh::record_session_pr_evidence(
                 &conn,
                 "s1",
                 100,
@@ -1656,7 +1627,7 @@ mod tests {
         let other = record_explicit_pr(&database, 101, "OPEN", "failure", "feature/x");
         {
             let conn = database.connection();
-            crate::persistence::gh::record_session_pr_evidence(
+            argmax_store::gh::record_session_pr_evidence(
                 &conn,
                 "s1",
                 101,
@@ -2162,7 +2133,7 @@ mod tests {
         enable_archive_on_merge(&database);
         let until = (chrono::Utc::now() + chrono::Duration::days(3))
             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        crate::persistence::workspaces::set_workspace_snoozed_until(
+        argmax_store::workspaces::set_workspace_snoozed_until(
             &database.connection(),
             "w1",
             Some(&until),
@@ -2288,7 +2259,7 @@ mod tests {
         assert_eq!(publish_count.load(Ordering::SeqCst), 1);
         let rows = {
             let conn = database.connection();
-            crate::persistence::gh::list_gh_pr_for_session(&conn, "s1").expect("rows")
+            argmax_store::gh::list_gh_pr_for_session(&conn, "s1").expect("rows")
         };
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].pr_number, 9);
@@ -2672,14 +2643,14 @@ mod tests {
         let database = Arc::clone(database);
         let hook: ArcEventHook = Arc::new(move |context| {
             let conn = database.connection();
-            crate::persistence::session_messages::insert_session_message(
+            argmax_store::session_messages::insert_session_message(
                 &conn,
-                &crate::persistence::session_messages::NewSessionMessage {
+                &argmax_store::session_messages::NewSessionMessage {
                     id: context.message_id.clone(),
                     from_session_id: None,
                     to_session_id: context.coordinator_session_id.clone(),
                     body: "test notice".to_string(),
-                    kind: crate::persistence::session_messages::MESSAGE_KIND.to_string(),
+                    kind: argmax_store::session_messages::MESSAGE_KIND.to_string(),
                 },
             )
             .expect("simulate delivered arc notice");
@@ -3085,8 +3056,6 @@ mod tests {
         assert_eq!(recorded[0].session_id, "s1");
     }
 
-    // --- PR watch -----------------------------------------------------
-
     const PR_URL: &str = "https://github.com/acme/widgets/pull/42";
     const OLD: &str = "2020-01-01T00:00:00Z";
     const NEW: &str = "2999-01-01T00:00:00Z";
@@ -3217,17 +3186,13 @@ mod tests {
 
     fn seed_watch(database: &Arc<Database>) {
         let conn = database.connection();
-        crate::persistence::pr_watches::upsert_pr_watch(
-            &conn, "watch-1", "s1", "p1", 42, false, "",
-        )
-        .expect("seed watch");
+        argmax_store::pr_watches::upsert_pr_watch(&conn, "watch-1", "s1", "p1", 42, false, "")
+            .expect("seed watch");
     }
 
-    fn watch_row(
-        database: &Arc<Database>,
-    ) -> Option<crate::persistence::pr_watches::PrWatchRecord> {
+    fn watch_row(database: &Arc<Database>) -> Option<argmax_store::pr_watches::PrWatchRecord> {
         let conn = database.read_connection();
-        crate::persistence::pr_watches::find_pr_watch(&conn, "s1", "p1", 42).expect("read watch")
+        argmax_store::pr_watches::find_pr_watch(&conn, "s1", "p1", 42).expect("read watch")
     }
 
     /// Stores the inbox row the way `send_system_notice` does, so dedupe is
@@ -3242,14 +3207,14 @@ mod tests {
         let recorded = Arc::clone(&notices);
         let database = Arc::clone(database);
         let hook: PrWatchNoticeHook = Arc::new(move |notice: crate::gh::watch::PrWatchNotice| {
-            let inserted = crate::persistence::session_messages::insert_session_message(
+            let inserted = argmax_store::session_messages::insert_session_message(
                 &database.connection(),
-                &crate::persistence::session_messages::NewSessionMessage {
+                &argmax_store::session_messages::NewSessionMessage {
                     id: notice.message_id.clone(),
                     from_session_id: None,
                     to_session_id: notice.session_id.clone(),
                     body: notice.body.clone(),
-                    kind: crate::persistence::session_messages::MESSAGE_KIND.to_string(),
+                    kind: argmax_store::session_messages::MESSAGE_KIND.to_string(),
                 },
             );
             recorded.lock().expect("notices poisoned").push(notice);
@@ -3762,7 +3727,7 @@ Apply the merge gate before merging.\n{PR_URL}"
         );
         assert_eq!(inbox(&database).len(), 1, "it was told instead");
 
-        crate::persistence::pr_watches::delete_pr_watch(&database.connection(), "s1", "p1", 42)
+        argmax_store::pr_watches::delete_pr_watch(&database.connection(), "s1", "p1", 42)
             .expect("unwatch");
         poller.tick_for_test().await.expect("unwatched tick");
         assert_eq!(
@@ -4136,7 +4101,7 @@ Apply the merge gate before merging.\n{PR_URL}"
         assert!(inbox(&database).is_empty());
         assert_eq!(
             watch_row(&database).expect("watch").conflict_state,
-            Some(crate::persistence::pr_watches::ConflictState::Clean)
+            Some(argmax_store::pr_watches::ConflictState::Clean)
         );
 
         runner.set(conflict_pr("CONFLICTING"));
@@ -4160,7 +4125,7 @@ Apply the merge gate before merging.\n{PR_URL}"
         assert_eq!(inbox(&database).len(), 1, "UNKNOWN invented no transition");
         assert_eq!(
             watch_row(&database).expect("watch").conflict_state,
-            Some(crate::persistence::pr_watches::ConflictState::Conflicting)
+            Some(argmax_store::pr_watches::ConflictState::Conflicting)
         );
 
         runner.set(conflict_pr("MERGEABLE"));
@@ -4356,7 +4321,7 @@ Apply the merge gate before merging.\n{PR_URL}"
         fixture(&database);
         settle_session(&database, "s1");
         enable_archive_on_merge(&database);
-        crate::persistence::pr_watches::upsert_pr_watch(
+        argmax_store::pr_watches::upsert_pr_watch(
             &database.connection(),
             "watch-43",
             "s1",
@@ -4473,7 +4438,7 @@ Apply the merge gate before merging.\n{PR_URL}"
         use_merged_repo(&database, &repo);
         settle_session(&database, "s1");
         enable_archive_on_merge(&database);
-        crate::persistence::pr_watches::upsert_pr_watch(
+        argmax_store::pr_watches::upsert_pr_watch(
             &database.connection(),
             "watch-1",
             "s1",
@@ -4489,10 +4454,10 @@ Apply the merge gate before merging.\n{PR_URL}"
             let remote_at_archive = Arc::clone(&remote_at_archive);
             let main = repo.main.clone();
             Arc::new(move |_| {
-                let listing = crate::git::exec::run_git_text_blocking(
+                let listing = argmax_process::git_exec::run_git_text_blocking(
                     &main,
                     ["ls-remote", "--heads", "origin", "fix-parser"],
-                    crate::git::exec::GIT_DEFAULT_TIMEOUT,
+                    argmax_process::git_exec::GIT_DEFAULT_TIMEOUT,
                 )
                 .expect("ls-remote");
                 remote_at_archive.lock().expect("archive").push(listing);
@@ -4554,7 +4519,7 @@ Chat: kept, checkout {} kept; call pr_cleanup to remove it when this turn ends\n
                 [],
             )
             .expect("archive");
-        crate::persistence::pr_watches::upsert_pr_watch(
+        argmax_store::pr_watches::upsert_pr_watch(
             &database.connection(),
             "watch-1",
             "s1",

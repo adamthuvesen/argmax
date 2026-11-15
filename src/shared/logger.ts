@@ -38,7 +38,12 @@ function consoleFor(level: LogLevel): (...args: unknown[]) => void {
   }
 }
 
-function record(level: LogLevel, scope: string, message: string, fields?: Record<string, unknown>): void {
+function record(
+  level: LogLevel,
+  scope: string,
+  message: string,
+  fields?: Record<string, unknown>,
+): void {
   // Error always mirrors so it's noticeable without DEBUG=1. Other levels
   // need the explicit opt-in.
   if (level === "error" || isDebugEnabled()) {

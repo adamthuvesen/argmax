@@ -1,18 +1,32 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import type {
   AgentMode,
   ComposerAttachment,
   PendingMessage,
   SessionSummary,
   TimelineEvent,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../../shared/types.js";
 import type { SendInputResult } from "../../shared/bindings.js";
 import type { AgentTabsState } from "../hooks/useAgentTabs.js";
 import { buildAgentActivity } from "../lib/agentActivity.js";
 import { agentStripLimit } from "../lib/agentStripLimit.js";
 import { agentTabId, multitaskTabId, readAgentTab } from "../lib/agentTabs.js";
-import { agentRootToolUseId, assignAgentCodenames, codenameForTool, fallbackCodename } from "../lib/agentNames.js";
+import {
+  agentRootToolUseId,
+  assignAgentCodenames,
+  codenameForTool,
+  fallbackCodename,
+} from "../lib/agentNames.js";
 import type { FontSize } from "../lib/fonts.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
@@ -89,7 +103,7 @@ export function AgentsView({
   onOpenFullChat,
   onSendQueuedMessageNow,
   onSendSessionInput,
-  onTerminateSession
+  onTerminateSession,
 }: {
   events: TimelineEvent[];
   /** Settings → Appearance: the agent-window scale shared by delegated chats. */
@@ -114,7 +128,7 @@ export function AgentsView({
   onLoadAgentEvents?: (
     sessionId: string,
     parentToolUseId: string,
-    identity?: NativeAgentIdentity
+    identity?: NativeAgentIdentity,
   ) => Promise<void | { hasMore: boolean }>;
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onOpenAgent?: (tool: ToolCall) => void;
@@ -128,7 +142,7 @@ export function AgentsView({
     input: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
-    attachments?: ComposerAttachment[]
+    attachments?: ComposerAttachment[],
   ) => Promise<SendInputResult>;
   onTerminateSession?: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
 }): JSX.Element {
@@ -137,21 +151,29 @@ export function AgentsView({
   // render still has to resolve to something to show.
   const activeId = activeTabId ?? tabIds[0] ?? null;
 
-  const tools = useMemo(() => buildSessionToolCalls(
-    events,
-    parentSession?.state === "running",
-    parentSession?.state === "failed" || parentSession?.state === "cancelled"
-  ), [events, parentSession?.state]);
+  const tools = useMemo(
+    () =>
+      buildSessionToolCalls(
+        events,
+        parentSession?.state === "running",
+        parentSession?.state === "failed" || parentSession?.state === "cancelled",
+      ),
+    [events, parentSession?.state],
+  );
   const codenames = useMemo(() => assignAgentCodenames(tools), [tools]);
   const roster = useMemo(
     () => buildAgentRoster(tools, codenames, multitasks),
-    [codenames, multitasks, tools]
+    [codenames, multitasks, tools],
   );
-  const orderedRoster = useMemo(() => [...roster.entries].sort((a, b) => {
-    const statusOrder = { running: 0, error: 1, done: 2 } as const;
-    const status = statusOrder[a.status] - statusOrder[b.status];
-    return status || newestAgentFirst(a, b);
-  }), [roster.entries]);
+  const orderedRoster = useMemo(
+    () =>
+      [...roster.entries].sort((a, b) => {
+        const statusOrder = { running: 0, error: 1, done: 2 } as const;
+        const status = statusOrder[a.status] - statusOrder[b.status];
+        return status || newestAgentFirst(a, b);
+      }),
+    [roster.entries],
+  );
 
   const discoveredTabs = useRef(new Set<string>());
   const provisionalDiscoveries = useRef(new Set<string>());
@@ -182,7 +204,7 @@ export function AgentsView({
   const tabs = useMemo((): DockTab[] => {
     const sessionRunning = parentSession?.state === "running";
     const childrenByTabId = new Map(
-      (multitasks ?? []).map((child) => [multitaskTabId(child.session.id), child])
+      (multitasks ?? []).map((child) => [multitaskTabId(child.session.id), child]),
     );
     const openOrder = tabIds.map((id): DockTab => {
       const tab = readAgentTab(id);
@@ -191,48 +213,53 @@ export function AgentsView({
         // A multitask whose session is gone from the snapshot is as missing as
         // a subagent whose launch row left the timeline; the effect below
         // closes the tab rather than leaving an empty panel behind.
-        const label = child
-          ? (child.workspace?.taskLabel ?? child.session.prompt)
-          : "Multitask";
+        const label = child ? (child.workspace?.taskLabel ?? child.session.prompt) : "Multitask";
         return {
           id,
           title: label,
           status: child ? multitaskRowStatus(child.session.state) : "missing",
           name: label,
           multitask: child,
-          rootToolUseId: null
+          rootToolUseId: null,
         };
       }
-      const identityTool = tools.find((tool) =>
-        agentRootToolUseId(tool) === tab.toolUseId &&
-        (!tab.providerParentConversationId || tool.providerParentConversationId === tab.providerParentConversationId) &&
-        (!tab.providerChildSessionId || tool.providerChildSessionId === tab.providerChildSessionId)
+      const identityTool = tools.find(
+        (tool) =>
+          agentRootToolUseId(tool) === tab.toolUseId &&
+          (!tab.providerParentConversationId ||
+            tool.providerParentConversationId === tab.providerParentConversationId) &&
+          (!tab.providerChildSessionId ||
+            tool.providerChildSessionId === tab.providerChildSessionId),
       );
       const persistedCodename = events.find((event) => {
         const decoded = decodeTimelineEvent(event);
-        return decoded.agentRootToolUseId === tab.toolUseId &&
+        return (
+          decoded.agentRootToolUseId === tab.toolUseId &&
           decoded.providerParentConversationId === tab.providerParentConversationId &&
           decoded.providerChildSessionId === tab.providerChildSessionId &&
-          decoded.agentCodename;
+          decoded.agentCodename
+        );
       });
       const decodedCodename = persistedCodename
         ? decodeTimelineEvent(persistedCodename).agentCodename
         : null;
       const codename = identityTool
-        ? codenameForTool(identityTool, codenames) ?? fallbackCodename(tab.toolUseId)
-        : decodedCodename ?? fallbackCodename(tab.toolUseId);
+        ? (codenameForTool(identityTool, codenames) ?? fallbackCodename(tab.toolUseId))
+        : (decodedCodename ?? fallbackCodename(tab.toolUseId));
       const activity = buildAgentActivity({
         parentToolUseId: tab.toolUseId,
         events,
         sessionRunning,
-        sessionInterrupted: parentSession?.state === "failed" || parentSession?.state === "cancelled",
+        sessionInterrupted:
+          parentSession?.state === "failed" || parentSession?.state === "cancelled",
         provider: parentSession?.provider,
-        nativeIdentity: tab.providerParentConversationId && tab.providerChildSessionId
-          ? {
-              providerParentConversationId: tab.providerParentConversationId,
-              providerChildSessionId: tab.providerChildSessionId
-            }
-          : null
+        nativeIdentity:
+          tab.providerParentConversationId && tab.providerChildSessionId
+            ? {
+                providerParentConversationId: tab.providerParentConversationId,
+                providerChildSessionId: tab.providerChildSessionId,
+              }
+            : null,
       });
       return {
         id,
@@ -240,7 +267,7 @@ export function AgentsView({
         status: activity.status,
         name: codename,
         multitask: null,
-        rootToolUseId: tab.toolUseId
+        rootToolUseId: tab.toolUseId,
       };
     });
     // Discovery order, oldest first. These panels are stacked and shown one at
@@ -253,26 +280,31 @@ export function AgentsView({
   // every pane a fresh object on every render instead, and the panes key their
   // loads on it.
   const nativeIdentities = useMemo(
-    () => new Map(tabIds.map((id): [string, NativeAgentIdentity | null] => {
-      const tab = readAgentTab(id);
-      return [
-        id,
-        tab.kind === "subagent" && tab.providerParentConversationId && tab.providerChildSessionId
-          ? {
-              providerParentConversationId: tab.providerParentConversationId,
-              providerChildSessionId: tab.providerChildSessionId
-            }
-          : null
-      ];
-    })),
-    [tabIds]
+    () =>
+      new Map(
+        tabIds.map((id): [string, NativeAgentIdentity | null] => {
+          const tab = readAgentTab(id);
+          return [
+            id,
+            tab.kind === "subagent" &&
+            tab.providerParentConversationId &&
+            tab.providerChildSessionId
+              ? {
+                  providerParentConversationId: tab.providerParentConversationId,
+                  providerChildSessionId: tab.providerChildSessionId,
+                }
+              : null,
+          ];
+        }),
+      ),
+    [tabIds],
   );
   // Launch order, oldest leftmost: a new agent appends on the right and the
   // tabs already there stay put. Completed work leaves the strip once it is no
   // longer selected, but the selection itself never changes anyone's position.
   const stripCandidates = useMemo(
     () => roster.entries.filter((entry) => entry.status !== "done" || entry.id === activeId),
-    [activeId, roster.entries]
+    [activeId, roster.entries],
   );
   const stripRef = useRef<HTMLDivElement | null>(null);
   const [stripLimit, setStripLimit] = useState(() => agentStripLimit(0));
@@ -305,13 +337,16 @@ export function AgentsView({
   const visibleStripEntries = useMemo(() => {
     if (stripCandidates.length <= stripLimit) return stripCandidates;
     const launchIndex = new Map(stripCandidates.map((entry, index) => [entry.id, index]));
-    const kept = new Set([...stripCandidates]
-      .sort((a, b) => (
-        slotPriority(a, activeId) - slotPriority(b, activeId) ||
-        (launchIndex.get(b.id) ?? 0) - (launchIndex.get(a.id) ?? 0)
-      ))
-      .slice(0, stripLimit)
-      .map((entry) => entry.id));
+    const kept = new Set(
+      [...stripCandidates]
+        .sort(
+          (a, b) =>
+            slotPriority(a, activeId) - slotPriority(b, activeId) ||
+            (launchIndex.get(b.id) ?? 0) - (launchIndex.get(a.id) ?? 0),
+        )
+        .slice(0, stripLimit)
+        .map((entry) => entry.id),
+    );
     return stripCandidates.filter((entry) => kept.has(entry.id));
   }, [activeId, stripCandidates, stripLimit]);
   // Keyboard navigation walks only the tabs that are actually drawn. The full
@@ -319,10 +354,13 @@ export function AgentsView({
   const orderedTabIds = visibleStripEntries.map((entry) => entry.id);
   const visibleStripIds = new Set(visibleStripEntries.map((entry) => entry.id));
   const activeOverflow = Math.max(0, stripCandidates.length - visibleStripEntries.length);
-  const selectRosterEntry = useCallback((id: string): void => {
-    agentTabs.openTabs?.([id]);
-    agentTabs.selectTab(id);
-  }, [agentTabs]);
+  const selectRosterEntry = useCallback(
+    (id: string): void => {
+      agentTabs.openTabs?.([id]);
+      agentTabs.selectTab(id);
+    },
+    [agentTabs],
+  );
 
   // Drop a tab whose launch row left the timeline: Codex supersedes a synthetic
   // spawn with the real one, and the tab that pointed at the old id would sit
@@ -349,7 +387,7 @@ export function AgentsView({
         events,
         sessionRunning: parentSession.state === "running",
         sessionInterrupted: parentSession.state === "failed" || parentSession.state === "cancelled",
-        provider: parentSession.provider
+        provider: parentSession.provider,
       });
       if (!activity.parentTool) continue;
       const durableId = agentTabId(activity.parentTool);
@@ -364,7 +402,7 @@ export function AgentsView({
         if (node === null) tabButtonRefs.current.delete(tabId);
         else tabButtonRefs.current.set(tabId, node);
       },
-    []
+    [],
   );
 
   const handleTabKeyDown = useCallback(
@@ -380,7 +418,9 @@ export function AgentsView({
         };
         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
           const delta = event.key === "ArrowLeft" ? -1 : 1;
-          focusTab(orderedTabIds[(currentIndex + delta + orderedTabIds.length) % orderedTabIds.length]);
+          focusTab(
+            orderedTabIds[(currentIndex + delta + orderedTabIds.length) % orderedTabIds.length],
+          );
           return;
         }
         if (event.key === "Home") {
@@ -392,7 +432,7 @@ export function AgentsView({
           return;
         }
       },
-    [agentTabs, orderedTabIds]
+    [agentTabs, orderedTabIds],
   );
 
   if (tabIds.length === 0) {
@@ -472,7 +512,10 @@ export function AgentsView({
               data-active={isActive ? "true" : "false"}
               role="tabpanel"
               id={`review-agent-${tab.id}`}
-              aria-labelledby={visibleStripIds.has(tab.id) ? `review-agent-tab-${tab.id}` : undefined}
+              data-testid={`review-agent-${tab.id}`}
+              aria-labelledby={
+                visibleStripIds.has(tab.id) ? `review-agent-tab-${tab.id}` : undefined
+              }
               aria-label={visibleStripIds.has(tab.id) ? undefined : tab.title}
               aria-hidden={isActive ? undefined : true}
             >

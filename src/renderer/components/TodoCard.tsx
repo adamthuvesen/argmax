@@ -19,7 +19,7 @@ const STATUS_LABEL: Record<ShownStatus, string> = {
   done: "Done",
   active: "In progress",
   pending: "Pending",
-  cancelled: "Cancelled"
+  cancelled: "Cancelled",
 };
 
 /// What the headline says once the list is folded away. Collapsed, it has to
@@ -101,8 +101,8 @@ export function TodoCard({ list, running }: TodoCardProps): JSX.Element {
   const expanded = userExpanded ?? running;
   const complete = list.items.length > 0 && list.doneCount === list.items.length;
   const tail = expanded || complete ? null : collapsedTail(list);
-  const shown = list.items.filter((item): item is TodoItem & { status: ShownStatus } =>
-    item.status !== "removed"
+  const shown = list.items.filter(
+    (item): item is TodoItem & { status: ShownStatus } => item.status !== "removed",
   );
   // At most one item is ever active, so one ref and one hook call carries the
   // wave for whichever row currently holds it.
@@ -153,7 +153,11 @@ export function TodoCard({ list, running }: TodoCardProps): JSX.Element {
                 ref={isActive ? activeLabelRef : undefined}
                 data-reading-wave={wave ? "true" : undefined}
               >
-                {wave ? <span className="reading-wave-text">{itemLabel(item)}</span> : itemLabel(item)}
+                {wave ? (
+                  <span className="reading-wave-text">{itemLabel(item)}</span>
+                ) : (
+                  itemLabel(item)
+                )}
               </span>
             </li>
           );

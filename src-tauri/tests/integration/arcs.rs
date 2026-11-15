@@ -12,35 +12,37 @@ use std::{
 };
 
 use crate::support::git_repo::{seed_git_repo, SeededGitRepo};
-use argmax_lib::sessions::state::SessionState;
+use argmax_contracts::error::ArgmaxResult;
+use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId};
+use argmax_contracts::validation::{NonEmptyString, Prompt, WorkspaceId};
+use argmax_lib::workspaces::orchestration::WorkspaceService;
 use argmax_lib::{
     arcs::{launch_coordinator, LaunchCoordinatorRequest},
-    error::ArgmaxResult,
     ipc::inputs::{ProvidersLaunchInput, TerminalCols, TerminalRows},
-    ipc::validation::{NonEmptyString, Prompt, WorkspaceId},
-    persistence::{
-        arcs::{
-            count_active_members, create_arc, get_arc, set_arc_coordinator_session, set_arc_state,
-            ArcCreateInput, ArcState,
-        },
-        database::Database,
-        projects::{persist_project, PersistProjectInput, ProjectSettings},
-        sessions::{
-            find_session_by_id, persist_session, record_session_arc, record_session_launch,
-            session_launch_lineage, PersistSessionInput, LAUNCH_KIND_AGENT,
-        },
-        workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
-    },
     providers::{
         runtime::{BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeHandle},
         session_service::ProviderSessionService,
-        AgentMode, PermissionMode, ProviderId, ProviderLaunchInput,
+        ProviderLaunchInput,
     },
     session_control::{
         SessionLaunchRegistry, SessionLaunchServer, SESSION_LAUNCH_SOCKET_ENV,
         SESSION_LAUNCH_TOKEN_ENV,
     },
-    workspaces::{orchestration::MoveDestination, WorkspaceService},
+    workspaces::orchestration::MoveDestination,
+};
+use argmax_store::{
+    arcs::{
+        count_active_members, create_arc, get_arc, set_arc_coordinator_session, set_arc_state,
+        ArcCreateInput, ArcState,
+    },
+    database::Database,
+    projects::{persist_project, PersistProjectInput, ProjectSettings},
+    sessions::{
+        find_session_by_id, persist_session, record_session_arc, record_session_launch,
+        session_launch_lineage, PersistSessionInput, LAUNCH_KIND_AGENT,
+    },
+    workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
 };
 use serde_json::json;
 
@@ -157,8 +159,9 @@ fn fixture() -> Fixture {
         .expect("project");
     }
     let launcher = Arc::new(RecordingLauncher::default());
-    let providers =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+    let providers = ProviderSessionService::builder(Arc::clone(&database))
+        .launcher(launcher.clone())
+        .build();
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     Fixture {
         database,
@@ -171,7 +174,7 @@ fn fixture() -> Fixture {
     }
 }
 
-fn new_arc(fixture: &Fixture, name: &str) -> argmax_lib::persistence::arcs::ArcRecord {
+fn new_arc(fixture: &Fixture, name: &str) -> argmax_store::arcs::ArcRecord {
     let connection = fixture.database.connection();
     create_arc(
         &connection,
@@ -303,7 +306,7 @@ async fn launch_coordinator_refuses_a_done_arc() {
     .expect_err("done arc refuses a coordinator");
 
     assert!(
-        matches!(&error, argmax_lib::error::ArgmaxError::ServiceError { sub_code, .. } if sub_code == "ARC_DONE"),
+        matches!(&error, argmax_contracts::error::ArgmaxError::ServiceError { sub_code, .. } if sub_code == "ARC_DONE"),
         "{error:?}"
     );
     assert!(fixture.launcher.launches.lock().unwrap().is_empty());
@@ -364,7 +367,10 @@ fn credential(
         workspace_path: PathBuf::from(repo),
         prompt: "Task".to_string(),
         model_label: "GPT-5.6 Sol".to_string(),
-        model_id: "gpt-5.6-sol".to_string(),
+        model_id: argmax_lib::providers::model_catalogue::ModelId::resolve(
+            ProviderId::Codex,
+            "gpt-5.6-sol",
+        ),
         reasoning_effort: None,
         fast_mode: false,
         resume_conversation_id: None,
@@ -486,7 +492,7 @@ async fn a_member_launched_by_the_coordinator_inherits_arc_id_and_the_preamble_a
     );
     {
         let connection = fixture.database.connection();
-        argmax_lib::persistence::arcs::set_arc_coordinator_session(
+        argmax_store::arcs::set_arc_coordinator_session(
             &connection,
             &arc.id,
             Some("session-coordinator"),
@@ -575,7 +581,7 @@ async fn the_current_coordinator_is_exempt_from_the_lifetime_launch_cap_a_member
     seed_arc_session(fixture, &arc.id, "session-member", SessionState::Running);
     {
         let connection = fixture.database.connection();
-        argmax_lib::persistence::arcs::set_arc_coordinator_session(
+        argmax_store::arcs::set_arc_coordinator_session(
             &connection,
             &arc.id,
             Some("session-coordinator"),
@@ -741,6 +747,7 @@ fn race_workspace(fixture: &Fixture, id: &str, checkout: &std::path::Path) {
 
 fn race_launch_input(workspace_id: &str, arc_id: &str) -> ProvidersLaunchInput {
     ProvidersLaunchInput {
+        submitted_at_ms: None,
         workspace_id: WorkspaceId::try_from(workspace_id.to_string()).expect("workspace id valid"),
         provider: ProviderId::Codex,
         prompt: Prompt::try_from("Race the cap".to_string()).expect("prompt valid"),
@@ -819,7 +826,7 @@ async fn concurrent_launches_racing_the_active_member_cap_only_one_succeeds() {
     assert!(
         matches!(
             refusal,
-            argmax_lib::error::ArgmaxError::ServiceError { sub_code, .. }
+            argmax_contracts::error::ArgmaxError::ServiceError { sub_code, .. }
                 if sub_code == "ARC_CAPACITY_REACHED"
         ),
         "{refusal:?}"
@@ -896,7 +903,7 @@ async fn arc_status_answers_for_a_member_and_refuses_a_session_outside_any_arc()
     seed_arc_session(fixture, &arc.id, "session-member", SessionState::Running);
     {
         let connection = fixture.database.connection();
-        argmax_lib::persistence::arcs::set_arc_coordinator_session(
+        argmax_store::arcs::set_arc_coordinator_session(
             &connection,
             &arc.id,
             Some("session-coordinator"),

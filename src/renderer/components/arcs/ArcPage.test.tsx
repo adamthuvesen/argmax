@@ -7,10 +7,13 @@ import type {
   ArgmaxApi,
   DashboardSnapshot,
   ProjectSummary,
-  Routine
+  Routine,
 } from "../../../shared/types.js";
 import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
 import { ArcPage } from "./ArcPage.js";
+import { FIXED_NOW_ISO, freezeClock } from "../../../test/fixedClock.js";
+
+freezeClock();
 
 const PROJECT: ProjectSummary = {
   id: "project-1",
@@ -22,10 +25,10 @@ const PROJECT: ProjectSummary = {
     mergeCleanup: "off",
     worktreeLocation: "/tmp/worktrees",
     setupCommand: "",
-    checkCommands: []
+    checkCommands: [],
   },
   counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
-  latestActivityAt: "2026-05-12T15:54:00.000Z"
+  latestActivityAt: "2026-05-12T15:54:00.000Z",
 };
 
 function arcRecord(overrides: Partial<ArcRecord> = {}): ArcRecord {
@@ -40,7 +43,7 @@ function arcRecord(overrides: Partial<ArcRecord> = {}): ArcRecord {
     createdAt: "2026-05-10T09:00:00.000Z",
     updatedAt: "2026-05-12T15:54:00.000Z",
     archivedAt: null,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -70,7 +73,7 @@ const SNAPSHOT: DashboardSnapshot = {
       prCreatedAt: null,
       prMergedAt: null,
       prCheckState: null,
-      prActivityAt: null
+      prActivityAt: null,
     },
     {
       id: "workspace-member",
@@ -95,8 +98,8 @@ const SNAPSHOT: DashboardSnapshot = {
       prCreatedAt: null,
       prMergedAt: null,
       prCheckState: null,
-      prActivityAt: null
-    }
+      prActivityAt: null,
+    },
   ],
   sessions: [
     {
@@ -118,7 +121,7 @@ const SNAPSHOT: DashboardSnapshot = {
       contextTokens: 0,
       imported: false,
       launchKind: "agent",
-      arcId: "arc-1"
+      arcId: "arc-1",
     },
     {
       id: "session-member",
@@ -139,8 +142,8 @@ const SNAPSHOT: DashboardSnapshot = {
       contextTokens: 0,
       imported: false,
       launchKind: "agent",
-      arcId: "arc-1"
-    }
+      arcId: "arc-1",
+    },
   ],
   events: [],
   rawOutputs: [],
@@ -157,9 +160,9 @@ const SNAPSHOT: DashboardSnapshot = {
       memberCount: 1,
       updatedAt: "2026-05-12T15:54:00.000Z",
       lastEventAt: null,
-      archivedAt: null
-    }
-  ]
+      archivedAt: null,
+    },
+  ],
 };
 
 function member(overrides: Partial<ArcMemberSummary> = {}): ArcMemberSummary {
@@ -177,7 +180,7 @@ function member(overrides: Partial<ArcMemberSummary> = {}): ArcMemberSummary {
     isCoordinator: false,
     prNumber: 42,
     prState: "OPEN",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -192,7 +195,7 @@ const COORDINATOR_MEMBER = member({
   startedAt: "2026-05-10T09:00:00.000Z",
   isCoordinator: true,
   prNumber: null,
-  prState: null
+  prState: null,
 });
 
 const arcsStub = {
@@ -202,7 +205,7 @@ const arcsStub = {
   update: vi.fn<ArgmaxApi["arcs"]["update"]>(),
   setState: vi.fn<ArgmaxApi["arcs"]["setState"]>(),
   launchCoordinator: vi.fn<ArgmaxApi["arcs"]["launchCoordinator"]>(),
-  timeline: vi.fn<ArgmaxApi["arcs"]["timeline"]>()
+  timeline: vi.fn<ArgmaxApi["arcs"]["timeline"]>(),
 };
 
 function timelineEvent(overrides: Partial<ArcTimelineEvent> = {}): ArcTimelineEvent {
@@ -210,7 +213,7 @@ function timelineEvent(overrides: Partial<ArcTimelineEvent> = {}): ArcTimelineEv
     id: "event-1",
     seq: 1,
     kind: "member_finished",
-    occurredAt: new Date().toISOString(),
+    occurredAt: FIXED_NOW_ISO,
     sessionId: "session-member",
     sessionAvailable: true,
     projectId: "project-1",
@@ -220,12 +223,12 @@ function timelineEvent(overrides: Partial<ArcTimelineEvent> = {}): ArcTimelineEv
     status: "complete",
     prNumber: null,
     prUrl: null,
-    ...overrides
+    ...overrides,
   };
 }
 
 const systemStub = {
-  confirm: vi.fn<ArgmaxApi["system"]["confirm"]>()
+  confirm: vi.fn<ArgmaxApi["system"]["confirm"]>(),
 };
 
 const routinesStub = {
@@ -234,7 +237,7 @@ const routinesStub = {
   delete: vi.fn<ArgmaxApi["routines"]["delete"]>(),
   setEnabled: vi.fn<ArgmaxApi["routines"]["setEnabled"]>(),
   runNow: vi.fn<ArgmaxApi["routines"]["runNow"]>(),
-  resetSession: vi.fn<ArgmaxApi["routines"]["resetSession"]>()
+  resetSession: vi.fn<ArgmaxApi["routines"]["resetSession"]>(),
 };
 
 function routine(overrides: Partial<Routine> = {}): Routine {
@@ -259,7 +262,7 @@ function routine(overrides: Partial<Routine> = {}): Routine {
     createdBy: "user",
     createdAt: "2026-05-10T09:00:00.000Z",
     updatedAt: "2026-05-10T09:00:00.000Z",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -280,27 +283,33 @@ beforeEach(() => {
     members: [COORDINATOR_MEMBER, member()],
     membersTruncated: false,
     launchesLast24h: 3,
-    limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 }
+    limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 },
   });
   arcsStub.update.mockImplementation((input) =>
     Promise.resolve({
       ...arcRecord(),
       ...(input.name !== null ? { name: input.name } : {}),
-      ...(input.brief !== null ? { brief: input.brief } : {})
-    })
+      ...(input.brief !== null ? { brief: input.brief } : {}),
+    }),
   );
-  arcsStub.setState.mockImplementation((input) => Promise.resolve(arcRecord({ state: input.state })));
+  arcsStub.setState.mockImplementation((input) =>
+    Promise.resolve(arcRecord({ state: input.state })),
+  );
   arcsStub.launchCoordinator.mockImplementation((input) =>
-    Promise.resolve(arcRecord({ coordinatorSessionId: `relaunched-${input.provider}` }))
+    Promise.resolve(arcRecord({ coordinatorSessionId: `relaunched-${input.provider}` })),
   );
   systemStub.confirm.mockResolvedValue(true);
   routinesStub.list.mockResolvedValue([
     routine(),
-    routine({ id: "routine-other-arc", name: "Other arc task", arcId: "arc-2" })
+    routine({ id: "routine-other-arc", name: "Other arc task", arcId: "arc-2" }),
   ]);
   routinesStub.delete.mockResolvedValue(null);
 
-  window.argmax = { arcs: arcsStub, system: systemStub, routines: routinesStub } as unknown as ArgmaxApi;
+  window.argmax = {
+    arcs: arcsStub,
+    system: systemStub,
+    routines: routinesStub,
+  } as unknown as ArgmaxApi;
 });
 
 afterEach(() => {
@@ -312,12 +321,22 @@ describe("ArcPage", () => {
   it("saves an edited brief", async () => {
     const onOpenSession = vi.fn();
     render(
-      <ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={onOpenSession} onClose={vi.fn()} />
+      <ArcPage
+        arcId="arc-1"
+        snapshot={SNAPSHOT}
+        projects={[PROJECT]}
+        onOpenSession={onOpenSession}
+        onClose={vi.fn()}
+      />,
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Edit brief" }));
-    const textarea = await screen.findByPlaceholderText("What this arc is for, and what done looks like.");
-    fireEvent.change(textarea, { target: { value: "Ship the new pricing tiers, then deprecate the old ones." } });
+    const textarea = await screen.findByPlaceholderText(
+      "What this arc is for, and what done looks like.",
+    );
+    fireEvent.change(textarea, {
+      target: { value: "Ship the new pricing tiers, then deprecate the old ones." },
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -325,16 +344,26 @@ describe("ArcPage", () => {
     expect(arcsStub.update).toHaveBeenCalledWith({
       id: "arc-1",
       name: null,
-      brief: "Ship the new pricing tiers, then deprecate the old ones."
+      brief: "Ship the new pricing tiers, then deprecate the old ones.",
     });
   });
 
   it("toasts a failed brief save and keeps the draft available", async () => {
     arcsStub.update.mockRejectedValue(new Error("BRIEF_WRITE_FAILED"));
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage
+        arcId="arc-1"
+        snapshot={SNAPSHOT}
+        projects={[PROJECT]}
+        onOpenSession={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
 
     fireEvent.click(await screen.findByRole("button", { name: "Edit brief" }));
-    const textarea = await screen.findByPlaceholderText("What this arc is for, and what done looks like.");
+    const textarea = await screen.findByPlaceholderText(
+      "What this arc is for, and what done looks like.",
+    );
     fireEvent.change(textarea, { target: { value: "Keep this draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -344,20 +373,36 @@ describe("ArcPage", () => {
   });
 
   it("confirms and launches a new coordinator", async () => {
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage
+        arcId="arc-1"
+        snapshot={SNAPSHOT}
+        projects={[PROJECT]}
+        onOpenSession={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
 
     fireEvent.click(await screen.findByRole("button", { name: "New coordinator" }));
 
     await waitFor(() => expect(systemStub.confirm).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(arcsStub.launchCoordinator).toHaveBeenCalledTimes(1));
     expect(arcsStub.launchCoordinator).toHaveBeenCalledWith(
-      expect.objectContaining({ arcId: "arc-1", provider: "claude" })
+      expect.objectContaining({ arcId: "arc-1", provider: "claude" }),
     );
   });
 
   it("does not launch a new coordinator when the confirmation is declined", async () => {
     systemStub.confirm.mockResolvedValue(false);
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage
+        arcId="arc-1"
+        snapshot={SNAPSHOT}
+        projects={[PROJECT]}
+        onOpenSession={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
 
     fireEvent.click(await screen.findByRole("button", { name: "New coordinator" }));
 
@@ -371,13 +416,21 @@ describe("ArcPage", () => {
       members: [
         COORDINATOR_MEMBER,
         member(),
-        member({ sessionId: "session-old", taskLabel: "Migrate old tiers", state: "running" })
+        member({ sessionId: "session-old", taskLabel: "Migrate old tiers", state: "running" }),
       ],
       membersTruncated: false,
       launchesLast24h: 3,
-      limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 }
+      limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 },
     });
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage
+        arcId="arc-1"
+        snapshot={SNAPSHOT}
+        projects={[PROJECT]}
+        onOpenSession={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
 
     const working = await screen.findByRole("list", { name: "Members working now" });
     // The completed member and the coordinator are not "working now".
@@ -389,8 +442,14 @@ describe("ArcPage", () => {
     expect(aged).toBeDisabled();
     expect(aged).toHaveAttribute("title", "This chat is no longer in the recent chat list");
 
-    expect(screen.getByRole("region", { name: "Chats" })).toHaveTextContent("1 working · 2 PRs open · 0 merged");
-    expect(screen.getByText("Limits").parentElement).toHaveTextContent("Up to 8 members working at once. 3 of 40 launches used today.");
+    expect(screen.getByRole("region", { name: "Chats" })).toHaveTextContent(
+      "1 working · 2 PRs open · 0 merged",
+    );
+    // The label and its hint must share one parent; the text alone cannot show that.
+    // oxlint-disable-next-line argmax/no-node-access -- asserts the same-container structure of the Limits row
+    expect(screen.getByText("Limits").parentElement).toHaveTextContent(
+      "Up to 8 members working at once. 3 of 40 launches used today.",
+    );
   });
 
   it("renders the timeline by day and filters it to pull requests", async () => {
@@ -403,7 +462,7 @@ describe("ArcPage", () => {
           prNumber: 12,
           prUrl: "https://github.com/acme/argmax/pull/12",
           status: "abc1234",
-          detail: null
+          detail: null,
         }),
         timelineEvent({ id: "finished" }),
         timelineEvent({
@@ -413,13 +472,21 @@ describe("ArcPage", () => {
           sessionId: null,
           occurredAt: "2025-01-02T10:00:00.000Z",
           detail: null,
-          status: null
-        })
+          status: null,
+        }),
       ],
-      nextCursor: null
+      nextCursor: null,
     });
     const onOpenSession = vi.fn();
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={onOpenSession} onClose={vi.fn()} />);
+    render(
+      <ArcPage
+        arcId="arc-1"
+        snapshot={SNAPSHOT}
+        projects={[PROJECT]}
+        onOpenSession={onOpenSession}
+        onClose={vi.fn()}
+      />,
+    );
 
     const timeline = await screen.findByRole("region", { name: "Timeline" });
     expect(await within(timeline).findByText("Checks failing")).toBeInTheDocument();
@@ -433,8 +500,8 @@ describe("ArcPage", () => {
     fireEvent.click(within(timeline).getByRole("button", { name: "Show events" }));
     fireEvent.click(
       within(within(timeline).getByRole("option", { name: "Pull requests" })).getByRole("button", {
-        name: "Pull requests"
-      })
+        name: "Pull requests",
+      }),
     );
     expect(within(timeline).getByText("Checks failing")).toBeInTheDocument();
     expect(within(timeline).queryByText("Built the pricing page.")).not.toBeInTheDocument();
@@ -445,29 +512,55 @@ describe("ArcPage", () => {
     arcsStub.timeline
       .mockResolvedValueOnce({
         events: [timelineEvent({ id: "new" })],
-        nextCursor: { occurredAt: "2026-05-11T09:00:00.000Z", seq: 4 }
+        nextCursor: { occurredAt: "2026-05-11T09:00:00.000Z", seq: 4 },
       })
       .mockResolvedValueOnce({
-        events: [timelineEvent({ id: "older", kind: "brief_updated", title: "Brief edited", detail: null })],
-        nextCursor: null
+        events: [
+          timelineEvent({
+            id: "older",
+            kind: "brief_updated",
+            title: "Brief edited",
+            detail: null,
+          }),
+        ],
+        nextCursor: null,
       });
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage
+        arcId="arc-1"
+        snapshot={SNAPSHOT}
+        projects={[PROJECT]}
+        onOpenSession={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
 
     fireEvent.click(await screen.findByRole("button", { name: "Show earlier" }));
     expect(await screen.findByText("Brief edited")).toBeInTheDocument();
     expect(arcsStub.timeline).toHaveBeenLastCalledWith({
       arcId: "arc-1",
       before: { occurredAt: "2026-05-11T09:00:00.000Z", seq: 4 },
-      limit: 60
+      limit: 60,
     });
     expect(screen.queryByRole("button", { name: "Show earlier" })).not.toBeInTheDocument();
   });
 
   it("toasts a failed earlier-page load and keeps the cursor available for retry", async () => {
     arcsStub.timeline
-      .mockResolvedValueOnce({ events: [timelineEvent({ id: "new" })], nextCursor: { occurredAt: "2026-05-11T09:00:00.000Z", seq: 4 } })
+      .mockResolvedValueOnce({
+        events: [timelineEvent({ id: "new" })],
+        nextCursor: { occurredAt: "2026-05-11T09:00:00.000Z", seq: 4 },
+      })
       .mockRejectedValueOnce(new Error("TIMELINE_UNAVAILABLE"));
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage
+        arcId="arc-1"
+        snapshot={SNAPSHOT}
+        projects={[PROJECT]}
+        onOpenSession={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
 
     fireEvent.click(await screen.findByRole("button", { name: "Show earlier" }));
 
@@ -478,27 +571,55 @@ describe("ArcPage", () => {
 
   it("keeps an unsaved brief and stays rendered when the dashboard refreshes", async () => {
     const { rerender } = render(
-      <ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />
+      <ArcPage
+        arcId="arc-1"
+        snapshot={SNAPSHOT}
+        projects={[PROJECT]}
+        onOpenSession={vi.fn()}
+        onClose={vi.fn()}
+      />,
     );
     fireEvent.click(await screen.findByRole("button", { name: "Edit brief" }));
-    const textarea = await screen.findByPlaceholderText("What this arc is for, and what done looks like.");
+    const textarea = await screen.findByPlaceholderText(
+      "What this arc is for, and what done looks like.",
+    );
     fireEvent.change(textarea, { target: { value: "Half-typed brief" } });
 
     const refreshed: DashboardSnapshot = {
       ...SNAPSHOT,
-      arcs: (SNAPSHOT.arcs ?? []).map((arc) => ({ ...arc, memberCount: 2, updatedAt: "2026-05-12T16:00:00.000Z" }))
+      arcs: (SNAPSHOT.arcs ?? []).map((arc) => ({
+        ...arc,
+        memberCount: 2,
+        updatedAt: "2026-05-12T16:00:00.000Z",
+      })),
     };
-    rerender(<ArcPage arcId="arc-1" snapshot={refreshed} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    rerender(
+      <ArcPage
+        arcId="arc-1"
+        snapshot={refreshed}
+        projects={[PROJECT]}
+        onOpenSession={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
 
     await waitFor(() => expect(arcsStub.get).toHaveBeenCalledTimes(2));
-    expect(screen.getByPlaceholderText("What this arc is for, and what done looks like.")).toHaveValue(
-      "Half-typed brief"
-    );
+    expect(
+      screen.getByPlaceholderText("What this arc is for, and what done looks like."),
+    ).toHaveValue("Half-typed brief");
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
   it("lists only this arc's scheduled tasks in Triggers", async () => {
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage
+        arcId="arc-1"
+        snapshot={SNAPSHOT}
+        projects={[PROJECT]}
+        onOpenSession={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
 
     await waitFor(() => expect(routinesStub.list).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("Triage the arc.")).toBeInTheDocument();
@@ -506,7 +627,15 @@ describe("ArcPage", () => {
   });
 
   it("removes a trigger after confirming", async () => {
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage
+        arcId="arc-1"
+        snapshot={SNAPSHOT}
+        projects={[PROJECT]}
+        onOpenSession={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
 
     await screen.findByText("Triage the arc.");
     fireEvent.click(screen.getByRole("button", { name: "Remove Morning triage" }));
@@ -518,7 +647,15 @@ describe("ArcPage", () => {
 
   it("does not delete a trigger when the confirmation is declined", async () => {
     systemStub.confirm.mockResolvedValue(false);
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage
+        arcId="arc-1"
+        snapshot={SNAPSHOT}
+        projects={[PROJECT]}
+        onOpenSession={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
 
     await screen.findByText("Triage the arc.");
     fireEvent.click(screen.getByRole("button", { name: "Remove Morning triage" }));

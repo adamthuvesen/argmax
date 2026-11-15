@@ -2,7 +2,7 @@ import type {
   UsageProviderSummary,
   UsageSummary,
   UsageSummaryInput,
-  UsageTokenTotals
+  UsageTokenTotals,
 } from "../../shared/types.js";
 
 /**
@@ -11,7 +11,12 @@ import type {
  * pricing table does not know. Small enough to assert exact strings against.
  */
 
-function tokens(inputUncached: number, cacheRead: number, cacheWrite: number, output: number): UsageTokenTotals {
+function tokens(
+  inputUncached: number,
+  cacheRead: number,
+  cacheWrite: number,
+  output: number,
+): UsageTokenTotals {
   return { inputUncached, cacheRead, cacheWrite, output, reasoning: Math.round(output / 2) };
 }
 
@@ -21,7 +26,7 @@ function scaleTokens(source: UsageTokenTotals, factor: number): UsageTokenTotals
     cacheRead: Math.round(source.cacheRead * factor),
     cacheWrite: Math.round(source.cacheWrite * factor),
     output: Math.round(source.output * factor),
-    reasoning: Math.round(source.reasoning * factor)
+    reasoning: Math.round(source.reasoning * factor),
   };
 }
 
@@ -32,7 +37,7 @@ const claudeRow: UsageProviderSummary = {
   tokens: tokens(200_000, 1_200_000, 90_000, 60_000),
   costUsd: 60,
   cacheSavingsUsd: 3.25,
-  costSource: "list_price"
+  costSource: "list_price",
 };
 
 const codexRow: UsageProviderSummary = {
@@ -42,7 +47,7 @@ const codexRow: UsageProviderSummary = {
   tokens: tokens(80_000, 400_000, 20_000, 30_000),
   costUsd: 40,
   cacheSavingsUsd: 1.1,
-  costSource: "list_price"
+  costSource: "list_price",
 };
 
 const cursorRow: UsageProviderSummary = {
@@ -52,7 +57,7 @@ const cursorRow: UsageProviderSummary = {
   tokens: tokens(0, 0, 0, 0),
   costUsd: 0,
   cacheSavingsUsd: 0,
-  costSource: "unpriced"
+  costSource: "unpriced",
 };
 
 export function usageSummaryFixture(overrides: Partial<UsageSummary> = {}): UsageSummary {
@@ -68,7 +73,7 @@ export function usageSummaryFixture(overrides: Partial<UsageSummary> = {}): Usag
       filesTotal: 120,
       filesDone: 120,
       lastCompletedAt: "2026-09-02T23:58:00Z",
-      pricingAsOf: "2026-09-01"
+      pricingAsOf: "2026-09-01",
     },
     sessions: 17,
     tokens: tokens(280_000, 1_600_000, 110_000, 90_000),
@@ -82,7 +87,7 @@ export function usageSummaryFixture(overrides: Partial<UsageSummary> = {}): Usag
     previous: {
       costUsd: 74.5,
       tokens: tokens(210_000, 1_180_000, 82_000, 66_000),
-      sessions: 13
+      sessions: 13,
     },
     providers: [claudeRow, codexRow, cursorRow],
     series: [
@@ -90,23 +95,23 @@ export function usageSummaryFixture(overrides: Partial<UsageSummary> = {}): Usag
         bucketStart: "2026-08-31T00:00:00Z",
         values: [
           { provider: "claude", costUsd: 10, tokens: 400_000 },
-          { provider: "codex", costUsd: 8, tokens: 150_000 }
-        ]
+          { provider: "codex", costUsd: 8, tokens: 150_000 },
+        ],
       },
       {
         bucketStart: "2026-09-01T00:00:00Z",
         values: [
           { provider: "claude", costUsd: 30, tokens: 800_000 },
-          { provider: "codex", costUsd: 12, tokens: 200_000 }
-        ]
+          { provider: "codex", costUsd: 12, tokens: 200_000 },
+        ],
       },
       {
         bucketStart: "2026-09-02T00:00:00Z",
         values: [
           { provider: "claude", costUsd: 20, tokens: 350_000 },
-          { provider: "codex", costUsd: 20, tokens: 180_000 }
-        ]
-      }
+          { provider: "codex", costUsd: 20, tokens: 180_000 },
+        ],
+      },
     ],
     models: [
       {
@@ -115,7 +120,7 @@ export function usageSummaryFixture(overrides: Partial<UsageSummary> = {}): Usag
         sessions: 9,
         tokens: tokens(180_000, 1_000_000, 80_000, 50_000),
         costUsd: 60,
-        costSource: "list_price"
+        costSource: "list_price",
       },
       {
         provider: "codex",
@@ -123,7 +128,7 @@ export function usageSummaryFixture(overrides: Partial<UsageSummary> = {}): Usag
         sessions: 4,
         tokens: tokens(70_000, 350_000, 18_000, 26_000),
         costUsd: 40,
-        costSource: "list_price"
+        costSource: "list_price",
       },
       {
         provider: "codex",
@@ -131,8 +136,8 @@ export function usageSummaryFixture(overrides: Partial<UsageSummary> = {}): Usag
         sessions: 1,
         tokens: tokens(10_000, 50_000, 2_000, 4_000),
         costUsd: 0,
-        costSource: "unpriced"
-      }
+        costSource: "unpriced",
+      },
     ],
     days: [
       {
@@ -140,23 +145,23 @@ export function usageSummaryFixture(overrides: Partial<UsageSummary> = {}): Usag
         sessions: 4,
         tokens: tokens(60_000, 300_000, 20_000, 20_000),
         costUsd: 18,
-        costSource: "list_price"
+        costSource: "list_price",
       },
       {
         bucketStart: "2026-09-01T00:00:00Z",
         sessions: 7,
         tokens: tokens(120_000, 700_000, 50_000, 40_000),
         costUsd: 42,
-        costSource: "list_price"
+        costSource: "list_price",
       },
       {
         bucketStart: "2026-09-02T00:00:00Z",
         sessions: 6,
         tokens: tokens(100_000, 600_000, 40_000, 30_000),
         costUsd: 40,
-        costSource: "list_price"
-      }
-    ]
+        costSource: "list_price",
+      },
+    ],
   };
   return { ...base, ...overrides };
 }
@@ -171,10 +176,10 @@ export function usageSummaryFor(input: UsageSummaryInput): UsageSummary {
     "24h": {
       rangeStart: "2026-09-02T00:00:00Z",
       rangeEnd: "2026-09-03T00:00:00Z",
-      resolution: "hour"
+      resolution: "hour",
     },
     "7d": { rangeStart: "2026-08-27T00:00:00Z", rangeEnd: "2026-09-03T00:00:00Z" },
-    "30d": { rangeStart: "2026-08-04T00:00:00Z", rangeEnd: "2026-09-03T00:00:00Z" }
+    "30d": { rangeStart: "2026-08-04T00:00:00Z", rangeEnd: "2026-09-03T00:00:00Z" },
   };
   const summary = usageSummaryFixture({ window: input.window, ...ranges[input.window] });
   const provider = input.provider ?? null;
@@ -196,17 +201,17 @@ export function usageSummaryFor(input: UsageSummaryInput): UsageSummary {
     previous: summary.previous && {
       costUsd: Math.round(summary.previous.costUsd * costShare * 100) / 100,
       tokens: scaleTokens(summary.previous.tokens, costShare),
-      sessions: Math.round(summary.previous.sessions * costShare)
+      sessions: Math.round(summary.previous.sessions * costShare),
     },
     series: summary.series.map((point) => ({
       ...point,
-      values: point.values.filter((value) => value.provider === provider)
+      values: point.values.filter((value) => value.provider === provider),
     })),
     models: summary.models.filter((model) => model.provider === provider),
     days: summary.days.map((day) => {
       const share = summary.series.find((point) => point.bucketStart === day.bucketStart);
       const own = share?.values.find((value) => value.provider === provider);
       return { ...day, sessions: Math.ceil(day.sessions / 2), costUsd: own?.costUsd ?? 0 };
-    })
+    }),
   };
 }

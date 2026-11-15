@@ -32,7 +32,7 @@ let activeFloatingComposers = 0;
 export function useWindowSnapshotAttach(
   active: boolean,
   onAttach: (snapshot: ComposerSnapshotAttach) => void,
-  floating = false
+  floating = false,
 ): void {
   const latest = useRef(onAttach);
   latest.current = onAttach;
@@ -45,10 +45,12 @@ export function useWindowSnapshotAttach(
       if (isSupportedImageMime(snapshot.attachment.mimeType)) {
         latest.current({
           ...snapshot,
-          attachment: { ...snapshot.attachment, mimeType: snapshot.attachment.mimeType }
+          attachment: { ...snapshot.attachment, mimeType: snapshot.attachment.mimeType },
         });
       } else {
-        showErrorToast(`The window capture is a ${snapshot.attachment.mimeType} file, which cannot be attached.`);
+        showErrorToast(
+          `The window capture is a ${snapshot.attachment.mimeType} file, which cannot be attached.`,
+        );
       }
       return true;
     });

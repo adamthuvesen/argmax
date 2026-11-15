@@ -1,4 +1,5 @@
 import { useState, type JSX } from "react";
+import { settingsActions } from "../../data/bridgeActions.js";
 import { errorMessage } from "../../../shared/error.js";
 import type { ProjectCheckMode, RoutingSettings } from "../../../shared/types.js";
 import { SegmentedControl, SettingGroup, SettingNote, SettingRow } from "./settingsPrimitives.js";
@@ -6,7 +7,7 @@ import { SegmentedControl, SettingGroup, SettingNote, SettingRow } from "./setti
 const PROJECT_CHECK_OPTIONS: ReadonlyArray<{ value: ProjectCheckMode; label: string }> = [
   { value: "off", label: "Off" },
   { value: "suggest", label: "Suggest" },
-  { value: "switch", label: "Suggest & switch" }
+  { value: "switch", label: "Suggest & switch" },
 ];
 
 function isProjectCheckMode(value: string): value is ProjectCheckMode {
@@ -20,7 +21,7 @@ function isProjectCheckMode(value: string): value is ProjectCheckMode {
  */
 export function AutoRoutingSettings({
   routing,
-  onRoutingChange
+  onRoutingChange,
 }: {
   /** Null until the first read answers. */
   routing: RoutingSettings | null;
@@ -31,7 +32,7 @@ export function AutoRoutingSettings({
   const [error, setError] = useState<string | null>(null);
 
   const saveKey = async (): Promise<void> => {
-    const api = window.argmax?.settings;
+    const api = settingsActions();
     const trimmed = apiKey.trim();
     if (!api || trimmed === "") return;
     setIsSaving(true);
@@ -47,7 +48,7 @@ export function AutoRoutingSettings({
   };
 
   const removeKey = async (): Promise<void> => {
-    const api = window.argmax?.settings;
+    const api = settingsActions();
     if (!api) return;
     setError(null);
     try {
@@ -58,7 +59,7 @@ export function AutoRoutingSettings({
   };
 
   const setProjectCheck = async (mode: ProjectCheckMode): Promise<void> => {
-    const api = window.argmax?.settings;
+    const api = settingsActions();
     if (!api) return;
     setError(null);
     try {

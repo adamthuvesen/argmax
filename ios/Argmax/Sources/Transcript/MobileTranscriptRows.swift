@@ -76,6 +76,65 @@ enum MobileTranscriptRow: Equatable, Identifiable {
         return blockStart.firstMatch(in: trimmed, range: whole) == nil
     }
 
+    /// Past this, prose after the turn's last tool is an answer, not a sign-off.
+    private static let closingRemarkMaxCharacters = 160
+
+    /// Does the prose after the last tool acknowledge that tool rather than
+    /// answer? Mirrors `isClosingRemark` in sessionTurnView.ts. Lengths are
+    /// UTF-16 units, as there.
+    private static func isClosingRemark(candidateLength: Int, tailLength: Int) -> Bool {
+        tailLength > 0 && tailLength < closingRemarkMaxCharacters && tailLength * 2 < candidateLength
+    }
+
+    private static func trimmedLength(_ text: String) -> Int {
+        text.trimmingCharacters(in: jsWhitespace).utf16.count
+    }
+
+    /// The prose Minimal folds into the work it narrates: the phone's
+    /// `preToolNarrationGroupIds`, one turn at a time. A turn runs from one
+    /// regular user message to the next, steering included, as in
+    /// `foldConversation`. Reading order stands in for the desktop's
+    /// timestamps, because the projection already put each item in its place.
+    ///
+    /// The boundary is the last *tool*: a tool-less reasoning turn (Grok
+    /// alternates tiny thinking/text pairs) keeps every remark it wrote. The
+    /// last prose stays, and so does the prose before the last tool when all
+    /// that follows that tool is a sign-off: an agent that answers, records
+    /// the answer with one closing edit and says "Done." keeps its answer.
+    ///
+    /// A message with attachments stays on the phone only: its row draws the
+    /// image, and a desktop assistant group carries none.
+    static func minimalNarrationIDs(_ items: [TranscriptItem], latestTurnIsLive: Bool) -> Set<String> {
+        var turns: [[TranscriptItem]] = [[]]
+        for item in items {
+            if case .user(let message) = item, !message.isSteering { turns.append([]) }
+            turns[turns.count - 1].append(item)
+        }
+        var narration = Set<String>()
+        for (index, turn) in turns.enumerated() {
+            if latestTurnIsLive && index == turns.count - 1 { continue }
+            guard let lastTool = turn.lastIndex(where: { if case .tools = $0 { return true } else { return false } })
+            else { continue }
+            let prose: [(index: Int, message: TranscriptMessage)] = turn.enumerated().compactMap { offset, item in
+                if case .assistant(let message) = item { return (offset, message) }
+                return nil
+            }
+            var kept = Set<String>()
+            if let last = prose.last { kept.insert(last.message.id) }
+            let tailLength = prose.filter { $0.index > lastTool }.reduce(0) { $0 + trimmedLength($1.message.text) }
+            let beforeLastTool = prose.filter { $0.index < lastTool }
+            if let candidate = beforeLastTool.last,
+               isClosingRemark(candidateLength: trimmedLength(candidate.message.text), tailLength: tailLength) {
+                kept.insert(candidate.message.id)
+            }
+            for (_, message) in beforeLastTool
+            where !kept.contains(message.id) && message.attachments.isEmpty && isProgressNarration(message.text) {
+                narration.insert(message.id)
+            }
+        }
+        return narration
+    }
+
     /// - Parameter latestTurnIsLive: the newest turn is still working. Only
     ///   that turn can be, and while it is, its narration stays on screen so
     ///   the reader can watch the agent talk while tools run — the desktop's
@@ -85,34 +144,10 @@ enum MobileTranscriptRow: Equatable, Identifiable {
     ///   the row and lost both its expansion and its scroll anchor.
     static func rows(_ items: [TranscriptItem], detail: MobileChatDetail,
                      latestTurnIsLive: Bool) -> [MobileTranscriptRow] {
-        guard detail == .minimal || detail == .compact else { return items.map(Self.item) }
-        var narration = Set<String>()
-        if detail == .minimal {
-            // The boundary is the last *tool*, as on the desktop: with no tool
-            // in the turn `preToolNarrationGroupIds` hides nothing, so a
-            // tool-less reasoning turn — Grok alternates tiny thinking/text
-            // pairs — keeps every remark it wrote.
-            var laterTool = false
-            var laterAnswer = false
-            var inLatestTurn = true
-            for item in items.reversed() {
-                switch item {
-                case .user(let message):
-                    if !message.isSteering { inLatestTurn = false }
-                    laterTool = false
-                    laterAnswer = false
-                case .tools: laterTool = true
-                case .assistant(let message):
-                    if laterTool && laterAnswer && !(latestTurnIsLive && inLatestTurn)
-                        && message.attachments.isEmpty
-                        && Self.isProgressNarration(message.text) {
-                        narration.insert(item.id)
-                    }
-                    laterAnswer = true
-                default: break
-                }
-            }
-        }
+        guard detail.foldsActivity else { return items.map(Self.item) }
+        let narration = detail.hidesNarration
+            ? minimalNarrationIDs(items, latestTurnIsLive: latestTurnIsLive)
+            : []
         var result: [MobileTranscriptRow] = []
         var run: [TranscriptItem] = []
         var runHasTools = false

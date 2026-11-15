@@ -1,120 +1,105 @@
 # AGENTS.md: Argmax
 
-Argmax is a local Tauri desktop app that orchestrates AI coding agents (Claude Code, Codex, Cursor, OpenCode, Grok Build) in parallel git worktrees. Single-user, on-device, no cloud, no auth.
-
-User-level guidance (tone, principles, git etiquette) lives in `~/.claude/CLAUDE.md` and `~/dotfiles/agents/AGENTS.md` and is *not* duplicated here. This file is for project-specific facts.
+Argmax is a local Tauri desktop app that runs AI coding agents (Claude Code, Codex, Cursor, OpenCode, Grok Build) in parallel git worktrees. Provider CLIs use their own services and authentication. Optional remote access uses Tailscale.
 
 ## Layout
 
 ```
-src/
-├── renderer/     React UI (Vite-built; talks to Rust via window.argmax)
-├── shared/       Shared TS types + generated Tauri bindings
-└── test/         Vitest setup
-
-src-tauri/        Rust runtime, services, IPC handlers, persistence, packaging
-ios/Argmax/       SwiftUI phone app: Sources/, Tests/ (XCTest, not run in CI), Resources/ (providerModels.json is generated); see docs/ios-performance.md
-scripts/          Lightweight CI/check scripts
-docs/             Deeper subsystem docs; see Index
-assets/           App icon sources the icon generator reads, and the mascot sprite
-dist/             Renderer build output (gitignored)
-release/          Packaged distributable output (gitignored)
+src/renderer/     React UI (Vite; talks to Rust through window.argmax)
+src/shared/       Shared TS types and generated Tauri bindings
+src-tauri/        Cargo workspace: src/ services and IPC, crates/ contracts, process, store
+ios/Argmax/       SwiftUI phone app
+fixtures/parity/  Parity tables for desktop and phone
+scripts/          Check, export, and verification scripts
+assets/           Icon sources and the mascot sprite
 ```
 
 ## Quickstart
 
 ```bash
-npm run tauri:dev       # Tauri dev app (refuses to start while the installed app runs; see below)
-npm run tauri:dev:isolated  # dev app on its own profile (~/.argmax-dev), side by side with the installed app
-npm test                # Vitest + perf + Cargo tests
-npm run lint            # eslint
-npm run typecheck       # renderer/shared tsc
-npm run precheck        # pre-push gate: CI's checks, scoped to what the branch changed
-npm run tauri:build     # production Tauri bundle
+npm run tauri:dev:isolated  # dev app on its own profile (~/.argmax-dev)
+npm run check               # the fast lane (oxlint, oxfmt, static gates); CI's first job
+npm run fix                 # apply oxlint and oxfmt fixes
+npm run check:changed       # the agent hooks' loop: type, lint, related tests, import rules
+npm run push-gate         # the pre-push gate: every CI lane, scoped to the branch
+npm test                    # Vitest, perf, Cargo
+npm run slow                # perf budgets and Cargo tests only
+npm run bench:latency       # latency in the real app: --compare A/B, --check against the record
+npm run verify -- all       # renderer drives; `verify:native` adds the native app
+npm run test:ios            # XCTest on a simulator
+npm run install:ios         # install the phone app on the iPhone
 ```
 
-Rebuild and install:
+Release build (Adam, or a chat the installed app does not host):
 
 ```bash
-npm run tauri:dev:isolated  # dev rebuild: starts the dev instance (watch build), never the installed app
-npm run install:ios         # build ios/Argmax and install it on the connected iPhone
-# Release build: no script installs it. Adam runs this, or a chat the installed app does not host:
 npm run tauri:build && osascript -e 'quit app "Argmax"' && rm -rf /Applications/Argmax.app \
   && ditto src-tauri/target/release/bundle/macos/Argmax.app /Applications/Argmax.app && open /Applications/Argmax.app
 ```
 
-## Critical Conventions
+## Judgment Calls
 
-- **Argmax is developed from inside Argmax.** The installed app (`/Applications/Argmax.app`) hosts the chats that do the work; the build under test is a second instance on its own profile: `npm run tauri:dev:isolated` (`ARGMAX_DATA_DIR=~/.argmax-dev`). Plain `tauri dev` shares the installed app's data dir, hits the instance lock, and exits. Never quit, kill, or replace the installed app from a chat it hosts. Rust edits restart the dev instance and kill every session it hosts, so only throwaway verification chats belong there. Details in [docs/verification.md](docs/verification.md#the-dev-instance-next-to-the-installed-app).
-- **Imports inside `src/`** end in `.js`: `import { foo } from "./foo.js"` even though the file is `foo.ts`.
-- **All IPC** flows through `window.argmax.*`. Request/response channels are Rust `#[tauri::command]` handlers in [src-tauri/src/ipc](src-tauri/src/ipc), collected by `tauri-specta`, and exposed in [src/renderer/lib/tauriBridge.ts](src/renderer/lib/tauriBridge.ts). `src-tauri/tests/fixtures/channels.txt` and `npm run check:tauri-bridge` enforce channel parity.
-- **No native Node rebuild dance.** SQLite and PTYs live in Rust (`rusqlite`, `portable-pty`). Do not reintroduce `better-sqlite3`, `node-pty`, or native builder scripts.
-- **Renderer tests** query by **role / aria-label / title**, never by `className`.
-- **iPhone type goes through the roles in [Typography.swift](ios/Argmax/Sources/Design/Typography.swift).** A `.font(...)` at a call site is a surface Settings → Typeface cannot reach; `npm run check:ios-fonts` enforces it, and `npm run build:ios-fonts` regenerates the bundled Geist faces.
-- **Three themes: Light / Dark / System.** Tokens live in [src/renderer/styles/tokens.css](src/renderer/styles/tokens.css); see [docs/styling.md](docs/styling.md).
-- **A visual-design ask gets 3 mockups before code.** Build only the one the user picks.
-- **Every visual change ships light and dark screenshots.** `node .agents/skills/verify-argmax/verify.mjs ui` writes `ui-light.png` and `ui-dark.png` under `.verify/runs/`; put both in the report.
-- **Shared values, not duplicates.** Model labels, ids, reasoning levels, and pricing live in [src/shared/providerModels.ts](src/shared/providerModels.ts), but a model id is also read by Rust, the routing grid, and the generated iPhone catalogue. Use the checklist in [docs/providers.md](docs/providers.md#adding-or-retiring-a-model) to add or retire one.
-- **Provider protocol output is not chat.** Visible chat comes from normalized timeline events; raw transcript fallback is only for human-readable stdout/stderr.
-- **An image reaches the user only through Markdown.** `![what it shows](path)` on its own line, pointing inside the checkout or at a path Argmax handed you (a `browser_screenshot`'s `path`). An image a tool returned lands in the model's context, not the chat, and a remote `http(s)` image is drawn as a link rather than fetched. See [docs/chat-cards.md](docs/chat-cards.md).
-- **A diagram reaches the user as a mermaid fence.** A fenced `mermaid` / `mmd` block in the answer is drawn as SVG, wider than the prose column. Prefer mermaid for architecture, sequence, and flow; prefer a Markdown image for a screenshot or chart already on disk. Skip hex `classDef` / `style` colors — Argmax themes the diagram. See [docs/chat-cards.md](docs/chat-cards.md).
-- **Dashboard state is SQLite-first and delta-driven.** Focused reads plus `dashboard:delta`; no recurring renderer poll.
-- **Thinking state yields to content.** Hide the pre-answer Thinking bubble as soon as any visible assistant event arrives.
-- **Auto-approve is the default permission mode.** Keep provider bypass flags centralized in [src-tauri/src/providers/adapters.rs](src-tauri/src/providers/adapters.rs).
-- **The mascot and the app icon are one sprite.** [assets/fox-mascot.txt](assets/fox-mascot.txt) is the source; [Mascot.tsx](src/renderer/components/Mascot.tsx) and [scripts/build-icons.mjs](scripts/build-icons.mjs) both read it, so an edit moves both. Icon artifacts are generated — run `npm run build:icons` and never hand-edit `assets/icon*`, `assets/Argmax.icon`, `src-tauri/icons`, or `ios/Argmax/Sources/Assets.xcassets`. See [docs/release.md](docs/release.md). The expression sprites ([fox-mascot-wink.txt](assets/fox-mascot-wink.txt), `-sleepy`, `-shades`) share that grid and palette and are read only by `Mascot.tsx`, so a body edit to the base sprite has to be mirrored into all three.
-- **SQLite migrations are append-only and checksummed.** Never edit an applied migration; see [docs/data.md](docs/data.md).
-- **Never commit secrets, `.env`, or AI-attribution lines.**
+- **Argmax is developed from inside Argmax.** The installed app hosts the chats that do the work. Test a build as a second instance with `npm run tauri:dev:isolated`; plain `tauri dev` exits on the instance lock. Never quit, kill, or replace the installed app from a chat it hosts. A Rust edit restarts the dev instance and kills its sessions, so use throwaway chats there. See [docs/verification.md](docs/verification.md#the-dev-instance-next-to-the-installed-app).
+- **A visual-design ask gets 3 mockups before code.** Build the one the user picks.
+- **Every visual change ships light and dark screenshots.** `npm run verify -- launcher` writes `launcher-light.png` and `launcher-dark.png` in `.verify/runs/`. Report both.
+- **Model facts have one home.** Add or retire a model with the recipe in [docs/providers.md](docs/providers.md#adding-or-retiring-a-model).
+- **The mascot is the app icon.** [assets/fox-mascot.txt](assets/fox-mascot.txt) feeds both `Mascot.tsx` and `npm run build:icons`. The expression files are overlays on it.
+- **SQLite and PTYs live in Rust.** Do not bring back `better-sqlite3`, `node-pty`, or native rebuild scripts. See [docs/adr](docs/adr).
 
-## Agent Delegation
+## Agent Feedback
 
-- Keep bounded delegated work in the current chat. Use provider-native subagents for research, review, and implementation that the launcher will integrate into the current turn. A native subagent dies with the turn that spawned it: collect its result before answering, never report it as still running.
-- Use `session_launch` when the user explicitly requests a separate session or the work needs its own independent, durable lifecycle that remains visible and steerable after this turn, such as a separate repository investigation or a long-running build. Do not launch a session merely for parallelism, fresh context, model choice, or context relief.
-- The user-facing multitask flow is for work that should run alongside a chat. Keep delegation one hop unless the brief explicitly requires further decomposition. The launcher owns synthesis and verification.
+Hooks in `scripts/agent-hooks/` run after each edit, at the end of a turn (`check:changed`), and at push (`push-gate`). Other clients run `npm run check:changed` before they finish. Add path guidance in `scripts/agent-hooks/feedback-rules.json`. Ratchets: [docs/testing.md](docs/testing.md#ratchets).
 
 ## Read The Docs First
 
-Prove user-facing changes with the `verify-argmax` skill at `.agents/skills/verify-argmax/SKILL.md`.
+Prove changes with `npm run verify` (`verify-argmax` skill at `.agents/skills/verify-argmax/SKILL.md`). If a doc disagrees with code, fix the doc in the same change.
 
-Before editing a subsystem, read the matching `docs/*.md`:
+Domain terms are in `GLOSSARY.md` and decisions in `docs/adr/`. A change that adds, renames, or redefines a term, or reverses a decision, updates them in the same commit.
 
-- **Start here / Architecture** → [architecture.md](docs/architecture.md)
-- **Runtime / lifecycle / bridge** → [runtime.md](docs/runtime.md)
-- **IPC / `window.argmax`** → [ipc.md](docs/ipc.md)
-- **Database / migrations / live DB path** → [data.md](docs/data.md)
-- **Providers** → [providers.md](docs/providers.md)
-- **Auto routing (Router tiers, Jev classifier)** → [routing.md](docs/routing.md)
-- **Agent tools (the `argmax` MCP server)** → [agent-tools.md](docs/agent-tools.md)
-- **Session sync (import from provider CLIs)** → [session-sync.md](docs/session-sync.md)
-- **Worktrees, archive, review** → [workspaces.md](docs/workspaces.md)
-- **Multitask (a chat dispatched from inside a chat)** → [multitask.md](docs/multitask.md)
-- **Arcs (long-lived bodies of work with a coordinator)** → [arcs.md](docs/arcs.md)
-- **Goals (`/goal`, the after-each-turn evaluator)** → [goals.md](docs/goals.md)
-- **Approvals and checks** → [approvals-checks.md](docs/approvals-checks.md)
-- **Scheduled tasks / routines** → [scheduled-tasks.md](docs/scheduled-tasks.md)
-- **Usage page (tokens and cost across providers)** → [usage.md](docs/usage.md)
-- **Activity page (the user's own commits, streaks, PRs, reviews)** → [activity.md](docs/activity.md)
-- **Integrated terminal panel** → [terminal.md](docs/terminal.md)
-- **In-app browser panel** → [browser.md](docs/browser.md)
-- **Mobile remote / WS bridge** → [remote.md](docs/remote.md)
-- **Window snapshot (global chord, frontmost window → composer)** → [window-snapshot.md](docs/window-snapshot.md)
-- **GitHub PR / CI feedback loop** → [gh.md](docs/gh.md)
-- **Learnings extraction / project memory** → [memory.md](docs/memory.md)
-- **Skills / slash autocomplete** → [skills.md](docs/skills.md)
-- **Chat surface** → [chat-cards.md](docs/chat-cards.md)
-- **Debug panel / diagnostics** → [debugging.md](docs/debugging.md)
-- **Styling** → [styling.md](docs/styling.md)
-- **Tests** → [testing.md](docs/testing.md)
-- **Verifying a change end to end** → [verification.md](docs/verification.md)
-- **Perf budgets** → [performance.md](docs/performance.md)
-- **Plans (dated snapshots, not kept current)** → [docs/plan](docs/plan/README.md)
-- **Design explorations (decision evidence, not specs)** → [docs/design](docs/design/README.md)
-- **Release** → [release.md](docs/release.md)
-- **Homebrew cask / tap** → [homebrew.md](docs/homebrew.md)
+Before you edit a subsystem, read its doc. Start at [architecture.md](docs/architecture.md).
 
-If a doc disagrees with code, fix the doc in the same change.
+- Runtime and IPC: [runtime](docs/runtime.md), [ipc](docs/ipc.md), [data](docs/data.md), [debugging](docs/debugging.md), [performance and the latency bench](docs/performance.md)
+- Providers and routing: [providers](docs/providers.md), [routing](docs/routing.md), [approvals-checks](docs/approvals-checks.md), [session-sync](docs/session-sync.md), [usage](docs/usage.md)
+- Agent features: [agent-tools](docs/agent-tools.md), [multitask](docs/multitask.md), [arcs](docs/arcs.md), [goals](docs/goals.md), [scheduled-tasks](docs/scheduled-tasks.md), [memory](docs/memory.md), [skills](docs/skills.md)
+- Workspace and panels: [workspaces](docs/workspaces.md), [gh](docs/gh.md), [terminal](docs/terminal.md), [browser](docs/browser.md), [window-snapshot](docs/window-snapshot.md), [activity](docs/activity.md)
+- UI: [chat-cards](docs/chat-cards.md), [styling](docs/styling.md)
+- Phone: [remote](docs/remote.md), [ios-performance](docs/ios-performance.md)
+- Testing and shipping: [testing](docs/testing.md), [verification](docs/verification.md), [release](docs/release.md), [homebrew](docs/homebrew.md)
+- Snapshots, not kept current: [plans](docs/plan/README.md), [design explorations](docs/design/README.md), [decisions](docs/adr)
 
-## Index
+## Enforced Rules
 
-Start in [architecture.md](docs/architecture.md), then follow the subsystem docs above.
-
-[GLOSSARY.md](GLOSSARY.md) is the domain glossary: the canonical word for each concept and the ones not to use. Read it before naming anything. Decisions that would otherwise look arbitrary are recorded in [docs/adr](docs/adr).
+| Rule | Enforced by |
+|---|---|
+| Do not hand-edit generated files | `scripts/agent-hooks/pre-tool-use.mjs`, list in `scripts/generated-files.json` |
+| Do not use blanket staging, stash, or restore in a shared checkout | `scripts/agent-hooks/pre-tool-use.mjs` |
+| No AI attribution in commit messages | `.githooks/commit-msg`, `src/test/gitHooks.test.ts::refuses an AI attribution trailer` |
+| Decode timeline semantics with `decodeTimelineEvent()` | `.oxlintrc.json::overrides.rules.argmax/no-timeline-payload-access` |
+| The store, process, and contracts crates cannot import upward | Crate graph in `src-tauri/Cargo.toml::members`, compile errors E0432 and E0433; `scripts/check-rust-boundaries.mjs` |
+| SQL lives in `argmax-store` | `scripts/rust-boundaries-baseline.json::sql-outside-store` |
+| Run git through `argmax_process::git_exec` | `scripts/rust-boundaries-baseline.json::git-outside-exec` |
+| Only `ipc/` and `remote/` import `crate::ipc` | `scripts/rust-boundaries-baseline.json::lower-layer-imports-ipc` |
+| Only a person IPC handler mints a `PersonAttestation` | `scripts/rust-boundaries-baseline.json::person-attestation-outside-ipc`, `src-tauri/src/ipc/mod.rs::person_attestation_is_minted_only_by_the_person_handlers` |
+| A route lands only on a provider the availability probe reported | `src-tauri/src/providers/discovery.rs::AvailableProvider` |
+| A turn ends only through `commit_turn_end` | `scripts/rust-boundaries-baseline.json::turn-end-outside-owner` |
+| Renderer imports point down: shared, lib and state, hooks, components | `.dependency-cruiser.cjs` |
+| No secrets in staged files | `.githooks/pre-commit::gitleaks` |
+| Components read with `useBridgeQuery` and write through `data/bridgeActions.ts`, never `window.argmax` | `.oxlintrc.json::overrides.rules.no-restricted-properties` |
+| Do not hand-edit the appearance script in `index.html` | `scripts/build-appearance-bootstrap.mjs`, `scripts/static-checks.mjs::CHECKS` |
+| Model facts live in `src/shared/providerModels.ts`; Rust and the phone read generated copies | `package.json::scripts.check:provider-models`, `scripts/generated-files.json` |
+| Production code does not name a retired model id | `scripts/export-provider-models.mjs::RETIRED_ID_ROOTS` |
+| Every catalogue model has a price and a routing answer | `src-tauri/src/providers/pricing.rs::every_catalogue_model_and_retired_id_has_a_price`, `src-tauri/src/routing/table.rs::every_catalogue_model_has_a_routing_answer` |
+| Tests never wait on a real timer or read the real clock | `.oxlintrc.json::overrides.rules.no-restricted-globals`, `.oxlintrc.json::overrides.rules.argmax/no-real-time` |
+| A stored model id reaches a launch or a route only as a resolved id | `src-tauri/src/providers/model_catalogue.rs::ModelId`, `src/shared/providerModels.ts::ResolvedModelId`, `.oxlintrc.json::overrides.rules.argmax/no-raw-model-id` |
+| A dispatch on a provider names every provider | `src-tauri/crates/argmax-contracts/src/validation.rs::ProviderId` |
+| Chat-detail levels, inline-math pairing, and the workspace's chat agree on desktop and phone | `src/renderer/lib/parityTables.test.ts`, `ios/Argmax/Tests/ParityTableTests.swift` |
+| The phone's chat-list and transcript responses come from the Rust bindings | `scripts/export-swift-contracts.mjs`, `scripts/static-checks.mjs::CHECKS` |
+| A change the phone's suite can see runs that suite | `scripts/precheck.mjs`, `.github/workflows/ci.yml::ios`, `package.json::scripts.test:ios` |
+| Transcript scroll decisions live in `TranscriptScrollModel`, not the view | `ios/Argmax/Tests/TranscriptScrollModelTests.swift` |
+| IPC channels match between Rust and the bridge | `scripts/check-tauri-bridge.mjs`, list in `src-tauri/tests/fixtures/channels.txt` |
+| iPhone type goes through the roles in `Typography.swift` | `scripts/check-ios-fonts.mjs` |
+| Never edit an applied migration | `src-tauri/crates/argmax-store/src/migrations.rs::verify_applied_checksum`, `src-tauri/crates/argmax-store/src/migrations.rs::a_released_migration_body_is_never_edited` |
+| A mascot expression changes only its face | `src/renderer/components/Mascot.tsx::withExpression` |
+| `npm run verify` passes only with a control that observes FAIL | `.agents/skills/verify-argmax/verify.mjs::CONTROL` |
+| A new module cannot start a process or open a socket outside a named owner | `scripts/check-process-imports.mjs`, `scripts/check-rust-boundaries.mjs` |
+| A payload that crosses to the renderer or the phone stays inside a byte and row budget (sizes only, never timing) | `src-tauri/src/remote/transcript_trim.rs::the_heaviest_first_page_stays_inside_the_trim_and_wire_budgets`, `src-tauri/crates/argmax-store/src/dashboard.rs::a_full_dashboard_snapshot_stays_inside_its_byte_and_row_budgets`, `src-tauri/src/event_delivery.rs::a_burst_of_large_deltas_leaves_in_pushes_inside_the_conflation_cap` |

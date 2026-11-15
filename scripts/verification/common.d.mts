@@ -10,4 +10,8 @@ export declare function runChecked(
   args: string[],
   options?: { cwd?: string; timeoutMs?: number },
 ): Promise<unknown>;
-export declare function writeTripwires(directory: string, logPath: string, names: string[]): Promise<void>;
+export declare function writeTripwires(
+  directory: string,
+  logPath: string,
+  names: string[],
+): Promise<void>;

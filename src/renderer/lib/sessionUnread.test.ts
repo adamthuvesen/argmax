@@ -6,7 +6,7 @@ import {
   SESSION_VIEWED_STORAGE_KEY,
   syncWorkspaceViewed,
   useUnreadWorkspaceIds,
-  workspaceHasUnreadResponse
+  workspaceHasUnreadResponse,
 } from "./sessionUnread.js";
 
 const earlier = "2026-05-12T15:54:00.000Z";
@@ -21,19 +21,23 @@ describe("session unread stamps", () => {
   it("acknowledges only the observed activity of the open shared chat", () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, "argmax");
     const markWorkspacesViewed = vi.fn().mockResolvedValue([]);
-    Object.defineProperty(window, "argmax", { configurable: true, value: { markWorkspacesViewed } });
+    Object.defineProperty(window, "argmax", {
+      configurable: true,
+      value: { markWorkspacesViewed },
+    });
     try {
       const working = new Set<string>();
       const { rerender, unmount } = renderHook(
-        ({ lastViewedAt }) => useUnreadWorkspaceIds(
-          [{ id: "w1", lastActivityAt: later, lastViewedAt }], "w1", working
-        ),
-        { initialProps: { lastViewedAt: earlier } }
+        ({ lastViewedAt }) =>
+          useUnreadWorkspaceIds([{ id: "w1", lastActivityAt: later, lastViewedAt }], "w1", working),
+        { initialProps: { lastViewedAt: earlier } },
       );
       expect(markWorkspacesViewed).toHaveBeenCalledExactlyOnceWith({
-        workspaces: [{ workspaceId: "w1", observedActivityAt: later }]
+        workspaces: [{ workspaceId: "w1", observedActivityAt: later }],
       });
-      act(() => { rerender({ lastViewedAt: later }); });
+      act(() => {
+        rerender({ lastViewedAt: later });
+      });
       expect(markWorkspacesViewed).toHaveBeenCalledTimes(1);
       unmount();
     } finally {
@@ -44,15 +48,19 @@ describe("session unread stamps", () => {
 
   it("uses shared host read state instead of stale device-local stamps", () => {
     syncWorkspaceViewed([{ id: "w1", lastActivityAt: earlier }], null);
-    expect(workspaceHasUnreadResponse(
-      { id: "w1", lastActivityAt: later, lastViewedAt: later },
-      { selectedWorkspaceId: null, working: false }
-    )).toBe(false);
+    expect(
+      workspaceHasUnreadResponse(
+        { id: "w1", lastActivityAt: later, lastViewedAt: later },
+        { selectedWorkspaceId: null, working: false },
+      ),
+    ).toBe(false);
     syncWorkspaceViewed([{ id: "w1", lastActivityAt: later }], "w1");
-    expect(workspaceHasUnreadResponse(
-      { id: "w1", lastActivityAt: later, lastViewedAt: earlier },
-      { selectedWorkspaceId: null, working: false }
-    )).toBe(true);
+    expect(
+      workspaceHasUnreadResponse(
+        { id: "w1", lastActivityAt: later, lastViewedAt: earlier },
+        { selectedWorkspaceId: null, working: false },
+      ),
+    ).toBe(true);
   });
 
   it("does not treat first sight as unread", () => {
@@ -60,7 +68,7 @@ describe("session unread stamps", () => {
     syncWorkspaceViewed([workspace], null);
 
     expect(
-      workspaceHasUnreadResponse(workspace, { selectedWorkspaceId: null, working: false })
+      workspaceHasUnreadResponse(workspace, { selectedWorkspaceId: null, working: false }),
     ).toBe(false);
   });
 
@@ -71,8 +79,8 @@ describe("session unread stamps", () => {
     expect(
       workspaceHasUnreadResponse(
         { id: "w1", lastActivityAt: later },
-        { selectedWorkspaceId: null, working: false }
-      )
+        { selectedWorkspaceId: null, working: false },
+      ),
     ).toBe(true);
   });
 
@@ -81,12 +89,12 @@ describe("session unread stamps", () => {
     syncWorkspaceViewed([workspace], null);
     const next = { id: "w1", lastActivityAt: later };
 
-    expect(
-      workspaceHasUnreadResponse(next, { selectedWorkspaceId: "w1", working: false })
-    ).toBe(false);
-    expect(
-      workspaceHasUnreadResponse(next, { selectedWorkspaceId: null, working: true })
-    ).toBe(false);
+    expect(workspaceHasUnreadResponse(next, { selectedWorkspaceId: "w1", working: false })).toBe(
+      false,
+    );
+    expect(workspaceHasUnreadResponse(next, { selectedWorkspaceId: null, working: true })).toBe(
+      false,
+    );
   });
 
   it("clears unread by stamping the open chat to the activity it is showing", () => {
@@ -95,9 +103,9 @@ describe("session unread stamps", () => {
     const next = { id: "w1", lastActivityAt: later };
     syncWorkspaceViewed([next], "w1");
 
-    expect(
-      workspaceHasUnreadResponse(next, { selectedWorkspaceId: null, working: false })
-    ).toBe(false);
+    expect(workspaceHasUnreadResponse(next, { selectedWorkspaceId: null, working: false })).toBe(
+      false,
+    );
   });
 
   it("lights up again after a later response once the chat is no longer open", () => {
@@ -107,8 +115,8 @@ describe("session unread stamps", () => {
     expect(
       workspaceHasUnreadResponse(
         { id: "w1", lastActivityAt: later },
-        { selectedWorkspaceId: null, working: false }
-      )
+        { selectedWorkspaceId: null, working: false },
+      ),
     ).toBe(true);
   });
 
@@ -116,16 +124,15 @@ describe("session unread stamps", () => {
     syncWorkspaceViewed(
       [
         { id: "keep", lastActivityAt: earlier },
-        { id: "gone", lastActivityAt: earlier }
+        { id: "gone", lastActivityAt: earlier },
       ],
-      null
+      null,
     );
     syncWorkspaceViewed([{ id: "keep", lastActivityAt: earlier }], null);
 
-    const stored = JSON.parse(window.localStorage.getItem(SESSION_VIEWED_STORAGE_KEY) ?? "{}") as Record<
-      string,
-      string
-    >;
+    const stored = JSON.parse(
+      window.localStorage.getItem(SESSION_VIEWED_STORAGE_KEY) ?? "{}",
+    ) as Record<string, string>;
     expect(stored).toEqual({ keep: earlier });
   });
 
@@ -138,7 +145,7 @@ describe("session unread stamps", () => {
     const initial: Props = { workspaces: [{ id: "w1", lastActivityAt: earlier }], selected: null };
     const { result, rerender } = renderHook(
       (props: Props) => useUnreadWorkspaceIds(props.workspaces, props.selected, none),
-      { initialProps: initial }
+      { initialProps: initial },
     );
 
     expect(result.current.has("w1")).toBe(false);

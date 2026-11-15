@@ -6,7 +6,7 @@ export function ChangedFilesCard({
   workspaceId,
   checkCommands = [],
   checks = [],
-  onRunCheck
+  onRunCheck,
 }: {
   workspaceId?: string;
   checkCommands?: string[];
@@ -98,7 +98,10 @@ export function ChangedFilesCard({
                   onClick={() => toggleExpand(command)}
                   disabled={!summary}
                 >
-                  <ChevronRight size={12} className={`checks-row-chevron${isExpanded ? " expanded" : ""}`} />
+                  <ChevronRight
+                    size={12}
+                    className={`checks-row-chevron${isExpanded ? " expanded" : ""}`}
+                  />
                 </button>
               </div>
               {isExpanded && summary ? (

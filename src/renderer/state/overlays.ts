@@ -1,7 +1,11 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { PaletteScope } from "../components/CommandPalette.js";
 import type { SettingsNavigationTarget } from "../components/SettingsPanel.js";
-import { DEFAULT_SETTINGS_GROUP, type SettingsGroupId } from "../components/settings/settingsMeta.js";
+import {
+  DEFAULT_SETTINGS_GROUP,
+  type SettingsGroupId,
+} from "../components/settings/settingsMeta.js";
+import { beginInteraction } from "../lib/interactionTimings.js";
 import { hideFullLauncher } from "./launcherSurface.js";
 
 // What is stacked over the shell: a full-screen page, the command palette, or
@@ -45,7 +49,7 @@ const INITIAL: OverlaysSnapshot = {
   promoteArcSessionId: null,
   paletteOpen: false,
   paletteScope: "all",
-  cheatSheetOpen: false
+  cheatSheetOpen: false,
 };
 
 let state: OverlaysSnapshot = INITIAL;
@@ -65,8 +69,14 @@ function publish(next: OverlaysSnapshot): void {
  * this module, so a restart starts back on the default group.
  * Re-entering while it is already open re-navigates rather than toggling.
  */
-export function showSettings(group: SettingsGroupId = state.settingsGroup, sectionId?: string, projectId?: string): void {
+export function showSettings(
+  group: SettingsGroupId = state.settingsGroup,
+  sectionId?: string,
+  projectId?: string,
+): void {
   navigationRequests += 1;
+  if (state.standalonePage !== "settings") beginInteraction("settings.open", { target: group });
+  else if (group !== state.settingsGroup) beginInteraction("settings.section", { target: group });
   hideFullLauncher();
   publish({
     ...state,
@@ -77,23 +87,26 @@ export function showSettings(group: SettingsGroupId = state.settingsGroup, secti
       group,
       ...(sectionId ? { sectionId } : {}),
       ...(projectId ? { projectId } : {}),
-      requestId: navigationRequests
+      requestId: navigationRequests,
     },
-    paletteOpen: false
+    paletteOpen: false,
   });
 }
 
 export function showSchedulePage(): void {
+  if (state.standalonePage !== "schedule") beginInteraction("page.schedule");
   hideFullLauncher();
   publish({ ...state, standalonePage: "schedule", selectedArcId: null, paletteOpen: false });
 }
 
 export function showUsagePage(): void {
+  if (state.standalonePage !== "usage") beginInteraction("page.usage");
   hideFullLauncher();
   publish({ ...state, standalonePage: "usage", selectedArcId: null, paletteOpen: false });
 }
 
 export function showActivityPage(): void {
+  if (state.standalonePage !== "activity") beginInteraction("page.activity");
   hideFullLauncher();
   publish({ ...state, standalonePage: "activity", selectedArcId: null, paletteOpen: false });
 }
@@ -125,6 +138,7 @@ export function hideStandalonePage(): void {
 }
 
 export function showCommandPalette(scope: PaletteScope): void {
+  if (!state.paletteOpen) beginInteraction("palette.open", { scope });
   publish({ ...state, paletteOpen: true, paletteScope: scope });
 }
 
@@ -196,7 +210,8 @@ export function useOverlayEscape(): void {
         event.ctrlKey ||
         event.altKey ||
         event.shiftKey
-      ) return;
+      )
+        return;
       if (dismissTopOverlay()) event.preventDefault();
     };
     document.addEventListener("keydown", onKeyDown);

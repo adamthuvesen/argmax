@@ -1,0 +1,397 @@
+[
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useAppGridSelection.ts",
+    "to": "src/renderer/components/SidebarSessionRow.tsx",
+    "unresolvedTo": "../components/SidebarSessionRow.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useAppNavigationHistory.ts",
+    "to": "src/renderer/components/settings/settingsMeta.ts",
+    "unresolvedTo": "../components/settings/settingsMeta.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useComposerAttachments.ts",
+    "to": "src/renderer/components/composerEditor/composerField.ts",
+    "unresolvedTo": "../components/composerEditor/composerField.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useFileAutocomplete.ts",
+    "to": "src/renderer/components/composerEditor/composerField.ts",
+    "unresolvedTo": "../components/composerEditor/composerField.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useLazyOverlayPrefetch.ts",
+    "to": "src/renderer/components/activity/ActivityPanel.tsx",
+    "unresolvedTo": "../components/activity/ActivityPanel.js",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useLazyOverlayPrefetch.ts",
+    "to": "src/renderer/components/arcs/ArcPage.tsx",
+    "unresolvedTo": "../components/arcs/ArcPage.js",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useLazyOverlayPrefetch.ts",
+    "to": "src/renderer/components/BrowserPage.tsx",
+    "unresolvedTo": "../components/BrowserPage.js",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useLazyOverlayPrefetch.ts",
+    "to": "src/renderer/components/CommandPalette.tsx",
+    "unresolvedTo": "../components/CommandPalette.js",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useLazyOverlayPrefetch.ts",
+    "to": "src/renderer/components/ReviewPanel.tsx",
+    "unresolvedTo": "../components/ReviewPanel.js",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useLazyOverlayPrefetch.ts",
+    "to": "src/renderer/components/scheduled/ScheduledTasksPanel.tsx",
+    "unresolvedTo": "../components/scheduled/ScheduledTasksPanel.js",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useLazyOverlayPrefetch.ts",
+    "to": "src/renderer/components/SettingsPanel.tsx",
+    "unresolvedTo": "../components/SettingsPanel.js",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useLazyOverlayPrefetch.ts",
+    "to": "src/renderer/components/usage/UsagePanel.tsx",
+    "unresolvedTo": "../components/usage/UsagePanel.js",
+    "dependencyTypes": [
+      "local",
+      "dynamic-import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useProjectActions.ts",
+    "to": "src/renderer/components/ProjectFoldersForm.tsx",
+    "unresolvedTo": "../components/ProjectFoldersForm.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useProviderAvailability.ts",
+    "to": "src/renderer/components/ModelSelector.tsx",
+    "unresolvedTo": "../components/ModelSelector.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useSessionComposerState.ts",
+    "to": "src/renderer/components/composerEditor/composerField.ts",
+    "unresolvedTo": "../components/composerEditor/composerField.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useSessionComposerState.ts",
+    "to": "src/renderer/components/SelectionToolbar.tsx",
+    "unresolvedTo": "../components/SelectionToolbar.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useSessionComposerState.ts",
+    "to": "src/renderer/components/SessionComposer.tsx",
+    "unresolvedTo": "../components/SessionComposer.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/hooks/useSlashAutocomplete.ts",
+    "to": "src/renderer/components/composerEditor/composerField.ts",
+    "unresolvedTo": "../components/composerEditor/composerField.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "hook-imports-component"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/lib/buildPaletteCommands.ts",
+    "to": "src/renderer/components/CommandPalette.tsx",
+    "unresolvedTo": "../components/CommandPalette.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "lib-imports-ui"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/lib/buildPaletteCommands.ts",
+    "to": "src/renderer/components/settings/settingsMeta.ts",
+    "unresolvedTo": "../components/settings/settingsMeta.js",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "lib-imports-ui"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/lib/chatChipEnvironment.ts",
+    "to": "src/renderer/components/composerEditor/extensions.ts",
+    "unresolvedTo": "../components/composerEditor/extensions.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "lib-imports-ui"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/lib/ledgerPageState.ts",
+    "to": "src/renderer/components/activity/activityContract.ts",
+    "unresolvedTo": "../components/activity/activityContract.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "lib-imports-ui"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/lib/ledgerPageState.ts",
+    "to": "src/renderer/components/activity/activityPresentation.ts",
+    "unresolvedTo": "../components/activity/activityPresentation.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "lib-imports-ui"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/lib/ledgerPageState.ts",
+    "to": "src/renderer/components/usage/usagePresentation.ts",
+    "unresolvedTo": "../components/usage/usagePresentation.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "lib-imports-ui"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/state/overlays.ts",
+    "to": "src/renderer/components/CommandPalette.tsx",
+    "unresolvedTo": "../components/CommandPalette.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "lib-imports-ui"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/state/overlays.ts",
+    "to": "src/renderer/components/settings/settingsMeta.ts",
+    "unresolvedTo": "../components/settings/settingsMeta.js",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "lib-imports-ui"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/renderer/state/overlays.ts",
+    "to": "src/renderer/components/SettingsPanel.tsx",
+    "unresolvedTo": "../components/SettingsPanel.js",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "lib-imports-ui"
+    }
+  }
+]

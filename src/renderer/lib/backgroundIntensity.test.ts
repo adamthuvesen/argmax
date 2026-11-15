@@ -1,4 +1,3 @@
-
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,7 +5,7 @@ import {
   BACKGROUND_INTENSITY_STORAGE_KEY,
   DEFAULT_BACKGROUND_INTENSITY,
   readStoredBackgroundIntensity,
-  toBackgroundIntensity
+  toBackgroundIntensity,
 } from "./backgroundIntensity.js";
 
 afterEach(() => {

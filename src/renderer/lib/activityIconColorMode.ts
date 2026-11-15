@@ -16,13 +16,13 @@ export const ACTIVITY_ICON_COLOR_MODE_OPTIONS: readonly ActivityIconColorModeOpt
   {
     id: "color",
     label: "Color",
-    hint: "Use semantic colors to distinguish kinds of work and integration marks."
+    hint: "Use semantic colors to distinguish kinds of work and integration marks.",
   },
   {
     id: "monochrome",
     label: "Monochrome",
-    hint: "Render transcript activity icons and integration marks in one muted ink."
-  }
+    hint: "Render transcript activity icons and integration marks in one muted ink.",
+  },
 ] as const;
 
 export function isActivityIconColorMode(value: unknown): value is ActivityIconColorMode {
@@ -79,7 +79,7 @@ export function useActivityIconColorMode(): ActivityIconColorMode {
   return useSyncExternalStore(
     subscribeActivityIconColorMode,
     activityIconColorModeSnapshot,
-    activityIconColorModeSnapshot
+    activityIconColorModeSnapshot,
   );
 }
 

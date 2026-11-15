@@ -26,7 +26,7 @@ function syncTextAreaHeight(el: HTMLTextAreaElement, maxHeightPx: number): void 
 export function useAutoGrowTextArea(
   ref: RefObject<HTMLTextAreaElement | null>,
   value: string,
-  maxHeightPx: number
+  maxHeightPx: number,
 ): void {
   useLayoutEffect(() => {
     const el = ref.current;

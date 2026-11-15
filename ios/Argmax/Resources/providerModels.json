@@ -187,7 +187,9 @@
         "modelId": "grok-4.7-medium",
         "reasoningEffort": "medium"
       },
-      "successors": {},
+      "successors": {
+        "gemini-3.8-flash-medium": "gemini-4-hydrogen-medium"
+      },
       "models": [
         {
           "label": "Auto Cost (Cursor)",
@@ -230,8 +232,31 @@
           "defaultEffort": "medium"
         },
         {
-          "label": "Gemini 3.8 Flash (Cursor)",
-          "modelId": "gemini-3.8-flash-medium",
+          "label": "Gemini 4 Hydrogen (Cursor)",
+          "modelId": "gemini-4-hydrogen-medium",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "Gemini 4 Carbon (Cursor)",
+          "modelId": "gemini-4-carbon-medium",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
+          "label": "Gemini 4 Argon (Cursor)",
+          "modelId": "gemini-4-argon-medium",
           "contextWindow": 1000000,
           "reasoningEfforts": [
             "low",

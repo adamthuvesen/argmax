@@ -1,6 +1,10 @@
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { baseSession, event, renderConversation } from "../../test/sessionConversationTestHarness.js";
+import {
+  baseSession,
+  event,
+  renderConversation,
+} from "../../test/sessionConversationTestHarness.js";
 
 describe("SessionComposer picker shortcuts", () => {
   beforeEach(() => window.localStorage.clear());
@@ -21,7 +25,9 @@ describe("SessionComposer picker shortcuts", () => {
   });
 
   it("stays quiet in a pane that is not focused", () => {
-    renderConversation(baseSession({ state: "complete", provider: "claude" }), [], { isFocused: false });
+    renderConversation(baseSession({ state: "complete", provider: "claude" }), [], {
+      isFocused: false,
+    });
 
     fireEvent.keyDown(document, { key: "M", metaKey: true, shiftKey: true });
     expect(screen.queryByRole("listbox", { name: "Chat model" })).toBeNull();
@@ -30,7 +36,7 @@ describe("SessionComposer picker shortcuts", () => {
   it("steps through sent messages with ↑ and ↓ starting from an empty draft", () => {
     renderConversation(baseSession({ state: "complete" }), [
       event("user-1", "user.message", "First ask", "2026-05-12T15:30:00.000Z"),
-      event("user-2", "user.message", "Second ask", "2026-05-12T15:40:00.000Z")
+      event("user-2", "user.message", "Second ask", "2026-05-12T15:40:00.000Z"),
     ]);
     const prompt = screen.getByRole("textbox", { name: "Chat prompt" });
 
@@ -51,7 +57,7 @@ describe("SessionComposer picker shortcuts", () => {
   it("stops stepping once a recalled message is edited", () => {
     renderConversation(baseSession({ state: "complete" }), [
       event("user-1", "user.message", "First ask", "2026-05-12T15:30:00.000Z"),
-      event("user-2", "user.message", "Second ask", "2026-05-12T15:40:00.000Z")
+      event("user-2", "user.message", "Second ask", "2026-05-12T15:40:00.000Z"),
     ]);
     const prompt = screen.getByRole("textbox", { name: "Chat prompt" });
 
@@ -64,7 +70,7 @@ describe("SessionComposer picker shortcuts", () => {
   it("keeps ↑ on a recalled multiline message's lines until the caret reaches the first one", () => {
     renderConversation(baseSession({ state: "complete" }), [
       event("user-1", "user.message", "First ask", "2026-05-12T15:30:00.000Z"),
-      event("user-2", "user.message", "Line one\nLine two", "2026-05-12T15:40:00.000Z")
+      event("user-2", "user.message", "Line one\nLine two", "2026-05-12T15:40:00.000Z"),
     ]);
     const prompt = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Chat prompt" });
 

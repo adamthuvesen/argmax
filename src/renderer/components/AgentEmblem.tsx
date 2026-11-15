@@ -20,7 +20,7 @@ export function AgentEmblem({
   shape,
   hue,
   size = 14,
-  status
+  status,
 }: {
   shape: EmblemShape;
   hue: EmblemHue;
@@ -32,6 +32,7 @@ export function AgentEmblem({
   return (
     <svg
       className="agent-emblem"
+      data-testid="agent-emblem"
       data-shape={shape}
       data-hue={hue}
       data-status={status}
@@ -40,16 +41,34 @@ export function AgentEmblem({
       viewBox="0 0 16 16"
       aria-hidden="true"
     >
-      <path className="agent-emblem-rim" fillRule={fillRule} transform="translate(0 0.75)" d={d} />
-      <path className="agent-emblem-face" fillRule={fillRule} d={d} />
+      <path
+        className="agent-emblem-rim"
+        data-testid="agent-emblem-pass"
+        fillRule={fillRule}
+        transform="translate(0 0.75)"
+        d={d}
+      />
+      <path
+        className="agent-emblem-face"
+        data-testid="agent-emblem-pass"
+        fillRule={fillRule}
+        d={d}
+      />
       <path
         className="agent-emblem-light"
+        data-testid="agent-emblem-pass"
         fillRule={fillRule}
         transform="translate(1.85 1.85) scale(0.7)"
         d={d}
       />
       {status === "error" ? (
-        <circle className="agent-emblem-fault" cx="12.6" cy="12.6" r="2.4" />
+        <circle
+          className="agent-emblem-fault"
+          data-testid="agent-emblem-fault"
+          cx="12.6"
+          cy="12.6"
+          r="2.4"
+        />
       ) : null}
     </svg>
   );

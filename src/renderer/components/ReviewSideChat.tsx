@@ -1,7 +1,21 @@
-import { useEffect, useId, useMemo, useRef, useState, type ComponentProps, type FormEvent, type JSX } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type FormEvent,
+  type JSX,
+} from "react";
 import { MessageSquarePlus, Paperclip, Play, Plus, X } from "lucide-react";
 import { errorMessage } from "../../shared/error.js";
-import type { ComposerAttachment, PendingMessage, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import type {
+  ComposerAttachment,
+  PendingMessage,
+  SessionSummary,
+  WorkspaceSummary,
+} from "../../shared/types.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
@@ -26,7 +40,8 @@ export interface ReviewSideChatSession {
   workspaceId: string;
 }
 
-export type ReviewSideChatContext = Pick<ComponentProps<typeof MultitaskPanel>,
+export type ReviewSideChatContext = Pick<
+  ComponentProps<typeof MultitaskPanel>,
   | "chatFontSize"
   | "defaultToolCallsDisplay"
   | "defaultToolCallGroupsExpanded"
@@ -39,10 +54,13 @@ export type ReviewSideChatContext = Pick<ComponentProps<typeof MultitaskPanel>,
   | "onSendSessionInput"
   | "onTerminateSession"
 > & {
-  launch: (prompt: string, options?: {
-    model?: ModelPickerSelection;
-    attachments?: ComposerAttachment[];
-  }) => Promise<ReviewSideChatSession>;
+  launch: (
+    prompt: string,
+    options?: {
+      model?: ModelPickerSelection;
+      attachments?: ComposerAttachment[];
+    },
+  ) => Promise<ReviewSideChatSession>;
   selectedModel?: ModelPickerSelection;
   onModelChange?: (model: ModelPickerSelection) => void;
   autoRouting?: boolean;
@@ -61,7 +79,7 @@ export function ReviewSideChat({
   isFocused = true,
   formState: controlledFormState,
   onFormStateChange,
-  onLaunched
+  onLaunched,
 }: {
   context: ReviewSideChatContext;
   draftKey?: string;
@@ -74,10 +92,16 @@ export function ReviewSideChat({
 }): JSX.Element {
   const fallbackDraftId = useId();
   const attachmentDraftKey = `side-chat-${(draftKey ?? fallbackDraftId).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-  const [localModel, setLocalModel] = useState(() => context.selectedModel ?? preferredLaunchModel([]));
+  const [localModel, setLocalModel] = useState(
+    () => context.selectedModel ?? preferredLaunchModel([]),
+  );
   const selectedModel = context.selectedModel ?? localModel;
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  const [localFormState, setLocalFormState] = useState<ReviewSideChatFormState>({ prompt: "", launching: false, error: null });
+  const [localFormState, setLocalFormState] = useState<ReviewSideChatFormState>({
+    prompt: "",
+    launching: false,
+    error: null,
+  });
   const { prompt, launching, error } = controlledFormState ?? localFormState;
   const updateForm = (patch: Partial<ReviewSideChatFormState>): void => {
     if (onFormStateChange) onFormStateChange(patch);
@@ -87,14 +111,17 @@ export function ReviewSideChat({
   const promptRef = useRef<ComposerField | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const { availability } = useProviderAvailability();
-  const chatChips = useMemo(() => ({
-    resolve: (id: string) => {
-      const chat = context.sessionsById.get(id);
-      if (!chat) return null;
-      return { title: context.workspacesById.get(chat.workspaceId)?.taskLabel || chat.prompt };
-    },
-    open: (id: string) => context.onOpenFullChat?.(id)
-  }), [context]);
+  const chatChips = useMemo(
+    () => ({
+      resolve: (id: string) => {
+        const chat = context.sessionsById.get(id);
+        if (!chat) return null;
+        return { title: context.workspacesById.get(chat.workspaceId)?.taskLabel || chat.prompt };
+      },
+      open: (id: string) => context.onOpenFullChat?.(id),
+    }),
+    [context],
+  );
   const {
     pendingAttachments,
     pendingAttachmentPreviews,
@@ -108,13 +135,13 @@ export function ReviewSideChat({
     onComposerPaste,
     onAttachmentInputChange,
     openFilePicker,
-    clearAttachments
+    clearAttachments,
   } = useComposerAttachments({
     draftKey: attachmentDraftKey,
     workspacePath: null,
     fieldRef: promptRef,
     setInput: (updater) => updateForm({ prompt: updater(promptRef.current?.value ?? prompt) }),
-    persist: !launching
+    persist: !launching,
   });
 
   useEffect(() => {
@@ -128,10 +155,12 @@ export function ReviewSideChat({
     launchPending.current = true;
     updateForm({ launching: true, error: null });
     try {
-      const references = pendingAttachments.map((attachment) => imageAttachmentReference(attachment.filePath));
+      const references = pendingAttachments.map((attachment) =>
+        imageAttachmentReference(attachment.filePath),
+      );
       const launched = await context.launch(appendReferencesToPrompt(trimmed, references), {
         model: selectedModel,
-        attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined
+        attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined,
       });
       clearDraft(attachmentDraftKey);
       clearAttachments();
@@ -146,13 +175,17 @@ export function ReviewSideChat({
 
   if (sessionId) {
     const session = context.sessionsById.get(sessionId);
-    const workspace = workspaceId ? context.workspacesById.get(workspaceId) ?? null : null;
+    const workspace = workspaceId ? (context.workspacesById.get(workspaceId) ?? null) : null;
     if (!session) {
       return (
         <div className="review-side-chat-empty" role="status">
           <p>This chat is unavailable.</p>
           {context.onOpenFullChat ? (
-            <button type="button" className="button button-secondary" onClick={() => context.onOpenFullChat?.(sessionId)}>
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={() => context.onOpenFullChat?.(sessionId)}
+            >
               Open full chat
             </button>
           ) : null}
@@ -181,15 +214,28 @@ export function ReviewSideChat({
       <form
         ref={formRef}
         className="session-composer-stack review-side-chat-composer"
-        data-font-size={context.chatFontSize === undefined ? undefined : String(context.chatFontSize)}
+        aria-label="Side chat composer"
+        data-font-size={
+          context.chatFontSize === undefined ? undefined : String(context.chatFontSize)
+        }
         data-type-scale={context.chatFontSize === undefined ? "composer" : undefined}
-        onSubmit={(event) => { void submit(event); }}
+        onSubmit={(event) => {
+          void submit(event);
+        }}
         onDragEnter={launching ? undefined : onComposerDragEnter}
         onDragOver={launching ? undefined : onComposerDragOver}
         onDragLeave={launching ? undefined : onComposerDragLeave}
         onDrop={launching ? undefined : onComposerDrop}
       >
-        <input ref={attachmentInputRef} type="file" multiple hidden aria-hidden="true" tabIndex={-1} onChange={onAttachmentInputChange} />
+        <input
+          ref={attachmentInputRef}
+          type="file"
+          multiple
+          hidden
+          aria-hidden="true"
+          tabIndex={-1}
+          onChange={onAttachmentInputChange}
+        />
         <div className="session-input" data-drag-active={isDraggingFiles ? "true" : undefined}>
           <div className="composer-drop-overlay" aria-hidden="true">
             <Paperclip size={20} />
@@ -199,13 +245,26 @@ export function ReviewSideChat({
           {pendingAttachments.length > 0 ? (
             <div className="composer-attachments" aria-label="Attached images">
               {pendingAttachments.map((attachment) => {
-                const src = pendingAttachmentPreviews[attachment.filePath] ?? attachmentProtocolUrl(attachment.filePath);
+                const src =
+                  pendingAttachmentPreviews[attachment.filePath] ??
+                  attachmentProtocolUrl(attachment.filePath);
                 return (
                   <div key={attachment.filePath} className="composer-attachment-chip">
-                    <button type="button" className="attachment-open-button" aria-label="View attachment" onClick={() => setLightboxSrc(src)}>
+                    <button
+                      type="button"
+                      className="attachment-open-button"
+                      aria-label="View attachment"
+                      onClick={() => setLightboxSrc(src)}
+                    >
                       <img src={src} alt="" />
                     </button>
-                    <button type="button" className="composer-attachment-remove" aria-label="Remove attachment" disabled={launching} onClick={() => removePendingAttachment(attachment.filePath)}>
+                    <button
+                      type="button"
+                      className="composer-attachment-remove"
+                      aria-label="Remove attachment"
+                      disabled={launching}
+                      onClick={() => removePendingAttachment(attachment.filePath)}
+                    >
                       <X size={12} aria-hidden="true" />
                     </button>
                   </div>
@@ -233,7 +292,14 @@ export function ReviewSideChat({
             />
           </div>
           <div className="session-input-toolbar">
-            <button type="button" className="composer-tool" aria-label="Attach file" title="Attach file" disabled={launching} onClick={openFilePicker}>
+            <button
+              type="button"
+              className="composer-tool"
+              aria-label="Attach file"
+              title="Attach file"
+              disabled={launching}
+              onClick={openFilePicker}
+            >
               <Plus size={14} aria-hidden="true" />
             </button>
             <div className="composer-chips-group composer-chips-model" inert={launching}>
@@ -264,8 +330,16 @@ export function ReviewSideChat({
             </button>
           </div>
         </div>
-        {launching ? <p className="composer-status" role="status">Starting chat…</p> : null}
-        {error ? <p className="composer-status" data-status="error" role="alert">{error}</p> : null}
+        {launching ? (
+          <p className="composer-status" role="status">
+            Starting chat…
+          </p>
+        ) : null}
+        {error ? (
+          <p className="composer-status" data-status="error" role="alert">
+            {error}
+          </p>
+        ) : null}
       </form>
       <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />
     </div>

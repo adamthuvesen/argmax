@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
@@ -26,23 +26,42 @@ function sessionPr(overrides: Partial<WorkspaceSessionPr> = {}): WorkspaceSessio
     isPinned: false,
     isWatched: false,
     refreshError: null,
-    ...overrides
+    ...overrides,
   };
 }
 
-function workspaceWithPrs(prs: WorkspaceSessionPr[], overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {
+function workspaceWithPrs(
+  prs: WorkspaceSessionPr[],
+  overrides: Partial<WorkspaceSummary> = {},
+): WorkspaceSummary {
   return { ...workspace, ...overrides, prs };
 }
 
 function subagentCluster(overrides: Partial<SubagentCluster> = {}): SubagentCluster {
   return {
     entries: [
-      { toolUseId: "spawn-1", codename: "Io", title: "Map the renderer", status: "done", iconColor: "blue", emblem: emblemForCodename("Gauss"), multitask: false },
-      { toolUseId: "spawn-2", codename: "Titan", title: "Sweep tests", status: "running", iconColor: "amber", emblem: emblemForCodename("Hopper"), multitask: false }
+      {
+        toolUseId: "spawn-1",
+        codename: "Io",
+        title: "Map the renderer",
+        status: "done",
+        iconColor: "blue",
+        emblem: emblemForCodename("Gauss"),
+        multitask: false,
+      },
+      {
+        toolUseId: "spawn-2",
+        codename: "Titan",
+        title: "Sweep tests",
+        status: "running",
+        iconColor: "amber",
+        emblem: emblemForCodename("Hopper"),
+        multitask: false,
+      },
     ],
     running: 1,
     hasMultitask: false,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -56,13 +75,13 @@ function renderCard(
     setStatus?: (status: { kind: "error" | "info"; message: string } | null) => void;
     subagents?: SubagentCluster | null;
     workspace?: WorkspaceSummary;
-  } = {}
+  } = {},
 ) {
   return render(
     <WorkspaceCard
       changeSummary={
         "changeSummary" in overrides
-          ? overrides.changeSummary ?? null
+          ? (overrides.changeSummary ?? null)
           : { fileCount: 3, additions: 229, deletions: 44 }
       }
       changesState={overrides.changesState ?? "ready"}
@@ -76,9 +95,9 @@ function renderCard(
       onToggleTerminal={vi.fn()}
       session={baseSession()}
       setStatus={overrides.setStatus ?? vi.fn()}
-      subagents={"subagents" in overrides ? overrides.subagents ?? null : undefined}
+      subagents={"subagents" in overrides ? (overrides.subagents ?? null) : undefined}
       workspace={overrides.workspace ?? workspace}
-    />
+    />,
   );
 }
 
@@ -86,15 +105,38 @@ describe("WorkspaceCard", () => {
   it("shows changed additional repositories separately when the chat checkout is clean", () => {
     const onOpenFolderChanges = vi.fn();
     const group = (id: string, enabled = true, changed = true): ProjectFolderChanges => ({
-      folder: { id, projectId: "project", name: id, rootPath: `/repos/${id}`, isPrimary: false, enabled, summary: null },
-      files: changed ? [{ path: "README.md", status: "M", additions: id === "app" ? 3 : 7, deletions: 1, staged: false }] : [],
-      error: null
+      folder: {
+        id,
+        projectId: "project",
+        name: id,
+        rootPath: `/repos/${id}`,
+        isPrimary: false,
+        enabled,
+        summary: null,
+      },
+      files: changed
+        ? [
+            {
+              path: "README.md",
+              status: "M",
+              additions: id === "app" ? 3 : 7,
+              deletions: 1,
+              staged: false,
+            },
+          ]
+        : [],
+      error: null,
     });
     renderCard({
       changeSummary: null,
       workingFolderName: "primary",
-      projectFolderChanges: [group("app"), group("dbt"), group("disabled", false), group("clean", true, false)],
-      onOpenFolderChanges
+      projectFolderChanges: [
+        group("app"),
+        group("dbt"),
+        group("disabled", false),
+        group("clean", true, false),
+      ],
+      onOpenFolderChanges,
     });
     expect(screen.getByRole("button", { name: "Changes" })).toBeDisabled();
     expect(screen.getByText("primary")).toBeVisible();
@@ -107,7 +149,10 @@ describe("WorkspaceCard", () => {
     expect(dbt).toHaveTextContent("+7");
     fireEvent.click(app);
     fireEvent.click(dbt);
-    expect(onOpenFolderChanges.mock.calls).toEqual([["app", "README.md"], ["dbt", "README.md"]]);
+    expect(onOpenFolderChanges.mock.calls).toEqual([
+      ["app", "README.md"],
+      ["dbt", "README.md"],
+    ]);
     expect(screen.queryByRole("button", { name: "Changes in disabled" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Changes in clean" })).not.toBeInTheDocument();
   });
@@ -124,7 +169,9 @@ describe("WorkspaceCard", () => {
     expect(card.textContent).toContain("argmax/dashboard");
     expect(card.textContent).toContain("from main");
     expect(screen.queryByRole("button", { name: "Commit" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Create PR for checkout branch" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Create PR for checkout branch" }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps shared checkout context in the tooltip without a repeated heading", () => {
@@ -139,7 +186,7 @@ describe("WorkspaceCard", () => {
     const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
-      value: { writeText }
+      value: { writeText },
     });
     renderCard({ workspace: { ...workspace, branch } });
 
@@ -169,7 +216,7 @@ describe("WorkspaceCard", () => {
         session={baseSession()}
         setStatus={vi.fn()}
         workspace={workspace}
-      />
+      />,
     );
 
     const clean = screen.getByRole("button", { name: "Changes" });
@@ -196,7 +243,7 @@ describe("WorkspaceCard", () => {
         session={baseSession()}
         setStatus={vi.fn()}
         workspace={workspace}
-      />
+      />,
     );
 
     const failed = screen.getByRole("button", { name: "Changes" });
@@ -204,19 +251,34 @@ describe("WorkspaceCard", () => {
     expect(failed).toHaveAttribute("title", "Could not load the changed files");
   });
 
-  it("refreshes PR state from GitHub on mount for a git workspace", () => {
-    const refresh = vi.fn().mockResolvedValue([]);
-    (window as { argmax?: unknown }).argmax = { prs: { refresh } };
+  it("refreshes PR state from GitHub once the chat stays open, and not again on a quick reopen", async () => {
+    vi.useFakeTimers();
+    try {
+      const refresh = vi.fn().mockResolvedValue([]);
+      (window as { argmax?: unknown }).argmax = { prs: { refresh } };
 
-    renderCard();
-    expect(refresh).toHaveBeenCalledWith({ sessionId: "session-a" });
+      const first = renderCard();
+      expect(refresh).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+      expect(refresh).toHaveBeenCalledWith({ sessionId: "session-a" });
+      first.unmount();
+
+      renderCard();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+      expect(refresh).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
-
 
   it("opens an existing pull request by its stored URL without resolving by checkout", () => {
     const openPath = vi.fn().mockResolvedValue({ ok: true });
     (window as { argmax?: unknown }).argmax = {
-      system: { openPath }
+      system: { openPath },
     };
     renderCard({ workspace: workspaceWithPrs([sessionPr()]) });
 
@@ -239,9 +301,28 @@ describe("WorkspaceCard", () => {
   it("shows current PRs first and keeps older associations expandable", () => {
     const prs = [
       sessionPr(),
-      sessionPr({ prNumber: 759, url: "https://github.com/o/r/pull/759", title: "Referenced fix", relationship: "referenced", isPrimary: false }),
-      sessionPr({ prNumber: 755, url: "https://github.com/o/r/pull/755", title: "Earlier work", prState: "MERGED", isPrimary: false }),
-      sessionPr({ prNumber: 750, url: "https://github.com/o/r/pull/750", title: "Candidate", prState: "CLOSED", relationship: "unverified", isPrimary: false })
+      sessionPr({
+        prNumber: 759,
+        url: "https://github.com/o/r/pull/759",
+        title: "Referenced fix",
+        relationship: "referenced",
+        isPrimary: false,
+      }),
+      sessionPr({
+        prNumber: 755,
+        url: "https://github.com/o/r/pull/755",
+        title: "Earlier work",
+        prState: "MERGED",
+        isPrimary: false,
+      }),
+      sessionPr({
+        prNumber: 750,
+        url: "https://github.com/o/r/pull/750",
+        title: "Candidate",
+        prState: "CLOSED",
+        relationship: "unverified",
+        isPrimary: false,
+      }),
     ];
     renderCard({ workspace: workspaceWithPrs(prs) });
 
@@ -260,19 +341,19 @@ describe("WorkspaceCard", () => {
   it("lets an automatically selected unverified PR be confirmed and pinned", async () => {
     const setPrimary = vi.fn().mockResolvedValue([]);
     (window as { argmax?: unknown }).argmax = {
-      prs: { setPrimary, dismiss: vi.fn().mockResolvedValue([]) }
+      prs: { setPrimary, dismiss: vi.fn().mockResolvedValue([]) },
     };
     renderCard({
       workspace: workspaceWithPrs([
-        sessionPr({ relationship: "unverified", isPrimary: true, isPinned: false })
-      ])
+        sessionPr({ relationship: "unverified", isPrimary: true, isPinned: false }),
+      ]),
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Actions for PR #762" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Confirm and make primary" }));
 
     await waitFor(() =>
-      expect(setPrimary).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 762 })
+      expect(setPrimary).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 762 }),
     );
   });
 
@@ -283,33 +364,52 @@ describe("WorkspaceCard", () => {
     renderCard({
       workspace: workspaceWithPrs([
         sessionPr({ isPinned: true }),
-        sessionPr({ prNumber: 759, url: "https://github.com/o/r/pull/759", title: "Candidate", relationship: "unverified", isPrimary: false })
-      ])
+        sessionPr({
+          prNumber: 759,
+          url: "https://github.com/o/r/pull/759",
+          title: "Candidate",
+          relationship: "unverified",
+          isPrimary: false,
+        }),
+      ]),
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Actions for PR #759" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Confirm and make primary" }));
-    await waitFor(() => expect(setPrimary).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 759 }));
+    await waitFor(() =>
+      expect(setPrimary).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 759 }),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Actions for PR #762" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Automatic selection" }));
-    await waitFor(() => expect(setPrimary).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: null }));
+    await waitFor(() =>
+      expect(setPrimary).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: null }),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Actions for PR #762" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove from this chat" }));
-    await waitFor(() => expect(dismiss).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 762 }));
+    await waitFor(() =>
+      expect(dismiss).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 762 }),
+    );
   });
 
   it("cleans up a merged PR and shows the report", async () => {
     resetToastForTests();
     const report = "PR #762 merged as abc1234 (head def5678)\nRemote: origin/feat deleted";
     const cleanup = vi.fn().mockResolvedValue({ text: report });
-    (window as { argmax?: unknown }).argmax = { prs: { setPrimary: vi.fn(), dismiss: vi.fn(), cleanup } };
+    (window as { argmax?: unknown }).argmax = {
+      prs: { setPrimary: vi.fn(), dismiss: vi.fn(), cleanup },
+    };
     renderCard({
       workspace: workspaceWithPrs([
         sessionPr({ prState: "MERGED" }),
-        sessionPr({ prNumber: 759, url: "https://github.com/o/r/pull/759", title: "Open one", isPrimary: false })
-      ])
+        sessionPr({
+          prNumber: 759,
+          url: "https://github.com/o/r/pull/759",
+          title: "Open one",
+          isPrimary: false,
+        }),
+      ]),
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Actions for PR #759" }));
@@ -318,22 +418,25 @@ describe("WorkspaceCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Actions for PR #762" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Clean up" }));
-    await waitFor(() => expect(cleanup).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 762 }));
+    await waitFor(() =>
+      expect(cleanup).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 762 }),
+    );
     await waitFor(() => expect(toastSnapshot()).toEqual({ kind: "info", message: report }));
   });
-
 
   it("shows the subagent roster once the session spawns agents", () => {
     renderCard({ subagents: subagentCluster() });
 
     const section = screen.getByRole("region", { name: "Agents" });
     // Codenames and statuses surface in the hover roster, one chip per launch.
-    const roster = section.querySelector(".workspace-card-subagents");
-    expect(roster?.getAttribute("title")).toContain("Io — Completed");
-    expect(roster?.getAttribute("title")).toContain("Titan — Running");
-    expect(section.querySelectorAll(".workspace-card-agent")).toHaveLength(2);
+    const roster = within(section).getByTitle(/Io — Completed/);
+    expect(roster).toHaveAttribute("title", expect.stringContaining("Titan — Running"));
+    const chips = within(section).getAllByTestId("workspace-card-agent");
+    expect(chips).toHaveLength(2);
     // Each chip wears its agent's emblem rather than an initial.
-    expect(section.querySelectorAll(".workspace-card-agent .agent-emblem[data-shape]")).toHaveLength(2);
+    for (const chip of chips) {
+      expect(within(chip).getByTestId("agent-emblem")).toHaveAttribute("data-shape");
+    }
   });
 
   it("folds the avatar stack into a +N chip beyond five launches", () => {
@@ -344,12 +447,12 @@ describe("WorkspaceCard", () => {
       status: index === 6 ? ("error" as const) : ("done" as const),
       iconColor: "blue",
       emblem: emblemForCodename(`Scientist${index}`),
-      multitask: false
+      multitask: false,
     }));
     renderCard({ subagents: { entries, running: 0, hasMultitask: false } });
 
     const section = screen.getByRole("region", { name: "Agents" });
-    expect(section.querySelectorAll(".workspace-card-agent")).toHaveLength(6); // 5 chips + "+2"
+    expect(within(section).getAllByTestId("workspace-card-agent")).toHaveLength(6); // 5 chips + "+2"
     expect(section.textContent).toContain("+2");
   });
 
@@ -374,16 +477,18 @@ describe("WorkspaceCard", () => {
             status: "running",
             iconColor: emblem.hue,
             emblem,
-            multitask: true
-          }
+            multitask: true,
+          },
         ],
         running: 1,
-        hasMultitask: true
-      }
+        hasMultitask: true,
+      },
     });
 
-    const chip = screen.getByRole("region", { name: "Alongside" }).querySelector(".workspace-card-agent");
-    expect(chip?.querySelector("svg")).not.toBeNull();
-    expect(chip?.textContent).toBe("");
+    const chip = within(screen.getByRole("region", { name: "Alongside" })).getByTestId(
+      "workspace-card-agent",
+    );
+    expect(within(chip).getByTestId("agent-emblem")).toBeInTheDocument();
+    expect(chip.textContent).toBe("");
   });
 });

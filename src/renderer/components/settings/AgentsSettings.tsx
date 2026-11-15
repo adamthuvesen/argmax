@@ -1,6 +1,10 @@
 import { AlertTriangle, ChartNoAxesColumn, ExternalLink, RefreshCcw } from "lucide-react";
 import { useMemo, type JSX } from "react";
-import { PROVIDER_DISPLAY_NAMES, REASONING_EFFORTS, type ReasoningEffort } from "../../../shared/providerModels.js";
+import {
+  PROVIDER_DISPLAY_NAMES,
+  REASONING_EFFORTS,
+  type ReasoningEffort,
+} from "../../../shared/providerModels.js";
 import type { DiscoveredProvider, ProviderId, RoutingSettings } from "../../../shared/types.js";
 import { effortLabel, type ModelPickerSelection } from "../../lib/models.js";
 import type { PermissionMode, ProviderPermissionModes } from "../../lib/permissionMode.js";
@@ -10,11 +14,12 @@ import {
   CHAT_VERBOSITY_LABELS,
   GOAL_MAX_TURNS_MAX,
   GOAL_MAX_TURNS_MIN,
-  type ChatVerbosity
+  type ChatVerbosity,
 } from "../../lib/uiPreferences.js";
 import { CombinedModelSelector, type ProviderAvailability } from "../ModelSelector.js";
 import { WorkingNest } from "../WorkingNest.js";
 import { AutoRoutingSettings } from "./AutoRoutingSettings.js";
+import { ClaudeMcpSettings } from "./ClaudeMcpSettings.js";
 import { OpencodeGatewaySettings } from "./OpencodeGatewaySettings.js";
 import {
   SettingGroup,
@@ -22,7 +27,7 @@ import {
   SettingRow,
   SettingsListPicker,
   Slider,
-  Toggle
+  Toggle,
 } from "./settingsPrimitives.js";
 
 export function AgentsSettings({
@@ -55,7 +60,7 @@ export function AgentsSettings({
   providerLoadError,
   refreshingProviders,
   refreshProviders,
-  onOpenUsage
+  onOpenUsage,
 }: {
   defaultModel: ModelPickerSelection;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
@@ -128,7 +133,10 @@ export function AgentsSettings({
               inputId="settings-default-effort"
               value={defaultEffort}
               onChange={onDefaultEffortChange}
-              options={REASONING_EFFORTS.map((effort) => ({ value: effort, label: effortLabel(effort) }))}
+              options={REASONING_EFFORTS.map((effort) => ({
+                value: effort,
+                label: effortLabel(effort),
+              }))}
             />
           }
         />
@@ -147,16 +155,22 @@ export function AgentsSettings({
 
       <AutoRoutingSettings routing={routing} onRoutingChange={onRoutingChange} />
 
+      <ClaudeMcpSettings />
+
       <OpencodeGatewaySettings />
 
       <SettingGroup id="settings-permissions" label="Permissions">
         {defaultAgentSaveError ? (
           <div role="status">
             <SettingNote tone="warn">Default settings are not saved.</SettingNote>
-            <button type="button" className="settings-button" onClick={onRetryDefaultAgentSave}>Retry saving defaults</button>
+            <button type="button" className="settings-button" onClick={onRetryDefaultAgentSave}>
+              Retry saving defaults
+            </button>
           </div>
         ) : isSavingDefaultAgent ? (
-          <div role="status"><SettingNote>Saving default settings…</SettingNote></div>
+          <div role="status">
+            <SettingNote>Saving default settings…</SettingNote>
+          </div>
         ) : null}
         {(Object.keys(PROVIDER_DISPLAY_NAMES) as ProviderId[]).map((providerId) => {
           const provider = providers?.find((entry) => entry.provider === providerId);
@@ -180,8 +194,10 @@ export function AgentsSettings({
                       value: "ask-each-time",
                       label: "Ask for approval",
                       disabled: !askEachTimeAvailable,
-                      title: askEachTimeAvailable ? undefined : "This provider does not support live approval replies"
-                    }
+                      title: askEachTimeAvailable
+                        ? undefined
+                        : "This provider does not support live approval replies",
+                    },
                   ]}
                 />
               }
@@ -190,10 +206,9 @@ export function AgentsSettings({
         })}
         <SettingNote>
           Applies to new chats you start for each provider. Existing chats keep their saved
-          permissions, and chats launched by an agent inherit that agent's permissions.
-          Provider defaults follows its native CLI
-          configuration, including Codex automatic review. Full access requests broad permissions.
-          Ask for approval shows native requests in the chat.
+          permissions, and chats launched by an agent inherit that agent's permissions. Provider
+          defaults follows its native CLI configuration, including Codex automatic review. Full
+          access requests broad permissions. Ask for approval shows native requests in the chat.
         </SettingNote>
       </SettingGroup>
 
@@ -320,7 +335,11 @@ export function AgentsSettings({
                     ? "approvals observable only"
                     : "no native approvals";
               return (
-                <li key={provider.provider} className="settings-provider-row" data-installed={dataState}>
+                <li
+                  key={provider.provider}
+                  className="settings-provider-row"
+                  data-installed={dataState}
+                >
                   <span className="settings-provider-dot" aria-hidden="true" />
                   <div className="settings-provider-meta">
                     <span className="settings-provider-name">

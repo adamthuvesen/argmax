@@ -9,8 +9,8 @@ use chrono::{DateTime, Duration, Utc};
 use serde_json::{Map, Value};
 
 use super::{AgentTraceContext, TraceLine, TraceProvider};
-use crate::persistence::events::PersistTimelineEventInput;
 use crate::providers::normalizer::JSON_PARSE_LINE_CAP;
+use argmax_store::events::PersistTimelineEventInput;
 
 /// The lines of a trace file, with unreadable ones skipped instead of
 /// truncating the file. `BufRead::lines` yields an error for a line that is not

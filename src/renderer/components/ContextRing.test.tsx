@@ -21,29 +21,37 @@ const base: SessionSummary = {
   tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextTokens: 0,
   imported: false,
-  launchKind: "agent"
+  launchKind: "agent",
 };
 
 afterEach(cleanup);
 
 describe("ContextRing", () => {
-  it.each(["gemini-3.8-flash-medium", "composer-2.5", "gpt-6.1-sol"])(
+  it.each(["gemini-4-hydrogen-medium", "composer-2.5", "gpt-6.1-sol"])(
     "hides Cursor context usage for %s even with persisted token counts",
     (modelId) => {
       render(
         <ContextRing
-          session={{ ...base, provider: "cursor", modelId, contextTokens: 9_000_000, contextWindow: 1_000_000 }}
-        />
+          session={{
+            ...base,
+            provider: "cursor",
+            modelId,
+            contextTokens: 9_000_000,
+            contextWindow: 1_000_000,
+          }}
+        />,
       );
       expect(screen.queryByRole("button", { name: /Context window/ })).not.toBeInTheDocument();
-    }
+    },
   );
 
   it("renders nothing when the window is unknown", () => {
     const { container } = render(
-      <ContextRing session={{ ...base, modelId: "mystery-model", contextTokens: 100, contextWindow: null }} />
+      <ContextRing
+        session={{ ...base, modelId: "mystery-model", contextTokens: 100, contextWindow: null }}
+      />,
     );
-    expect(container.firstChild).toBeNull();
+    expect(container).toBeEmptyDOMElement();
   });
 
   // Codex reports its window only on `token_count` rows, which `codex exec
@@ -56,8 +64,10 @@ describe("ContextRing", () => {
   });
 
   it("renders nothing before any context is used", () => {
-    const { container } = render(<ContextRing session={{ ...base, contextTokens: 0, contextWindow: 258000 }} />);
-    expect(container.firstChild).toBeNull();
+    const { container } = render(
+      <ContextRing session={{ ...base, contextTokens: 0, contextWindow: 258000 }} />,
+    );
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("shows percent full from the reported window and opens a detailed popover", () => {
@@ -77,8 +87,14 @@ describe("ContextRing", () => {
   it("falls back to the per-model table when the provider reports no window", () => {
     render(
       <ContextRing
-        session={{ ...base, provider: "claude", modelId: "claude-opus-5-5", contextTokens: 100000, contextWindow: null }}
-      />
+        session={{
+          ...base,
+          provider: "claude",
+          modelId: "claude-opus-5-5",
+          contextTokens: 100000,
+          contextWindow: null,
+        }}
+      />,
     );
     // Opus 5.5's 1M table entry → 100000 / 1000000 = 10%.
     expect(screen.getByRole("button", { name: /Context window 10% full/ })).toBeInTheDocument();
@@ -93,9 +109,9 @@ describe("ContextRing", () => {
           modelId: "claude-fable-5-1",
           modelLabel: "Fable 5.1",
           contextTokens: 320_000,
-          contextWindow: 258_400
+          contextWindow: 258_400,
         }}
-      />
+      />,
     );
     // Fable's 1M catalog, not the leftover 258k Codex ceiling.
     // 320000 / 1000000 = 32%.

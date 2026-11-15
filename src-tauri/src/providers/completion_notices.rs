@@ -7,22 +7,21 @@
 //! siblings that finish together cost the launcher one turn rather than one
 //! each. Holding the wake never holds the result.
 
-use super::{runtime::sqlite_error, session_service::MessageOrigin};
-use crate::{
-    error::ArgmaxResult,
-    persistence::{
-        database::Database,
-        events::{find_event_by_id, latest_agent_answer, latest_user_message_id},
-        session_messages::{
-            clear_wake_due, insert_session_message, is_message_delivered, list_due_wakes,
-            mark_message_delivered, mark_wake_due, NewSessionMessage, SessionMessage,
-            COMPLETION_KIND, MAX_MESSAGE_BODY_CHARS,
-        },
-        sessions::find_session_by_id,
-        workspaces::find_workspace_by_id,
+use super::runtime::sqlite_error;
+use argmax_contracts::error::ArgmaxResult;
+use argmax_contracts::messages::MessageOrigin;
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::sync::LockOrRecover;
+use argmax_store::{
+    database::Database,
+    events::{count_user_messages, find_event_by_id, latest_agent_answer, latest_user_message_id},
+    session_messages::{
+        clear_wake_due, insert_session_message, is_message_delivered, list_due_wakes,
+        mark_message_delivered, mark_wake_due, NewSessionMessage, SessionMessage, COMPLETION_KIND,
+        MAX_MESSAGE_BODY_CHARS,
     },
-    sessions::state::SessionState,
-    util::sync::LockOrRecover,
+    sessions::find_session_by_id,
+    workspaces::find_workspace_by_id,
 };
 use serde_json::Value;
 use std::{
@@ -168,18 +167,6 @@ fn notice_body(
 /// prompt its launcher sent.
 fn turn_was_user_driven(latest_payload: &Value, is_first: bool) -> bool {
     !is_first && latest_payload.get("origin").is_none() && latest_payload.get("starter").is_none()
-}
-
-/// Every prompt the session has ever taken, clear boundaries included — only
-/// the very first one can be the launch prompt.
-fn count_user_messages(connection: &rusqlite::Connection, session_id: &str) -> ArgmaxResult<i64> {
-    connection
-        .prepare_cached(
-            "SELECT COUNT(*) FROM events WHERE session_id = ? AND type = 'user.message'",
-        )
-        .map_err(sqlite_error)?
-        .query_row([session_id], |row| row.get::<_, i64>(0))
-        .map_err(sqlite_error)
 }
 
 /// The moment a notice reports, in the machine's zone. A coordinator reads
@@ -747,7 +734,7 @@ impl CompletionNoticePolicy {
         let body = notice_body(&shape, session_id, &label, state, at, &answer);
         // A check-in wake exists to poke a chat that has not reported back.
         // This one just did, so the routine has nothing left to ask.
-        if let Err(error) = crate::persistence::routines::delete_routine(
+        if let Err(error) = argmax_store::routines::delete_routine(
             &connection,
             &crate::session_control::check_in_routine_id(session_id),
         ) {
@@ -787,9 +774,7 @@ impl CompletionNoticePolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::session_messages::{
-        count_undelivered_messages, take_undelivered_messages,
-    };
+    use argmax_store::session_messages::{count_undelivered_messages, take_undelivered_messages};
     use serde_json::json;
 
     fn long_answer(marker: &str) -> String {

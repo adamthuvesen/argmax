@@ -1,433 +1,320 @@
 # Performance Budgets
 
-Performance budgets define targets for cold start, IPC response times, and frontend data transformations.
+Budgets define targets for cold start, IPC, and renderer transformations. Measure a release build before you quote a number, because a debug build is about 5.5x slower. Dated measurements here explain a decision, and they are not current readings.
+
+## Latency bench
+
+`npm run bench:latency` measures how fast Argmax responds, in the real WKWebView of a verification release build. It drives the page over the build's embedded WebDriver. All times come from inside the page, so WebDriver round trips do not count.
+
+The bench never touches live data. It copies your profile with `VACUUM INTO`, rewrites every project and workspace path to a `git clone --shared` fixture under `.verify/bench/repos`, turns routines off, clears PR watches, and points push URLs at a host that does not exist. A guard stops the run before launch if any path in the copy points outside the fixture root.
+
+| Part | What it measures |
+|---|---|
+| `boot` | Process start → `ready-to-show` and first paint, one app launch per run |
+| `navigation` | Pages, pickers, palette, settings, sidebar, tabs, chat switches: `shown`, `painted`, `settled`, the worst frame gap, IPC calls |
+| `send` | New chat and follow-up with the fixture provider: acknowledgement, first text, and the turn waterfall |
+| `real` | New chat and follow-up with the real Claude CLI (`--real claude`): click → spawn, prompt written, first paint |
+
+- **shown:** the first frame in which the predicate holds.
+- **painted:** two animation frames later. The floor is about 33 ms at 60 Hz, and each step of 16–17 ms is one frame.
+- **settled:** no DOM mutation for 150 ms and no IPC call in flight.
+
+Metric ids are the printed row names. Navigation rows add `:shown`, `:painted`, `:settled`, or `:gap`, for example `session.switch.first-visit:settled`. Results go to `.verify/bench/*.json`. Every run ends with a scoreboard against [targets.json](../scripts/bench-latency/targets.json).
+
+```bash
+npm run bench:latency -- --build --only navigation --n 12             # build, then measure
+npm run bench:latency -- --compare before/argmax after/argmax --rounds 2 --only navigation,send --n 12
+npm run bench:latency -- --diff a1.json a2.json -- b1.json b2.json   # compare saved runs
+npm run bench:latency -- --only real --real claude --n 3              # real Claude turns
+npm run bench:latency -- --check                                      # fail on a regression against the record
+npm run bench:latency -- --update-record                              # tighten the record after a win
+```
+
+`--real claude` runs short turns ("Reply with just: ok") on your real Claude login with the fast Haiku model, one app launch per turn pair. The CLI runs through a generated wrapper, because the verification build gives the provider a temporary HOME.
+
+### Hill-climbing a metric
+
+1. Pick a target that misses on the scoreboard. Find what holds it: the turn waterfall for a turn, the probe's IPC list and frame gaps for navigation.
+2. Build the current code and copy `src-tauri/target/verification/release/argmax` out of the target directory. The next build overwrites it.
+3. Make the change and build again.
+4. Run `--compare <before> <after> --rounds 2`. A delta smaller than the spread between rounds is noise. Add rounds before you believe it.
+5. Report the stamp the user sees: first paint or first text, not `cli_init` or `initialize_ack`.
+6. Run `--check`, then `--update-record`, and commit the record with the change. The record only tightens. `--loosen <metric>` raises one entry when a change deliberately trades it away. Say so in the commit.
+7. Lock the mechanism with a count or structure test, and add it to [Budgets and their owners](#budgets-and-their-owners).
+
+Traps that gave wrong numbers on 2026-11-13:
+
+- **Runs from different times.** A CLI upgrade looked like 1.5 s → 0.53 s. Interleaved, it was about 0.3 s, and the rest was machine load. Always use `--compare`. Do not run builds or other benches at the same time.
+- **The wrong stamp.** The MCP server cost looked like 1.9 s when measured to the CLI's `init` event. To the first token it was 0.4–0.6 s.
+- **p95 at n = 12 is the slowest run.** For an overlay, that is the cold first open.
+- **Revisit settled jumps about 130 ms between identical runs.** `--check` therefore compares p50 and allows max(20 %, 34 ms).
+- **WKWebView reports no `longtask` entries.** Frame gaps come from the in-page timer sampler.
+- **The record belongs to one machine.** `--check` warns when the host differs. Seed a new record on a new machine.
 
 ## Whole-app captures
 
-Settings → Advanced → Performance has an opt-in recorder for comparing real
-release-build workloads. It samples once per second and retains the latest 30
-minutes in memory. Starting a new capture clears the old samples. Stopping does
-not write anything, and Download JSON is the only persistence path.
+Settings → Advanced → Performance has an opt-in recorder for comparing release workloads. It samples the whole Argmax process tree, split into the Rust host, WebKit, and provider processes. It owns no worker while stopped and never writes to SQLite, so normal use does not pay for it. On macOS it uses `libproc`, so it does not spawn `ps` on every tick.
 
-Each sample includes the whole Argmax descendant process tree, split into the
-Rust host, WebKit processes, and provider or tool processes. CPU is calculated
-from native cumulative process time and memory is resident bytes. The same
-sample records active chats by provider, provider output and IPC rates, pending
-provider items, SQLite reader activity and wait deltas, and renderer long tasks.
-The export includes build and platform context, sampler overhead, and median,
-p95, peak, and per-running-chat summaries.
-
-On macOS the process sampler uses `libproc` directly. It does not spawn `ps` on
-every tick. The recorder owns no worker while stopped and never writes samples
-to SQLite, so normal app use does not pay the sampling or storage cost. Measure
-release builds, label the workload before starting, and compare at least idle,
-one busy chat, and five busy chats with the same providers and prompts.
-
-For a repeatable timed capture against a running release app with the remote
-bridge enabled:
+Label the workload first, and compare at least idle, one busy chat, and five busy chats with the same providers and prompts.
 
 ```bash
 node scripts/bridge.mjs perf --seconds 300 --output ./argmax-performance.json
 ```
 
-The command starts the same recorder, waits for the requested interval, stops
-it, and writes the complete capture. `--data-dir`, `--port`, and `--token` use
-the standard bridge connection resolution documented at the top of the script.
+## Budgets and their owners
 
-## Startup Budget
+| Budget | Owner |
+|---|---|
+| `boot → window.ready-to-show` ≤ 800 ms on macOS | [startup_timer.rs](../src-tauri/src/util/startup_timer.rs), `system:diagnostics` |
+| Eager bundle size | `npm run check:bundle` ([check-bundle.mjs](../scripts/check-bundle.mjs)) |
+| Renderer transforms | `npm run test:perf` ([perf.test.ts](../src/test/perf.test.ts)) |
+| Synchronous IPC handlers | `npm run check:main-thread` ([check-main-thread-handlers.mjs](../scripts/check-main-thread-handlers.mjs)) |
+| IPC p99 < 100 ms, per channel | [ipcLatency.ts](../src/renderer/lib/ipcLatency.ts), Settings → Diagnostics, `window.__argmaxPerf.ipc()` |
+| Latency targets, and no regression against the last accepted run | [targets.json](../scripts/bench-latency/targets.json), [record.json](../scripts/bench-latency/record.json), `npm run bench:latency -- --check` ([Latency bench](#latency-bench)) |
+| A repeat checkpoint of an unchanged checkout runs ≤ 2 git processes | `a_second_checkpoint_of_an_unchanged_checkout_runs_two_git_processes` ([checkpoints/service.rs](../src-tauri/src/checkpoints/service.rs)) |
+| The CLI starts while the checkpoint runs; the prompt waits for it | `the_prompt_waits_for_the_checkpoint_gate_after_initialize` ([claude_control.rs](../src-tauri/src/providers/claude_control.rs)) |
+| Claude turns skip the post-turn summary call | `every_claude_turn_env_pair_is_in_the_process_env_not_the_settings`, `a_claude_pty_launch_puts_every_turn_env_pair_in_the_process_env` |
+| A chat revisit makes none of the reads it kept | [SessionPane.revisit.test.tsx](../src/renderer/components/SessionPane.revisit.test.tsx) |
+| A long chat mounts its newest 8 items first | [SessionConversation.window.test.tsx](../src/renderer/components/SessionConversation.window.test.tsx) |
+| Git runs the real binary, not Apple's `xcrun` shim | `the_xcrun_shim_on_path_resolves_to_the_real_git` ([git_exec.rs](../src-tauri/crates/argmax-process/src/git_exec.rs)) |
 
-Tracked by [src-tauri/src/util/startup_timer.rs](../src-tauri/src/util/startup_timer.rs) and exposed via `system:diagnostics`. Target `boot → window.ready-to-show` is ≤ 800 ms on macOS.
+The timed budgets need the native app, so CI cannot run them. The test rows lock in each mechanism behind a latency win with an exact count, so a regression fails `npm test` without a timer. When you land a latency win, add a row like these.
 
-- `sessions.recover`: Uses the `idx_events_restart_recovery` partial index (migration v13) to keep startup orphan detection bounded to O(sessions).
-- Process orphan scans run in background tasks to avoid blocking the setup hook.
+`sessions.recover` uses a partial index, so startup orphan detection stays O(sessions). Process orphan scans run in background tasks, so they do not block the setup hook.
 
-## Eager Bundle
+## Eager bundle
 
-`npm run check:bundle` (scripts/check-bundle.mjs) caps the cold-start module
-graph — the entry chunk plus every `<link rel="modulepreload">` Vite emits —
-at 1.84 MiB desktop / 1.62 MiB mobile. The desktop allowance includes a small
-startup tradeoff for navigation readiness. Measured 2026-09-09 from the existing
-build: 1.70 MiB desktop and 1.57 MiB mobile. Desktop rose 0.05 MiB to cover
-todo cards, goals, and the rest of that stack, then again for the chat timeline
-and multitask card, which render with the conversation. Measured 2026-09-28 at
-1.79 MiB after the Router and translucency styles joined that same sheet.
+KaTeX is the largest single dependency, so it stays out of the cold-start graph. The chat renders without math plugins and delegates to the lazy [MathMarkdown](../src/renderer/components/MathMarkdown.tsx) chunk only when `needsMath` says the text may contain math. Shiki loads the same way, after a fence or diff mounts ([highlighter.ts](../src/renderer/lib/highlighter.ts)). It runs in a module worker ([highlight.worker.ts](../src/renderer/lib/highlight.worker.ts)), a lazy chunk that Vite builds with `worker.format: "es"` so that each grammar stays its own chunk.
 
-KaTeX (~0.5 MB JS plus fonts/CSS) is the largest single dependency and stays
-out of that graph: the chat surface renders without math plugins and only
-delegates to the lazy [MathMarkdown](../src/renderer/components/MathMarkdown.tsx)
-chunk when the text may contain math ([needsMath](../src/renderer/lib/needsMath.ts)
-mirrors `normalizeMathDelimiters`' early return, so `$`- and `\`-free text
-never pays for it). Markdown with math first paints the plain render as the
-Suspense fallback, then swaps in the formatted equations once the chunk lands.
+**Do not add a `vendor-katex` or unified-ecosystem `manualChunks` rule** to [vite.config.ts](../vite.config.ts) without re-measuring. A named chunk acts as a magnet. Rolldown hoists the utilities shared by eager remark-gfm and lazy remark-math into it, the eager graph imports it, and cold start preloads all of KaTeX again (measured 1.56 MiB eager with the rule, 1.05 MiB without).
 
-Shiki syntax highlighting follows the same rule. Its core and JavaScript regex
-engine load only after a code fence or diff mounts through
-[highlighter.ts](../src/renderer/lib/highlighter.ts); those surfaces already
-paint plain text until the shared highlighter signals readiness, then repaint
-with token colors.
+A shared manual icon chunk has the same problem, so Lucide uses automatic chunking.
 
-Do not add a `vendor-katex` (or any unified-ecosystem) `manualChunks` rule to
-[vite.config.ts](../vite.config.ts) without re-measuring. A named KaTeX chunk
-acts as a magnet: Rolldown hoists the micromark/mdast/unist/hast utils shared
-by remark-gfm (eager) and remark-math/rehype-katex (lazy) into it, the eager
-graph statically imports it, and cold start preloads all of KaTeX again
-(measured 1.56 MiB eager with the rule, 1.05 MiB without). Automatic chunking
-already places KaTeX in a lazy chunk reached only via MathMarkdown,
-FilePreview, and Mermaid.
+## Usage scan
 
-The visualization viewer loads through a lazy import in each chat surface.
-Lucide uses automatic chunking. A shared manual icon chunk would pull icons
-from deferred features into both initial module graphs.
+The transcript sweep is incremental, so only the first is expensive: 25 s cold, in the background, and 0.2 s warm (2026-09-03, about 2 GB of JSONL). A warm sweep runs inline on every `usage:summary`, so it must stay well under a second.
 
-## Renderer Benchmarks
+## Main thread
 
-Run via:
+Tauri resolves a synchronous `#[tauri::command]` body inline on the macOS main thread, so anything it blocks on freezes the window. The `async` flag is not the fix, because it parks a worker shared with provider IO, the remote bridge, and the `dashboard:delta` loop. Blocking work goes through [`read_off_main`](../src-tauri/src/ipc/mod.rs).
 
-```bash
-npm run test:perf
-```
+Every synchronous handler must be named in `MAIN_THREAD_ALLOWLIST` with a reason, and the check fails if the list goes stale.
 
-Targets defined in [src/test/perf.test.ts](../src/test/perf.test.ts):
+## Database reads
 
-- `mergeDashboardDelta` across 200 sessions: p95 < 5 ms.
-- `mergeDashboardDelta` with 500 deltas + tool rows: p95 < 5 ms.
-- `mergeDashboardDelta` with a 1-event delta onto 5,000 events: p95 < 4 ms.
-- `mergeDashboardDelta` with an empty poll onto 5,000 events: p95 < 0.1 ms.
-- Updating one of eight subscribed, 500-event session histories: p95 < 2 ms, with zero notifications to the seven unrelated sessions.
-- `buildSessionToolCalls` across the capped 2,000 tool rows and 4,000 progress rows: p95 < 50 ms.
-- `buildFileTree` across 10,000 files: < 75 ms.
-- `searchFilePaths` across 10,000 paths: p95 < 25 ms.
-- `parseUnifiedDiff` across a 500-hunk diff: p95 < 20 ms.
+Reads take a pooled read-only connection ([`read_connection`](../src-tauri/crates/argmax-store/src/database.rs)), not the single writer. WAL exists so readers and a writer can run at once, and one shared mutex threw that away. A read during a 400 ms write took 349 ms through the writer and 0.63 ms through the pool.
 
-Measured 2026-09-05 on those fixtures: removing the per-tool progress scan cut
-`buildSessionToolCalls` p95 from 41.39 ms to 5.18 ms. Skipping empty event merges
-cut the 5,000-event poll from 0.153 ms to 0.0024 ms. These isolate renderer
-transformations, not whole-app CPU usage.
+- Readers open `SQLITE_OPEN_READ_ONLY`, so a write through the read path fails loudly.
+- In-memory databases have no pool, because a second handle would open a different database.
+- The pool caps simultaneous readers, so extra reads wait for a lease instead of opening unbounded page caches.
 
-On the same date, eight 500-event sessions receiving one session's stream took
-0.604 ms p95 for the shared merge plus eight pane filters, versus 0.073 ms for
-the session store, about 8.3 times faster. The seven unrelated subscriptions
-received no notifications.
+## Push payloads
 
-## Usage Scan
+`Emitter::emit` renders the payload into a JS source string and evals it, so it has no large-payload path. Transcript writes therefore push session ids, and subscribed clients pull the durable revision feed. Metadata writes push one invalidation.
 
-The Usage page's transcript sweep ([usage/scanner.rs](../src-tauri/src/usage/scanner.rs))
-is incremental, so only the first sweep is expensive. Measured 2026-09-03 on
-a release build over this machine's 90-day window (5,235 transcripts, about
-2 GB of JSONL): cold sweep 25 s, run in the background with progress on the
-page; warm sweep 0.2 s, run inline on every `usage:summary`. A warm sweep
-must stay well under a second, since the page refreshes every 60 s while open.
+`dashboard:delta` delivery is bounded by item count and serialized size. Overflow discards the queued window and emits one `resyncRequired` marker. The worker awaits an acknowledgement from each main-thread closure, leaving at most one scheduled emit outside those bounds.
 
-## Main Thread
+Remote clients read through `dashboard:changes` ([dashboard_changes.rs](../src-tauri/src/remote/dashboard_changes.rs)). The host keeps recent snapshots by digest and answers with what changed. A one-chat change on a 206-chat profile is about 1 KB instead of 684 KB, which matters to a phone on cellular. Large frames are raw DEFLATE ([ws.rs](../src-tauri/src/remote/ws.rs)).
 
-Tauri resolves a synchronous `#[tauri::command]` body inline on the macOS main
-thread, so anything it blocks on freezes the window rather than just that
-channel. The `async` flag is not the fix — it is `tokio::spawn`, which parks a
-worker shared with provider IO, the remote bridge, and the `dashboard:delta`
-emit loop. Blocking work goes through
-[`read_off_main`](../src-tauri/src/ipc/mod.rs) (`spawn_blocking`).
+Terminal output has its own bounded channel. PTY reader threads apply lossless backpressure when it fills. The exit watcher drains the reader until a quiet period, so `terminal:exit` cannot overtake final output or wait forever for a descendant holding the PTY slave.
 
-`npm run check:main-thread` enforces this: every synchronous handler must be
-named in `MAIN_THREAD_ALLOWLIST` in
-[scripts/check-main-thread-handlers.mjs](../scripts/check-main-thread-handlers.mjs)
-with a reason, and the list fails if it goes stale.
+## Animated properties
 
-Measured on the release build against a 272 MB database (30 projects / 200
-workspaces / 213 sessions): `dashboard:list` 4.3 ms, `workspace:status` over all
-workspaces 4.0 ms, scoped to one workspace 0.2 ms. `refresh()` runs on
-`visibilitychange`, so before this the unscoped read cost that on every window
-focus. Benchmark through the remote bridge, which reaches the same `*_impl`
-functions. A debug build is ~5.5x slower across the board — measure release
-before quoting a number.
+Idle renderer CPU depends on which property an animation drives, not on how many animations run. `transform` and `opacity` are composited, and everything else re-rasters its layer every frame. One 7px dot animating `box-shadow` cost about 5% of a core.
 
-## Database Reads
+**Anything new that loops forever must animate `transform` or `opacity` on an HTML element or its pseudo-elements.** WebKit's legacy SVG renderer has no accelerated compositing (checked 2026-07), so an SVG `<circle>` animating `transform` still re-rasters. The working nest is `<span>`s for this reason ([WorkingNest.tsx](../src/renderer/components/WorkingNest.tsx)).
 
-Reads take a pooled read-only connection
-([`Database::read_connection`](../src-tauri/src/persistence/database.rs)), not
-the single writer `Mutex<Connection>`. WAL exists so readers and a writer can
-run at once, and one shared mutex threw that away: a read issued during a 400 ms
-write transaction took 349 ms through the writer and takes 0.63 ms through the
-pool. That gap is why a `VACUUM` or one slow transaction used to freeze every
-panel at once.
+Two deliberate exceptions exist:
 
-Readers are opened `SQLITE_OPEN_READ_ONLY`, so routing a write through the read
-path fails loudly instead of silently taking the wrong lock. In-memory databases
-have no pool — a second handle would open a different database — and fall back
-to the writer.
+- `skeleton-shimmer` (`background-position`) runs only while a review loads.
+- The reading wave paints a gradient through text, so it runs only on a line whose work is running. Promoting the text to its own layer would composite it, but puts it on a different pixel phase on a resampled display.
 
-The pool admits at most four simultaneous readers. Extra reads wait for a
-lease instead of opening an unbounded set of SQLite page caches and competing
-scans. Settings → Advanced → Performance reports current and peak readers,
-opened connections, failures, and cumulative and longest waits. The cap covers
-the webview, remote bridge, and a background read without serializing normal
-interactive work.
+Motion stops while the document is hidden: `windowChrome` mirrors visibility onto the root, and [motion.css](../src/renderer/styles/motion.css) pauses on it.
 
-The performance recorder reports wait counts and wait time as per-sample
-deltas. This makes a burst line up with CPU, output, and active-chat pressure
-without repeatedly querying the database.
+## Background battery
 
-## Push Payloads
+JS loops that CSS pausing cannot reach check `document.hidden` themselves.
 
-`Emitter::emit` renders the payload into a JS source string and evals it; unlike
-`ipc::Channel` it has no large-payload `fetch` path. Transcript writes therefore
-push session ids and let subscribed clients pull the durable revision feed;
-metadata writes push one invalidation for a coherent dashboard snapshot.
-`dashboard:delta` delivery is bounded to 512 queued items and 4 MiB measured by
-actual JSON serialization, while each conflated main-thread payload targets
-256 KiB. Overflow discards the incomplete queued window and emits one
-`resyncRequired` marker. The worker awaits an acknowledgement from each
-main-thread closure, leaving at most one scheduled emit outside those bounds.
+- [EffortPixelField](../src/renderer/components/EffortPixelField.tsx) parks its rAF loop while hidden.
+- [TurnExhale](../src/renderer/components/TurnExhale.tsx) is mounted only during its sweep, and a hidden document skips the sweep.
+- The chat typewriter runs on the animation frame and catches up silently on return. Pausing made every finished bubble type out together. All revealing blocks share one frame loop, so React batches them into one render per frame.
+- The open-agent poll in [AgentActivity](../src/renderer/components/AgentActivity.tsx) runs only for the shown tab. A tab shown again reloads, because Codex and Cursor child traces are imported by that read.
 
-Metadata invalidations coalesce for 100 ms, with one read in flight. Remote
-clients read that snapshot through `dashboard:changes`
-([dashboard_changes.rs](../src-tauri/src/remote/dashboard_changes.rs)) when the
-host advertises it: the host keeps the last four snapshots it answered by
-SHA-256 digest and answers a client that names one with the id-keyed rows that
-changed, the ids that left, the id order when it moved, and any other
-top-level value that changed. An unknown or aged-out base gets the whole
-snapshot. A one-chat change on the 206-chat profile is about 1 KB instead of
-684 KB, which is the difference between a phone on cellular spending a few
-kilobytes or several megabytes a minute while a Mac is busy.
+A post-commit push hint asks the subscribed timeline to read its durable feed. The selected running session also uses a polling fallback. See [runtime](runtime.md#event-delivery).
 
-A remote client that asks at authentication gets every frame of 16 KiB or more
-as raw DEFLATE in a binary message (`outbound_message` in
-[ws.rs](../src-tauri/src/remote/ws.rs)). Over 25 real transcript pages the JSON
-went from 7.1 MB to 1.3 MB (5.6x) and the 206-chat dashboard from 684 KB to
-144 KB, at about 16 ms per MB of level-6 deflate (Node's zlib on the same
-Mac). Against the dev instance the phone's large frames went from 459 KB to
-108 KB and inflating each cost 0-2 ms on the phone's socket actor. Transcript
-reads remain immediate and use change revisions, including in-place updates and
-deletions. On a private copy of a 179,092-event database, a debug build read the
-initial 500-event tail with its revision in 9 ms. The change feed adds work to
-writes: the synthetic 20,000-update debug fixture measured about 7.3 microseconds
-per update above the old path, while atomic 500-event reads added 3.5%.
+## Transcript size
 
-Terminal output uses a separate 64-item bounded channel. Dedicated PTY reader
-threads apply lossless backpressure when it fills, then the worker concatenates
-chunks per terminal up to `MAX_CONFLATED_TERMINAL_BYTES` (256 KiB) before a
-single acknowledged main-thread emit. The exit watcher joins the reader after
-the child closes, draining every kernel-ready byte until a 100 ms quiet period,
-so `terminal:exit` cannot overtake final output or wait indefinitely for a
-descendant that inherited the PTY slave.
+[SessionTimelines](../src/renderer/lib/sessionTimelines.ts) retains transcripts per session, with caps. Late reads cannot restore an evicted history, and live pushes take precedence over stale copies. Dashboard metadata holds no second copy.
 
-## Animated Properties
+[SessionConversation](../src/renderer/components/SessionConversation.tsx) mounts nested tail windows (`CONVERSATION_WINDOW`, then per-turn and per-group limits), each with a Show earlier control. The nesting matters for a provider that keeps one turn open for hours. Without it, one long turn re-reconciled thousands of subtrees on every delta.
 
-Idle renderer CPU is dominated by *which property* an animation drives, not how
-many animations there are. `transform` and `opacity` are composited; everything
-else re-rasters the layer the element sits in, every frame, for as long as the
-animation runs.
+The outer window fills after the first paint. An opened chat mounts its last `FIRST_PAINT_ITEMS` items, and each later frame mounts `MOUNT_GROWTH_STEP` more above them, in a transition, until the window is full. Following places the latest prompt at the top of the viewport, so the first frame shows all that the reader can see. The restore window (`data-restoring`) stays open until the fill ends, so rows that mount late do not play their entrance motion. Rules for the fill:
 
-Measured with the window visible and no session running: the launcher's 7px
-status dot animated `box-shadow` and cost ~5% of a CPU core on its own — more
-than every other animation in the app combined (8.8% total → 3.8% with just
-`launcher.css` paused → 4.1% after moving the pulse to a composited
-pseudo-element ring). Pausing *all* animations reaches 0.0%, so the remainder is
-spread thinly across the composited ones.
+- It waits until no wheel, key, touch, or scrollbar input has arrived for 150 ms. Each step makes the scroll controller correct `scrollTop`, and in WebKit a write in the middle of a momentum scroll stops the scroll or moves the view back.
+- Show earlier counts only the items outside the full window. A click during the fill mounts the rest of the window and nothing more.
+- A failed history load ends the fill, as a finished backfill does.
 
-`transform`/`opacity` is necessary but not sufficient — the element also has to
-be an HTML box. WebKit's legacy SVG renderer has no accelerated compositing at
-all (the layer tree does not know SVG exists; the Layer-Based SVG Engine that
-fixes it is still not default-on as of 2026-07), so an SVG `<circle>` animating
-`transform` re-rasters every frame exactly like animating `fill` does. The
-working nest was SVG for that reason and is now absolutely-positioned `<span>`s
-([WorkingNest.tsx](../src/renderer/components/WorkingNest.tsx)), which is what
-makes it affordable to run one per visible row.
+Once the reader scrolls away, [useStableTailWindow](../src/renderer/hooks/useStableTailWindow.ts) keeps the mounted ids. Windows read the follow state instead of taking it as a prop, so scrolling renders none of them. The first upward wheel notch on a 98-turn chat went from about 1,500 committed components to one. Wheel easing writes `scrollTop` every frame ([chat-cards.md](chat-cards.md#follow-scroll)), so any main-thread work during a scroll shows as a stutter.
 
-One keyframe still drives a non-composited property, deliberately:
-`skeleton-shimmer` (`background-position`), which only runs while a review is
-loading. The `nest` style's two-tone hand-off used to animate `background`,
-repainting every dot of every running row each frame. Its colours are now two
-`::before`/`::after` layers over the dot's rest fill that only fade, on the same
-keyframe stops and easings as the dot's scale, so the relay adds no DOM
-elements and runs on the compositor. The layers' animations are pseudo-element
-animations, so `WorkingNest` anchors them with `getAnimations({ subtree: true })`.
-Measured 2026-09-16 in a native WKWebView with 80 running 14px nests: the
-`background` relay cost 6.3 CPU-s of WebContent plus 1.2 CPU-s of the GPU
-process per 8 s; the layered relay cost 0.0 in both, with all three animations
-confirmed running.
-Anything new that loops forever should animate `transform`/`opacity` on an HTML
-element or its pseudo-elements.
+Caches are bounded for panes that stay mounted:
 
-The reading wave ([reading-wave.css](../src/renderer/styles/reading-wave.css)) is
-the deliberate exception on a live surface: its band is a gradient painted through
-the text, so each frame repaints the words it covers. It runs only on a line whose
-work is running. Measured 2026-09-17 in a native WKWebView over 8 s: one waving
-line cost 0.3 CPU-s of WebContent plus 0.3 of the GPU process, five cost 0.5 +
-0.7, eighty cost 1.3 + 5.2; the same text without the wave cost 0.0. Promoting
-the text to its own layer would composite it, but puts it on a different pixel
-phase from its row on a resampled display.
+- Settled Markdown parses are kept by text in [StreamingMarkdown](../src/renderer/components/StreamingMarkdown.tsx).
+- Highlighted fences are kept in [highlighter.ts](../src/renderer/lib/highlighter.ts). A fence still being written is not kept, because its prefixes are never asked for again.
+- A fence not in cache paints plain and asks for its colors with `requestHighlight`. Tokenizing inside the first render made a 312 ms longest task.
+- Diff hunks highlight off the render path ([diffHighlight.ts](../src/renderer/lib/diffHighlight.ts)). Each side of a hunk is one request, so a string spanning lines colors correctly.
+- Diff previews, closed file previews, and composer file trees have per-pane limits. A failed preload retries. Oversized diffs stay viewable without being cached.
 
-Renderer CPU does not depend on the Rust build profile; the release build idles
-at 3.2% with no session running, matching the debug measurement.
+The focused desktop pane warms its file list and first diff. Closed background panes defer Git reads.
 
-Motion also stops entirely while the document is hidden — `windowChrome` mirrors
-visibility onto the root element and [motion.css](../src/renderer/styles/motion.css)
-pauses on it, so a backgrounded window draws nothing.
+## Chat switch
 
-## Background Battery
+Selecting a chat remounts its whole pane, so every read the pane makes on mount runs again on every switch. Reads whose reply has a known staleness signal are kept across the remount in [retainedReads.ts](../src/renderer/data/retainedReads.ts), the one renderer home for this. `useBridgeQuery` takes `retain` for it. A kept reply is keyed by what it depends on, and a dashboard resync drops every entry. A read still in flight when its entry would be dropped is not kept, and a failed read is never kept:
 
-JS loops that CSS pausing cannot reach check `document.hidden` themselves:
+| Read | Dropped when |
+|---|---|
+| `review:list-changed-files` | The workspace's changed-files count, state or last activity moves (the key; a turn's end advances the activity), or a review action refreshes the list. Edits outside a turn that keep the count are not seen until it moves. A visible Changes list still revalidates on mount, and a closed one waits until it opens. Project and project-folder sources have no change signal and are not kept. |
+| `checkpoints:list` | The session state or the workspace's last activity moves (the key). |
+| `goals:get` | A delta carries `goalChangedIds`. |
+| `session:fork-lineage`, `projects:get-folders` | A delta carries `dashboardChanged`. An explicit refresh also re-reads folders. |
+| `providers:discover` | Never. Rust caches discovery until a forced refresh, and a forced refresh lands under the same key. |
 
-- [EffortPixelField](../src/renderer/components/EffortPixelField.tsx) (effort
-  slider canvas) paints at ~30 fps instead of 60. Decorative flow is
-  indistinguishable there at half the per-cell noise cost, and its rAF loop
-  parks while hidden and restarts on `visibilitychange`.
-- [TurnExhale](../src/renderer/components/TurnExhale.tsx) (the optional PR milestone sweep)
-  never runs while hidden: it is mounted only for the ~1s of its own sweep, and
-  a hidden document skips the sweep outright rather than queueing one. A settled
-  transcript of two hundred turns paints nothing and schedules no frames.
-- The chat typewriter ([StreamingMarkdown](../src/renderer/components/StreamingMarkdown.tsx))
-  runs on the animation frame, so a hidden window schedules nothing, and it
-  catches up silently when it returns instead of pausing the prefix: a
-  backgrounded live turn can land several finished bubbles, and holding them
-  at character zero made them all type out together on return. Every revealing
-  block shares one frame loop, started by the first and cancelled with the
-  last, so React batches all of their advances into one render per frame, and
-  a block renders only when its reveal crosses into a new word. Only the open
-  Markdown block re-parses per render ([chat-cards.md](chat-cards.md)), which
-  took a 6,300-character replayed Claude turn from 9.9 ms of script per
-  visible update to 3.9 ms while updating 2.4 times as often (total script
-  2.8 s → 2.4 s). The fresh-run fade on top of it animates opacity only, on
-  the handful of spans still fading; nothing under them repaints.
-- The 1.5 s open-agent poll in
-  [AgentActivity](../src/renderer/components/AgentActivity.tsx) runs only for
-  the Agents dock tab that is shown, and still skips ticks while the document is
-  hidden. Every open tab loads once on mount. A tab that stopped polling a live
-  run while another tab was shown reloads the moment it is shown again, since
-  Codex and Cursor child traces are imported by that read and a run that
-  finished out of sight would otherwise keep its last load. The dock itself
-  unmounts when the review panel leaves Agents mode or the phone overlay
-  closes, so no poll outlives it. General session tails have no interval. A post-commit push
-  hint asks the subscribed timeline to read its durable revision feed. The
-  visibility-change refresh backfills the selected session on return. Hidden
-  windows stop interval work, while push hints can still trigger bounded
-  durable-feed reads.
+Other per-switch work:
 
-## Transcript Size
+- `prs:refresh` publishes only the workspace rows it changed. An unchanged publish still set `dashboardChanged`, so every switch re-read the full dashboard (`dashboard:list` and `approvals:pending`).
+- The open-time PR refresh waits until the chat has stayed open for `SETTLE_MS` ([chatOpenSettle.ts](../src/renderer/lib/chatOpenSettle.ts)), like the follow-up suggestion, and skips a session and branch refreshed less than one poller tick (60 s) ago.
+- Shiki uses precompiled grammars with the raw JavaScript engine. The first TypeScript fence of an app run was a 786 ms task; precompiled, it was about 466 ms (one sample each, same chat). The grammars are `v`-flag regex literals, so WebKit older than Safari 17 keeps the runtime-translated grammars. The worker makes the same check.
+- Shiki runs in a module worker. The main thread sends each fence, or each side of a diff hunk, as one whole request and gets token lines back. Because a request is a whole block, no grammar state crosses calls. Requests are cancelled when their block unmounts, and a streaming fence replaces its request on each throttle tick. If the worker cannot start, fails to load, or fails to create Shiki, its open requests move to the main thread. There they run 200 lines per step, in 6 ms slices, and carry the grammar state between steps.
 
-[SessionTimelines](../src/renderer/lib/sessionTimelines.ts) retains transcripts and
-cursors per session. Each subscribed session has independent event caps and 100
-raw-output rows. At most 12 inactive histories remain cached. Late reads cannot
-restore an evicted or removed history, and live pushes received during a read
-take precedence over stale copies in its response. Dashboard metadata contains
-no second copy of these arrays.
+Measured 2026-11-13 with `npm run bench:latency -- --build --only navigation --scenarios session.switch --n 12` (release build, copied profile; another bench ran on the machine during the baseline). Milliseconds, p50 / p95:
 
-[canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts) caches each
-persisted row's typed classification in a `WeakMap`. Conversation projections
-reuse that classification without retaining rows after timeline eviction or
-serializing large message and tool bodies into the cache.
+| Scenario | n | Painted | Settled | Max frame gap p95 | IPC |
+|---|---|---|---|---|---|
+| First visit, before | 12 | 66 / 112 | 614 / 1,304 | 858 | 15.3 |
+| First visit, after | 12 | 70 / 277 | 418 / 917 | 474 | 10 |
+| Revisit, before | 24 | 78 / 92 | 385 / 419 | 56 | 12 |
+| Revisit, after | 24 | 65 / 72 | 47 / 51 | 46 | 2 |
+| 12k-event chat, before | 12 | 298 / 323 | 379 / 576 | 272 | 13 |
+| 12k-event chat, after | 12 | 288 / 306 | 287 / 306 | 243 | 3 |
 
-[SessionConversation](../src/renderer/components/SessionConversation.tsx) mounts
-the last `CONVERSATION_WINDOW` (120) render items and reveals the rest on
-request. That outer limit counts turns, so each turn also mounts only its last
-16 body rows. Expanded tool and mixed-activity groups mount 16 rows at a time,
-including nested agent activity. Each boundary has an explicit Show earlier
-control. Session sizes are heavily skewed, so these nested limits matter for a
-provider that keeps one turn open for hours instead of producing many turns.
-Without them, one long turn re-reconciled thousands of live subtrees on every
-streaming delta.
+With n = 12 the p95 is the slowest run. The first-visit painted p95 of 277 ms is one chat in two of three runs with precompiled grammars: the shorter grammar task can now land before that chat's second frame.
 
-While the reader follows live output, each window tracks the newest rows. Once
-the reader scrolls away from the bottom, [useStableTailWindow](../src/renderer/hooks/useStableTailWindow.ts)
-retains the mounted row ids until following resumes. New output therefore does
-not evict the reader's logical anchor just because a bounded tail moved. The
-windows read the follow state instead of taking it as a prop, so scrolling
-away or back renders none of them. Measured 2026-09-16 on a 98-turn chat
-(dev React, headless Chrome, live data over the bridge): the first upward
-wheel notch committed about 1,500 components before, and one button after. Mouse-wheel easing
-([chat-cards.md](chat-cards.md#follow-scroll)) writes `scrollTop` from JS every
-frame, so any main-thread work during a scroll now shows as a stutter.
+The worker, measured 2026-11-13 with the same command and a temporary probe, removed afterwards. Milliseconds:
 
-Settled Markdown renders from a parse cache in
-[StreamingMarkdown](../src/renderer/components/StreamingMarkdown.tsx): the
-parsed element tree of a finished message (or a closed block of a live one)
-is kept by its text, 4 million source characters at most, so a chat reopened
-after a switch does not parse its history again. Measured 2026-09-23
-remounting 60 real answers (production build): 28 ms of script to 5 ms.
-Live text and fading blocks still parse per render.
-Highlighted code fences are kept the same way in
-[highlighter.ts](../src/renderer/lib/highlighter.ts), by theme, language, and
-source (2 million characters); a fence still being written is not kept, since
-its prefixes are never asked for again. Remounting 40 real answers with code:
-script 66 to 51 ms, paint-ready 144 to 120 ms. The rest is the first style and
-layout of the new DOM.
+| First visit | n | Painted p50 / p95 | Settled p50 / p95 | Max frame gap p95 | Longest highlight task on the main thread |
+|---|---|---|---|---|---|
+| Before, run 1 | 12 | 43 / 262 | 393 / 1,068 | 500 | not probed |
+| Before, run 2 | 12 | 61 / 81 | 408 / 1,192 | 472 | 457 (the first fence's job) |
+| Worker | 12 | 51 / 81 | 421 / 1,194 | 215 | under 1 (reply handler), 35 from reply to the second frame after it |
 
-A fence that is not in that cache paints plain and queues its highlight
-(`queueHighlight` in the same module): jobs run in the order fences mounted, 6
-ms at a time between frames. Before, once Shiki had loaded, every fence in a
-newly opened chat was tokenized inside its first render. Measured 2026-09-23
-opening 40 real answers with code: the longest task went from 312 ms to 102 ms
-(the Markdown render itself), and code finished coloring at about 160 ms instead
-of 396 ms.
+The first tokenization now takes 466 ms inside the worker. The one main-thread gap over 50 ms that the probe saw during highlighting (106 ms) had no worker reply in it, so it is not highlighting. Revisit and the 12k-event chat did not move (gap p95 62 → 47 and 249 → 234, inside run-to-run noise). With n = 12 the p95 is the slowest run. The bench profile has few fences, so a chat with many fences was not measured. Highlight colors are unchanged: the tokens and colors of a TypeScript, Rust, Markdown, and diff fixture match exactly in light and dark, and headless Chrome screenshots of it are pixel-identical. Release WKWebView serves the module worker over the custom protocol: the probe saw every request answered by the worker.
 
-The paced reveal cuts the source at a word or surrogate-pair boundary
-([streamingText.ts](../src/renderer/lib/streamingText.ts) `revealBoundary`),
-scanning at most one word from the reveal position, and slices the string
-once per render; it never builds a character array. Completed, unpaced, and
-reduced-motion blocks render the source text directly.
+Still open, measured with a temporary render probe:
 
-Usage and Activity prefetches share in-flight requests with visible panels.
-Each summary cache retains at most eight filter combinations, preserving the
-default view while evicting older alternatives. Failed requests can retry.
+- A first visit still makes about 10 calls: `session:events-since`, `goals:get`, `session:fork-lineage`, `checkpoints:list`, `projects:get-folders`, two `review:list-changed-files`, and `session:turn-painted`.
 
-The focused desktop pane warms its changed-file list and first diff. Closed
-background panes defer Git reads until focused or opened. Successful preloads
-are reused on opening, while failed preloads retry. Hosts with their own review
-screen, including mobile, do not warm the desktop diff. Diff previews retain
-at most 12 entries and 8 MiB of estimated UTF-16 text per pane, excluding the
-currently displayed diff. Oversized diffs remain viewable without being cached.
+### The 12k-event chat
 
-Diff hunks are highlighted off the render path
-([diffHighlight.ts](../src/renderer/lib/diffHighlight.ts)): each hunk is
-tokenized as its two sides (the new file's context and additions, the old
-file's context and deletions) in 200-line chunks that carry Shiki's grammar
-state, 6 ms at a time between frames, and a hunk re-renders only when its own
-lines gain colors. Lines paint plain until then. Measured 2026-09-23 on a real
-2,847-line diff of `App.tsx` (production build, headless Chrome): the longest
-main-thread task went from 760 ms to 109 ms (4x CPU throttle: 3,243 ms to
-254 ms), and what remains is the first render of the lines and Shiki's
-one-time grammar compile, not the tokenizing. Because a side is tokenized as
-one document, a string or comment spanning lines now colors correctly.
+A temporary probe in the real WKWebView showed what the switch frame held. The renderer held 1,012 of the chat's events, and its window mounted 111 items: about 8,500 nodes (55 turns, 126 tool groups, 729 SVG icons, 35 tables). Creating them was a 120–130 ms commit. Two more commits followed in the same frame, when the backfill landed and when the restore flag moved, and each spent about 30 ms on a forced relayout of the whole list. Paint itself was about 15 ms. Deriving the model was 2–3 ms.
 
-Workspace file inventories sort and deduplicate borrowed paths before creating
-owned entries, avoiding tree-node and duplicate string allocations while
-preserving sorted results.
+The fix mounts the last 8 items first and fills the window in steps of 8, one per frame ([Transcript size](#transcript-size)). The first commit is about 436 nodes and 12 ms. Four bench runs, n = 12 each, milliseconds p50 / p95. The last column is a plain revisit in the same app run, which shows how loaded the machine was:
 
-File browsing caches are bounded for panes that stay mounted for a long time.
-The Files view retains at most 12 closed previews per pane. Each file read is
-capped at 1 MiB of source content. Composer file autocomplete retains four
-source trees and re-fetches an older project or workspace after eviction.
+| Run | Painted | Settled | Max frame gap p95 | Revisit gap p95 |
+|---|---|---|---|---|
+| Before | 285 / 328 | 285 / 593 | 260 | 46 |
+| After | 52 / 54 | 386 / 410 | 37 | 33 |
+| Before, A/B pair | 292 / 319 | 292 / 319 | 261 | 74 |
+| After, A/B pair | 82 / 86 | 396 / 419 | 71 | 61 |
 
-## IPC Latency
+In the A/B pair the long chat's gap is at the level of a plain revisit, so the remaining long frame is the pane switch itself, not the transcript. Settled is later by design: the fill keeps the DOM changing for about 400 ms after the paint. Steps of 16 items measured a frame gap p95 of 59, and steps of 12 measured 45 to 73.
 
-### Browser panel
+Rejected or not tried:
 
-ResizeObserver and window-resize notifications share one bounds measurement per
-animation frame. Unchanged bounds skip the native call, while tab activation and
-overlay hiding remain immediate. The browser component tests exercise a burst
-of 100 resize events plus observer notifications: one measurement and native
-update, followed by no additional native update for unchanged geometry.
+- A smaller `CONVERSATION_WINDOW` (2026-09-23, about 10 %). The first frame still mounts many items, and Show earlier reveals less.
+- `content-visibility: auto` on turns. The first frame still creates every node. Turns above the viewport would get an estimated height, which the scroll controller would then have to correct while a detached reader scrolls up.
+- A virtualization library. The fill reaches the target with the existing follow and anchor controller, and a virtual list would replace that controller.
 
-Tab persistence runs after the interaction, coalesces changes, and excludes
-loading-only updates. Measured 2026-09-14 by running the previous and updated
-tab-store modules against an in-memory storage spy: a single burst of 100
-activation/title/loading updates across 1 / 10 / 30 tabs caused 299 / 390 / 370
-synchronous writes before, and zero synchronous writes plus one deferred write
-after. This isolates redundant serialization and write calls. It does not
-measure real disk latency, native tab-switch latency, or WebKit memory usage.
+## IPC
 
-### General bridge
+Timeline push hints trigger `session:events-since`, and no dashboard-wide poll exists ([runtime.md](runtime.md)). `session:agent-events` runs only while a subagent tab is open.
 
-[src-tauri/src/util/ipc_latency.rs](../src-tauri/src/util/ipc_latency.rs) tracks latency histograms accessible in Settings → Diagnostics. Target p99 is < 100 ms.
+The budget measures what the user waits for: the renderer round trip from `invoke` to result, including serialization and async handler time. [tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) times every request/response call at one point and keeps the last 100 durations per channel ([ipcLatency.ts](../src/renderer/lib/ipcLatency.ts)). A rejected call counts. Read the numbers in Settings → Advanced → Performance (p50, p95, p99, max), in the debug panel IPC tab, or in automation with `window.__argmaxPerf?.ipc()`, which returns one row per channel, slowest p99 first. The Rust side keeps no latency registry. Handler time alone hides the cost of a large result.
 
-To prevent IPC bottlenecks:
-- General timeline push hints trigger `session:events-since`. There is no dashboard-wide poll; running sessions still pull their event tails at 250 ms (see [runtime.md](runtime.md)).
-- `session:agent-events` is only invoked when a subagent tab is open in a review panel's Agents view, bounded by `SESSION_AGENT_EVENT_SCAN_LIMIT` (2,000 rows).
+Browser bounds share one measurement per animation frame, and unchanged bounds skip the native call. Tab persistence runs after the interaction and excludes loading-only updates.
+
+## Turn waterfall
+
+Every turn a person starts records where its time goes between the send and the first painted answer, in the installed app too ([turn_waterfall.rs](../src-tauri/src/providers/turn_waterfall.rs)). A turn starts timing when `providers:launch` or `providers:send-input` reaches its handler (`ipc_received`, offset 0). The handler gets an origin token, and only the admit that carries that token opens the turn. A queued follow-up leaves no row, and queue drains, agent messages, and schedules carry no token, so they open none and cannot take a person's origin. The turn is keyed by session id and the `user.message` event id it answers.
+
+| Step | Taken at |
+|---|---|
+| `submit` | The composer's click, `Date.now()`, sent as `submittedAtMs`. Desktop window only; the remote bridge drops it. Negative. |
+| `ipc_received` | The IPC handler, before routing. |
+| `admitted` | Workspace admission and the checkout lock held (`launch.rs`, `input.rs`). |
+| `checkpoint_start`, `checkpoint_end` | Around `capture_before_provider_turn`. The capture runs beside the provider's startup, so these overlap `spawn` and `initialize_*` ([the gate](providers.md#the-pre-turn-checkpoint-gate)). |
+| `env_ready`, `spawn` | Claude: around `command.spawn()` in `claude_control.rs`. Other providers: `spawn` is the launcher returning a handle, which is after the prompt was sent. |
+| `initialize_sent`, `initialize_ack` | Claude's `initialize` control request flushed to stdin, and its `control_response`. |
+| `prompt_gate_waited` | The launch was ready for the prompt before the checkpoint ended; stamped when the checkpoint ended. Absent when the checkpoint finished first. Claude, Codex, OpenCode, and the ACP paths. |
+| `prompt_written` | Claude's first user message flushed to stdin: about `max(checkpoint_end, initialize_ack)`. |
+| `first_stdout` | Claude's first stdout line; for the other providers, the first stdout line the flush queue takes. Not stamped for typed PTY input, whose first output is the echo. |
+| `cli_init` | Claude's `system`/`init` message. |
+| `first_content` | The first assistant text or tool start parsed (`flush_queue.rs`). |
+| `first_persisted` | The writer transaction that holds it committed. |
+| `first_hint_emitted` | The first `dashboard:delta` for the session after that commit reached the webviews. |
+| `first_painted` | Two animation frames after the chat rendered the turn's first content (`useTurnPaintReport`), reported once through `session:turn-painted`. |
+
+Backend stamps are `Instant`s, in milliseconds from `ipc_received`. The two renderer stamps are epoch milliseconds, converted with the wall clock read at `ipc_received`. Only the first stamp of each step counts, and an ended turn takes no more. The streaming path stays lock-free: atomic counts of open turns gate every stamp, and a per-run gate skips a step once it is stamped, so a token with no open turn locks and allocates nothing. The turn closes on the paint report, on the next admitted send, or 5 s after any turn end, a stopped turn included. Typed PTY input closes at once, with no answer stamps. Closing logs one `turn waterfall` line with every offset and writes one `turn_waterfalls` row off the streaming path ([data.md](data.md#turn-waterfalls)). `session:turn-waterfalls` reads the newest rows, and Settings → Advanced → Performance shows the last 20.
+
+### Measured and not built: a warm Claude process
+
+Measured 2026-11-13 with the real Claude CLI (2.1.323, Haiku) in a release
+build, n=4 per case, after the checkpoint started overlapping CLI startup. A
+follow-up writes its prompt 519 ms after the IPC call (was 868), and the CLI
+startup still showing past the checkpoint is 18-43 ms. Keeping the process
+alive after a turn could save only that, against about 400 MB per idle process
+and stale-config eviction across model, permission, MCP preset, move and fork.
+For new chats the checkpoint itself is the gate (about 930 ms while the CLI
+boots beside it), so prewarming the CLI would not help either. Revisit only if
+a waterfall shows `initialize_ack` well past `checkpoint_end`.
+
+### The checkpoint gate
+
+Measured 2026-11-13 with `npm run bench:latency -- --only send --n 5` in a
+release build with the scripted Claude fixture, before and after back to back
+on a quiet machine (10 turns per run: 5 new chats and 5 follow-ups, all on the
+project checkout). The capture is described in
+[providers.md](providers.md#the-pre-turn-checkpoint-gate).
+
+| Repo | `checkpoint_end` p50 / p95, before | After |
+|---|---|---|
+| argmax (1.9k files) | 252 / 294 ms | 84 / 144 ms |
+| mentos (16k files) | 342 / 449 ms | 75 / 101 ms |
+
+The fixture writes no files, so after the first capture every turn reuses the
+last capture's trees: 2 git processes (`status`, `update-ref --stdin`), against
+13 before. A capture with no record and an edited file, timed alone, went from
+134 to 53 ms on argmax and from 322 to 132 ms on mentos, with identical trees.
+`status` is now the floor: about 7 ms alone on argmax and 68 ms on mentos, and
+60-200 ms in the app, where it shares the machine with the CLI boot, the turn
+mark, and the review refresh (about 20 more git processes at turn start).
+
+Reuse cannot see a change that moves the tree `add` writes without moving
+status or a stat. Such changes are `.git/info/attributes`, `core.autocrlf`,
+and filter configuration changed while the app runs. The next capture that
+is not reused picks the change up.
+
+Measured and not taken:
+
+- **Zero git processes on reuse.** It needs the watcher to prove nothing
+  changed, and FSEvents gives no delivery barrier for a write made just before
+  the capture. `status` is the proof instead.
+- **`core.untrackedCache`, `core.fsmonitor`.** Both store their state in the
+  real index or a daemon. Argmax reads with `GIT_OPTIONAL_LOCKS=0` and forces
+  `core.fsmonitor=false`, so neither can help a read.
+- **Sharing the turn mark's snapshot.** The measured-diff mark marks the same
+  boundary with 4 git processes, and equals the checkpoint's worktree tree
+  whenever no force-staged ignored file was dropped. Sharing it means threading
+  the mark through the launch task; not built while the gate is under 100 ms.
 
 ## Native iOS
 
-[iOS performance and recovery](ios-performance.md) describes native caches,
-preloading, background preparation, mutation recovery, and the
-`ArgmaxPerformance` benchmark scheme. Use its physical-device checks for phone
-latency and scrolling claims. The web viewport probe does not measure the
-native transcript.
+[iOS performance and recovery](ios-performance.md) covers native caches and benchmarks. The web viewport probe does not measure the native transcript.

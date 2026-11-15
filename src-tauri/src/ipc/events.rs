@@ -2,13 +2,7 @@
 use serde::Serialize;
 use specta::Type;
 
-#[derive(Clone, Serialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalAgentOpenEvent {
-    pub terminal_id: String,
-    pub workspace_id: String,
-    pub command: Option<String>,
-}
+use crate::terminal::TerminalAgentOpenEvent;
 
 /// A type-level channel map. Clients index it by channel instead of choosing
 /// an unrelated payload type at each subscription.
@@ -33,11 +27,11 @@ pub struct PushPayloads {
     #[serde(rename = "window-snapshot:failed")]
     pub window_snapshot_failed: crate::window_snapshot::SnapshotFailure,
     #[serde(rename = "browser:state")]
-    pub browser_state: super::browser::BrowserStateEvent,
+    pub browser_state: crate::browser::tabs::BrowserStateEvent,
     #[serde(rename = "browser:new-tab")]
-    pub browser_new_tab: super::browser::BrowserNewTabEvent,
+    pub browser_new_tab: crate::browser::tabs::BrowserNewTabEvent,
     #[serde(rename = "browser:page-command")]
-    pub browser_page_command: super::browser::BrowserPageCommandEvent,
+    pub browser_page_command: crate::browser::tabs::BrowserPageCommandEvent,
     #[serde(rename = "browser:tabs")]
     pub browser_tabs: crate::browser::registry::BrowserTabsEvent,
     #[serde(rename = "browser:agent-open")]

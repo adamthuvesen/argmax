@@ -7,7 +7,7 @@ import {
   useState,
   type CSSProperties,
   type JSX,
-  type MouseEvent
+  type MouseEvent,
 } from "react";
 import { buildFileTree, type TreeNode } from "../lib/fileTree.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
@@ -50,13 +50,13 @@ const STATUS_GLYPH: Record<ChangeStatus, JSX.Element> = {
     <svg viewBox="0 0 7 7" aria-hidden="true">
       <path d="M1 3.5h5" />
     </svg>
-  )
+  ),
 };
 
 const STATUS_WORD: Record<ChangeStatus, string> = {
   added: "Added",
   modified: "Modified",
-  deleted: "Deleted"
+  deleted: "Deleted",
 };
 
 /** A directory chain folded into one row, so `src` › `renderer` › `components`
@@ -95,7 +95,7 @@ function compactNode(node: TreeNode): CompactNode {
     path: tail.path,
     label: segments.join("/"),
     kind: "dir",
-    children: tail.children.map(compactNode)
+    children: tail.children.map(compactNode),
   };
 }
 
@@ -141,7 +141,7 @@ export function ChangesTree({
   selectedPath,
   onSelectFile,
   onRefresh,
-  onOpenInFiles
+  onOpenInFiles,
 }: ChangesTreeProps): JSX.Element {
   // Folded rather than expanded folders: a changed set is small and the point
   // of the panel is seeing the files, so everything starts open and stays open
@@ -150,7 +150,7 @@ export function ChangesTree({
 
   const roots = useMemo(
     () => buildFileTree(files.map((file) => ({ path: file.path }))).children.map(compactNode),
-    [files]
+    [files],
   );
   const summaries = useMemo(() => new Map(files.map((file) => [file.path, file])), [files]);
   const dirPaths = useMemo(() => collectDirPaths(roots, []), [roots]);
@@ -230,7 +230,7 @@ export function ChangesTree({
               onSelectFile={onSelectFile}
               onOpenInFiles={onOpenInFiles}
             />
-          )
+          ),
         )}
       </div>
     </div>
@@ -240,7 +240,7 @@ export function ChangesTree({
 function rowIndent(depth: number): CSSProperties {
   return {
     paddingLeft: INDENT_BASE + depth * INDENT_STEP,
-    height: ROW_HEIGHT
+    height: ROW_HEIGHT,
   };
 }
 
@@ -248,7 +248,7 @@ function DirRow({
   node,
   depth,
   open,
-  onToggle
+  onToggle,
 }: {
   node: CompactNode;
   depth: number;
@@ -269,7 +269,11 @@ function DirRow({
       onClick={() => onToggle(node.path)}
     >
       <ChevronRight size={12} className={`workspace-tree-chevron${open ? " expanded" : ""}`} />
-      <span className="workspace-tree-icon" title={`Folder icon for ${iconName}`} aria-hidden="true">
+      <span
+        className="workspace-tree-icon"
+        title={`Folder icon for ${iconName}`}
+        aria-hidden="true"
+      >
         <FolderIcon folderName={iconName} width={14} height={14} />
       </span>
       <span className="workspace-tree-label">{node.label}</span>
@@ -283,7 +287,7 @@ function FileRow({
   file,
   selected,
   onSelectFile,
-  onOpenInFiles
+  onOpenInFiles,
 }: {
   node: CompactNode;
   depth: number;
@@ -297,10 +301,12 @@ function FileRow({
   const title = statusTitle(file, status);
   // Actions sit beside the row button, not inside it: a button cannot nest, and
   // this keeps the status glyph on screen when they appear on hover.
-  const act = (run: () => void) => (event: MouseEvent): void => {
-    event.stopPropagation();
-    run();
-  };
+  const act =
+    (run: () => void) =>
+    (event: MouseEvent): void => {
+      event.stopPropagation();
+      run();
+    };
   return (
     <div className="changes-tree-row-shell">
       <button
@@ -315,7 +321,11 @@ function FileRow({
         onClick={() => onSelectFile(node.path)}
       >
         <span className="workspace-tree-chevron-spacer" aria-hidden="true" />
-        <span className="workspace-tree-icon" title={`File icon for ${node.label}`} aria-hidden="true">
+        <span
+          className="workspace-tree-icon"
+          title={`File icon for ${node.label}`}
+          aria-hidden="true"
+        >
           <FileIcon
             fileName={node.label}
             autoAssign
@@ -330,17 +340,25 @@ function FileRow({
       </button>
       <span className="changes-tree-row-end">
         <span className="changes-tree-actions">
-          {onOpenInFiles ? <button
-            type="button"
-            className="small-icon"
-            title={`Open ${file.path} in Files view`}
-            aria-label={`Open ${file.path} in Files view`}
-            onClick={act(() => onOpenInFiles?.(file.path))}
-          >
-            <FolderOpen size={13} aria-hidden="true" />
-          </button> : null}
+          {onOpenInFiles ? (
+            <button
+              type="button"
+              className="small-icon"
+              title={`Open ${file.path} in Files view`}
+              aria-label={`Open ${file.path} in Files view`}
+              onClick={act(() => onOpenInFiles?.(file.path))}
+            >
+              <FolderOpen size={13} aria-hidden="true" />
+            </button>
+          ) : null}
         </span>
-        <span className="changes-tree-status" data-status={status} role="img" aria-label={title} title={title}>
+        <span
+          className="changes-tree-status"
+          data-status={status}
+          role="img"
+          aria-label={title}
+          title={title}
+        >
           {STATUS_GLYPH[status]}
         </span>
       </span>

@@ -4,7 +4,7 @@ import {
   ACCENT_STORAGE_KEY,
   DEFAULT_ACCENT_ID,
   readStoredAccent,
-  writeStoredAccent
+  writeStoredAccent,
 } from "./accent.js";
 
 afterEach(() => {

@@ -15,22 +15,34 @@ export function UsageSkeleton(): JSX.Element {
   return (
     <div className="usage-skeleton" role="status" aria-busy="true" aria-label="Loading usage">
       <div className="usage-skeleton-fold">
-        <span className="loading-block usage-skeleton-total" />
+        <span data-testid="loading-block" className="loading-block usage-skeleton-total" />
         <div className="usage-skeleton-tiles">
           {TILE_KEYS.map((key) => (
-            <span key={key} className="loading-block usage-skeleton-tile" />
+            <span
+              key={key}
+              data-testid="loading-block"
+              className="loading-block usage-skeleton-tile"
+            />
           ))}
         </div>
       </div>
-      <span className="loading-block usage-skeleton-chart" />
+      <span data-testid="loading-block" className="loading-block usage-skeleton-chart" />
       <div className="usage-skeleton-flow">
         {FLOW_KEYS.map((key) => (
-          <span key={key} className="loading-block usage-skeleton-flow-part" />
+          <span
+            key={key}
+            data-testid="loading-block"
+            className="loading-block usage-skeleton-flow-part"
+          />
         ))}
       </div>
       <div className="usage-skeleton-table">
         {TABLE_KEYS.map((key) => (
-          <span key={key} className="loading-block usage-skeleton-table-row" />
+          <span
+            key={key}
+            data-testid="loading-block"
+            className="loading-block usage-skeleton-table-row"
+          />
         ))}
       </div>
     </div>

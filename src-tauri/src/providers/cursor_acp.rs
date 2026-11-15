@@ -40,7 +40,7 @@ use super::acp::{
     AcpQuestionHandler, AcpQuestionRequest,
 };
 use super::adapters::cursor_fast_mode;
-use super::environment::build_provider_environment;
+use super::model_catalogue::catalogue_model;
 use super::normalizer::todo::is_todo_tool;
 use super::normalizer::ProviderOutputStream;
 use super::runtime::{
@@ -48,17 +48,19 @@ use super::runtime::{
 };
 use super::subagent_trace::cursor_project_slug;
 use super::unified_diff::{unified_diff, DEFAULT_CONTEXT};
-#[cfg(test)]
-use super::AgentMode;
-use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort};
+use super::{mcp_injection, prompt_gate::PromptGate, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::time::now_iso;
 use crate::questions::service::{typed_answer_text, QuestionService};
 use crate::session_control::SessionLaunchProcessConfig;
 #[cfg(test)]
 use crate::session_control::SESSION_LAUNCH_TOKEN_ENV;
-use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+#[cfg(test)]
+use argmax_contracts::validation::AgentMode;
+use argmax_contracts::validation::{PermissionMode, ProviderId, ReasoningEffort};
+use argmax_process::environment::build_provider_environment;
+use argmax_store::sync::LockOrRecover;
+use argmax_store::time::now_iso;
 
 /// How long `terminate` waits for a cancelled prompt to resolve before giving
 /// up. The warm process is never killed on turn termination.
@@ -346,6 +348,7 @@ impl CursorAcpSessions {
     /// ACP process, spawning and initializing it first if needed. Any error
     /// here leaves the pool consistent and the caller falls back to the
     /// one-shot path.
+    #[allow(clippy::too_many_arguments)]
     pub async fn launch_turn_with_approvals(
         &self,
         binary_path: &str,
@@ -354,6 +357,7 @@ impl CursorAcpSessions {
         approvals: Option<Arc<ApprovalService>>,
         questions: Option<Arc<QuestionService>>,
         on_event: EventCallback,
+        prompt_gate: &PromptGate,
     ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
         let provider_environment =
             build_provider_environment([("NO_COLOR".to_string(), "1".to_string())]);
@@ -468,7 +472,9 @@ impl CursorAcpSessions {
         // session keeps whatever mode the previous turn left it in, so setting
         // it only at session/new made Plan a one-way door and left a resumed
         // session ignoring the toggle entirely.
-        if let Err(error) = client
+        // The session is ready while the checkpoint finishes; the prompt
+        // that `spawn_turn` sends waits for it.
+        let ready = client
             .request(
                 "session/set_mode",
                 json!({
@@ -477,7 +483,12 @@ impl CursorAcpSessions {
                 }),
             )
             .await
-        {
+            .map(|_| ());
+        let ready = match ready {
+            Ok(()) => prompt_gate.wait_before_prompt(&input.session_id).await,
+            Err(error) => Err(error),
+        };
+        if let Err(error) = ready {
             // No turn task will run to clear the context this invocation just
             // installed, so drop it here unless a newer turn already replaced it.
             let mut contexts = workspace
@@ -782,21 +793,13 @@ fn cursor_model_matches(advertised: &str, input: &ProviderLaunchInput) -> bool {
 /// there, and Cursor advertises one `optimize_for` value regardless of which
 /// one the catalog entry names.
 fn cursor_acp_family(model_id: &str) -> Option<&str> {
-    match model_id {
-        "composer-2.5" => Some("composer-2.5"),
-        "grok-4.7-medium" => Some("grok-4.7"),
-        "cursor-grok-4.6-medium" => Some("grok-4.6"),
-        "cursor-grok-4.5-medium" => Some("grok-4.5"),
-        "gemini-3.8-flash-medium" => Some("gemini-3.8-flash"),
-        "gpt-5.6-sol-medium" => Some("gpt-5.6-sol"),
-        "gpt-5.6-terra-medium" => Some("gpt-5.6-terra"),
-        "gpt-5.6-luna-medium" => Some("gpt-5.6-luna"),
-        "claude-opus-5-thinking-medium" => Some("claude-opus-5"),
-        "claude-opus-5-5-medium" => Some("claude-opus-5-5"),
-        "claude-sonnet-5-5-medium" => Some("claude-sonnet-5-5"),
-        _ if model_id.starts_with("auto-smart[") => Some("auto-smart"),
-        _ => None,
+    catalogue_model(ProviderId::Cursor, model_id)?;
+    if model_id.starts_with("auto-smart[") {
+        return Some("auto-smart");
     }
+    let family = model_id.strip_suffix("-medium").unwrap_or(model_id);
+    let family = family.strip_prefix("cursor-").unwrap_or(family);
+    Some(family.strip_suffix("-thinking").unwrap_or(family))
 }
 
 fn model_family(model_id: &str) -> &str {
@@ -1717,10 +1720,11 @@ impl ProviderRuntimeHandle for AcpTurnHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::events::PersistTimelineEventInput;
+    use crate::providers::model_catalogue::ModelId;
     use crate::providers::normalizer::{
         normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent,
     };
+    use argmax_store::events::PersistTimelineEventInput;
 
     fn update(value: Value) -> Value {
         json!({ "sessionId": "acp-1", "update": value })
@@ -1733,7 +1737,7 @@ mod tests {
             workspace_path: "/tmp".into(),
             prompt: "p".into(),
             model_label: model_id.into(),
-            model_id: model_id.into(),
+            model_id: ModelId::resolve(ProviderId::Cursor, model_id),
             reasoning_effort: None,
             fast_mode: false,
             resume_conversation_id: None,
@@ -2404,7 +2408,7 @@ mod tests {
     fn eligibility_covers_all_cursor_models_except_forks() {
         let mut input = launch_input("composer-2.5");
         assert!(is_acp_eligible(&input));
-        input.model_id = "gpt-5.6-sol-medium".into();
+        input.model_id = ModelId::resolve(input.provider, "gpt-5.6-sol-medium");
         assert!(is_acp_eligible(&input));
         input.resume_fork = true;
         assert!(!is_acp_eligible(&input));
@@ -2540,7 +2544,7 @@ mod tests {
             "gpt-5.6-luna[context=272k,reasoning=medium,fast=false]",
             &input
         ));
-        input.model_id = "not-a-cursor-model".into();
+        input.model_id = ModelId::resolve(input.provider, "not-a-cursor-model");
         assert!(!cursor_model_matches("gpt-5.6-sol", &input));
     }
 
@@ -2551,17 +2555,17 @@ mod tests {
             "grok-4.7[effort=xhigh,fast=true]",
             &input
         ));
-        input.model_id = "cursor-grok-4.6-medium".into();
+        input.model_id = ModelId::resolve(input.provider, "cursor-grok-4.6-medium");
         assert!(cursor_model_matches(
             "grok-4.6[effort=high,fast=true]",
             &input
         ));
-        input.model_id = "claude-opus-5-5-medium".into();
+        input.model_id = ModelId::resolve(input.provider, "claude-opus-5-5-medium");
         assert!(cursor_model_matches(
             "claude-opus-5-5[effort=high,fast=false]",
             &input
         ));
-        input.model_id = "claude-sonnet-5-5-medium".into();
+        input.model_id = ModelId::resolve(input.provider, "claude-sonnet-5-5-medium");
         assert!(cursor_model_matches(
             "claude-sonnet-5-5[effort=high,fast=false]",
             &input
@@ -2572,7 +2576,7 @@ mod tests {
         ));
         // Every `auto-smart` entry maps onto the one variant Cursor lists,
         // whichever `optimize_for` the catalog entry names.
-        input.model_id = "auto-smart[optimize_for=cost]".into();
+        input.model_id = ModelId::resolve(input.provider, "auto-smart[optimize_for=cost]");
         assert!(cursor_model_matches(
             "auto-smart[optimize_for=balanced]",
             &input
@@ -2668,7 +2672,7 @@ mod tests {
             [("effort".into(), "low".into())]
         );
 
-        input.model_id = "grok-4.7-medium".into();
+        input.model_id = ModelId::resolve(input.provider, "grok-4.7-medium");
         input.reasoning_effort = Some(ReasoningEffort::Max);
         assert_eq!(
             changes("grok-4.7", &input),

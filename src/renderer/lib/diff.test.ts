@@ -12,7 +12,7 @@ describe("parseUnifiedDiff", () => {
       "--- a/a.ts",
       "+++ b/a.ts",
       ...hunk(1, 1, [" one", "-two", "+TWO"]),
-      ...hunk(20, 20, ["-twenty", "+TWENTY"])
+      ...hunk(20, 20, ["-twenty", "+TWENTY"]),
     ].join("\n");
 
     const blocks = parseUnifiedDiff(content);
@@ -31,7 +31,7 @@ describe("parseUnifiedDiff", () => {
       "diff --git a/a.ts b/a.ts",
       ...hunk(100, 100, ["-a", "+A"]),
       "diff --git a/b.ts b/b.ts",
-      ...hunk(200, 200, ["-b", "+B"])
+      ...hunk(200, 200, ["-b", "+B"]),
     ].join("\n");
 
     const blocks = parseUnifiedDiff(content);
@@ -43,7 +43,7 @@ describe("parseUnifiedDiff", () => {
     const content = [
       ...hunk(1, 1, ["-a", "+A"]),
       "[diff truncated at 1048576 bytes; dropped 4096 bytes]",
-      ""
+      "",
     ].join("\n");
 
     const blocks = parseUnifiedDiff(content);
@@ -59,8 +59,8 @@ describe("parseUnifiedDiff", () => {
       lines: [
         { kind: "context", oldLineNumber: 5, newLineNumber: 9, content: "keep" },
         { kind: "deletion", oldLineNumber: 6, newLineNumber: null, content: "drop" },
-        { kind: "addition", oldLineNumber: null, newLineNumber: 10, content: "add" }
-      ]
+        { kind: "addition", oldLineNumber: null, newLineNumber: 10, content: "add" },
+      ],
     });
   });
 });

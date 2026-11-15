@@ -2,8 +2,8 @@
 // for Auto routing: no key, no Auto. Stored in the macOS Keychain; see
 // `util::keychain` for how the key is kept off argv and apart per profile.
 
-use crate::error::ArgmaxResult;
 use crate::util::keychain::KeychainSecret;
+use argmax_contracts::error::ArgmaxResult;
 
 static JEV_KEY: KeychainSecret = KeychainSecret::new(
     "Argmax Jev API key",
@@ -12,8 +12,8 @@ static JEV_KEY: KeychainSecret = KeychainSecret::new(
     "ROUTING_KEYCHAIN_FAILED",
 );
 
-pub fn stored_key() -> Option<String> {
-    JEV_KEY.stored()
+pub fn read_key() -> ArgmaxResult<Option<String>> {
+    JEV_KEY.read()
 }
 
 pub fn store_key(api_key: &str) -> ArgmaxResult<()> {
@@ -23,8 +23,6 @@ pub fn store_key(api_key: &str) -> ArgmaxResult<()> {
 pub fn clear_key() -> ArgmaxResult<()> {
     JEV_KEY.clear()
 }
-
-pub use crate::util::keychain::key_hint;
 
 pub(crate) fn validate_format(api_key: &str) -> ArgmaxResult<&str> {
     JEV_KEY.validate_format(api_key)
@@ -45,7 +43,10 @@ mod tests {
 
     #[test]
     fn hint_shows_only_the_last_four_characters() {
-        assert_eq!(key_hint("ts_live_0123456789abcd"), "…abcd");
+        assert_eq!(
+            crate::util::keychain::key_hint("ts_live_0123456789abcd"),
+            "…abcd"
+        );
     }
 
     const VERIFICATION_CHILD_ENV: &str = "ARGMAX_VERIFICATION_KEYCHAIN_TEST_CHILD";
@@ -57,7 +58,7 @@ mod tests {
     #[test]
     fn verification_never_reaches_the_keychain() {
         if std::env::var_os(VERIFICATION_CHILD_ENV).is_some() {
-            assert_eq!(stored_key(), None);
+            assert_eq!(read_key().expect("fenced read"), None);
             assert!(clear_key().is_ok());
             let error = store_key("ts_live_0123456789abcdef").expect_err("store is fenced");
             assert!(error.to_string().contains("verification mode"));
@@ -91,7 +92,7 @@ mod tests {
                 ])
                 .env_clear()
                 .env(VERIFICATION_CHILD_ENV, "1")
-                .env(crate::providers::verification::MODE_ENV, mode)
+                .env(argmax_process::environment::VERIFICATION_MODE_ENV, mode)
                 .env("HOME", profile.path())
                 .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
                 .env(

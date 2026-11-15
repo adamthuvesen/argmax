@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import {
   ACTIVITY_MARK_PART_COUNT,
   useActivityMark,
-  type ActivityMarkId
+  type ActivityMarkId,
 } from "../lib/activityMark.js";
 import { stableHash32 } from "../lib/stableHash.js";
 
@@ -46,7 +46,7 @@ export function WorkingNest({
   size = 14,
   className,
   phaseKey,
-  markId: markIdOverride
+  markId: markIdOverride,
 }: {
   active: boolean;
   size?: number;
@@ -100,19 +100,22 @@ export function WorkingNest({
     <span
       ref={nestRef}
       className={classes}
+      data-testid="working-nest"
       data-mark={markId}
       data-active={active ? "true" : undefined}
       data-settling={isSettling ? "true" : undefined}
       data-working={active ? "true" : undefined}
       data-phase={phase}
-      style={{
-        // Not `width`/`height`: a stylesheet has to be able to resize the mark
-        // (see `--working-nest-size-override` in styles/working-nest.css), and
-        // an inline dimension would outrank every rule that tried.
-        "--working-nest-size": `${size}px`,
-        "--working-nest-phase": phase,
-        "--working-nest-settle-duration": `${WORKING_NEST_SETTLE_MS}ms`
-      } as CSSProperties}
+      style={
+        {
+          // Not `width`/`height`: a stylesheet has to be able to resize the mark
+          // (see `--working-nest-size-override` in styles/working-nest.css), and
+          // an inline dimension would outrank every rule that tried.
+          "--working-nest-size": `${size}px`,
+          "--working-nest-phase": phase,
+          "--working-nest-settle-duration": `${WORKING_NEST_SETTLE_MS}ms`,
+        } as CSSProperties
+      }
       aria-hidden="true"
     >
       {markParts(markId)}
@@ -132,14 +135,23 @@ export function WorkingNest({
 function markParts(markId: ActivityMarkId): JSX.Element[] {
   if (markId === "orbit") {
     return [
-      <i className="working-nest-part" data-dot={1} key="ring">
+      <i className="working-nest-part" data-testid="working-nest-part" data-dot={1} key="ring">
         {[0, 1, 2, 3, 4].map((i) => (
-          <i key={i} style={{ "--working-nest-trail": i } as CSSProperties} />
+          <i
+            key={i}
+            data-testid="working-nest-trail"
+            style={{ "--working-nest-trail": i } as CSSProperties}
+          />
         ))}
-      </i>
+      </i>,
     ];
   }
   return Array.from({ length: ACTIVITY_MARK_PART_COUNT[markId] }, (_, index) => (
-    <i className="working-nest-part" data-dot={index + 1} key={index} />
+    <i
+      className="working-nest-part"
+      data-testid="working-nest-part"
+      data-dot={index + 1}
+      key={index}
+    />
   ));
 }

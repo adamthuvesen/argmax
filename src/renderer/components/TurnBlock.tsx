@@ -57,7 +57,7 @@ function turnBounds(toolItems: TurnToolItem[], assistantTimestamps: number[]): B
   return {
     startedAt: sawAny && Number.isFinite(startedAt) ? startedAt : 0,
     endedAt,
-    lastSeenAt
+    lastSeenAt,
   };
 }
 
@@ -80,7 +80,7 @@ export function TurnBlock({
   changes,
   onFork,
   onForkIsolated,
-  revert
+  revert,
 }: {
   toolItems: TurnToolItem[];
   assistantTimestamps: number[];
@@ -141,7 +141,7 @@ export function TurnBlock({
 }): JSX.Element {
   const toolRunning = useMemo(
     () => toolItems.some((item) => item.tool.status === "running"),
-    [toolItems]
+    [toolItems],
   );
   // The parent's active flag is authoritative, including resumable pauses.
   // Only a finished turn may settle its activity and expose its footer.
@@ -164,7 +164,10 @@ export function TurnBlock({
     const timeout = setTimeout(() => setSettling(false), 600);
     return () => clearTimeout(timeout);
   }, [hideWorkingWhenCollapsed, running]);
-  const bounds = useMemo(() => turnBounds(toolItems, assistantTimestamps), [toolItems, assistantTimestamps]);
+  const bounds = useMemo(
+    () => turnBounds(toolItems, assistantTimestamps),
+    [toolItems, assistantTimestamps],
+  );
   const startedAtMs =
     typeof turnStartedAtMs === "number" && turnStartedAtMs > 0 && Number.isFinite(turnStartedAtMs)
       ? turnStartedAtMs
@@ -173,7 +176,7 @@ export function TurnBlock({
   // Claude keeps a background agent's launch row open until the agent reports,
   // and the launching turn can finish first. Fall back to the last event seen
   // rather than read the open row as zero elapsed.
-  const endedAtMs = running ? bounds.endedAt : bounds.endedAt ?? bounds.lastSeenAt;
+  const endedAtMs = running ? bounds.endedAt : (bounds.endedAt ?? bounds.lastSeenAt);
   const elapsedMs =
     endedAtMs !== null && startedAtMs > 0 ? Math.max(0, endedAtMs - startedAtMs) : 0;
 
@@ -193,12 +196,12 @@ export function TurnBlock({
   const {
     visibleItems: mountedBody,
     hiddenEarlierCount: hiddenEarlierBodyCount,
-    showEarlier: showEarlierBody
+    showEarlier: showEarlierBody,
   } = useStableTailWindow(follow ? visibleBody : [], {
     initialCount: TURN_BODY_WINDOW,
     pageSize: TURN_BODY_WINDOW_STEP,
     follow,
-    getId: (child) => child.id
+    getId: (child) => child.id,
   });
   const renderedBody = follow ? mountedBody : visibleBody;
 
@@ -211,7 +214,9 @@ export function TurnBlock({
       ? ` · ${toolItems.length} ${toolItems.length === 1 ? "step" : "steps"}`
       : "";
   const staticChipLabel = running
-    ? paused ? "Waiting" : "Working"
+    ? paused
+      ? "Waiting"
+      : "Working"
     : `${elapsedLabel ? `Worked for ${elapsedLabel}` : "Worked"}${stepCount}`;
   const headerTimestampLabel = useMemo(() => {
     if (!headerTimestampIso) return "";
@@ -226,7 +231,12 @@ export function TurnBlock({
     if (sameDay) {
       return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     }
-    return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   }, [headerTimestampIso]);
   // Show a quiet turn marker for every assistant turn so long chats get the
   // same visual reset as Codex. Tool turns remain clickable/collapsible; pure
@@ -274,8 +284,16 @@ export function TurnBlock({
   }, [hasBody]);
 
   return (
-    <div className="turn-block" data-running={running ? "true" : undefined}>
-      <div className="turn-block-header" data-brief={brief ? "true" : undefined}>
+    <div
+      className="turn-block"
+      data-testid="turn-block"
+      data-running={running ? "true" : undefined}
+    >
+      <div
+        className="turn-block-header"
+        data-testid="turn-block-header"
+        data-brief={brief ? "true" : undefined}
+      >
         {brief?.control ?? null}
         {headerTimestampLabel ? (
           <span
@@ -292,13 +310,22 @@ export function TurnBlock({
             aria-label={staticChipLabel}
             title={staticChipLabel}
             {...(hasDisclosure ? { "aria-expanded": toolsAreExpanded } : {})}
-            {...(hasDisclosure && onToggleTools ? { onClick: () => {
-              onToggleTools();
-            } } : {})}
+            {...(hasDisclosure && onToggleTools
+              ? {
+                  onClick: () => {
+                    onToggleTools();
+                  },
+                }
+              : {})}
           >
             {liveStartMs !== null ? (
               <span>
-                Working for <span className="turn-block-elapsed" ref={liveRef} />
+                Working for{" "}
+                <span
+                  className="turn-block-elapsed"
+                  data-testid="turn-block-elapsed"
+                  ref={liveRef}
+                />
               </span>
             ) : (
               <span>{staticChipLabel}</span>
@@ -319,14 +346,11 @@ export function TurnBlock({
       {renderedBody.length > 0 ? (
         <div
           className="turn-block-body"
+          data-testid="turn-block-body"
           data-just-revealed={justRevealed ? "true" : undefined}
         >
           {hiddenEarlierBodyCount > 0 ? (
-            <ShowEarlier
-              noun="activity"
-              count={hiddenEarlierBodyCount}
-              onClick={showEarlierBody}
-            />
+            <ShowEarlier noun="activity" count={hiddenEarlierBodyCount} onClick={showEarlierBody} />
           ) : null}
           {/* Each row keeps its parent as neighboring activity arrives or
               moves. Regrouping runs here remounts open disclosures. */}
@@ -341,7 +365,7 @@ export function TurnBlock({
           ))}
         </div>
       ) : null}
-      {!running ? changes ?? null : null}
+      {!running ? (changes ?? null) : null}
       {!running && (turnMarkdown || onFork || revert) ? (
         <TurnFooter
           {...(turnMarkdown ? { turnMarkdown } : {})}
@@ -359,7 +383,7 @@ function TurnFooter({
   turnMarkdown,
   onFork,
   onForkIsolated,
-  revert
+  revert,
 }: {
   turnMarkdown?: string;
   onFork?: () => void;
@@ -376,7 +400,11 @@ function TurnFooter({
           className="turn-block-footer-action"
           aria-label="Copy reply"
           title={
-            copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy reply"
+            copyFlash === "copied"
+              ? "Copied"
+              : copyFlash === "failed"
+                ? "Couldn't copy"
+                : "Copy reply"
           }
           onClick={() => void copy(turnMarkdown)}
         >

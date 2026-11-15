@@ -53,7 +53,7 @@ enum BridgeError: Error, Equatable {
     case unusablePairingLink
     /// `{"type":"response","error":…}` — an `ArgmaxError` from the host.
     /// `code` is the family (`SERVICE_ERROR`, `INVALID_INPUT`, …) and
-    /// `subCode` the leaf within it, as `src-tauri/src/error.rs` serialises them.
+    /// `subCode` the leaf within it, as `src-tauri/crates/argmax-contracts/src/error.rs` serialises them.
     case host(code: String, subCode: String?, message: String)
     /// A frame that parsed as JSON but not as anything the protocol defines.
     case malformedResponse

@@ -16,7 +16,7 @@ function createFollow(): TranscriptFollow & { set: (detached: boolean) => void }
     set: (next) => {
       detached = next;
       act(() => listeners.forEach((listener) => listener()));
-    }
+    },
   };
 }
 
@@ -28,13 +28,15 @@ function Harness({ items, follow }: { items: readonly string[]; follow: Transcri
     initialCount: 3,
     pageSize: 2,
     follow,
-    getId: (item) => item
+    getId: (item) => item,
   });
   return (
     <div>
       <output aria-label="Visible rows">{window.visibleItems.join(",")}</output>
       <output aria-label="Hidden rows">{window.hiddenEarlierCount}</output>
-      <button type="button" onClick={window.showEarlier}>Show earlier</button>
+      <button type="button" onClick={window.showEarlier}>
+        Show earlier
+      </button>
     </div>
   );
 }

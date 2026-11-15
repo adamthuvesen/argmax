@@ -9,7 +9,7 @@ import type {
   UsageSeriesPoint,
   UsageSummary,
   UsageSummaryInput,
-  UsageTokenTotals
+  UsageTokenTotals,
 } from "../shared/types.js";
 
 /**
@@ -46,7 +46,7 @@ const DEMO_PROVIDERS: readonly DemoProvider[] = [
   { provider: "codex", base: 26, usdPerMillion: 0.44 },
   { provider: "opencode", base: 9.5, usdPerMillion: 0.21 },
   { provider: "grok", base: 2.6, usdPerMillion: 0.17 },
-  { provider: "cursor", base: 5.2, usdPerMillion: 0.26 }
+  { provider: "cursor", base: 5.2, usdPerMillion: 0.26 },
 ];
 
 /** The one day the fixture leans on: a long weekend of migration work. */
@@ -90,7 +90,7 @@ function tokensFor(costUsd: number, provider: DemoProvider): UsageTokenTotals {
     cacheRead: Math.round(processed * 0.68),
     cacheWrite: processed - Math.round(processed * 0.11) - Math.round(processed * 0.68) - output,
     output,
-    reasoning: Math.round(output * 0.42)
+    reasoning: Math.round(output * 0.42),
   };
 }
 
@@ -121,12 +121,21 @@ function previousPeriods(count: number): Map<ProviderId, DemoPreviousPeriod> {
     }
     costUsd = Math.round(costUsd * 100) / 100;
     // Sessions per dollar the same way the provider rows count them.
-    periods.set(provider.provider, { costUsd, tokens, sessions: Math.round(costUsd / (4 + order * 2.5)) });
+    periods.set(provider.provider, {
+      costUsd,
+      tokens,
+      sessions: Math.round(costUsd / (4 + order * 2.5)),
+    });
   });
   return periods;
 }
 
-const MODELS: ReadonlyArray<{ provider: ProviderId; modelId: string; weight: number; unpriced?: boolean }> = [
+const MODELS: ReadonlyArray<{
+  provider: ProviderId;
+  modelId: string;
+  weight: number;
+  unpriced?: boolean;
+}> = [
   { provider: "claude", modelId: "claude-opus-5", weight: 0.66 },
   { provider: "claude", modelId: "claude-haiku-5-5", weight: 0.34 },
   { provider: "codex", modelId: "gpt-5.6-terra", weight: 0.81 },
@@ -134,7 +143,12 @@ const MODELS: ReadonlyArray<{ provider: ProviderId; modelId: string; weight: num
   { provider: "grok", modelId: "grok-code-fast-1", weight: 1 },
   { provider: "cursor", modelId: "composer-2.5", weight: 0.72 },
   // Cursor's Auto bills whichever model it picked, so it has no rate.
-  { provider: "cursor", modelId: "auto-smart[optimize_for=balanced]", weight: 0.28, unpriced: true }
+  {
+    provider: "cursor",
+    modelId: "auto-smart[optimize_for=balanced]",
+    weight: 0.28,
+    unpriced: true,
+  },
 ];
 
 /**
@@ -161,13 +175,19 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
 
   const scan: UsageSummary["scan"] =
     mode === "scanning"
-      ? { phase: "scanning", filesTotal: 5312, filesDone: 1974, lastCompletedAt: null, pricingAsOf: "2026-09-01" }
+      ? {
+          phase: "scanning",
+          filesTotal: 5312,
+          filesDone: 1974,
+          lastCompletedAt: null,
+          pricingAsOf: "2026-09-01",
+        }
       : {
           phase: "idle",
           filesTotal: 5312,
           filesDone: 5312,
           lastCompletedAt: new Date(end - 240_000).toISOString(),
-          pricingAsOf: "2026-09-01"
+          pricingAsOf: "2026-09-01",
         };
 
   const base: UsageSummary = {
@@ -190,7 +210,7 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
     providers: [],
     series: [],
     models: [],
-    days: []
+    days: [],
   };
 
   if (mode === "empty") {
@@ -224,7 +244,7 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
       sessions: 6 + Math.round(rand() * 9),
       tokens: dayTokens,
       costUsd: Math.round(values.reduce((sum, value) => sum + value.costUsd, 0) * 100) / 100,
-      costSource: "list_price"
+      costSource: "list_price",
     });
   }
 
@@ -238,7 +258,8 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
       costUsd: Math.round(carry.cost * 100) / 100,
       // Cache-heavy agent traffic saves on the order of what it spends.
       cacheSavingsUsd: Math.round(carry.cost * 1.25 * 100) / 100,
-      costSource: provider.provider === "codex" || provider.provider === "cursor" ? "mixed" : "list_price"
+      costSource:
+        provider.provider === "codex" || provider.provider === "cursor" ? "mixed" : "list_price",
     };
   });
   const cursor = providers.find((row) => row.provider === "cursor");
@@ -264,7 +285,7 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
       cacheRead: Math.round((row?.tokens.cacheRead ?? 0) * scale),
       cacheWrite: Math.round((row?.tokens.cacheWrite ?? 0) * scale),
       output: Math.round((row?.tokens.output ?? 0) * scale),
-      reasoning: Math.round((row?.tokens.reasoning ?? 0) * scale)
+      reasoning: Math.round((row?.tokens.reasoning ?? 0) * scale),
     };
     return {
       provider: model.provider,
@@ -274,7 +295,11 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
       // An unpriced model counts tokens and claims no dollars — the case the
       // page has to render without printing a confident $0.
       costUsd: model.unpriced ? 0 : Math.round((row?.costUsd ?? 0) * scale * 100) / 100,
-      costSource: model.unpriced ? "unpriced" : model.provider === "cursor" ? "estimated" : "list_price"
+      costSource: model.unpriced
+        ? "unpriced"
+        : model.provider === "cursor"
+          ? "estimated"
+          : "list_price",
     };
   });
 
@@ -301,15 +326,15 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
       providers,
       series: series.map((point) => ({
         ...point,
-        values: point.values.filter((value) => value.provider === narrowed.provider)
+        values: point.values.filter((value) => value.provider === narrowed.provider),
       })),
       models: models.filter((model) => model.provider === narrowed.provider),
       days: days.map((day) => ({
         ...day,
         sessions: Math.max(1, Math.round((day.sessions * narrowed.costUsd) / costUsd)),
         tokens: shape ? tokensFor(own(day.bucketStart), shape) : emptyTokens(),
-        costUsd: own(day.bucketStart)
-      }))
+        costUsd: own(day.bucketStart),
+      })),
     };
   }
 
@@ -318,7 +343,8 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
     sessions: providers.reduce((sum, row) => sum + row.sessions, 0),
     tokens: totals,
     costUsd,
-    cacheSavingsUsd: Math.round(providers.reduce((sum, row) => sum + row.cacheSavingsUsd, 0) * 100) / 100,
+    cacheSavingsUsd:
+      Math.round(providers.reduce((sum, row) => sum + row.cacheSavingsUsd, 0) * 100) / 100,
     costSource: "mixed",
     estimatedCostUsd: cursor?.costUsd ?? 0,
     estimatedTokens: cursor ? processed(cursor.tokens) : 0,
@@ -326,7 +352,7 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
     providers,
     series,
     models,
-    days
+    days,
   };
 }
 
@@ -339,22 +365,42 @@ export function demoUsageRemaining(): UsageRemaining {
         kind: "subscription",
         planLabel: "Max 20x",
         windows: [
-          { id: "five_hour", label: "5-hour", remainingPercent: 84.8, resetsAt: "2026-09-06T16:00:00Z" },
-          { id: "seven_day_fable", label: "Weekly Fable", remainingPercent: 54, resetsAt: "2026-09-10T00:00:00Z" },
-          { id: "seven_day", label: "Weekly", remainingPercent: 58, resetsAt: "2026-09-13T00:00:00Z" }
+          {
+            id: "five_hour",
+            label: "5-hour",
+            remainingPercent: 84.8,
+            resetsAt: "2026-09-06T16:00:00Z",
+          },
+          {
+            id: "seven_day_fable",
+            label: "Weekly Fable",
+            remainingPercent: 54,
+            resetsAt: "2026-09-10T00:00:00Z",
+          },
+          {
+            id: "seven_day",
+            label: "Weekly",
+            remainingPercent: 58,
+            resetsAt: "2026-09-13T00:00:00Z",
+          },
         ],
         message: null,
-        messageUrl: null
+        messageUrl: null,
       },
       {
         provider: "codex",
         kind: "subscription",
         planLabel: "Pro",
         windows: [
-          { id: "seven_day", label: "Weekly", remainingPercent: 88, resetsAt: "2026-09-13T06:00:00Z" }
+          {
+            id: "seven_day",
+            label: "Weekly",
+            remainingPercent: 88,
+            resetsAt: "2026-09-13T06:00:00Z",
+          },
         ],
         message: null,
-        messageUrl: null
+        messageUrl: null,
       },
       {
         provider: "cursor",
@@ -362,36 +408,51 @@ export function demoUsageRemaining(): UsageRemaining {
         planLabel: "Teams",
         windows: [],
         message: "Cursor remaining lives on the Spending dashboard.",
-        messageUrl: "https://cursor.com/dashboard/spending"
+        messageUrl: "https://cursor.com/dashboard/spending",
       },
       {
         provider: "opencode",
         kind: "subscription",
         planLabel: "OpenRouter",
-        windows: [{ id: "credit", label: "Credit, $24.58 of $125.00", remainingPercent: 20, resetsAt: null }],
+        windows: [
+          {
+            id: "credit",
+            label: "Credit, $24.58 of $125.00",
+            remainingPercent: 20,
+            resetsAt: null,
+          },
+        ],
         message: null,
-        messageUrl: null
+        messageUrl: null,
       },
       {
         provider: "grok",
         kind: "subscription",
         planLabel: "SuperGrok",
         windows: [
-          { id: "seven_day", label: "Weekly", remainingPercent: 62, resetsAt: "2026-09-13T00:00:00Z" }
+          {
+            id: "seven_day",
+            label: "Weekly",
+            remainingPercent: 62,
+            resetsAt: "2026-09-13T00:00:00Z",
+          },
         ],
         message: null,
-        messageUrl: null
-      }
-    ]
+        messageUrl: null,
+      },
+    ],
   };
 }
 
 function demoTier(
   tier: RouterTierCost["tier"],
-  counts: Pick<RouterTierCost, "chats" | "turns" | "escalations" | "measuredCostUsd" | "estimatedCostUsd" | "unpricedTurns">,
+  counts: Pick<
+    RouterTierCost,
+    "chats" | "turns" | "escalations" | "measuredCostUsd" | "estimatedCostUsd" | "unpricedTurns"
+  >,
   timing: [turnSeconds: number, firstAnswerSeconds: number, outputTokensPerSecond: number],
   tokens: [medianTurnOutputTokens: number, pricedOutputTokens: number],
-  models: ReadonlyArray<[ProviderId, string, number, number]>
+  models: ReadonlyArray<[ProviderId, string, number, number]>,
 ): RouterTierCost {
   return {
     tier,
@@ -402,7 +463,7 @@ function demoTier(
       modelId,
       turns,
       costUsd,
-      estimated: provider === "cursor"
+      estimated: provider === "cursor",
     })),
     decisions: models.map(([provider, modelId, turns], index) => ({
       provider,
@@ -411,15 +472,18 @@ function demoTier(
       kind: index === 0 ? "Feature" : "Bug fix",
       difficulty: index === 0 ? "Hard" : "Moderate",
       decision: index === 0 ? "launch" : "kept",
-      reason: index === 0 ? "Multi-file change with a design decision" : "Follow-up stays on the same model",
+      reason:
+        index === 0
+          ? "Multi-file change with a design decision"
+          : "Follow-up stays on the same model",
       count: Math.max(1, Math.round(turns / 4)),
-      turns
+      turns,
     })),
     medianTurnSeconds: timing[0],
     medianFirstAnswerSeconds: timing[1],
     outputTokensPerSecond: timing[2],
     medianTurnOutputTokens: tokens[0],
-    pricedOutputTokens: tokens[1]
+    pricedOutputTokens: tokens[1],
   };
 }
 
@@ -428,51 +492,79 @@ export function demoRouterCost(): RouterCostSummary {
     tiers: [
       demoTier(
         "intelligence",
-        { chats: 18, turns: 127, escalations: 0, measuredCostUsd: 358.33, estimatedCostUsd: 0, unpricedTurns: 1 },
+        {
+          chats: 18,
+          turns: 127,
+          escalations: 0,
+          measuredCostUsd: 358.33,
+          estimatedCostUsd: 0,
+          unpricedTurns: 1,
+        },
         [63, 8.1, 38],
         [12_000, 2_600_000],
         [
           ["claude", "claude-opus-5-5", 105, 301.2],
           ["codex", "gpt-6-astra", 21, 52.4],
-          ["claude", "claude-fable-5-1", 1, 4.73]
-        ]
+          ["claude", "claude-fable-5-1", 1, 4.73],
+        ],
       ),
       demoTier(
         "balanced",
-        { chats: 25, turns: 112, escalations: 1, measuredCostUsd: 61.4, estimatedCostUsd: 6.52, unpricedTurns: 0 },
+        {
+          chats: 25,
+          turns: 112,
+          escalations: 1,
+          measuredCostUsd: 61.4,
+          estimatedCostUsd: 6.52,
+          unpricedTurns: 0,
+        },
         [33, 8.1, 54],
         [7_500, 1_300_000],
         [
           ["claude", "claude-opus-5-5", 76, 48.1],
           ["claude", "claude-sonnet-5-5", 18, 9.3],
           ["cursor", "composer-2.5", 11, 2.9],
-          ["cursor", "claude-opus-5-5-medium", 7, 3.62]
-        ]
+          ["cursor", "claude-opus-5-5-medium", 7, 3.62],
+        ],
       ),
       demoTier(
         "cost",
-        { chats: 45, turns: 179, escalations: 1, measuredCostUsd: 109.9, estimatedCostUsd: 0.18, unpricedTurns: 0 },
+        {
+          chats: 45,
+          turns: 179,
+          escalations: 1,
+          measuredCostUsd: 109.9,
+          estimatedCostUsd: 0.18,
+          unpricedTurns: 0,
+        },
         [44, 7.4, 82],
         [6_800, 1_900_000],
         [
           ["claude", "claude-sonnet-5-5", 112, 96.2],
-          ["opencode", "openrouter/deepseek/deepseek-v4.1-flash", 61, 9.1],
+          ["opencode", "openrouter/deepseek/deepseek-v4.1-flash-1017", 61, 9.1],
           ["claude", "claude-opus-5-5", 4, 4.3],
           ["cursor", "composer-2.5", 1, 0.18],
-          ["grok", "grok-4.7", 1, 0.3]
-        ]
+          ["grok", "grok-4.7", 1, 0.3],
+        ],
       ),
       demoTier(
         "economy",
-        { chats: 13, turns: 22, escalations: 0, measuredCostUsd: 11.74, estimatedCostUsd: 0, unpricedTurns: 0 },
+        {
+          chats: 13,
+          turns: 22,
+          escalations: 0,
+          measuredCostUsd: 11.74,
+          estimatedCostUsd: 0,
+          unpricedTurns: 0,
+        },
         [71, 5.6, 30],
         [3_200, 250_000],
         [
-          ["opencode", "openrouter/deepseek/deepseek-v4.1-flash", 15, 2.1],
+          ["opencode", "openrouter/deepseek/deepseek-v4.1-flash-1017", 15, 2.1],
           ["codex", "gpt-6.1-sol", 6, 8.9],
-          ["claude", "claude-sonnet-5-5", 1, 0.74]
-        ]
-      )
-    ]
+          ["claude", "claude-sonnet-5-5", 1, 0.74],
+        ],
+      ),
+    ],
   };
 }

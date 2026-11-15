@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useCallback, useState, type JSX } from "react";
+import { syncActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import { errorMessage } from "../../../shared/error.js";
 import type { SyncStatus } from "../../../shared/types.js";
 import { showErrorToast } from "../../state/toast.js";
-import { SegmentedControl, SettingGroup, SettingNote, SettingRow, Toggle } from "./settingsPrimitives.js";
+import {
+  SegmentedControl,
+  SettingGroup,
+  SettingNote,
+  SettingRow,
+  Toggle,
+} from "./settingsPrimitives.js";
 
 const PROVIDERS = ["claude", "codex", "cursor", "opencode", "grok"] as const;
 
@@ -11,7 +19,7 @@ const PROVIDER_LABELS: Record<(typeof PROVIDERS)[number], string> = {
   codex: "Codex",
   cursor: "Cursor",
   opencode: "OpenCode",
-  grok: "Grok Build"
+  grok: "Grok Build",
 };
 
 /**
@@ -21,45 +29,34 @@ const PROVIDER_LABELS: Record<(typeof PROVIDERS)[number], string> = {
  */
 export function SessionSyncSettings(): JSX.Element {
   const [status, setStatus] = useState<SyncStatus | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async (): Promise<void> => {
-    if (!window.argmax) {
-      setLoadError("Open the Argmax desktop app to configure chat sync.");
-      return;
-    }
+  const statusQuery = useBridgeQuery({
+    key: ["sync.getStatus"],
+    read: (api) => api.sync.getStatus(),
+    onData: setStatus,
+  });
+  const loadError = statusQuery.isAvailable
+    ? statusQuery.error
+    : "Open the Argmax desktop app to configure chat sync.";
+
+  const save = useCallback(async (next: SyncStatus["config"]): Promise<void> => {
+    const sync = syncActions();
+    if (!sync) return;
+    setBusy(true);
+    setNote(null);
     try {
-      setStatus(await window.argmax.sync.getStatus());
-      setLoadError(null);
+      const updated = await sync.setConfig(next);
+      setStatus(updated);
+      if (updated.lastError) showErrorToast(updated.lastError);
+      else setNote(syncSummary(updated));
     } catch (error) {
-      setLoadError(errorMessage(error));
+      showErrorToast(errorMessage(error));
+    } finally {
+      setBusy(false);
     }
   }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const save = useCallback(
-    async (next: SyncStatus["config"]): Promise<void> => {
-      if (!window.argmax) return;
-      setBusy(true);
-      setNote(null);
-      try {
-        const updated = await window.argmax.sync.setConfig(next);
-        setStatus(updated);
-        if (updated.lastError) showErrorToast(updated.lastError);
-        else setNote(syncSummary(updated));
-      } catch (error) {
-        showErrorToast(errorMessage(error));
-      } finally {
-        setBusy(false);
-      }
-    },
-    []
-  );
 
   if (loadError) {
     return (
@@ -79,7 +76,9 @@ export function SessionSyncSettings(): JSX.Element {
           key={provider}
           label={PROVIDER_LABELS[provider]}
           description={
-            supported.has(provider) ? undefined : "Argmax can't read this agent's transcript format yet."
+            supported.has(provider)
+              ? undefined
+              : "Argmax can't read this agent's transcript format yet."
           }
           control={
             <Toggle
@@ -108,17 +107,21 @@ export function SessionSyncSettings(): JSX.Element {
             }}
             options={[
               { value: "24", label: "Last 24 hours" },
-              { value: "168", label: "Last 7 days" }
+              { value: "168", label: "Last 7 days" },
             ]}
           />
         }
       />
       <SettingNote>
         Turning a provider off — or narrowing the window — removes the synced chats you haven&apos;t
-        continued in Argmax. Nothing is lost: the agent&apos;s own history still has them, and turning
-        sync back on brings them back.
+        continued in Argmax. Nothing is lost: the agent&apos;s own history still has them, and
+        turning sync back on brings them back.
       </SettingNote>
-      {note ? <p className="settings-note settings-form-status" data-status="saved" role="status">{note}</p> : null}
+      {note ? (
+        <p className="settings-note settings-form-status" data-status="saved" role="status">
+          {note}
+        </p>
+      ) : null}
     </SettingGroup>
   );
 }

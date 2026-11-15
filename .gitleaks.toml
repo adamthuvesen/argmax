@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures that look like secrets"
+paths = [
+  '''\.test\.tsx?$''',
+  '''^src-tauri/src/remote/(mod|server|apns)\.rs$'''
+]

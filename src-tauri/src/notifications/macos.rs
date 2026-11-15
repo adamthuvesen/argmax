@@ -36,8 +36,8 @@ use objc2_user_notifications::{
 use tauri::{AppHandle, Runtime};
 
 use super::{NotificationOptions, NotificationSink};
-use crate::error::ArgmaxResult;
-use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::sync::LockOrRecover;
 
 /// `UNUserNotificationCenter` needs a bundle identifier; without one it
 /// raises an Objective-C exception on first use.

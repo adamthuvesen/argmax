@@ -14,9 +14,9 @@ describe("bridge launch defaults", () => {
         {
           modelLabel: model.label,
           modelId: model.modelId,
-          reasoningEffort: model.reasoningEffort ?? null
-        }
-      ])
+          reasoningEffort: model.reasoningEffort ?? null,
+        },
+      ]),
     );
     expect(LAUNCH_MODEL_DEFAULTS).toEqual(mirrored);
   });

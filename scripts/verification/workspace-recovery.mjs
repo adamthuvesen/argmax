@@ -11,7 +11,8 @@ const BASELINE_CONTENT = "baseline\n";
 const STAGED_CONTENT = "baseline\nstaged change\n";
 const EDITED_CONTENT = "baseline\nunstaged change\n";
 const EDITED_CONTENT_AFTER_REVISION = "baseline\nunstaged change after captured revision\n";
-const EDITED_DIFF_TOGGLE = '[aria-label="Expand edited.txt diff"], [aria-label="Collapse edited.txt diff"]';
+const EDITED_DIFF_TOGGLE =
+  '[aria-label="Expand edited.txt diff"], [aria-label="Collapse edited.txt diff"]';
 
 function recordAssertions() {
   const assertions = [];
@@ -21,7 +22,7 @@ function recordAssertions() {
       const assertion = { name, ok: Boolean(condition), ...(detail ? { detail } : {}) };
       assertions.push(assertion);
       if (!assertion.ok) throw new Error(`${name}${detail ? `: ${detail}` : ""}`);
-    }
+    },
   };
 }
 
@@ -36,7 +37,10 @@ async function isAbsent(filePath) {
 }
 
 async function git(workspacePath, args, timeoutMs) {
-  return await runChecked("git", args, { cwd: workspacePath, timeoutMs: Math.min(timeoutMs, 10_000) });
+  return await runChecked("git", args, {
+    cwd: workspacePath,
+    timeoutMs: Math.min(timeoutMs, 10_000),
+  });
 }
 
 async function cachedDiff(workspacePath, timeoutMs) {
@@ -56,9 +60,10 @@ async function captureUiState(browser) {
   return await browser.execute(function workspaceRecoveryState() {
     return {
       title: document.title,
-      activeElement: document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName,
+      activeElement:
+        document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName,
       bodyText: document.body.innerText.slice(0, 10_000),
-      diagnostics: window.__ARGMAX_VERIFICATION__?.snapshot() ?? null
+      diagnostics: window.__ARGMAX_VERIFICATION__?.snapshot() ?? null,
     };
   });
 }
@@ -68,11 +73,15 @@ async function waitForCheckpoint({ bridge, workspaceId, checkpointIds, label, ti
   let latest = [];
   while (Date.now() < deadline) {
     latest = await bridge.call("checkpoints:list", { workspaceId, limit: 50 });
-    const checkpoint = latest.find((entry) => entry.label === label && !checkpointIds.has(entry.id));
+    const checkpoint = latest.find(
+      (entry) => entry.label === label && !checkpointIds.has(entry.id),
+    );
     if (checkpoint) return { checkpoint, checkpoints: latest };
     await delay(100);
   }
-  throw new Error(`Recovery checkpoint ${JSON.stringify(label)} was not recorded within ${timeoutMs}ms`);
+  throw new Error(
+    `Recovery checkpoint ${JSON.stringify(label)} was not recorded within ${timeoutMs}ms`,
+  );
 }
 
 async function waitForUncommittedOption(browser, timeoutMs) {
@@ -90,7 +99,7 @@ async function waitForUncommittedOption(browser, timeoutMs) {
       }
       return false;
     },
-    { timeout: timeoutMs, interval: 100, timeoutMsg: "Changes shown did not offer Uncommitted" }
+    { timeout: timeoutMs, interval: 100, timeoutMsg: "Changes shown did not offer Uncommitted" },
   );
   return option;
 }
@@ -104,7 +113,11 @@ async function selectUncommittedChanges(browser, timeoutMs) {
       scope = candidate;
       return true;
     },
-    { timeout: timeoutMs, interval: 100, timeoutMsg: "Review did not expose its Changes shown control" }
+    {
+      timeout: timeoutMs,
+      interval: 100,
+      timeoutMsg: "Review did not expose its Changes shown control",
+    },
   );
   const initialLabel = await scope.getAttribute("aria-label");
   if (initialLabel !== "Changes shown: Uncommitted") {
@@ -127,7 +140,7 @@ export async function verifyStagedPreservingRevert({
   browser,
   workspace,
   outputDir,
-  timeoutMs = 30_000
+  timeoutMs = 30_000,
 }) {
   if (!bridge?.call) throw new Error("verifyStagedPreservingRevert requires a bridge with call()");
   if (!browser) throw new Error("verifyStagedPreservingRevert requires a native browser");
@@ -150,33 +163,48 @@ export async function verifyStagedPreservingRevert({
     const [initialStatus, stagedAbsent, editedAbsent] = await Promise.all([
       git(workspacePath, ["status", "--porcelain"], timeoutMs),
       isAbsent(stagedPath),
-      isAbsent(editedPath)
+      isAbsent(editedPath),
     ]);
-    assert("disposable recovery workspace begins clean", initialStatus.stdout.trim() === "", initialStatus.stdout.trim());
+    assert(
+      "disposable recovery workspace begins clean",
+      initialStatus.stdout.trim() === "",
+      initialStatus.stdout.trim(),
+    );
     assert(
       "recovery fixture paths are absent before creation",
       stagedAbsent && editedAbsent,
-      [stagedAbsent ? null : STAGED_FILE, editedAbsent ? null : EDITED_FILE].filter(Boolean).join(", ")
+      [stagedAbsent ? null : STAGED_FILE, editedAbsent ? null : EDITED_FILE]
+        .filter(Boolean)
+        .join(", "),
     );
 
     await Promise.all([
       writeFile(stagedPath, BASELINE_CONTENT, { flag: "wx" }),
-      writeFile(editedPath, BASELINE_CONTENT, { flag: "wx" })
+      writeFile(editedPath, BASELINE_CONTENT, { flag: "wx" }),
     ]);
     await git(workspacePath, ["add", STAGED_FILE, EDITED_FILE], timeoutMs);
     await git(workspacePath, ["commit", "-m", "verification recovery baseline"], timeoutMs);
 
-    await Promise.all([writeFile(stagedPath, STAGED_CONTENT), writeFile(editedPath, EDITED_CONTENT)]);
+    await Promise.all([
+      writeFile(stagedPath, STAGED_CONTENT),
+      writeFile(editedPath, EDITED_CONTENT),
+    ]);
     await git(workspacePath, ["add", STAGED_FILE], timeoutMs);
 
     const [cachedDiffBefore, indexTreeBefore] = await Promise.all([
       cachedDiff(workspacePath, timeoutMs),
-      indexTree(workspacePath, timeoutMs)
+      indexTree(workspacePath, timeoutMs),
     ]);
-    const stagedNames = (await git(workspacePath, ["diff", "--cached", "--name-only"], timeoutMs)).stdout
+    const stagedNames = (
+      await git(workspacePath, ["diff", "--cached", "--name-only"], timeoutMs)
+    ).stdout
       .split("\n")
       .filter(Boolean);
-    assert("fixture stages only staged.txt", stagedNames.length === 1 && stagedNames[0] === STAGED_FILE, stagedNames.join(", "));
+    assert(
+      "fixture stages only staged.txt",
+      stagedNames.length === 1 && stagedNames[0] === STAGED_FILE,
+      stagedNames.join(", "),
+    );
     assert("fixture has a staged diff before recovery", cachedDiffBefore.length > 0);
 
     const staleDiff = await bridge.call("review:load-diff", {
@@ -184,11 +212,13 @@ export async function verifyStagedPreservingRevert({
       id: workspace.id,
       filePath: EDITED_FILE,
       comparison: "workingTree",
-      contextLines: null
+      contextLines: null,
     });
     assert(
       "backend bridge stale-revision subcase captures edited.txt revision",
-      staleDiff.filePath === EDITED_FILE && typeof staleDiff.revision === "string" && staleDiff.revision.length > 0
+      staleDiff.filePath === EDITED_FILE &&
+        typeof staleDiff.revision === "string" &&
+        staleDiff.revision.length > 0,
     );
     await writeFile(editedPath, EDITED_CONTENT_AFTER_REVISION);
     const editedBytesBeforeStaleRevert = await readFile(editedPath);
@@ -198,35 +228,41 @@ export async function verifyStagedPreservingRevert({
         kind: "workspace",
         id: workspace.id,
         filePath: EDITED_FILE,
-        revision: staleDiff.revision
+        revision: staleDiff.revision,
       });
     } catch (error) {
       staleRevertError = error;
     }
-    const [editedBytesAfterStaleRevert, cachedDiffAfterStaleRevert, indexTreeAfterStaleRevert, checkpointsBefore] = await Promise.all([
+    const [
+      editedBytesAfterStaleRevert,
+      cachedDiffAfterStaleRevert,
+      indexTreeAfterStaleRevert,
+      checkpointsBefore,
+    ] = await Promise.all([
       readFile(editedPath),
       cachedDiff(workspacePath, timeoutMs),
       indexTree(workspacePath, timeoutMs),
-      bridge.call("checkpoints:list", { workspaceId: workspace.id, limit: 50 })
+      bridge.call("checkpoints:list", { workspaceId: workspace.id, limit: 50 }),
     ]);
-    const staleRevertMessage = staleRevertError instanceof Error ? staleRevertError.message : String(staleRevertError ?? "");
+    const staleRevertMessage =
+      staleRevertError instanceof Error ? staleRevertError.message : String(staleRevertError ?? "");
     assert(
       "backend bridge stale-revision subcase rejects with REVIEW_STALE_REVISION",
       staleRevertMessage.includes('"sub_code":"REVIEW_STALE_REVISION"'),
-      staleRevertMessage
+      staleRevertMessage,
     );
     assert(
       "backend bridge stale-revision subcase preserves exact edited.txt bytes",
-      editedBytesAfterStaleRevert.equals(editedBytesBeforeStaleRevert)
+      editedBytesAfterStaleRevert.equals(editedBytesBeforeStaleRevert),
     );
     assert(
       "backend bridge stale-revision subcase preserves cached diff",
-      cachedDiffAfterStaleRevert.equals(cachedDiffBefore)
+      cachedDiffAfterStaleRevert.equals(cachedDiffBefore),
     );
     assert(
       "backend bridge stale-revision subcase preserves index tree",
       indexTreeAfterStaleRevert === indexTreeBefore,
-      `${indexTreeBefore} → ${indexTreeAfterStaleRevert}`
+      `${indexTreeBefore} → ${indexTreeAfterStaleRevert}`,
     );
 
     await bridge.call("workspaces:refresh-status", { workspaceId: workspace.id });
@@ -236,7 +272,11 @@ export async function verifyStagedPreservingRevert({
     await changes.click();
 
     const initialScope = await selectUncommittedChanges(browser, timeoutMs);
-    assert("native Workspace Changes control opens Review", typeof initialScope === "string", initialScope);
+    assert(
+      "native Workspace Changes control opens Review",
+      typeof initialScope === "string",
+      initialScope,
+    );
     assert("native Review selects Uncommitted changes", true, initialScope);
 
     const editedEntry = await browser.$(EDITED_DIFF_TOGGLE);
@@ -255,14 +295,18 @@ export async function verifyStagedPreservingRevert({
       return {
         stageText: stage?.textContent?.trim() ?? null,
         revertText: revertHunk?.textContent?.trim() ?? null,
-        gap: header ? window.getComputedStyle(header).gap : null
+        gap: header ? window.getComputedStyle(header).gap : null,
       };
     });
-    assert("native edited hunk exposes the Stage action", hunkActions.stageText === "Stage", JSON.stringify(hunkActions));
+    assert(
+      "native edited hunk exposes the Stage action",
+      hunkActions.stageText === "Stage",
+      JSON.stringify(hunkActions),
+    );
     assert(
       "native edited hunk actions use the 8px spacing token",
       hunkActions.revertText === "Revert" && hunkActions.gap === "8px",
-      JSON.stringify(hunkActions)
+      JSON.stringify(hunkActions),
     );
     const revert = await browser.$('[aria-label="Revert unstaged changes in edited.txt"]');
     await revert.waitForEnabled({ timeout: timeoutMs });
@@ -278,45 +322,61 @@ export async function verifyStagedPreservingRevert({
       workspaceId: workspace.id,
       checkpointIds: new Set(checkpointsBefore.map((entry) => entry.id)),
       label: "Before reverting edited.txt",
-      timeoutMs
+      timeoutMs,
     });
     // Serialize the harness's Git operations. The renderer's own refresh can
     // still overlap the bridge read, exercising concurrent product readers.
     const cachedDiffAfter = await cachedDiff(workspacePath, timeoutMs);
     const indexTreeAfter = await indexTree(workspacePath, timeoutMs);
     const editedContent = await readFile(editedPath, "utf8");
-    const headEditedContent = (await git(workspacePath, ["show", `HEAD:${EDITED_FILE}`], timeoutMs)).stdout;
+    const headEditedContent = (await git(workspacePath, ["show", `HEAD:${EDITED_FILE}`], timeoutMs))
+      .stdout;
     const workingTree = await bridge.call("review:load-diff", {
       kind: "workspace",
       id: workspace.id,
       filePath: null,
       comparison: "workingTree",
-      contextLines: null
+      contextLines: null,
     });
     const workingTreeNames = (await git(workspacePath, ["diff", "--name-only"], timeoutMs)).stdout
       .split("\n")
       .filter(Boolean);
 
     assert("edited.txt is restored to HEAD", editedContent === headEditedContent);
-    assert("cached diff is byte-identical after recovery", cachedDiffAfter.equals(cachedDiffBefore));
-    assert("index tree is unchanged after recovery", indexTreeAfter === indexTreeBefore, `${indexTreeBefore} → ${indexTreeAfter}`);
+    assert(
+      "cached diff is byte-identical after recovery",
+      cachedDiffAfter.equals(cachedDiffBefore),
+    );
+    assert(
+      "index tree is unchanged after recovery",
+      indexTreeAfter === indexTreeBefore,
+      `${indexTreeBefore} → ${indexTreeAfter}`,
+    );
     assert(
       "recovery checkpoint preserves the pre-action index tree",
       checkpoint.indexTree === indexTreeBefore,
-      `${checkpoint.indexTree} === ${indexTreeBefore}`
+      `${checkpoint.indexTree} === ${indexTreeBefore}`,
     );
     const refreshedEditedEntry = await browser.$(EDITED_DIFF_TOGGLE);
     assert("native Review refresh removes edited.txt", !(await refreshedEditedEntry.isExisting()));
     assert(
       "working-tree review diff omits edited.txt",
       !workingTree.content.includes(EDITED_FILE),
-      workingTree.content.slice(0, 500)
+      workingTree.content.slice(0, 500),
     );
-    assert("git working-tree diff omits edited.txt", !workingTreeNames.includes(EDITED_FILE), workingTreeNames.join(", "));
+    assert(
+      "git working-tree diff omits edited.txt",
+      !workingTreeNames.includes(EDITED_FILE),
+      workingTreeNames.join(", "),
+    );
 
     await browser.waitUntil(
       async () => await browser.execute(() => document.body.innerText.includes("staged change")),
-      { timeout: timeoutMs, interval: 100, timeoutMsg: "Review did not finish rendering the preserved staged change" }
+      {
+        timeout: timeoutMs,
+        interval: 100,
+        timeoutMsg: "Review did not finish rendering the preserved staged change",
+      },
     );
     assert("native Review renders the preserved staged change after refresh", true);
 
@@ -329,22 +389,22 @@ export async function verifyStagedPreservingRevert({
         editedBytesBefore: {
           bytes: editedBytesBeforeStaleRevert.length,
           sha256: digest(editedBytesBeforeStaleRevert),
-          base64: editedBytesBeforeStaleRevert.toString("base64")
+          base64: editedBytesBeforeStaleRevert.toString("base64"),
         },
         editedBytesAfter: {
           bytes: editedBytesAfterStaleRevert.length,
           sha256: digest(editedBytesAfterStaleRevert),
-          base64: editedBytesAfterStaleRevert.toString("base64")
+          base64: editedBytesAfterStaleRevert.toString("base64"),
         },
         cachedDiffSha256Before: digest(cachedDiffBefore),
         cachedDiffSha256After: digest(cachedDiffAfterStaleRevert),
         indexTreeBefore,
-        indexTreeAfter: indexTreeAfterStaleRevert
+        indexTreeAfter: indexTreeAfterStaleRevert,
       },
       freshRevertProof: {
         driver: "native-webview",
         hunkActions,
-        beforeRevertScreenshot: beforeRevertScreenshotPath
+        beforeRevertScreenshot: beforeRevertScreenshotPath,
       },
       filesystemProof: {
         editedContent,
@@ -352,25 +412,27 @@ export async function verifyStagedPreservingRevert({
         cachedDiffBefore: {
           bytes: cachedDiffBefore.length,
           sha256: digest(cachedDiffBefore),
-          base64: cachedDiffBefore.toString("base64")
+          base64: cachedDiffBefore.toString("base64"),
         },
         cachedDiffAfter: {
           bytes: cachedDiffAfter.length,
           sha256: digest(cachedDiffAfter),
-          base64: cachedDiffAfter.toString("base64")
+          base64: cachedDiffAfter.toString("base64"),
         },
         indexTreeBefore,
         indexTreeAfter,
         workingTreeFiles: workingTreeNames,
-        reviewWorkingTreeDiff: workingTree.content
+        reviewWorkingTreeDiff: workingTree.content,
       },
       checkpoint,
       screenshot: screenshotPath,
-      state: statePath
+      state: statePath,
     };
     return result;
   } finally {
-    const uiState = await captureUiState(browser).catch((error) => ({ captureError: String(error) }));
+    const uiState = await captureUiState(browser).catch((error) => ({
+      captureError: String(error),
+    }));
     await browser.saveScreenshot(screenshotPath).catch(() => {});
     await writeJson(statePath, { result, assertions, uiState });
   }

@@ -1671,7 +1671,7 @@
 /* The box a wide table scrolls inside (see MarkdownTable.tsx). It is a block,
    so it never exceeds the column the table sits in. `touch-action` is an
    intersection down the ancestor chain — a descendant can only narrow it — so
-   the surrounding scroller has to permit pan-x too; mobile.css does. */
+   the surrounding scroller has to permit pan-x too. */
 .markdown-table-scroll {
   max-width: 100%;
   /* Joins the shared not-prose gap with pre and blockquote. */

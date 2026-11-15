@@ -4,7 +4,7 @@ import {
   getActivityUiState,
   getCachedActivitySummary,
   patchActivityUiState,
-  requestActivitySummary
+  requestActivitySummary,
 } from "../../lib/ledgerPageState.js";
 import { SegmentedControl, SettingsListPicker } from "../settings/settingsPrimitives.js";
 import { LedgerSwitch } from "../usage/LedgerSwitch.js";
@@ -17,7 +17,7 @@ import {
   metricValue,
   repositorySlots,
   windowDelta,
-  type ActivityMetric
+  type ActivityMetric,
 } from "./activityPresentation.js";
 import { ActivityCadence } from "./ActivityCadence.js";
 import { ActivityChart } from "./ActivityChart.js";
@@ -26,6 +26,7 @@ import { ActivityPullRequests } from "./ActivityPullRequests.js";
 import { ActivityRepositories } from "./ActivityRepositories.js";
 import { ActivityReviews } from "./ActivityReviews.js";
 import { ActivitySkeleton } from "./ActivitySkeleton.js";
+import { useInteractionShown } from "../../lib/interactionTimings.js";
 
 /**
  * Activity — the Usage page's sibling under the same rail. Usage answers what
@@ -60,7 +61,7 @@ function hostTimeZone(): string {
 async function fetchSummary(
   activityWindow: ActivityWindow,
   projectId: string | null,
-  timeZone: string
+  timeZone: string,
 ): Promise<ActivitySummary> {
   const api = globalThis.window?.argmax;
   if (api) return api.activity.summary({ window: activityWindow, projectId, timeZone });
@@ -80,31 +81,28 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
   const [summary, setSummary] = useState<ActivitySummary | null>(() =>
-    getCachedActivitySummary(cachedUi.activityWindow, cachedUi.projectId, timeZoneRef.current)
+    getCachedActivitySummary(cachedUi.activityWindow, cachedUi.projectId, timeZoneRef.current),
   );
   const [error, setError] = useState<string | null>(null);
   // Only the newest request may write state: a slow 12-month walk must not
   // land on top of the 24h window the user switched to while it ran.
   const requestRef = useRef(0);
 
-  const load = useCallback(
-    async (target: ActivityWindow, scope: string | null): Promise<void> => {
-      const request = requestRef.current + 1;
-      requestRef.current = request;
-      try {
-        const next = await requestActivitySummary(target, scope, timeZoneRef.current, () =>
-          fetchSummary(target, scope, timeZoneRef.current)
-        );
-        if (requestRef.current !== request) return;
-        setSummary(next);
-        setError(null);
-      } catch (cause) {
-        if (requestRef.current !== request) return;
-        setError(cause instanceof Error ? cause.message : "Could not read your activity.");
-      }
-    },
-    []
-  );
+  const load = useCallback(async (target: ActivityWindow, scope: string | null): Promise<void> => {
+    const request = requestRef.current + 1;
+    requestRef.current = request;
+    try {
+      const next = await requestActivitySummary(target, scope, timeZoneRef.current, () =>
+        fetchSummary(target, scope, timeZoneRef.current),
+      );
+      if (requestRef.current !== request) return;
+      setSummary(next);
+      setError(null);
+    } catch (cause) {
+      if (requestRef.current !== request) return;
+      setError(cause instanceof Error ? cause.message : "Could not read your activity.");
+    }
+  }, []);
 
   useEffect(() => {
     patchActivityUiState({ activityWindow, metric, projectId });
@@ -123,26 +121,24 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
     void load(activityWindow, projectId);
   }, [activityWindow, load, projectId, visible]);
 
+  useInteractionShown("page.activity", visible && summary !== null);
+
   const scanning = summary?.scan.phase === "scanning";
   useEffect(() => {
     if (!visible) return;
     const period = scanning ? SCANNING_REFRESH_MS : REFRESH_MS;
-    const timer = globalThis.setInterval(
-      () => void load(activityWindow, projectId),
-      period
-    );
+    const timer = globalThis.setInterval(() => void load(activityWindow, projectId), period);
     return () => globalThis.clearInterval(timer);
   }, [activityWindow, load, projectId, scanning, visible]);
 
-  const windowOptions = useMemo(
-    () => activityWindowOptions(new Date().getFullYear()),
-    []
-  );
+  const windowOptions = useMemo(() => activityWindowOptions(new Date().getFullYear()), []);
 
   const rangeLabel = summary
     ? formatRangeLabel(summary.rangeStart, summary.rangeEnd, summary.resolution, summary.timeZone)
     : "";
-  const scanStamp = summary ? formatScanStamp(summary.scan.lastCompletedAt, summary.timeZone) : null;
+  const scanStamp = summary
+    ? formatScanStamp(summary.scan.lastCompletedAt, summary.timeZone)
+    : null;
   const withCommits = summary?.repositories.filter((repo) => repo.commits > 0).length ?? 0;
   const author = summary?.authorEmails[0] ?? null;
 
@@ -161,8 +157,7 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
                   ·
                 </span>
                 <span>
-                  {formatCount(withCommits)}{" "}
-                  {withCommits === 1 ? "repository" : "repositories"}
+                  {formatCount(withCommits)} {withCommits === 1 ? "repository" : "repositories"}
                 </span>
                 {/* Which identity the commits were matched on. Two machines
                     and a work email make this the difference between 184
@@ -187,11 +182,7 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
             ) : null}
           </div>
           <div className="activity-controls">
-            <ActivityRepositoryPicker
-              summary={summary}
-              value={projectId}
-              onChange={setProjectId}
-            />
+            <ActivityRepositoryPicker summary={summary} value={projectId} onChange={setProjectId} />
             <SettingsListPicker<ActivityWindow>
               ariaLabel="Time range"
               icon={<CalendarDays size={13} aria-hidden="true" />}
@@ -246,7 +237,7 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
 function ActivityRepositoryPicker({
   summary,
   value,
-  onChange
+  onChange,
 }: {
   summary: ActivitySummary | null;
   value: string | null;
@@ -266,8 +257,8 @@ function ActivityRepositoryPicker({
           data-slot={slots.get(repo.projectId) ?? "tail"}
           aria-hidden="true"
         />
-      )
-    }))
+      ),
+    })),
   ];
   return (
     <SettingsListPicker<string>
@@ -284,7 +275,7 @@ function ActivityBody({
   summary,
   metric,
   projectId,
-  onSelectRepository
+  onSelectRepository,
 }: {
   summary: ActivitySummary;
   metric: ActivityMetric;

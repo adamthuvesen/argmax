@@ -19,7 +19,7 @@ use std::time::Duration;
 use tauri::Webview;
 
 use super::CaptureRect;
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 /// A finished capture. `width`/`height` are *device* pixels, so a retina
 /// display returns twice the CSS-pixel size of the captured rect.

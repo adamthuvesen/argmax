@@ -41,7 +41,7 @@ const RENDERER_CHORDS: ReadonlyArray<readonly [string, string]> = [
   ["Alt+Up", "Move the caret"],
   ["Alt+Down", "Move the caret"],
   ["Alt+Left", "Move the caret by word"],
-  ["Alt+Right", "Move the caret by word"]
+  ["Alt+Right", "Move the caret by word"],
 ];
 
 /**
@@ -55,7 +55,7 @@ const NATIVE_MENU_CHORDS: ReadonlyArray<readonly [string, string]> = [
   ["CmdOrCtrl+0", "Reset zoom"],
   ["CmdOrCtrl+Shift+=", "Zoom in"],
   ["CmdOrCtrl+=", "Zoom in"],
-  ["CmdOrCtrl+-", "Zoom out"]
+  ["CmdOrCtrl+-", "Zoom out"],
 ];
 
 const RESERVED = new Map<string, string>();

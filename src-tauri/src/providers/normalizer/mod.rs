@@ -57,8 +57,8 @@ use self::{
         normalize_event as normalize_opencode_event,
     },
 };
-use super::ProviderId;
-use crate::persistence::events::PersistTimelineEventInput;
+use argmax_contracts::validation::ProviderId;
+use argmax_store::events::PersistTimelineEventInput;
 
 /// Providers whose headless output is Claude Code's stream-json: a
 /// `system/init` line, Anthropic `stream_event` content blocks, whole
@@ -116,7 +116,7 @@ pub struct UsageCounts {
     pub cache_write: u64,
 }
 
-impl From<UsageCounts> for crate::providers::pricing::UsageCounts {
+impl From<UsageCounts> for argmax_contracts::usage::UsageCounts {
     fn from(value: UsageCounts) -> Self {
         Self {
             input: value.input,
@@ -321,15 +321,6 @@ pub struct PermissionGateInfo {
 }
 
 #[cfg(test)]
-pub trait EventNormalizer {
-    fn normalize(
-        &mut self,
-        provider: ProviderId,
-        event: ProviderOutputEvent,
-    ) -> NormalizedProviderResult;
-}
-
-#[cfg(test)]
 #[derive(Debug, Default)]
 pub struct Dispatcher {
     contexts: HashMap<String, NormalizerSessionContext>,
@@ -345,11 +336,8 @@ impl Dispatcher {
     pub fn context_mut(&mut self, session_id: &str) -> &mut NormalizerSessionContext {
         self.contexts.entry(session_id.to_string()).or_default()
     }
-}
 
-#[cfg(test)]
-impl EventNormalizer for Dispatcher {
-    fn normalize(
+    pub fn normalize(
         &mut self,
         provider: ProviderId,
         event: ProviderOutputEvent,
@@ -1064,7 +1052,7 @@ pub(crate) fn timeline_event(
     mut payload: Value,
 ) -> PersistTimelineEventInput {
     let event_type = event_type.into();
-    crate::providers::tool_activity::enrich_tool_activity(&event_type, &mut payload);
+    argmax_store::tool_activity::enrich_tool_activity(&event_type, &mut payload);
     PersistTimelineEventInput {
         id: Uuid::new_v4().to_string(),
         session_id: event.session_id.clone(),

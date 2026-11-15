@@ -18,7 +18,7 @@
 
 use tauri::Webview;
 
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 /// One injected script, whether every frame gets it, and which JavaScript
 /// world it runs in.

@@ -16,7 +16,7 @@ function allTools(toolItems: readonly TurnToolItem[]): ToolCall[] {
 function attachAgentChildren(toolItems: readonly TurnToolItem[]): TurnToolItem[] {
   const tools = allTools(toolItems);
   const agentToolUseIds = new Set(
-    tools.filter((tool) => isAgentToolName(tool.name)).map((tool) => tool.toolUseId)
+    tools.filter((tool) => isAgentToolName(tool.name)).map((tool) => tool.toolUseId),
   );
 
   const childIds = new Set<string>();
@@ -32,7 +32,9 @@ function attachAgentChildren(toolItems: readonly TurnToolItem[]): TurnToolItem[]
 
   const withChildren = (tool: ToolCall): TurnToolItem => {
     const children = childrenByParent.get(tool.toolUseId);
-    return children && children.length > 0 ? { kind: "tool", tool, children } : { kind: "tool", tool };
+    return children && children.length > 0
+      ? { kind: "tool", tool, children }
+      : { kind: "tool", tool };
   };
 
   const nested: TurnToolItem[] = [];
@@ -50,7 +52,7 @@ export function foldTurnToolItems(toolItems: readonly TurnToolItem[]): TurnToolI
 
 export function visibleTurnToolItem(
   item: TurnToolItem,
-  hiddenToolIds: ReadonlySet<string>
+  hiddenToolIds: ReadonlySet<string>,
 ): TurnToolItem | null {
   if (hiddenToolIds.has(item.tool.id)) return null;
   const children = (item.children ?? []).filter((tool) => !hiddenToolIds.has(tool.id));

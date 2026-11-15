@@ -1,4 +1,10 @@
-import type { DashboardDelta, DashboardSnapshot, PendingMessage, ProjectSummary, TimelineEvent } from "../../shared/types.js";
+import type {
+  DashboardDelta,
+  DashboardSnapshot,
+  PendingMessage,
+  ProjectSummary,
+  TimelineEvent,
+} from "../../shared/types.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import { isSubAgentProseEcho, supersededAnswerDeltaIds } from "./turnBoundaries.js";
 
@@ -10,10 +16,13 @@ export const emptySnapshot: DashboardSnapshot = {
   rawOutputs: [],
   approvals: [],
   checks: [],
-  pendingMessages: {}
+  pendingMessages: {},
 };
 
-export function mergeProjectSummary(existing: ProjectSummary | undefined, incoming: ProjectSummary): ProjectSummary {
+export function mergeProjectSummary(
+  existing: ProjectSummary | undefined,
+  incoming: ProjectSummary,
+): ProjectSummary {
   if (existing?.overview && existing.overview.revision > (incoming.overview?.revision ?? 0)) {
     return { ...incoming, overview: existing.overview };
   }
@@ -99,7 +108,7 @@ const EVENT_PROTECTED_LIMIT = 2000;
  */
 function appendNewerEvents(
   current: TimelineEvent[],
-  updates: TimelineEvent[]
+  updates: TimelineEvent[],
 ): TimelineEvent[] | null {
   if (updates.length === 0) return null;
   const updateIds = new Set<string>();
@@ -119,13 +128,17 @@ function appendNewerEvents(
     previousCursor = cursor;
   }
   // Same comparator as the general path, over the delta alone.
-  const head = sortByTimestamp(updates, (event) => event.createdAt, (event) => event.rowCursor);
+  const head = sortByTimestamp(
+    updates,
+    (event) => event.createdAt,
+    (event) => event.rowCursor,
+  );
   return [...head, ...current];
 }
 
 function mergeEventsBounded(
   current: TimelineEvent[],
-  updates: TimelineEvent[] | undefined
+  updates: TimelineEvent[] | undefined,
 ): TimelineEvent[] {
   if (!updates || updates.length === 0) {
     return current;
@@ -137,7 +150,11 @@ function mergeEventsBounded(
     if (merged === current) {
       return pruneSupersededDeltas(current);
     }
-    sorted = sortByTimestamp(merged, (event) => event.createdAt, (event) => event.rowCursor);
+    sorted = sortByTimestamp(
+      merged,
+      (event) => event.createdAt,
+      (event) => event.rowCursor,
+    );
   }
   const deltaKeptBySession = new Map<string, number>();
   let thinkingKept = 0;
@@ -149,11 +166,19 @@ function mergeEventsBounded(
       traceKept += 1;
       return traceKept <= EVENT_TRACE_IMPORT_LIMIT;
     }
-    if (canonical.kind === "message" && canonical.phase === "delta" && canonical.content === "thinking") {
+    if (
+      canonical.kind === "message" &&
+      canonical.phase === "delta" &&
+      canonical.content === "thinking"
+    ) {
       thinkingKept += 1;
       return thinkingKept <= EVENT_THINKING_LIMIT;
     }
-    if (canonical.kind === "message" && canonical.phase === "delta" && canonical.content === "answer") {
+    if (
+      canonical.kind === "message" &&
+      canonical.phase === "delta" &&
+      canonical.content === "answer"
+    ) {
       const kept = (deltaKeptBySession.get(event.sessionId) ?? 0) + 1;
       deltaKeptBySession.set(event.sessionId, kept);
       return kept <= EVENT_DELTA_LIMIT;
@@ -166,7 +191,7 @@ function mergeEventsBounded(
 
 export function mergeDashboardDelta(
   incoming: DashboardSnapshot,
-  delta: DashboardDelta
+  delta: DashboardDelta,
 ): DashboardSnapshot {
   let snapshot = incoming;
   // Removals first: the sync pruner deletes imported sessions in the
@@ -178,30 +203,47 @@ export function mergeDashboardDelta(
       ...snapshot,
       workspaces: snapshot.workspaces.filter((workspace) => !removedWorkspaces.has(workspace.id)),
       sessions: snapshot.sessions.filter(
-        (session) => !removedSessions.has(session.id) && !removedWorkspaces.has(session.workspaceId)
+        (session) =>
+          !removedSessions.has(session.id) && !removedWorkspaces.has(session.workspaceId),
       ),
-      events: snapshot.events.filter((event) => !removedSessions.has(event.sessionId))
+      events: snapshot.events.filter((event) => !removedSessions.has(event.sessionId)),
     };
   }
 
   const projects = delta.projects
     ? (() => {
         const existing = new Map(snapshot.projects.map((project) => [project.id, project]));
-        const merged = upsertById(snapshot.projects, delta.projects.map((project) => mergeProjectSummary(existing.get(project.id), project)));
+        const merged = upsertById(
+          snapshot.projects,
+          delta.projects.map((project) => mergeProjectSummary(existing.get(project.id), project)),
+        );
         return merged === snapshot.projects ? snapshot.projects : sortProjects(merged);
       })()
     : snapshot.projects;
-  const workspaces = mergeSlice(snapshot.workspaces, delta.workspaces, (workspace) => workspace.lastActivityAt);
-  const sessions = mergeSlice(snapshot.sessions, delta.sessions, (session) => session.lastActivityAt);
+  const workspaces = mergeSlice(
+    snapshot.workspaces,
+    delta.workspaces,
+    (workspace) => workspace.lastActivityAt,
+  );
+  const sessions = mergeSlice(
+    snapshot.sessions,
+    delta.sessions,
+    (session) => session.lastActivityAt,
+  );
   const events = mergeEventsBounded(snapshot.events, delta.events);
   const rawOutputs = mergeSlice(
     snapshot.rawOutputs,
     delta.rawOutputs,
     (output) => output.createdAt,
     100,
-    (output) => output.rowCursor
+    (output) => output.rowCursor,
   );
-  const approvals = mergeSlice(snapshot.approvals, delta.approvals, (approval) => approval.createdAt, 200);
+  const approvals = mergeSlice(
+    snapshot.approvals,
+    delta.approvals,
+    (approval) => approval.createdAt,
+    200,
+  );
   const checks = mergeSlice(snapshot.checks, delta.checks, (check) => check.startedAt, 200);
   const pendingMessages = mergePendingMessages(snapshot.pendingMessages, delta.pendingMessages);
   // Whole-list replacement, like `projects`: an arc change publishes the
@@ -233,7 +275,7 @@ export function mergeDashboardDelta(
     approvals,
     checks,
     pendingMessages,
-    arcs
+    arcs,
   };
 }
 
@@ -244,7 +286,7 @@ export function mergeDashboardDelta(
  */
 function mergePendingMessages(
   current: Record<string, PendingMessage[]> | undefined,
-  updates: Record<string, PendingMessage[]> | undefined
+  updates: Record<string, PendingMessage[]> | undefined,
 ): Record<string, PendingMessage[]> {
   const base = current ?? {};
   if (!updates) {
@@ -289,7 +331,7 @@ function mergeSlice<T extends { id: string }>(
   updates: T[] | undefined,
   sortBy: (item: T) => string,
   limit?: number,
-  orderBy?: (item: T) => number | undefined
+  orderBy?: (item: T) => number | undefined,
 ): T[] {
   if (!updates) {
     return current;
@@ -320,7 +362,7 @@ function upsertById<T extends { id: string }>(current: T[], updates: T[]): T[] {
 function sortByTimestamp<T>(
   items: T[],
   getTimestamp: (item: T) => string,
-  getOrder?: (item: T) => number | undefined
+  getOrder?: (item: T) => number | undefined,
 ): T[] {
   return [...items].sort((left, right) => {
     const leftOrder = getOrder?.(left);

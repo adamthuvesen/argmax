@@ -23,17 +23,20 @@ const fixtureChannels = readFileSync(CHANNELS, "utf8")
 
 const bridge = readFileSync(BRIDGE, "utf8");
 const invokedChannels = uniq(
-  [...bridge.matchAll(/invokeCommand(?:<[^>]+>)?\(\s*"([^"]+)"/g)].map((match) => match[1])
+  [...bridge.matchAll(/invokeCommand(?:<[^>]+>)?\(\s*"([^"]+)"/g)].map((match) => match[1]),
 );
 
 const duplicateFixtureChannels = fixtureChannels.filter(
-  (channel, index) => fixtureChannels.indexOf(channel) !== index
+  (channel, index) => fixtureChannels.indexOf(channel) !== index,
 );
 const missing = diff(fixtureChannels, invokedChannels);
 const extra = diff(invokedChannels, fixtureChannels);
 
 if (duplicateFixtureChannels.length || missing.length || extra.length) {
   console.error("error: Tauri bridge request channels drifted from channels.txt");
+  console.error(
+    "Add or remove the method in src/renderer/lib/tauriBridge.ts. After a Rust command change, run npm run generate:bindings first.",
+  );
   if (duplicateFixtureChannels.length) {
     console.error(`duplicate fixture channels: ${uniq(duplicateFixtureChannels).join(", ")}`);
   }
@@ -55,19 +58,22 @@ const expectedPushChannels = [
   "dashboard:delta",
   "menu:command",
   "terminal:data",
-  "terminal:exit"
+  "terminal:exit",
 ];
 const subscribedChannels = uniq(
-  [...bridge.matchAll(/subscribe(?:<[^>]+>)?\(\s*"([^"]+)"/g)].map((match) => match[1])
+  [...bridge.matchAll(/subscribe(?:<[^>]+>)?\(\s*"([^"]+)"/g)].map((match) => match[1]),
 );
 const missingPushChannels = diff(expectedPushChannels, subscribedChannels);
 
 if (missingPushChannels.length) {
   console.error("error: Tauri bridge is missing push-event subscriptions");
   console.error(`missing push channels: ${missingPushChannels.join(", ")}`);
+  console.error(
+    'Fix: add a subscribe("<channel>", ...) call for each one in src/renderer/lib/tauriBridge.ts.',
+  );
   process.exit(1);
 }
 
 console.log(
-  `ok: tauriBridge.ts covers ${fixtureChannels.length} request channels and ${expectedPushChannels.length} push channels.`
+  `ok: tauriBridge.ts covers ${fixtureChannels.length} request channels and ${expectedPushChannels.length} push channels.`,
 );

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   baseSession,
   event,
-  renderConversation
+  renderConversation,
 } from "../../test/sessionConversationTestHarness.js";
 
 // `events` reach the pane newest-first, matching the dashboard merge order.
@@ -12,8 +12,13 @@ describe("SessionConversation provider handoff", () => {
 
   it("falls back to the row's message when the payload predates the provider fields", () => {
     renderConversation(baseSession({ state: "complete", provider: "codex" }), [
-      event("switch", "session.provider-changed", "Switched provider to Codex.", "2026-05-12T15:02:00.000Z"),
-      event("d1", "message.delta", "Earlier work", "2026-05-12T15:00:01.000Z")
+      event(
+        "switch",
+        "session.provider-changed",
+        "Switched provider to Codex.",
+        "2026-05-12T15:02:00.000Z",
+      ),
+      event("d1", "message.delta", "Earlier work", "2026-05-12T15:00:01.000Z"),
     ]);
 
     expect(screen.getByRole("status", { name: /Switched provider to Codex/ })).toBeTruthy();
@@ -22,12 +27,18 @@ describe("SessionConversation provider handoff", () => {
   it("ends the turn so work after the handoff is not folded into the old agent's", () => {
     renderConversation(baseSession({ state: "complete", provider: "codex" }), [
       event("after", "message.completed", "New agent answer", "2026-05-12T15:02:01.000Z"),
-      event("switch", "session.provider-changed", "Switched provider to Codex.", "2026-05-12T15:02:00.000Z", {
-        from: "cursor",
-        provider: "codex",
-        modelLabel: "GPT-5.6 Sol"
-      }),
-      event("before", "message.completed", "Old agent answer", "2026-05-12T15:00:01.000Z")
+      event(
+        "switch",
+        "session.provider-changed",
+        "Switched provider to Codex.",
+        "2026-05-12T15:02:00.000Z",
+        {
+          from: "cursor",
+          provider: "codex",
+          modelLabel: "GPT-5.6 Sol",
+        },
+      ),
+      event("before", "message.completed", "Old agent answer", "2026-05-12T15:00:01.000Z"),
     ]);
 
     const seam = screen.getByRole("status", { name: "Cursor → Codex, GPT-5.6 Sol" });

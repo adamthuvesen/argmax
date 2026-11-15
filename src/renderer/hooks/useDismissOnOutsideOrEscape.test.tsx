@@ -9,7 +9,13 @@ function Harness({ close }: { close: () => void }): JSX.Element {
   return <div ref={ref}>Menu</div>;
 }
 
-function NestedHarness({ closeParent, closeChild }: { closeParent: () => void; closeChild: () => void }): JSX.Element {
+function NestedHarness({
+  closeParent,
+  closeChild,
+}: {
+  closeParent: () => void;
+  closeChild: () => void;
+}): JSX.Element {
   const parentRef = useRef<HTMLDivElement>(null);
   const childRef = useRef<HTMLDivElement>(null);
   useDismissOnOutsideOrEscape(parentRef, true, closeParent);
@@ -34,7 +40,7 @@ describe("useDismissOnOutsideOrEscape", () => {
       const event = new KeyboardEvent("keydown", {
         key: "Escape",
         bubbles: true,
-        cancelable: true
+        cancelable: true,
       });
       document.dispatchEvent(event);
 
@@ -50,7 +56,11 @@ describe("useDismissOnOutsideOrEscape", () => {
     const close = vi.fn();
     render(<Harness close={close} />);
 
-    const consumed = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    const consumed = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
     consumed.preventDefault();
     document.dispatchEvent(consumed);
     fireEvent.keyDown(document, { key: "Escape", repeat: true });

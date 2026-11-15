@@ -1,40 +1,51 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-type TokenizedLines = { lines: Array<Array<{ content: string; color?: string }>>; grammarState: undefined };
-const tokenizeLinesMock = vi.hoisted(() =>
-  vi.fn<(code: string, lang: string, appearance: "light" | "dark") => TokenizedLines>((code) => {
+type TokenLines = Array<Array<{ content: string; color?: string }>>;
+const requestHighlightMock = vi.hoisted(() =>
+  vi.fn<
+    (
+      code: string,
+      lang: string,
+      appearance: "light" | "dark",
+      done: (lines: TokenLines | null) => void,
+    ) => () => void
+  >((code, _lang, _appearance, done) => {
     // Deterministic stub: tag whitespace runs with no color and non-whitespace
     // runs with a color so the test can assert on a colored token without
-    // pulling in a real grammar.
+    // pulling in a real grammar. Tokens land a task later, as from the worker.
     const lines = code.split("\n").map((content) => {
       const tokens: Array<{ content: string; color?: string }> = [];
       const pattern = /\s+|\S+/g;
       let match: RegExpExecArray | null;
       while ((match = pattern.exec(content))) {
         const piece = match[0];
-        tokens.push(/^\s+$/.test(piece) ? { content: piece } : { content: piece, color: "#005cc5" });
+        tokens.push(
+          /^\s+$/.test(piece) ? { content: piece } : { content: piece, color: "#005cc5" },
+        );
       }
       return tokens.length > 0 ? tokens : [{ content }];
     });
-    return { lines, grammarState: undefined };
-  })
+    // oxlint-disable-next-line no-restricted-globals -- stands in for the worker's reply, a task after the request
+    const timer = setTimeout(() => done(lines), 0);
+    return () => clearTimeout(timer);
+  }),
 );
-const useHighlighterReadyMock = vi.hoisted(() => vi.fn<() => boolean>(() => true));
-const useHighlightThemeAppearanceMock = vi.hoisted(() => vi.fn<() => "light" | "dark">(() => "light"));
+const useHighlightThemeAppearanceMock = vi.hoisted(() =>
+  vi.fn<() => "light" | "dark">(() => "light"),
+);
 const langFromPathMock = vi.hoisted(() =>
   vi.fn((filePath: string | null | undefined): string | null => {
     if (!filePath) return null;
     if (filePath.endsWith(".ts")) return "typescript";
     return null;
-  })
+  }),
 );
 
 vi.mock("../lib/highlighter.js", () => ({
-  tokenizeLines: tokenizeLinesMock,
-  useHighlighterReady: useHighlighterReadyMock,
+  requestHighlight: requestHighlightMock,
   useHighlightThemeAppearance: useHighlightThemeAppearanceMock,
-  langFromPath: langFromPathMock
+  langFromPath: langFromPathMock,
 }));
 
 import type { ParsedDiffBlock } from "../lib/diff.js";
@@ -44,30 +55,26 @@ const TS_HUNK: ParsedDiffBlock = {
   id: "hunk-1",
   kind: "hunk",
   header: "@@ -1,2 +1,2 @@",
-  lines: [
-    { kind: "addition", content: "const x = 42;", oldLineNumber: null, newLineNumber: 1 }
-  ]
+  lines: [{ kind: "addition", content: "const x = 42;", oldLineNumber: null, newLineNumber: 1 }],
 };
 
 const UNKNOWN_HUNK: ParsedDiffBlock = {
   id: "hunk-2",
   kind: "hunk",
   header: "@@ -1 +1 @@",
-  lines: [
-    { kind: "addition", content: "weird format", oldLineNumber: null, newLineNumber: 1 }
-  ]
+  lines: [{ kind: "addition", content: "weird format", oldLineNumber: null, newLineNumber: 1 }],
 };
 
 const OMITTED: Extract<ParsedDiffBlock, { kind: "omitted" }> = {
   id: "omitted-1",
   kind: "omitted",
-  count: 16
+  count: 16,
 };
 
 const TRUNCATED: ParsedDiffBlock = {
   id: "truncated",
   kind: "truncated",
-  droppedBytes: 4096
+  droppedBytes: 4096,
 };
 
 const RANGE_HUNK: Extract<ParsedDiffBlock, { kind: "hunk" }> = {
@@ -79,8 +86,8 @@ const RANGE_HUNK: Extract<ParsedDiffBlock, { kind: "hunk" }> = {
     { kind: "deletion", content: "old", oldLineNumber: 11, newLineNumber: null },
     { kind: "addition", content: "first", oldLineNumber: null, newLineNumber: 21 },
     { kind: "addition", content: "second", oldLineNumber: null, newLineNumber: 22 },
-    { kind: "context", content: "after", oldLineNumber: 12, newLineNumber: 23 }
-  ]
+    { kind: "context", content: "after", oldLineNumber: 12, newLineNumber: 23 },
+  ],
 };
 
 function lineCommentButton(line: number): HTMLElement {
@@ -89,8 +96,7 @@ function lineCommentButton(line: number): HTMLElement {
 
 describe("DiffBlocks", () => {
   beforeEach(() => {
-    tokenizeLinesMock.mockClear();
-    useHighlighterReadyMock.mockReturnValue(true);
+    requestHighlightMock.mockClear();
     useHighlightThemeAppearanceMock.mockReturnValue("light");
   });
 
@@ -104,14 +110,14 @@ describe("DiffBlocks", () => {
 
     // Highlighting lands a slice after the first paint, which shows plain text.
     expect(screen.getByText("const x = 42;")).toBeInTheDocument();
-    await waitFor(() => expect(document.querySelectorAll("span.hl-token").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.queryAllByTestId("hl-token").length).toBeGreaterThan(0));
 
     // At least one token carries a non-empty color style.
-    const colored = Array.from(document.querySelectorAll("span.hl-token")).filter(
-      (node) => (node as HTMLElement).style.color !== ""
+    const colored = Array.from(screen.queryAllByTestId("hl-token")).filter(
+      (node) => node.style.color !== "",
     );
     expect(colored.length).toBeGreaterThan(0);
-    expect(tokenizeLinesMock.mock.calls[0]?.[1]).toBe("typescript");
+    expect(requestHighlightMock.mock.calls[0]?.[1]).toBe("typescript");
   });
 
   it("tokenizes each side of a hunk in one call, not one call per line", async () => {
@@ -123,16 +129,16 @@ describe("DiffBlocks", () => {
         { kind: "context", content: "const s = `a", oldLineNumber: 1, newLineNumber: 1 },
         { kind: "deletion", content: "b`;", oldLineNumber: 2, newLineNumber: null },
         { kind: "addition", content: "c`;", oldLineNumber: null, newLineNumber: 2 },
-        { kind: "addition", content: "run(s);", oldLineNumber: null, newLineNumber: 3 }
-      ]
+        { kind: "addition", content: "run(s);", oldLineNumber: null, newLineNumber: 3 },
+      ],
     };
     render(<DiffBlocks blocks={[hunk]} filePath="src/x.ts" />);
 
-    await waitFor(() => expect(tokenizeLinesMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(requestHighlightMock).toHaveBeenCalledTimes(2));
     // The new side runs through the context line into the additions, so a
     // template string opened in context colors the added line that closes it.
-    expect(tokenizeLinesMock.mock.calls[0]?.[0]).toBe("const s = `a\nc`;\nrun(s);");
-    expect(tokenizeLinesMock.mock.calls[1]?.[0]).toBe("const s = `a\nb`;");
+    expect(requestHighlightMock.mock.calls[0]?.[0]).toBe("const s = `a\nc`;\nrun(s);");
+    expect(requestHighlightMock.mock.calls[1]?.[0]).toBe("const s = `a\nb`;");
   });
 
   it("falls back to plain text for an unknown language without throwing", () => {
@@ -140,30 +146,21 @@ describe("DiffBlocks", () => {
 
     // No `.hl-token` spans because lang === null short-circuits before the
     // highlighter is consulted.
-    expect(document.querySelector("span.hl-token")).toBeNull();
+    expect(screen.queryByTestId("hl-token")).toBeNull();
     expect(screen.getByText("weird format")).toBeInTheDocument();
-    expect(tokenizeLinesMock).not.toHaveBeenCalled();
-  });
-
-  it("renders plain text while the highlighter is still loading", () => {
-    useHighlighterReadyMock.mockReturnValue(false);
-    render(<DiffBlocks blocks={[TS_HUNK]} filePath="src/x.ts" />);
-
-    expect(document.querySelector("span.hl-token")).toBeNull();
-    expect(screen.getByText("const x = 42;")).toBeInTheDocument();
-    expect(tokenizeLinesMock).not.toHaveBeenCalled();
+    expect(requestHighlightMock).not.toHaveBeenCalled();
   });
 
   it("refreshes highlighting when the theme changes", async () => {
     // A fresh hunk: colors are cached per hunk, and TS_HUNK's already are.
     const hunk = structuredClone(TS_HUNK);
     const { rerender } = render(<DiffBlocks blocks={[hunk]} filePath="src/x.ts" />);
-    await waitFor(() => expect(tokenizeLinesMock).toHaveBeenCalled());
-    tokenizeLinesMock.mockClear();
+    await waitFor(() => expect(requestHighlightMock).toHaveBeenCalled());
+    requestHighlightMock.mockClear();
     useHighlightThemeAppearanceMock.mockReturnValue("dark");
     rerender(<DiffBlocks blocks={[hunk]} filePath="src/x.ts" />);
-    await waitFor(() => expect(tokenizeLinesMock).toHaveBeenCalled());
-    expect(tokenizeLinesMock.mock.calls[0]?.[2]).toBe("dark");
+    await waitFor(() => expect(requestHighlightMock).toHaveBeenCalled());
+    expect(requestHighlightMock.mock.calls[0]?.[2]).toBe("dark");
   });
 
   it("offers no comment affordance without an onAddComment handler", () => {
@@ -180,7 +177,7 @@ describe("DiffBlocks", () => {
     expect(form).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Comment text"), {
-      target: { value: "use a named constant" }
+      target: { value: "use a named constant" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Comment" }));
 
@@ -189,7 +186,7 @@ describe("DiffBlocks", () => {
       line: 1,
       side: "addition",
       lineText: "const x = 42;",
-      comment: "use a named constant"
+      comment: "use a named constant",
     });
     expect(screen.queryByRole("form", { name: "Comment on src/x.ts:1" })).toBeNull();
   });
@@ -205,10 +202,13 @@ describe("DiffBlocks", () => {
     expect(onAddComment).not.toHaveBeenCalled();
   });
 
-  it.each([[21, 23], [23, 21]])("submits a range dragged from %i to %i", (from, to) => {
+  it.each([
+    [21, 23],
+    [23, 21],
+  ])("submits a range dragged from %i to %i", (from, to) => {
     const onAddComment = vi.fn();
     render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={onAddComment} />);
-    tokenizeLinesMock.mockClear();
+    requestHighlightMock.mockClear();
     fireEvent.mouseDown(lineCommentButton(from), { button: 0, buttons: 1 });
     fireEvent.mouseEnter(lineCommentButton(to), { buttons: 1 });
     expect(screen.queryByRole("form")).toBeNull();
@@ -217,12 +217,17 @@ describe("DiffBlocks", () => {
     fireEvent.click(lineCommentButton(from), { detail: 1 });
     expect(screen.getByRole("form", { name: "Comment on src/x.ts:21-23" })).toBeInTheDocument();
     expect(screen.getByLabelText("Comment text")).toHaveFocus();
-    expect(tokenizeLinesMock).not.toHaveBeenCalled();
+    expect(requestHighlightMock).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("Comment text"), { target: { value: "range note" } });
     fireEvent.click(screen.getByRole("button", { name: "Comment" }));
     expect(onAddComment).toHaveBeenCalledWith({
-      filePath: "src/x.ts", line: 21, endLine: 23, side: "addition", endSide: "context",
-      lineText: "+first\n+second\n after", comment: "range note"
+      filePath: "src/x.ts",
+      line: 21,
+      endLine: 23,
+      side: "addition",
+      endSide: "context",
+      lineText: "+first\n+second\n after",
+      comment: "range note",
     });
     expect(screen.queryByRole("form")).toBeNull();
     expect(screen.queryByRole("button", { pressed: true })).toBeNull();
@@ -234,12 +239,19 @@ describe("DiffBlocks", () => {
     fireEvent.mouseDown(lineCommentButton(11), { button: 0, buttons: 1 });
     fireEvent.mouseEnter(lineCommentButton(22), { buttons: 1 });
     fireEvent.mouseUp(window);
-    expect(screen.getByRole("form", { name: "Comment on src/x.ts:11 (removed)-22 (added)" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("form", { name: "Comment on src/x.ts:11 (removed)-22 (added)" }),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Comment text"), { target: { value: "mixed range" } });
     fireEvent.keyDown(screen.getByLabelText("Comment text"), { key: "Enter" });
     expect(onAddComment).toHaveBeenCalledWith({
-      filePath: "src/x.ts", line: 11, endLine: 22, side: "deletion", endSide: "addition",
-      lineText: "-old\n+first\n+second", comment: "mixed range"
+      filePath: "src/x.ts",
+      line: 11,
+      endLine: 22,
+      side: "deletion",
+      endSide: "addition",
+      lineText: "-old\n+first\n+second",
+      comment: "mixed range",
     });
   });
 
@@ -256,25 +268,31 @@ describe("DiffBlocks", () => {
 
   it.each([
     [11, 23, "11 (removed)-23 (unchanged)"],
-    [20, 11, "20 (unchanged)-11 (removed)"]
+    [20, 11, "20 (unchanged)-11 (removed)"],
   ] as const)("labels unchanged endpoints for %i to %i", (from, to, location) => {
     render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={vi.fn()} />);
     fireEvent.mouseDown(lineCommentButton(from), { button: 0, buttons: 1 });
     fireEvent.mouseEnter(lineCommentButton(to), { buttons: 1 });
     fireEvent.mouseUp(window);
-    expect(screen.getByRole("form", { name: `Comment on src/x.ts:${location}` })).toBeInTheDocument();
+    expect(
+      screen.getByRole("form", { name: `Comment on src/x.ts:${location}` }),
+    ).toBeInTheDocument();
   });
 
   it.each(["file", "diff"])("clears a comment when the %s changes", (change) => {
     const onAddComment = vi.fn();
-    const { rerender } = render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={onAddComment} />);
+    const { rerender } = render(
+      <DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={onAddComment} />,
+    );
     fireEvent.click(lineCommentButton(21));
     expect(screen.getByRole("form")).toBeInTheDocument();
-    rerender(<DiffBlocks
-      blocks={change === "diff" ? [{ ...RANGE_HUNK, lines: [] }] : [RANGE_HUNK]}
-      filePath={change === "file" ? "src/y.ts" : "src/x.ts"}
-      onAddComment={onAddComment}
-    />);
+    rerender(
+      <DiffBlocks
+        blocks={change === "diff" ? [{ ...RANGE_HUNK, lines: [] }] : [RANGE_HUNK]}
+        filePath={change === "file" ? "src/y.ts" : "src/x.ts"}
+        onAddComment={onAddComment}
+      />,
+    );
     expect(screen.queryByRole("form")).toBeNull();
     expect(screen.queryByRole("button", { pressed: true })).toBeNull();
   });
@@ -297,7 +315,7 @@ describe("DiffBlocks", () => {
         blocks={[TS_HUNK, OMITTED, UNKNOWN_HUNK]}
         filePath="src/x.ts"
         onExpandContext={onExpandContext}
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Expand 16 unmodified lines" }));
@@ -311,11 +329,11 @@ describe("DiffBlocks", () => {
         filePath="src/x.ts"
         presentation="review"
         onExpandContext={() => undefined}
-      />
+      />,
     );
 
     expect(screen.queryByText(TS_HUNK.header)).toBeNull();
-    expect(document.querySelector(".diff-line-rail")).not.toBeNull();
+    expect(screen.queryByTestId("diff-line-rail")).not.toBeNull();
     const gaps = screen.getAllByRole("button", { name: "Expand 16 unmodified lines" });
     expect(gaps[0]).toHaveAttribute("data-direction", "up");
     expect(gaps[1]).toHaveAttribute("data-direction", "down");
@@ -335,7 +353,7 @@ describe("DiffBlocks", () => {
         blocks={[TS_HUNK, OMITTED, TRUNCATED]}
         filePath="src/x.ts"
         onExpandContext={onExpandContext}
-      />
+      />,
     );
 
     // Asking git for more context would only drop more content.

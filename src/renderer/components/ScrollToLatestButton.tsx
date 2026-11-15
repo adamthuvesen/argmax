@@ -8,7 +8,7 @@ import { useTranscriptFollow, type TranscriptFollow } from "../hooks/useConversa
  */
 export function ScrollToLatestButton({
   follow,
-  onClick
+  onClick,
 }: {
   follow: TranscriptFollow;
   onClick: () => void;

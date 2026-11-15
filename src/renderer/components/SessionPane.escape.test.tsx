@@ -18,7 +18,7 @@ interface PaneOptions {
 function pane({
   session = baseSession({ state: "running" }),
   isFocused = true,
-  onTerminateSession = vi.fn<TerminateSession>().mockResolvedValue(undefined)
+  onTerminateSession = vi.fn<TerminateSession>().mockResolvedValue(undefined),
 }: PaneOptions = {}): JSX.Element {
   return (
     <SessionPane
@@ -40,7 +40,7 @@ function pane({
 function renderPane({
   session = baseSession({ state: "running" }),
   isFocused = true,
-  onTerminateSession = vi.fn<TerminateSession>().mockResolvedValue(undefined)
+  onTerminateSession = vi.fn<TerminateSession>().mockResolvedValue(undefined),
 }: PaneOptions = {}): Mock<TerminateSession> {
   render(pane({ session, isFocused, onTerminateSession }));
   return onTerminateSession;
@@ -65,7 +65,11 @@ describe("SessionPane Escape", () => {
   it("ignores repeated, composing, and modified Escape", () => {
     const terminate = renderPane();
     const prompt = screen.getByLabelText("Chat prompt");
-    const consumed = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    const consumed = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
     consumed.preventDefault();
     prompt.dispatchEvent(consumed);
     fireEvent.keyDown(prompt, { key: "Escape", repeat: true });
@@ -102,9 +106,12 @@ describe("SessionPane Escape", () => {
 
   it("does not send a second termination while the first is pending", () => {
     let resolveTermination: (() => void) | undefined;
-    const terminate = vi.fn<TerminateSession>(() => new Promise<void>((resolve) => {
-      resolveTermination = resolve;
-    }));
+    const terminate = vi.fn<TerminateSession>(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveTermination = resolve;
+        }),
+    );
     renderPane({ onTerminateSession: terminate });
     const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.keyDown(prompt, { key: "Escape" });
@@ -115,20 +122,27 @@ describe("SessionPane Escape", () => {
 
   it("does not let an earlier session's completion clear the current pending stop", async () => {
     const resolvers = new Map<string, () => void>();
-    const terminate = vi.fn<TerminateSession>((sessionId) => new Promise<void>((resolve) => {
-      resolvers.set(sessionId, resolve);
-    }));
-    const { rerender } = render(pane({
-      session: baseSession({ id: "session-a", state: "running" }),
-      onTerminateSession: terminate
-    }));
+    const terminate = vi.fn<TerminateSession>(
+      (sessionId) =>
+        new Promise<void>((resolve) => {
+          resolvers.set(sessionId, resolve);
+        }),
+    );
+    const { rerender } = render(
+      pane({
+        session: baseSession({ id: "session-a", state: "running" }),
+        onTerminateSession: terminate,
+      }),
+    );
     const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.keyDown(prompt, { key: "Escape" });
 
-    rerender(pane({
-      session: baseSession({ id: "session-b", state: "running" }),
-      onTerminateSession: terminate
-    }));
+    rerender(
+      pane({
+        session: baseSession({ id: "session-b", state: "running" }),
+        onTerminateSession: terminate,
+      }),
+    );
     fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Escape" });
     await act(async () => {
       resolvers.get("session-a")?.();
@@ -136,7 +150,10 @@ describe("SessionPane Escape", () => {
     });
     fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Escape" });
 
-    expect(terminate.mock.calls.map(([sessionId]) => sessionId)).toEqual(["session-a", "session-b"]);
+    expect(terminate.mock.calls.map(([sessionId]) => sessionId)).toEqual([
+      "session-a",
+      "session-b",
+    ]);
     resolvers.get("session-b")?.();
   });
 

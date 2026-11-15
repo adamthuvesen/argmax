@@ -9,7 +9,10 @@ import type { RawProviderOutput } from "../../shared/types.js";
  */
 const RAW_TRANSCRIPT_CHAR_CAP = 8_000;
 
-export function buildTerminalTranscript(rawOutputs: RawProviderOutput[], sessionId: string | null): string {
+export function buildTerminalTranscript(
+  rawOutputs: RawProviderOutput[],
+  sessionId: string | null,
+): string {
   if (!sessionId) {
     return "";
   }
@@ -17,7 +20,9 @@ export function buildTerminalTranscript(rawOutputs: RawProviderOutput[], session
   // Stream-json events can be split across multiple raw output chunks; concatenate
   // first so the JSON-line filter sees whole lines and hides them properly.
   const combined = rawOutputs
-    .filter((output) => output.sessionId === sessionId && ["stdout", "stderr"].includes(output.stream))
+    .filter(
+      (output) => output.sessionId === sessionId && ["stdout", "stderr"].includes(output.stream),
+    )
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
     .map((output) => stripTerminalControls(output.content))
     .join("");

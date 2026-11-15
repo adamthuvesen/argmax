@@ -1,4 +1,5 @@
 import { useState, type JSX } from "react";
+import { checkpointActions } from "../data/bridgeActions.js";
 import { Undo2 } from "lucide-react";
 import type { RewindPreview } from "../../shared/types.js";
 import { showErrorToast } from "../state/toast.js";
@@ -17,7 +18,13 @@ import { showErrorToast } from "../state/toast.js";
  * Two steps on purpose: the first click prices the change (which files, how
  * many), and only the confirm commits it.
  */
-export function TurnRevert({ workspaceId, checkpointId, unavailableReason, disabled, onReverted }: {
+export function TurnRevert({
+  workspaceId,
+  checkpointId,
+  unavailableReason,
+  disabled,
+  onReverted,
+}: {
   workspaceId: string;
   checkpointId?: string;
   /** Set when the before-turn checkpoint was skipped; shown on click. */
@@ -54,17 +61,19 @@ export function TurnRevert({ workspaceId, checkpointId, unavailableReason, disab
         aria-label="Revert to here"
         title="Revert to here — restore the files to before this turn"
         disabled={disabled || pending}
-        onClick={() => void run(async () => {
-          if (unavailableReason) {
-            showErrorToast(unavailableReason);
-            return;
-          }
-          if (!checkpointId) {
-            showErrorToast("No checkpoint was saved before this turn.");
-            return;
-          }
-          setPreview(await window.argmax!.checkpoints.previewRewind({ workspaceId, checkpointId }));
-        })}
+        onClick={() =>
+          void run(async () => {
+            if (unavailableReason) {
+              showErrorToast(unavailableReason);
+              return;
+            }
+            if (!checkpointId) {
+              showErrorToast("No checkpoint was saved before this turn.");
+              return;
+            }
+            setPreview(await checkpointActions()!.previewRewind({ workspaceId, checkpointId }));
+          })
+        }
       >
         <Undo2 size={13} aria-hidden />
       </button>
@@ -76,7 +85,12 @@ export function TurnRevert({ workspaceId, checkpointId, unavailableReason, disab
               : `Restores ${paths} ${paths === 1 ? "file" : "files"} to before this turn. The conversation stays.`}
           </p>
           <div className="turn-revert-actions">
-            <button type="button" className="turn-revert-button" disabled={pending} onClick={() => setPreview(null)}>
+            <button
+              type="button"
+              className="turn-revert-button"
+              disabled={pending}
+              onClick={() => setPreview(null)}
+            >
               Cancel
             </button>
             {preview && (
@@ -84,15 +98,17 @@ export function TurnRevert({ workspaceId, checkpointId, unavailableReason, disab
                 type="button"
                 className="turn-revert-button turn-revert-button-commit"
                 disabled={pending}
-                onClick={() => void run(async () => {
-                  await window.argmax!.checkpoints.rewindFiles({
-                    workspaceId,
-                    checkpointId: preview.checkpoint.id,
-                    expectedFingerprint: preview.currentFingerprint
-                  });
-                  setPreview(null);
-                  onReverted();
-                })}
+                onClick={() =>
+                  void run(async () => {
+                    await checkpointActions()!.rewindFiles({
+                      workspaceId,
+                      checkpointId: preview.checkpoint.id,
+                      expectedFingerprint: preview.currentFingerprint,
+                    });
+                    setPreview(null);
+                    onReverted();
+                  })
+                }
               >
                 Revert files
               </button>

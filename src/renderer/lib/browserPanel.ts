@@ -41,7 +41,7 @@ export function openInBrowserPanel(url: string, options?: { newTab?: boolean }):
   openRequest = {
     url,
     seq: nextOpenRequestSeq++,
-    ...(options?.newTab ? { newTab: true as const } : {})
+    ...(options?.newTab ? { newTab: true as const } : {}),
   };
   for (const listener of requestListeners) listener();
 }
@@ -121,14 +121,20 @@ const tabOwnerListeners = new Set<() => void>();
 
 export function subscribeBrowserTabOwner(listener: () => void): () => void {
   tabOwnerListeners.add(listener);
-  return () => { tabOwnerListeners.delete(listener); };
+  return () => {
+    tabOwnerListeners.delete(listener);
+  };
 }
 
 export function getBrowserTabOwnerId(tabId: string): string | null {
   return tabOwners.get(tabId)?.ownerId ?? null;
 }
 
-export function claimBrowserTabSurface(ownerId: string, tabId: string, syncBounds: () => void): void {
+export function claimBrowserTabSurface(
+  ownerId: string,
+  tabId: string,
+  syncBounds: () => void,
+): void {
   if (tabOwners.get(tabId)?.ownerId === ownerId) return;
   tabOwners.set(tabId, { ownerId, syncBounds });
   for (const listener of tabOwnerListeners) listener();
@@ -163,7 +169,9 @@ export function getBrowserTabFocusRequest(tabId: string): number | null {
 
 export function subscribeBrowserTabFocus(listener: () => void): () => void {
   tabFocusListeners.add(listener);
-  return () => { tabFocusListeners.delete(listener); };
+  return () => {
+    tabFocusListeners.delete(listener);
+  };
 }
 
 export function consumeBrowserTabFocusRequest(tabId: string, seq: number): void {
@@ -260,7 +268,7 @@ function serializeTabs(): string {
     snapshot[scopeId] = {
       activeTabId: state.activeTabId,
       lastUrl: state.lastUrl,
-      tabs: state.tabs.map((tab) => ({ id: tab.id, url: tab.url, title: tab.title }))
+      tabs: state.tabs.map((tab) => ({ id: tab.id, url: tab.url, title: tab.title })),
     };
   }
   return JSON.stringify({ nextTabSeq, scopes: snapshot });
@@ -303,7 +311,7 @@ function schedulePersistence(): void {
   if (typeof window.requestIdleCallback === "function") {
     pendingPersistence = {
       kind: "idle",
-      id: window.requestIdleCallback(persist, { timeout: 1_000 })
+      id: window.requestIdleCallback(persist, { timeout: 1_000 }),
     };
   } else {
     pendingPersistence = { kind: "timeout", id: window.setTimeout(persist, 0) };
@@ -324,7 +332,7 @@ function isPersistedTab(tab: unknown): tab is { id: string; url: string; title: 
 
 function restoreScope(
   scopeId: string,
-  snapshot: { activeTabId?: unknown; lastUrl?: unknown; tabs?: unknown }
+  snapshot: { activeTabId?: unknown; lastUrl?: unknown; tabs?: unknown },
 ): void {
   if (!Array.isArray(snapshot.tabs)) return;
   const restored = snapshot.tabs.filter(isPersistedTab);
@@ -337,13 +345,15 @@ function restoreScope(
     title: typeof tab.title === "string" ? tab.title : null,
     loading: false,
     ownerSessionId: null,
-    group: null
+    group: null,
   }));
   state.activeTabId =
-    typeof snapshot.activeTabId === "string" && state.tabs.some((tab) => tab.id === snapshot.activeTabId)
+    typeof snapshot.activeTabId === "string" &&
+    state.tabs.some((tab) => tab.id === snapshot.activeTabId)
       ? snapshot.activeTabId
       : (state.tabs[0]?.id ?? null);
-  state.lastUrl = state.tabs.length > 0 && typeof snapshot.lastUrl === "string" ? snapshot.lastUrl : null;
+  state.lastUrl =
+    state.tabs.length > 0 && typeof snapshot.lastUrl === "string" ? snapshot.lastUrl : null;
 }
 
 function highestRestoredSeq(): number {
@@ -378,7 +388,10 @@ function restoreTabs(): void {
   if (snapshot.scopes && typeof snapshot.scopes === "object") {
     for (const [scopeId, value] of Object.entries(snapshot.scopes)) {
       if (typeof value === "object" && value !== null) {
-        restoreScope(scopeId, value as { activeTabId?: unknown; lastUrl?: unknown; tabs?: unknown });
+        restoreScope(
+          scopeId,
+          value as { activeTabId?: unknown; lastUrl?: unknown; tabs?: unknown },
+        );
       }
     }
   } else if (Array.isArray(snapshot.tabs)) {
@@ -442,7 +455,7 @@ export function setBrowserTabLoading(id: string, loading: boolean): void {
   if (!tab || tab.loading === loading) return;
   const state = ensureScope(tab.scopeId);
   state.tabs = state.tabs.map((candidate) =>
-    candidate.id === id ? { ...candidate, loading } : candidate
+    candidate.id === id ? { ...candidate, loading } : candidate,
   );
   notifyTabListeners(false);
 }
@@ -469,7 +482,7 @@ export function createBrowserTab(scopeId: string, url: string, activate = true):
     title: null,
     loading: false,
     ownerSessionId: null,
-    group: null
+    group: null,
   };
   nextTabSeq += 1;
   const state = ensureScope(scopeId);
@@ -603,7 +616,7 @@ function foldLiveTab(tab: BrowserTab, live: BrowserTabInfo): BrowserTab {
     title: live.title ?? tab.title,
     loading: live.loading,
     ownerSessionId: live.ownerSessionId,
-    group: live.group
+    group: live.group,
   };
 }
 
@@ -649,8 +662,8 @@ export function applyBrowserTabs(incoming: readonly BrowserTabInfo[]): void {
         title: tab.title,
         loading: tab.loading,
         ownerSessionId: tab.ownerSessionId,
-        group: tab.group
-      }
+        group: tab.group,
+      },
     ];
     if (state.activeTabId === null) state.activeTabId = tab.tabId;
     materializedTabs.add(tab.tabId);
@@ -708,7 +721,9 @@ const browserTabOpenedListeners = new Set<(event: BrowserTabOpened) => void>();
 
 export function subscribeBrowserTabOpened(listener: (event: BrowserTabOpened) => void): () => void {
   browserTabOpenedListeners.add(listener);
-  return () => { browserTabOpenedListeners.delete(listener); };
+  return () => {
+    browserTabOpenedListeners.delete(listener);
+  };
 }
 
 let tabSyncStarted = false;
@@ -761,7 +776,7 @@ export function updateBrowserTabState(id: string, url: string, title: string | n
   if (tab.url === url && (title === null || tab.title === title)) return;
   const state = ensureScope(tab.scopeId);
   state.tabs = state.tabs.map((candidate) =>
-    candidate.id === id ? { ...candidate, url, title: title ?? candidate.title } : candidate
+    candidate.id === id ? { ...candidate, url, title: title ?? candidate.title } : candidate,
   );
   state.lastUrl = url;
   notifyTabListeners();

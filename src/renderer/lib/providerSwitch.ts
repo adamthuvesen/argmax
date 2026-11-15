@@ -25,6 +25,6 @@ export function providerSwitchNoticeFor(event: TimelineEvent): ProviderSwitchNot
   return {
     from: canonical.from,
     to: canonical.to,
-    modelLabel: canonical.modelLabel
+    modelLabel: canonical.modelLabel,
   };
 }

@@ -9,7 +9,7 @@
  * A per-device convenience in localStorage, like the other recency lists.
  */
 
-export const PALETTE_USAGE_KEY = "argmax.palette.usage";
+const PALETTE_USAGE_KEY = "argmax.palette.usage";
 
 const HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_ITEMS = 300;
@@ -42,7 +42,12 @@ function decayed(entry: UsageEntry | undefined, now: number): number {
 function isEntry(value: unknown): value is UsageEntry {
   if (typeof value !== "object" || value === null) return false;
   const { score, at } = value as Record<string, unknown>;
-  return typeof score === "number" && Number.isFinite(score) && typeof at === "number" && Number.isFinite(at);
+  return (
+    typeof score === "number" &&
+    Number.isFinite(score) &&
+    typeof at === "number" &&
+    Number.isFinite(at)
+  );
 }
 
 function entriesOf(value: unknown): Record<string, UsageEntry> {
@@ -60,9 +65,12 @@ export function readPaletteUsage(): PaletteUsage {
     const { items, queries } = parsed as Record<string, unknown>;
     return {
       items: entriesOf(items),
-      queries: typeof queries === "object" && queries !== null
-        ? Object.fromEntries(Object.entries(queries).map(([query, picks]) => [query, entriesOf(picks)]))
-        : {}
+      queries:
+        typeof queries === "object" && queries !== null
+          ? Object.fromEntries(
+              Object.entries(queries).map(([query, picks]) => [query, entriesOf(picks)]),
+            )
+          : {},
     };
   } catch {
     // Unreadable storage only costs the learned ranking, never the palette.
@@ -71,27 +79,39 @@ export function readPaletteUsage(): PaletteUsage {
 }
 
 /** Keeps the `limit` heaviest keys, so storage stays bounded. */
-function prune<T>(record: Record<string, T>, limit: number, weight: (value: T) => number): Record<string, T> {
+function prune<T>(
+  record: Record<string, T>,
+  limit: number,
+  weight: (value: T) => number,
+): Record<string, T> {
   const keys = Object.keys(record);
   if (keys.length <= limit) return record;
   return Object.fromEntries(
-    keys.sort((left, right) => weight(record[right]) - weight(record[left]))
+    keys
+      .sort((left, right) => weight(record[right]) - weight(record[left]))
       .slice(0, limit)
-      .map((key) => [key, record[key]])
+      .map((key) => [key, record[key]]),
   );
 }
 
 export function recordPaletteUse(itemId: string, query: string, now = Date.now()): PaletteUsage {
   const usage = readPaletteUsage();
-  const bump = (entry: UsageEntry | undefined): UsageEntry => ({ score: decayed(entry, now) + 1, at: now });
-  const items = prune({ ...usage.items, [itemId]: bump(usage.items[itemId]) }, MAX_ITEMS,
-    (entry) => decayed(entry, now));
+  const bump = (entry: UsageEntry | undefined): UsageEntry => ({
+    score: decayed(entry, now) + 1,
+    at: now,
+  });
+  const items = prune({ ...usage.items, [itemId]: bump(usage.items[itemId]) }, MAX_ITEMS, (entry) =>
+    decayed(entry, now),
+  );
   const normalized = normalizeQuery(query);
   let queries = usage.queries;
   if (normalized) {
     const picks = queries[normalized] ?? {};
-    queries = prune({ ...queries, [normalized]: { ...picks, [itemId]: bump(picks[itemId]) } }, MAX_QUERIES,
-      (entries) => Math.max(0, ...Object.values(entries).map((entry) => decayed(entry, now))));
+    queries = prune(
+      { ...queries, [normalized]: { ...picks, [itemId]: bump(picks[itemId]) } },
+      MAX_QUERIES,
+      (entries) => Math.max(0, ...Object.values(entries).map((entry) => decayed(entry, now))),
+    );
   }
   const next = { items, queries };
   if (typeof window !== "undefined") {
@@ -114,7 +134,11 @@ export function itemFrecency(usage: PaletteUsage, itemId: string, now = Date.now
  * after typing a prefix of the query or a continuation of it: picking Open
  * usage after `usa` teaches both `us` and `usage`.
  */
-export function learnedPicks(usage: PaletteUsage, query: string, now = Date.now()): Map<string, number> {
+export function learnedPicks(
+  usage: PaletteUsage,
+  query: string,
+  now = Date.now(),
+): Map<string, number> {
   const normalized = normalizeQuery(query);
   const learned = new Map<string, number>();
   if (!normalized) return learned;

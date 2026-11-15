@@ -7,9 +7,18 @@ import {
   useState,
   type AnimationEventHandler,
   type JSX,
-  type KeyboardEvent as ReactKeyboardEvent
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { Command, FileSearch, FileText, Folder, MessageSquare, Quote, SlidersHorizontal, Sparkles } from "lucide-react";
+import {
+  Command,
+  FileSearch,
+  FileText,
+  Folder,
+  MessageSquare,
+  Quote,
+  SlidersHorizontal,
+  Sparkles,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { FileIcon } from "@react-symbols/icons/utils";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
@@ -20,7 +29,7 @@ import {
   searchMatchRank,
   type PaletteGroup,
   type PaletteHit,
-  type PaletteItem
+  type PaletteItem,
 } from "../lib/paletteSearch.js";
 import {
   itemFrecency,
@@ -28,17 +37,18 @@ import {
   readPaletteUsage,
   recordPaletteUse,
   usageBoost,
-  type PaletteUsage
+  type PaletteUsage,
 } from "../lib/paletteUsage.js";
 import type {
   WorkspaceContentSearchFile,
-  WorkspaceContentSearchResult
+  WorkspaceContentSearchResult,
 } from "../../shared/types.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import { WorkingNest } from "./WorkingNest.js";
 import { SlidingTabIndicator } from "./SlidingTabIndicator.js";
 import type { MotionPresenceState } from "../hooks/useMotionPresence.js";
+import { useInteractionShown } from "../lib/interactionTimings.js";
 
 export type PaletteCommand = PaletteItem;
 
@@ -75,7 +85,7 @@ const SCOPE_TABS: ReadonlyArray<{ scope: PaletteScope; label: string }> = [
   { scope: "messages", label: "Messages" },
   { scope: "contents", label: "Contents" },
   { scope: "actions", label: "Actions" },
-  { scope: "settings", label: "Settings" }
+  { scope: "settings", label: "Settings" },
 ];
 
 // Actions lead the mixed list: running a command is what ⌘K is reached for
@@ -89,12 +99,18 @@ const SCOPE_GROUPS: Record<PaletteScope, PaletteGroup[]> = {
   messages: ["Messages"],
   contents: ["Contents"],
   actions: ["Actions"],
-  settings: ["Settings"]
+  settings: ["Settings"],
 };
 
 // The empty All palette: what fits right now, then where the user was, then
 // the catalogs.
-const EMPTY_ALL_GROUPS: PaletteGroup[] = ["Suggested", "Sessions", "Actions", "Projects", "Settings"];
+const EMPTY_ALL_GROUPS: PaletteGroup[] = [
+  "Suggested",
+  "Sessions",
+  "Actions",
+  "Projects",
+  "Settings",
+];
 
 // Handicap per group, in match-rank tiers, applied before usage lifts a hit.
 // A file is the least likely ⌘K target, an action the most.
@@ -106,7 +122,7 @@ const GROUP_PRIOR: Record<PaletteGroup, number> = {
   Projects: 0.5,
   Messages: 0.5,
   Contents: 0.5,
-  Files: 0.75
+  Files: 0.75,
 };
 
 // Static catalogs, ordered by habit when the query is empty. Sessions and
@@ -114,7 +130,11 @@ const GROUP_PRIOR: Record<PaletteGroup, number> = {
 const HABIT_GROUPS = new Set<PaletteGroup>(["Actions", "Settings"]);
 
 // Typing one of these first in All jumps to that filter, VS Code style.
-const PREFIX_SCOPES: Record<string, PaletteScope> = { ">": "actions", "@": "files", "#": "messages" };
+const PREFIX_SCOPES: Record<string, PaletteScope> = {
+  ">": "actions",
+  "@": "files",
+  "#": "messages",
+};
 
 // Argmax names its own surfaces: a session is the agent a user is talking to.
 const GROUP_LABEL: Record<PaletteGroup, string> = {
@@ -125,7 +145,7 @@ const GROUP_LABEL: Record<PaletteGroup, string> = {
   Messages: "Messages",
   Contents: "File Contents",
   Settings: "Settings",
-  Suggested: "Suggested"
+  Suggested: "Suggested",
 };
 
 // With no query these groups list what the user touched last, so the header
@@ -140,7 +160,7 @@ const SCOPE_PLACEHOLDER: Record<PaletteScope, string> = {
   messages: "Search across chats…",
   contents: "Search inside files…",
   actions: "Search actions…",
-  settings: "Search settings…"
+  settings: "Search settings…",
 };
 
 // Fallback glyph when an item carries no icon of its own. Actions each set their
@@ -153,7 +173,7 @@ const GROUP_ICON: Record<PaletteGroup, LucideIcon> = {
   Messages: Quote,
   Contents: FileSearch,
   Settings: SlidersHorizontal,
-  Suggested: Sparkles
+  Suggested: Sparkles,
 };
 
 interface PaletteFileSource {
@@ -260,7 +280,7 @@ export function CommandPalette({
   changedPaths,
   loadFiles,
   onFilePick,
-  searchContents
+  searchContents,
 }: CommandPaletteProps): JSX.Element | null {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<PaletteScope>(initialScope);
@@ -288,6 +308,7 @@ export function CommandPalette({
   // Document-level Esc + outside-click via the shared hook means Esc works even
   // if focus drifts to a result row (e.g. via screen-reader navigation).
   useDismissOnOutsideOrEscape(paletteRef, open, onClose, undefined, { trapFocus: true });
+  useInteractionShown("palette.open", open);
   // Cache the loaded path list across keystrokes within a single palette
   // session. Keyed by `${kind}:${id}` so switching workspace/project between
   // opens invalidates correctly.
@@ -337,17 +358,18 @@ export function CommandPalette({
   const visibleGroups = useMemo(() => SCOPE_GROUPS[scope], [scope]);
   const showsGroup = useCallback(
     (group: PaletteGroup): boolean => visibleGroups.includes(group),
-    [visibleGroups]
+    [visibleGroups],
   );
   // The Files tab is a file picker: it lists recents with an empty query, so
   // the path list loads on open instead of waiting for a first keystroke.
   const filesEagerly = showsGroup("Files") && visibleGroups.length === 1;
-  const filesWanted = showsGroup("Files") && (filesEagerly || filesVisible || looksLikePath(query.trim()));
+  const filesWanted =
+    showsGroup("Files") && (filesEagerly || filesVisible || looksLikePath(query.trim()));
   // Read once per opening: picks made while it is up (keepOpen steps) should
   // not reshuffle the rows under the user.
   const usage = useMemo<{ picks: PaletteUsage; at: number } | null>(
     () => (open ? { picks: readPaletteUsage(), at: Date.now() } : null),
-    [open]
+    [open],
   );
 
   // Debounced message backend — only when query is long enough to be useful.
@@ -385,7 +407,9 @@ export function CommandPalette({
           // which is a lie in a search UI. Say it failed.
           if (token !== messageTokenRef.current) return;
           setMessageHits([]);
-          setMessageError(caught instanceof Error ? caught.message : "Could not search your messages.");
+          setMessageError(
+            caught instanceof Error ? caught.message : "Could not search your messages.",
+          );
         })
         .finally(() => {
           if (token === messageTokenRef.current) {
@@ -429,7 +453,9 @@ export function CommandPalette({
         .catch((caught: unknown) => {
           if (token !== contentTokenRef.current) return;
           setContentResult(EMPTY_CONTENT_RESULT);
-          setContentError(caught instanceof Error ? caught.message : "Could not search this workspace.");
+          setContentError(
+            caught instanceof Error ? caught.message : "Could not search this workspace.",
+          );
         })
         .finally(() => {
           if (token === contentTokenRef.current) {
@@ -498,10 +524,10 @@ export function CommandPalette({
         label: basename(path),
         subtitle: dirname(path) || undefined,
         group: "Files" as const,
-        run: () => onFilePick(path)
+        run: () => onFilePick(path),
       },
       labelRanges: null,
-      subtitleRanges: null
+      subtitleRanges: null,
     }));
   }, [changedPaths, filePaths, filesEagerly, filesWanted, onFilePick, open, query]);
 
@@ -510,7 +536,7 @@ export function CommandPalette({
   // picked before. Files are ranked separately by full path.
   const frecencyOf = useCallback(
     (id: string): number => (usage ? itemFrecency(usage.picks, id, usage.at) : 0),
-    [usage]
+    [usage],
   );
   const localHits = useMemo<RankedHit[]>(() => {
     if (!open) return [];
@@ -520,11 +546,17 @@ export function CommandPalette({
       return hits
         .map((hit) => ({
           hit,
-          rank: hit.item.suggest ? -Number.MAX_SAFE_INTEGER : HABIT_GROUPS.has(hit.item.group) ? -frecencyOf(hit.item.id) : 0
+          rank: hit.item.suggest
+            ? -Number.MAX_SAFE_INTEGER
+            : HABIT_GROUPS.has(hit.item.group)
+              ? -frecencyOf(hit.item.id)
+              : 0,
         }))
         .sort((left, right) => left.rank - right.rank);
     }
-    const learned = usage ? learnedPicks(usage.picks, trimmed, usage.at) : new Map<string, number>();
+    const learned = usage
+      ? learnedPicks(usage.picks, trimmed, usage.at)
+      : new Map<string, number>();
     return hits
       .map((hit) => ({
         hit,
@@ -532,7 +564,7 @@ export function CommandPalette({
           (hit.matchRank ?? 5) +
           GROUP_PRIOR[hit.item.group] -
           usageBoost(frecencyOf(hit.item.id), learned.get(hit.item.id) ?? 0) -
-          (hit.item.suggest ? 0.5 : 0)
+          (hit.item.suggest ? 0.5 : 0),
       }))
       .sort((left, right) => left.rank - right.rank);
   }, [commands, frecencyOf, open, query, usage]);
@@ -543,9 +575,7 @@ export function CommandPalette({
   const flatRows = useMemo<PaletteRow[]>(() => {
     const trimmed = query.trim();
     const perGroup =
-      trimmed.length === 0 && visibleGroups.length > 1
-        ? MAX_RECENT_PER_GROUP
-        : MAX_PER_GROUP;
+      trimmed.length === 0 && visibleGroups.length > 1 ? MAX_RECENT_PER_GROUP : MAX_PER_GROUP;
 
     // The empty All palette leads with what fits right now (a chat waiting on
     // the user, Stop mid-turn), then the actions and settings used most. Each
@@ -556,7 +586,10 @@ export function CommandPalette({
         if (hit.item.suggest) suggested.push(hit);
       }
       const habitual = localHits
-        .filter(({ hit }) => !hit.item.suggest && HABIT_GROUPS.has(hit.item.group) && frecencyOf(hit.item.id) > 0)
+        .filter(
+          ({ hit }) =>
+            !hit.item.suggest && HABIT_GROUPS.has(hit.item.group) && frecencyOf(hit.item.id) > 0,
+        )
         .sort((left, right) => frecencyOf(right.hit.item.id) - frecencyOf(left.hit.item.id));
       for (const { hit } of habitual) suggested.push(hit);
       suggested.splice(MAX_RECENT_PER_GROUP);
@@ -573,15 +606,25 @@ export function CommandPalette({
       }
     }
 
-    const groups = trimmed.length === 0 && scope === "all" ? [...EMPTY_ALL_GROUPS] : [...visibleGroups];
+    const groups =
+      trimmed.length === 0 && scope === "all" ? [...EMPTY_ALL_GROUPS] : [...visibleGroups];
     if (trimmed) {
-      const learned = usage ? learnedPicks(usage.picks, trimmed, usage.at) : new Map<string, number>();
+      const learned = usage
+        ? learnedPicks(usage.picks, trimmed, usage.at)
+        : new Map<string, number>();
       const bestRank = (group: PaletteGroup): number => {
         if (group === "Files") {
-          return Math.min(...fileHits.map(({ item }) =>
-            Math.min(searchMatchRank(item.label, trimmed), 6 + searchMatchRank(item.subtitle ?? "", trimmed)) +
-            GROUP_PRIOR.Files -
-            usageBoost(frecencyOf(item.id), learned.get(item.id) ?? 0)));
+          return Math.min(
+            ...fileHits.map(
+              ({ item }) =>
+                Math.min(
+                  searchMatchRank(item.label, trimmed),
+                  6 + searchMatchRank(item.subtitle ?? "", trimmed),
+                ) +
+                GROUP_PRIOR.Files -
+                usageBoost(frecencyOf(item.id), learned.get(item.id) ?? 0),
+            ),
+          );
         }
         return Math.min(...(byGroup.get(group) ?? []).map(({ rank }) => rank));
       };
@@ -625,9 +668,22 @@ export function CommandPalette({
       }
     }
     return rows;
-  }, [contentResult.files, fileHits, frecencyOf, localHits, messageHits, query, scope, usage, visibleGroups]);
+  }, [
+    contentResult.files,
+    fileHits,
+    frecencyOf,
+    localHits,
+    messageHits,
+    query,
+    scope,
+    usage,
+    visibleGroups,
+  ]);
 
-  const selectedIndex = Math.max(0, flatRows.findIndex((row) => rowKey(row) === selectedRowKey));
+  const selectedIndex = Math.max(
+    0,
+    flatRows.findIndex((row) => rowKey(row) === selectedRowKey),
+  );
 
   // Every row commits the same way, whichever list it came from. Content rows
   // open their file: the file header and its match rows both land on the path,
@@ -658,7 +714,7 @@ export function CommandPalette({
         }
       }
     },
-    [onClose, onFilePick, query]
+    [onClose, onFilePick, query],
   );
 
   const selectScope = useCallback((next: PaletteScope): void => {
@@ -674,7 +730,7 @@ export function CommandPalette({
       const next = (current + step + SCOPE_TABS.length) % SCOPE_TABS.length;
       selectScope(SCOPE_TABS[next].scope);
     },
-    [scope, selectScope]
+    [scope, selectScope],
   );
 
   useEffect(() => {
@@ -743,7 +799,7 @@ export function CommandPalette({
   // the "still too short to have run" gate follows the active tab.
   const minQueryLength = scope === "contents" ? MIN_CONTENT_QUERY_LENGTH : MIN_MESSAGE_QUERY_LENGTH;
   const searchErrors = [messageError, filesError, contentError].filter(
-    (message): message is string => message !== null
+    (message): message is string => message !== null,
   );
   const showingEmptyState =
     flatRows.length === 0 &&
@@ -772,7 +828,9 @@ export function CommandPalette({
             placeholder={SCOPE_PLACEHOLDER[scope]}
             aria-label="Command palette query"
             aria-controls="command-palette-results"
-            aria-activedescendant={flatRows.length > 0 ? `command-palette-option-${selectedIndex}` : undefined}
+            aria-activedescendant={
+              flatRows.length > 0 ? `command-palette-option-${selectedIndex}` : undefined
+            }
             spellCheck={false}
             autoCorrect="off"
             autoCapitalize="off"
@@ -846,13 +904,17 @@ export function CommandPalette({
         >
           {searchErrors.map((message) => (
             <li key={message} className="command-palette-empty" role="alert">
-              <span className="command-palette-empty-mark" aria-hidden="true">!</span>
+              <span className="command-palette-empty-mark" aria-hidden="true">
+                !
+              </span>
               <span className="command-palette-empty-text">{message}</span>
             </li>
           ))}
           {showingEmptyState ? (
             <li className="command-palette-empty" role="status">
-              <span className="command-palette-empty-mark" aria-hidden="true">∅</span>
+              <span className="command-palette-empty-mark" aria-hidden="true">
+                ∅
+              </span>
               <span className="command-palette-empty-text">
                 {trimmedQuery.length > 0
                   ? "No matches — try shorter terms or another filter."
@@ -880,9 +942,13 @@ export function CommandPalette({
                 <li
                   role="option"
                   id={`command-palette-option-${index}`}
-                  aria-label={row.kind === "hit"
-                    ? [row.hit.item.label, row.hit.item.subtitle, row.hit.item.meta].filter(Boolean).join(" ")
-                    : undefined}
+                  aria-label={
+                    row.kind === "hit"
+                      ? [row.hit.item.label, row.hit.item.subtitle, row.hit.item.meta]
+                          .filter(Boolean)
+                          .join(" ")
+                      : undefined
+                  }
                   aria-selected={isSelected}
                   className={`command-palette-result${isSelected ? " selected" : ""}`}
                   data-group={row.group}
@@ -910,7 +976,7 @@ export function CommandPalette({
                     <RowIcon
                       icon={
                         row.kind === "hit"
-                          ? row.hit.item.icon ?? GROUP_ICON[row.hit.item.group]
+                          ? (row.hit.item.icon ?? GROUP_ICON[row.hit.item.group])
                           : GROUP_ICON[row.group]
                       }
                     />
@@ -958,20 +1024,38 @@ export function CommandPalette({
               </Fragment>
             );
           })}
-          {(messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH) || filesRunning || contentsRunning ? (
-            <li className="loading-line command-palette-loading" role="status" aria-label="Searching">
+          {(messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH) ||
+          filesRunning ||
+          contentsRunning ? (
+            <li
+              className="loading-line command-palette-loading"
+              role="status"
+              aria-label="Searching"
+            >
               <WorkingNest active size={12} />
             </li>
           ) : null}
         </ul>
         <footer className="command-palette-footer" aria-hidden="true">
-          <span><kbd>↑</kbd><kbd>↓</kbd> select</span>
+          <span>
+            <kbd>↑</kbd>
+            <kbd>↓</kbd> select
+          </span>
           <span className="command-palette-footer-sep">·</span>
-          <span><kbd>⏎</kbd> open</span>
+          <span>
+            <kbd>⏎</kbd> open
+          </span>
           <span className="command-palette-footer-sep">·</span>
-          <span><kbd>⇥</kbd><kbd>&gt;</kbd><kbd>@</kbd><kbd>#</kbd> change filter</span>
+          <span>
+            <kbd>⇥</kbd>
+            <kbd>&gt;</kbd>
+            <kbd>@</kbd>
+            <kbd>#</kbd> change filter
+          </span>
           <span className="command-palette-footer-sep">·</span>
-          <span><kbd>esc</kbd> close</span>
+          <span>
+            <kbd>esc</kbd> close
+          </span>
         </footer>
       </div>
     </div>
@@ -1030,7 +1114,13 @@ function RowIcon({ icon: Icon }: { icon: LucideIcon }): JSX.Element {
 function FileTypeIcon({ name }: { name: string }): JSX.Element {
   return (
     <span className="command-palette-icon command-palette-icon--file" aria-hidden="true">
-      <FileIcon fileName={name} autoAssign editFileNameData={SPECIAL_FILE_ICONS} width={14} height={14} />
+      <FileIcon
+        fileName={name}
+        autoAssign
+        editFileNameData={SPECIAL_FILE_ICONS}
+        width={14}
+        height={14}
+      />
     </span>
   );
 }
@@ -1061,20 +1151,14 @@ function MessageHitRow({ hit }: { hit: MessageHit }): JSX.Element {
             <mark key={index}>{segment.text}</mark>
           ) : (
             <span key={index}>{segment.text}</span>
-          )
+          ),
         )}
       </span>
     </>
   );
 }
 
-function HighlightedText({
-  text,
-  ranges
-}: {
-  text: string;
-  ranges: number[] | null;
-}): JSX.Element {
+function HighlightedText({ text, ranges }: { text: string; ranges: number[] | null }): JSX.Element {
   const segments = highlightSegments(text, ranges);
   return (
     <>
@@ -1083,7 +1167,7 @@ function HighlightedText({
           <mark key={index}>{segment.text}</mark>
         ) : (
           <span key={index}>{segment.text}</span>
-        )
+        ),
       )}
     </>
   );

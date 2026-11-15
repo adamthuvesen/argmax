@@ -33,7 +33,10 @@ function readStoredFollowUpDelivery(): FollowUpDelivery {
   return window.localStorage.getItem(FOLLOW_UP_DELIVERY_KEY) === "steer" ? "steer" : "queue";
 }
 
-export function useFollowUpDeliveryPreference(): [FollowUpDelivery, (value: FollowUpDelivery) => void] {
+export function useFollowUpDeliveryPreference(): [
+  FollowUpDelivery,
+  (value: FollowUpDelivery) => void,
+] {
   const [value, setValue] = useState<FollowUpDelivery>(readStoredFollowUpDelivery);
   const setPreference = useCallback((next: FollowUpDelivery) => {
     setValue(next);
@@ -87,7 +90,7 @@ export function writeBooleanPreference(key: string, value: boolean): void {
  */
 export function readBoundedNumberPreference(
   key: string,
-  { min, max, fallback }: { min: number; max: number; fallback: number }
+  { min, max, fallback }: { min: number; max: number; fallback: number },
 ): number {
   if (typeof window === "undefined") return fallback;
   const raw = window.localStorage.getItem(key);
@@ -98,14 +101,17 @@ export function readBoundedNumberPreference(
 }
 
 /** Boolean UI preference with mirrored localStorage persistence. */
-export function useBooleanUiPreference(key: string, fallback: boolean): [boolean, (value: boolean) => void] {
+export function useBooleanUiPreference(
+  key: string,
+  fallback: boolean,
+): [boolean, (value: boolean) => void] {
   const [value, setValue] = useState(() => readBooleanPreference(key, fallback));
   const setPreference = useCallback(
     (next: boolean) => {
       setValue(next);
       writeBooleanPreference(key, next);
     },
-    [key]
+    [key],
   );
   return [value, setPreference];
 }
@@ -113,7 +119,7 @@ export function useBooleanUiPreference(key: string, fallback: boolean): [boolean
 /** Bounded integer UI preference with mirrored localStorage persistence. */
 export function useBoundedNumberPreference(
   key: string,
-  bounds: { min: number; max: number; fallback: number }
+  bounds: { min: number; max: number; fallback: number },
 ): [number, (value: number) => void] {
   const [value, setValue] = useState(() => readBoundedNumberPreference(key, bounds));
   const { min, max } = bounds;
@@ -123,7 +129,7 @@ export function useBoundedNumberPreference(
       setValue(clamped);
       if (typeof window !== "undefined") window.localStorage.setItem(key, String(clamped));
     },
-    [key, max, min]
+    [key, max, min],
   );
   return [value, setPreference];
 }
@@ -132,7 +138,11 @@ export function useBoundedNumberPreference(
  *  headers, or a single self-updating line per gap between replies. */
 export type ToolCallsDisplay = "expanded" | "collapsed" | "single-line";
 
-const TOOL_CALLS_DISPLAY_VALUES: readonly ToolCallsDisplay[] = ["expanded", "collapsed", "single-line"];
+const TOOL_CALLS_DISPLAY_VALUES: readonly ToolCallsDisplay[] = [
+  "expanded",
+  "collapsed",
+  "single-line",
+];
 
 /** Whether thoughts collapse, preview live reasoning, or stay visible in full. */
 export type ThinkingDisplay = "collapsed" | "preview" | "inline";
@@ -150,14 +160,14 @@ export const CHAT_VERBOSITY_LABELS: Record<ChatVerbosity, string> = {
   1: "Minimal",
   2: "Compact",
   3: "Steps",
-  4: "Detailed"
+  4: "Detailed",
 };
 
 export const CHAT_VERBOSITY_HINTS: Record<ChatVerbosity, string> = {
   1: "One activity line while working. Finished turns keep the answer. Expand Worked to inspect every step, including failed attempts.",
   2: "One short activity summary between messages, naming the current step while it runs.",
   3: "Every step listed by name with its output closed, and a live preview of the current thought.",
-  4: "Steps open with their output on the latest turn, and thoughts in full."
+  4: "Steps open with their output on the latest turn, and thoughts in full.",
 };
 
 /**
@@ -169,13 +179,29 @@ export const CHAT_VERBOSITY_HINTS: Record<ChatVerbosity, string> = {
 export function resolveChatVerbosity(verbosity: ChatVerbosity): ResolvedVerbosity {
   switch (verbosity) {
     case 1:
-      return { toolCallsDisplay: "single-line", toolCallGroupsExpanded: false, thinkingDisplay: "collapsed" };
+      return {
+        toolCallsDisplay: "single-line",
+        toolCallGroupsExpanded: false,
+        thinkingDisplay: "collapsed",
+      };
     case 2:
-      return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "collapsed" };
+      return {
+        toolCallsDisplay: "collapsed",
+        toolCallGroupsExpanded: false,
+        thinkingDisplay: "collapsed",
+      };
     case 3:
-      return { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: true, thinkingDisplay: "preview" };
+      return {
+        toolCallsDisplay: "collapsed",
+        toolCallGroupsExpanded: true,
+        thinkingDisplay: "preview",
+      };
     case 4:
-      return { toolCallsDisplay: "expanded", toolCallGroupsExpanded: true, thinkingDisplay: "inline" };
+      return {
+        toolCallsDisplay: "expanded",
+        toolCallGroupsExpanded: true,
+        thinkingDisplay: "inline",
+      };
   }
 }
 

@@ -15,7 +15,7 @@ function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "id" | "name">): Too
     createdAt: overrides.createdAt ?? "2026-05-21T10:00:00.000Z",
     completedAt: overrides.completedAt ?? "2026-05-21T10:00:01.000Z",
     error: overrides.error ?? null,
-    parentToolUseId: overrides.parentToolUseId ?? null
+    parentToolUseId: overrides.parentToolUseId ?? null,
   };
 }
 
@@ -30,7 +30,7 @@ describe("turnToolItems", () => {
       { kind: "tool", tool: first },
       { kind: "tool", tool: second },
       { kind: "tool", tool: read },
-      { kind: "tool", tool: third }
+      { kind: "tool", tool: third },
     ]);
 
     expect(folded).toEqual([first, second, read, third].map((tool) => ({ kind: "tool", tool })));
@@ -42,13 +42,13 @@ describe("turnToolItems", () => {
       id: "child-read",
       name: "Read",
       inputPreview: "src/child.ts",
-      parentToolUseId: "tu-agent"
+      parentToolUseId: "tu-agent",
     });
     const childBash = tool({
       id: "child-bash",
       name: "Bash",
       inputPreview: "npm test",
-      parentToolUseId: "tu-agent"
+      parentToolUseId: "tu-agent",
     });
     const topLevelBash = tool({ id: "top-bash", name: "Bash", inputPreview: "git status" });
 
@@ -56,7 +56,7 @@ describe("turnToolItems", () => {
       { kind: "tool", tool: agent },
       { kind: "tool", tool: childRead },
       { kind: "tool", tool: childBash },
-      { kind: "tool", tool: topLevelBash }
+      { kind: "tool", tool: topLevelBash },
     ]);
 
     expect(folded).toHaveLength(2);
@@ -75,14 +75,11 @@ describe("turnToolItems", () => {
               question: "Pick one",
               header: "Choice",
               multiSelect: true,
-              options: [
-                { label: "A", description: "Alpha" },
-                { label: "B" }
-              ]
-            }
-          ]
-        }
-      })
+              options: [{ label: "A", description: "Alpha" }, { label: "B" }],
+            },
+          ],
+        },
+      }),
     );
 
     expect(parsed).toEqual([
@@ -90,8 +87,8 @@ describe("turnToolItems", () => {
         question: "Pick one",
         header: "Choice",
         multiSelect: true,
-        options: [{ label: "A", description: "Alpha" }, { label: "B" }]
-      }
+        options: [{ label: "A", description: "Alpha" }, { label: "B" }],
+      },
     ]);
 
     const invalid = parseQuestionsFromToolInput(
@@ -102,11 +99,17 @@ describe("turnToolItems", () => {
           questions: [
             {
               question: "Too many",
-              options: [{ label: "1" }, { label: "2" }, { label: "3" }, { label: "4" }, { label: "5" }]
-            }
-          ]
-        }
-      })
+              options: [
+                { label: "1" },
+                { label: "2" },
+                { label: "3" },
+                { label: "4" },
+                { label: "5" },
+              ],
+            },
+          ],
+        },
+      }),
     );
     expect(invalid).toBeNull();
   });
@@ -126,11 +129,11 @@ describe("turnToolItems", () => {
               header: "Token",
               options: [],
               isOther: true,
-              isSecret: true
-            }
-          ]
-        }
-      })
+              isSecret: true,
+            },
+          ],
+        },
+      }),
     );
 
     expect(parsed).toEqual([
@@ -141,8 +144,8 @@ describe("turnToolItems", () => {
         multiSelect: false,
         options: [],
         isOther: true,
-        isSecret: true
-      }
+        isSecret: true,
+      },
     ]);
   });
 
@@ -153,7 +156,10 @@ describe("turnToolItems", () => {
 
     expect(visibleTurnToolItem({ kind: "tool", tool: hidden }, hiddenIds)).toBeNull();
 
-    const filtered = visibleTurnToolItem({ kind: "tool", tool: visible, children: [hidden] }, hiddenIds);
+    const filtered = visibleTurnToolItem(
+      { kind: "tool", tool: visible, children: [hidden] },
+      hiddenIds,
+    );
     expect(filtered).toEqual({ kind: "tool", tool: visible });
   });
 });

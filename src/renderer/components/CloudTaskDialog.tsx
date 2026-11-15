@@ -1,4 +1,6 @@
 import { AlertCircle, Check, Copy, ExternalLink, X } from "lucide-react";
+import { cloudActions } from "../data/bridgeActions.js";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import { useCallback, useEffect, useRef, useState, type JSX, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { errorMessage, errorSubCode } from "../../shared/error.js";
@@ -6,7 +8,7 @@ import type { CloudHandoffPreview, CloudHandoffResult } from "../../shared/types
 import {
   CLOUD_PROVIDER_TASKS_URLS,
   cloudProviderName,
-  type HostedCloudProvider
+  type HostedCloudProvider,
 } from "../../shared/cloudProviders.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
@@ -25,7 +27,7 @@ export function CloudTaskDialog({
   projectFolderId,
   initialBrief,
   onLaunched,
-  onClose
+  onClose,
 }: {
   open: boolean;
   provider: HostedCloudProvider;
@@ -33,7 +35,12 @@ export function CloudTaskDialog({
   onClose: () => void;
 } & (
   | { sessionId: string; projectId?: never; projectFolderId?: never; initialBrief?: string }
-  | { sessionId?: never; projectId: string; projectFolderId?: string; initialBrief: string }
+  | {
+      sessionId?: never;
+      projectId: string;
+      projectFolderId: string | undefined;
+      initialBrief: string;
+    }
 )): JSX.Element | null {
   const [preview, setPreview] = useState<CloudHandoffPreview | null>(null);
   const [brief, setBrief] = useState("");
@@ -62,7 +69,9 @@ export function CloudTaskDialog({
     if (environmentPickerOpen) {
       setEnvironmentPickerOpen(false);
       queueMicrotask(() => {
-        dialogRef.current?.querySelector<HTMLButtonElement>('[aria-label="Cloud environment"]')?.focus();
+        dialogRef.current
+          ?.querySelector<HTMLButtonElement>('[aria-label="Cloud environment"]')
+          ?.focus();
       });
       return;
     }
@@ -79,7 +88,7 @@ export function CloudTaskDialog({
       return;
     }
 
-    const request = ++requestGeneration.current;
+    ++requestGeneration.current;
     setPreview(null);
     setBrief("");
     setEnvironmentId("");
@@ -91,72 +100,93 @@ export function CloudTaskDialog({
     setLaunching(false);
     launchingRef.current = false;
 
-    if (!window.argmax?.cloud) {
+    if (!cloudActions()) {
       showErrorToast("Cloud tasks are available only in the Argmax desktop app.");
       setPreparing(false);
-      return;
     }
+  }, [open, prepareAttempt, sessionId, projectId, projectFolderId, instruction, provider]);
 
+  useBridgeQuery({
+    key: [
+      "cloud.prepare",
+      prepareAttempt,
+      sessionId,
+      projectId,
+      projectFolderId,
+      instruction,
+      provider,
+    ],
+    enabled: open,
     // A chat's brief comes back whole from Rust: its transcript, closed by the
     // user's instruction when they typed one. A project has no transcript, so
     // its brief is the instruction itself.
-    void window.argmax.cloud
-      .prepare(sessionId
-        ? { sessionId, provider, ...(instruction ? { instruction } : {}) }
-        : { projectId, provider, ...(projectFolderId ? { projectFolderId } : {}) })
-      .then((nextPreview) => {
-        if (requestGeneration.current !== request) return;
-        setPreview(nextPreview);
-        setBrief(nextPreview.brief.trim() ? nextPreview.brief : instruction);
-        setEnvironmentId(nextPreview.environmentId || (nextPreview.environments.length === 1
-          ? nextPreview.environments[0]?.id ?? ""
-          : ""));
-      })
-      .catch((cause: unknown) => {
-        if (requestGeneration.current !== request) return;
-        showErrorToast(errorMessage(cause) || "Couldn’t check this task’s setup.");
-      })
-      .finally(() => {
-        if (requestGeneration.current === request) setPreparing(false);
-      });
-  }, [open, prepareAttempt, sessionId, projectId, projectFolderId, instruction, provider]);
+    read: (api) =>
+      api.cloud?.prepare(
+        sessionId
+          ? { sessionId, provider, ...(instruction ? { instruction } : {}) }
+          : { projectId, provider, ...(projectFolderId ? { projectFolderId } : {}) },
+      ),
+    onData: (nextPreview) => {
+      setPreview(nextPreview);
+      setBrief(nextPreview.brief.trim() ? nextPreview.brief : instruction);
+      setEnvironmentId(
+        nextPreview.environmentId ||
+          (nextPreview.environments.length === 1 ? (nextPreview.environments[0]?.id ?? "") : ""),
+      );
+      setPreparing(false);
+    },
+    onError: (cause) => {
+      showErrorToast(errorMessage(cause) || "Couldn’t check this task’s setup.");
+      setPreparing(false);
+    },
+  });
 
   useEffect(() => {
     if (!open || launching) return;
     if (preparing) dialogRef.current?.focus();
     else if (deliveryUnknown) closeButtonRef.current?.focus();
-    else if (result) dialogRef.current?.querySelector<HTMLAnchorElement>("a.cloud-task-dialog-launch")?.focus();
+    else if (result)
+      dialogRef.current?.querySelector<HTMLAnchorElement>("a.cloud-task-dialog-launch")?.focus();
     else if (preview) {
-      const target = preview.environments.length > 1
-        ? dialogRef.current?.querySelector<HTMLButtonElement>('[aria-label="Cloud environment"]')
-        : dialogRef.current?.querySelector<HTMLButtonElement>(".cloud-task-dialog-launch");
+      const target =
+        preview.environments.length > 1
+          ? dialogRef.current?.querySelector<HTMLButtonElement>('[aria-label="Cloud environment"]')
+          : dialogRef.current?.querySelector<HTMLButtonElement>(".cloud-task-dialog-launch");
       target?.focus();
-    }
-    else if (window.argmax?.cloud) {
+    } else if (cloudActions()) {
       dialogRef.current?.querySelector<HTMLButtonElement>(".cloud-task-dialog-launch")?.focus();
-    }
-    else dialogRef.current?.focus();
+    } else dialogRef.current?.focus();
   }, [open, preparing, launching, preview, result, deliveryUnknown]);
 
   if (!motion.present) return null;
 
   const launch = async (): Promise<void> => {
     const trimmedBrief = brief.trim();
-    if (!preview || !trimmedBrief || !environmentId || busy || launchingRef.current || !window.argmax?.cloud) return;
+    if (
+      !preview ||
+      !trimmedBrief ||
+      !environmentId ||
+      busy ||
+      launchingRef.current ||
+      !cloudActions()
+    )
+      return;
 
     const request = requestGeneration.current;
     launchingRef.current = true;
     setLaunching(true);
     setError(null);
     try {
-      const nextResult = await window.argmax.cloud.launch({
-        ...(sessionId ? { sessionId } : { projectId, ...(projectFolderId ? { projectFolderId } : {}) }),
+      const nextResult = await cloudActions()!.launch({
+        ...(sessionId
+          ? { sessionId }
+          : { projectId, ...(projectFolderId ? { projectFolderId } : {}) }),
         provider,
         repository: preview.repository,
         branch: preview.branch,
         commit: preview.commit,
         brief: trimmedBrief,
-        environmentId
+        environmentId,
       });
       if (requestGeneration.current !== request) return;
       setResult(nextResult);
@@ -165,7 +195,9 @@ export function CloudTaskDialog({
       if (requestGeneration.current !== request) return;
       const message = errorMessage(cause) || "Couldn’t start the cloud task.";
       if (errorSubCode(cause) === "CLOUD_LAUNCH_DELIVERY_UNKNOWN") {
-        showErrorToast(`Could not confirm delivery to ${providerName}. Check the task status before sending again.`);
+        showErrorToast(
+          `Could not confirm delivery to ${providerName}. Check the task status before sending again.`,
+        );
         setDeliveryUnknown(true);
         setError(message);
       } else {
@@ -188,26 +220,30 @@ export function CloudTaskDialog({
       aria-describedby="cloud-task-dialog-description"
       aria-busy={busy}
     >
-      <div
-        ref={dialogRef}
-        className="cloud-task-dialog motion-modal-surface"
-        tabIndex={-1}
-      >
+      <div ref={dialogRef} className="cloud-task-dialog motion-modal-surface" tabIndex={-1}>
         <header className="cloud-task-dialog-header">
           <div>
             <h2 id="cloud-task-dialog-title">
               {result
                 ? `Task sent to ${providerName}`
-                : deliveryUnknown ? "Task status unknown" : `Send task to ${providerName}`}
+                : deliveryUnknown
+                  ? "Task status unknown"
+                  : `Send task to ${providerName}`}
             </h2>
             <p id="cloud-task-dialog-description">
               {result
-                ? !sessionId ? "Argmax doesn’t keep this link. Open or copy it before you close."
-                : result.warning ? `The task is running in ${providerName}.` : "A link to the task is saved in this chat."
-                : deliveryUnknown ? `${providerName} may already have this task.`
-                : preparing ? `Checking your pushed branch and ${providerName} setup…`
-                : launching ? `Starting the task in ${providerName}. This can take up to a minute.`
-                : "Runs from your pushed branch. Unpushed changes stay on this Mac."}
+                ? !sessionId
+                  ? "Argmax doesn’t keep this link. Open or copy it before you close."
+                  : result.warning
+                    ? `The task is running in ${providerName}.`
+                    : "A link to the task is saved in this chat."
+                : deliveryUnknown
+                  ? `${providerName} may already have this task.`
+                  : preparing
+                    ? `Checking your pushed branch and ${providerName} setup…`
+                    : launching
+                      ? `Starting the task in ${providerName}. This can take up to a minute.`
+                      : "Runs from your pushed branch. Unpushed changes stay on this Mac."}
             </p>
           </div>
           <button type="button" aria-label="Close dialog" onClick={close} disabled={launching}>
@@ -234,7 +270,9 @@ export function CloudTaskDialog({
               <dl className="cloud-task-dialog-details">
                 <div>
                   <dt>Repository</dt>
-                  <dd><span title={preview.repository}>{preview.repository}</span></dd>
+                  <dd>
+                    <span title={preview.repository}>{preview.repository}</span>
+                  </dd>
                 </div>
                 <div>
                   <dt>Branch</dt>
@@ -261,11 +299,13 @@ export function CloudTaskDialog({
                           { value: "", label: "Choose an environment", disabled: true },
                           ...preview.environments.map((environment) => ({
                             value: environment.id,
-                            label: environment.name
-                          }))
+                            label: environment.name,
+                          })),
                         ]}
                       />
-                    ) : preview.environmentDescription}
+                    ) : (
+                      preview.environmentDescription
+                    )}
                   </dd>
                 </div>
               </dl>
@@ -274,19 +314,22 @@ export function CloudTaskDialog({
             <div className="cloud-task-dialog-link">
               <span title={result.url}>{result.url}</span>
               <button type="button" onClick={() => void copy(result.url)}>
+                {copyFlash === "copied" ? (
+                  <Check size={13} aria-hidden="true" />
+                ) : (
+                  <Copy size={13} aria-hidden="true" />
+                )}
                 {copyFlash === "copied"
-                  ? <Check size={13} aria-hidden="true" />
-                  : <Copy size={13} aria-hidden="true" />}
-                {copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Copy failed" : "Copy link"}
+                  ? "Copied"
+                  : copyFlash === "failed"
+                    ? "Copy failed"
+                    : "Copy link"}
               </button>
             </div>
           ) : null}
 
           {deliveryUnknown && error ? (
-            <p
-              className="cloud-task-dialog-notice cloud-task-dialog-notice--caution"
-              role="alert"
-            >
+            <p className="cloud-task-dialog-notice cloud-task-dialog-notice--caution" role="alert">
               <AlertCircle size={15} aria-hidden="true" />
               <span>{withInlineCode(error)}</span>
             </p>
@@ -303,7 +346,7 @@ export function CloudTaskDialog({
           <button ref={closeButtonRef} type="button" onClick={close} disabled={launching}>
             {result || deliveryUnknown ? "Close" : "Cancel"}
           </button>
-          {!preparing && !preview && window.argmax?.cloud ? (
+          {!preparing && !preview && cloudActions() ? (
             <button
               type="button"
               className="cloud-task-dialog-launch"
@@ -346,16 +389,16 @@ export function CloudTaskDialog({
         </footer>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }
 
 /** Provider messages quote commands and config in backticks; set those apart
  *  as code instead of printing the backticks. */
 function withInlineCode(message: string): ReactNode[] {
-  return message.split(/`([^`]+)`/).map((part, index) =>
-    index % 2 === 1 ? <code key={index}>{part}</code> : part
-  );
+  return message
+    .split(/`([^`]+)`/)
+    .map((part, index) => (index % 2 === 1 ? <code key={index}>{part}</code> : part));
 }
 
 const SKELETON_ROWS = ["repository", "branch", "environment"] as const;
@@ -370,7 +413,10 @@ function CloudTaskSkeleton(): JSX.Element {
       aria-busy="true"
       aria-label="Preparing cloud task"
     >
-      <span className="loading-block cloud-task-dialog-skeleton-summary" />
+      <span
+        className="loading-block cloud-task-dialog-skeleton-summary"
+        data-testid="cloud-task-skeleton-summary"
+      />
       <div className="cloud-task-dialog-skeleton-rows">
         {SKELETON_ROWS.map((key) => (
           <div className="cloud-task-dialog-skeleton-row" key={key}>

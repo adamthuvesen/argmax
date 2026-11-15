@@ -1,24 +1,15 @@
-import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   baseSession,
   renderConversation,
   rerenderConversation,
-  STARTED_TURN
+  STARTED_TURN,
 } from "../../test/sessionConversationTestHarness.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { ArgmaxApi } from "../../shared/types.js";
-import type * as TauriBridgeModule from "../lib/tauriBridge.js";
 
 const SCREENSHOT_PATH = "/attachments/session-a/shot.png";
-
-// The harness installs its own window.argmax, so the transport flag is the one
-// thing the attachment hook still needs told.
-const remote = vi.hoisted(() => ({ bridge: false }));
-vi.mock("../lib/tauriBridge.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof TauriBridgeModule>();
-  return { ...actual, isRemoteBridge: () => remote.bridge };
-});
 
 function prompt(): HTMLTextAreaElement {
   return screen.getByLabelText("Chat prompt");
@@ -29,15 +20,17 @@ function pasteScreenshot(): void {
   const file = new File([new Uint8Array([137, 80, 78, 71])], "shot.png", { type: "image/png" });
   fireEvent.paste(prompt(), {
     clipboardData: {
-      items: [{ kind: "file", type: "image/png", getAsFile: () => file }]
-    }
+      items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
+    },
   });
 }
 
 function attachedScreenshots(): string[] {
   const region = screen.queryByLabelText("Attached images");
   if (!region) return [];
-  return Array.from(region.querySelectorAll("img")).map((image) => image.getAttribute("src") ?? "");
+  return within(region)
+    .queryAllByRole("presentation")
+    .map((image) => image.getAttribute("src") ?? "");
 }
 
 describe("SessionComposer unsent drafts", () => {
@@ -46,17 +39,16 @@ describe("SessionComposer unsent drafts", () => {
     // Only the calls this surface makes on mount plus the one the paste needs.
     window.argmax = {
       attachments: {
-        saveImage: vi.fn().mockResolvedValue({ filePath: SCREENSHOT_PATH, sizeBytes: 4 })
+        saveImage: vi.fn().mockResolvedValue({ filePath: SCREENSHOT_PATH, sizeBytes: 4 }),
       },
       // Never settles: these tests are about the composer, and a PR list
       // landing mid-assertion is only an unwrapped state update.
-      prs: { listForSession: vi.fn(() => new Promise(() => {})) }
+      prs: { listForSession: vi.fn(() => new Promise(() => {})) },
     } as unknown as ArgmaxApi;
   });
 
   afterEach(() => {
     cleanup();
-    remote.bridge = false;
   });
 
   it("brings the unsent text back when the session is opened again", () => {
@@ -108,7 +100,7 @@ describe("SessionComposer unsent drafts", () => {
       () =>
         new Promise<typeof STARTED_TURN>((_resolve, reject) => {
           rejectSend = reject;
-        })
+        }),
     );
     renderConversation(baseSession(), [], { onSendSessionInput });
     fireEvent.change(prompt(), { target: { value: "retry me" } });
@@ -130,7 +122,7 @@ describe("SessionComposer unsent drafts", () => {
       () =>
         new Promise<typeof STARTED_TURN>((_resolve, reject) => {
           rejectSend = reject;
-        })
+        }),
     );
     const { rerender } = renderConversation(baseSession(), [], { onSendSessionInput });
     pasteScreenshot();
@@ -152,7 +144,7 @@ describe("SessionComposer unsent drafts", () => {
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalledTimes(2));
     const retry = onSendSessionInput.mock.calls[1] as unknown as unknown[] | undefined;
     expect(retry?.[4]).toEqual([
-      { filePath: SCREENSHOT_PATH, mimeType: "image/png", sizeBytes: 4 }
+      { filePath: SCREENSHOT_PATH, mimeType: "image/png", sizeBytes: 4 },
     ]);
 
     cleanup();
@@ -160,20 +152,13 @@ describe("SessionComposer unsent drafts", () => {
     expect(prompt()).toHaveValue("");
   });
 
-  it("saves a pasted image through the remote bridge", async () => {
-    remote.bridge = true;
-    renderConversation(baseSession());
-    pasteScreenshot();
-
-    await waitFor(() => expect(window.argmax?.attachments.saveImage).toHaveBeenCalledTimes(1));
-    expect(attachedScreenshots()).toEqual([attachmentProtocolUrl(SCREENSHOT_PATH)]);
-  });
-
   it("brings a pasted screenshot back when the session is opened again", async () => {
     renderConversation(baseSession());
     pasteScreenshot();
 
-    await waitFor(() => expect(attachedScreenshots()).toEqual([attachmentProtocolUrl(SCREENSHOT_PATH)]));
+    await waitFor(() =>
+      expect(attachedScreenshots()).toEqual([attachmentProtocolUrl(SCREENSHOT_PATH)]),
+    );
     cleanup();
 
     renderConversation(baseSession());
@@ -191,30 +176,35 @@ describe("SessionComposer unsent drafts", () => {
     expect(attachedScreenshots()).toEqual([]);
   });
 
-  it.each(["click", "Enter", "queue"])("sends only a screenshot via %s and clears the draft", async (method) => {
-    const onSendSessionInput = vi.fn().mockResolvedValue(STARTED_TURN);
-    renderConversation(baseSession({ state: method === "queue" ? "running" : "complete" }), [], { onSendSessionInput });
-    pasteScreenshot();
-    await waitFor(() => expect(attachedScreenshots()).toHaveLength(1));
+  it.each(["click", "Enter", "queue"])(
+    "sends only a screenshot via %s and clears the draft",
+    async (method) => {
+      const onSendSessionInput = vi.fn().mockResolvedValue(STARTED_TURN);
+      renderConversation(baseSession({ state: method === "queue" ? "running" : "complete" }), [], {
+        onSendSessionInput,
+      });
+      pasteScreenshot();
+      await waitFor(() => expect(attachedScreenshots()).toHaveLength(1));
 
-    expect(prompt()).toHaveValue("");
-    if (method === "click") {
-      const send = screen.getByRole("button", { name: "Send follow-up" });
-      expect(send).toBeEnabled();
-      fireEvent.click(send);
-    } else {
-      fireEvent.keyDown(prompt(), { key: "Enter" });
-    }
+      expect(prompt()).toHaveValue("");
+      if (method === "click") {
+        const send = screen.getByRole("button", { name: "Send follow-up" });
+        expect(send).toBeEnabled();
+        fireEvent.click(send);
+      } else {
+        fireEvent.keyDown(prompt(), { key: "Enter" });
+      }
 
-    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
-    expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(`@${SCREENSHOT_PATH}`);
-    expect(onSendSessionInput.mock.calls[0]?.[4]).toEqual([
-      { filePath: SCREENSHOT_PATH, mimeType: "image/png", sizeBytes: 4 }
-    ]);
-    await waitFor(() => expect(attachedScreenshots()).toEqual([]));
-    cleanup();
+      await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
+      expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(`@${SCREENSHOT_PATH}`);
+      expect(onSendSessionInput.mock.calls[0]?.[4]).toEqual([
+        { filePath: SCREENSHOT_PATH, mimeType: "image/png", sizeBytes: 4 },
+      ]);
+      await waitFor(() => expect(attachedScreenshots()).toEqual([]));
+      cleanup();
 
-    renderConversation(baseSession());
-    expect(attachedScreenshots()).toEqual([]);
-  });
+      renderConversation(baseSession());
+      expect(attachedScreenshots()).toEqual([]);
+    },
+  );
 });

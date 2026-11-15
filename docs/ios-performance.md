@@ -6,19 +6,25 @@ from the main actor.
 
 ## Run the checks
 
-From `ios/Argmax`:
+The functional suite is `npm run test:ios`. The pre-push gate and CI run it. See
+[testing.md](testing.md#iphone-tests).
+
+Two suites stay out of that lane, and neither runs in CI. `NativePerformanceTests`
+records samples without a baseline, so a Debug run proves nothing. UI tests drive
+the app through the accessibility tree and need more minutes than the macOS
+runner budget allows. Run both from `ios/Argmax`:
 
 ```sh
 xcodegen
-xcodebuild -project Argmax.xcodeproj -scheme Argmax \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test \
-  -skip-testing:ArgmaxTests/NativePerformanceTests \
-  -skip-testing:ArgmaxUITests/NativePerformanceUITests
-
 xcodebuild -project Argmax.xcodeproj -scheme ArgmaxPerformance \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test \
   -only-testing:ArgmaxTests/NativePerformanceTests \
   -only-testing:ArgmaxUITests/NativePerformanceUITests
+
+xcodebuild -project Argmax.xcodeproj -scheme Argmax \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test \
+  -only-testing:ArgmaxUITests \
+  -skip-testing:ArgmaxUITests/NativePerformanceUITests
 ```
 
 `ArgmaxPerformance` uses release optimization with deterministic fixture entry
@@ -113,6 +119,10 @@ the window half a second later, above the tail, where the bottom size-change
 anchor keeps the screen still. When a reader leaves the live tail, that
 row window stays fixed as output lands and shifts by 16 rows once the reader
 is within two screens of either edge, preserving the visible reading anchor.
+Every scroll decision (follow, detach, compensate, page the window) is in
+`TranscriptScrollModel`, which the list only feeds and obeys. It is a class in
+`@State` and never observed, so a scroll frame re-evaluates the list's body only
+when a measurement crosses its half-point dead band.
 The running mark (`WorkingNest`) breathes with a Core Animation group in the
 render server, so an idle screen showing live work does no per-frame main
 thread work: one running chat on the list cost 11% of the main thread while it

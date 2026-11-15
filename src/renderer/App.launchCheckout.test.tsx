@@ -13,7 +13,7 @@ import {
   secondProject,
   setupAppTestMocks,
   snapshot,
-  switchBranch
+  switchBranch,
 } from "../test/appTestHarness.js";
 import { resetToastForTests, toastSnapshot } from "./state/toast.js";
 
@@ -39,7 +39,7 @@ describe("launching into the branch picked in the launcher", () => {
     listBranches.mockResolvedValue(["main", "feature", "free"]);
     listCheckouts.mockResolvedValue([
       { branch: "main", path: ROOT, isMain: true },
-      { branch: "feature", path: LINKED, isMain: false }
+      { branch: "feature", path: LINKED, isMain: false },
     ]);
     createAlongsideWorkspace.mockResolvedValue(workspace);
     createCurrentWorkspace.mockResolvedValue(workspace);
@@ -60,7 +60,9 @@ describe("launching into the branch picked in the launcher", () => {
     // The chip says where the chat will run, next to the exact branch name.
     expect(screen.getByRole("button", { name: "Switch branch" })).toHaveTextContent("feature");
     expect(
-      screen.getByRole("button", { name: "Switch branch" }).querySelector(".composer-context-chip-label")
+      within(screen.getByRole("button", { name: "Switch branch" })).getByTestId(
+        "branch-chip-label",
+      ),
     ).toHaveAttribute("data-in", "feature");
 
     await start();
@@ -71,7 +73,7 @@ describe("launching into the branch picked in the launcher", () => {
       taskLabel: expect.any(String) as string,
       projectFolderId: "project-1:primary",
       path: LINKED,
-      branch: "feature"
+      branch: "feature",
     });
     expect(createCurrentWorkspace).not.toHaveBeenCalled();
     expect(createIsolatedWorkspace).not.toHaveBeenCalled();
@@ -82,7 +84,10 @@ describe("launching into the branch picked in the launcher", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Worktree" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Worktree" })).toHaveAttribute("aria-pressed", "true")
+      expect(screen.getByRole("button", { name: "Worktree" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      ),
     );
 
     await pickBranch("feature");
@@ -91,7 +96,7 @@ describe("launching into the branch picked in the launcher", () => {
     await waitFor(() => expect(createIsolatedWorkspace).toHaveBeenCalledOnce());
     expect(createIsolatedWorkspace.mock.calls[0]?.[0]).toMatchObject({
       projectId: "project-1",
-      baseRef: "feature"
+      baseRef: "feature",
     });
     expect(switchBranch).not.toHaveBeenCalled();
     expect(createAlongsideWorkspace).not.toHaveBeenCalled();
@@ -109,7 +114,7 @@ describe("launching into the branch picked in the launcher", () => {
     await waitFor(() => expect(launchProvider).toHaveBeenCalledOnce());
     expect(switchBranch).toHaveBeenCalledWith("project-1", "free", "project-1:primary");
     expect(switchBranch.mock.invocationCallOrder[0]).toBeLessThan(
-      createCurrentWorkspace.mock.invocationCallOrder[0] ?? Infinity
+      createCurrentWorkspace.mock.invocationCallOrder[0] ?? Infinity,
     );
     expect(createAlongsideWorkspace).not.toHaveBeenCalled();
   });
@@ -130,7 +135,7 @@ describe("launching into the branch picked in the launcher", () => {
 
   it("refuses a checkout that moved to another branch instead of retargeting it", async () => {
     createAlongsideWorkspace.mockRejectedValue(
-      new Error("/tmp/worktrees/feature is on 'other', not 'feature'. Pick the branch again.")
+      new Error("/tmp/worktrees/feature is on 'other', not 'feature'. Pick the branch again."),
     );
     render(<App />);
     await pickBranch("feature");
@@ -148,7 +153,10 @@ describe("launching into the branch picked in the launcher", () => {
   it("sends the pick that was made at send time with a background start, whatever happens after", async () => {
     let finishLaunch!: () => void;
     createAlongsideWorkspace.mockImplementation(
-      () => new Promise((resolve) => { finishLaunch = () => resolve(workspace); })
+      () =>
+        new Promise((resolve) => {
+          finishLaunch = () => resolve(workspace);
+        }),
     );
     mockDashboardSnapshot({ ...snapshot, projects: [primaryProject(), secondProject()] });
     render(<App />);
@@ -163,14 +171,19 @@ describe("launching into the branch picked in the launcher", () => {
     fireEvent.click(screen.getByRole("button", { name: "Switch project" }));
     fireEvent.click(
       within(screen.getByRole("listbox", { name: "Select project" })).getByRole("button", {
-        name: secondProject().name
-      })
+        name: secondProject().name,
+      }),
     );
     await act(async () => {});
-    expect(createAlongsideWorkspace.mock.calls[0]?.[0]).toMatchObject({ path: LINKED, branch: "feature" });
+    expect(createAlongsideWorkspace.mock.calls[0]?.[0]).toMatchObject({
+      path: LINKED,
+      branch: "feature",
+    });
     // The other project starts with its own current branch, not the pick.
     expect(
-      screen.getByRole("button", { name: "Switch branch" }).querySelector(".composer-context-chip-label")
+      within(screen.getByRole("button", { name: "Switch branch" })).getByTestId(
+        "branch-chip-label",
+      ),
     ).not.toHaveAttribute("data-in");
 
     await act(() => {

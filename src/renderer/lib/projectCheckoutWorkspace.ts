@@ -11,7 +11,7 @@ function normalizeCheckoutPath(path: string): string {
  */
 export function findSharedCheckoutWorkspace(
   project: ProjectSummary,
-  workspaces: readonly WorkspaceSummary[]
+  workspaces: readonly WorkspaceSummary[],
 ): WorkspaceSummary | null {
   const repoPath = normalizeCheckoutPath(project.repoPath);
   let best: WorkspaceSummary | null = null;
@@ -20,10 +20,7 @@ export function findSharedCheckoutWorkspace(
     if (!workspace.sharedWorkspace) continue;
     if (workspace.state === "archived") continue;
     if (normalizeCheckoutPath(workspace.path) !== repoPath) continue;
-    if (
-      !best ||
-      (workspace.lastActivityAt ?? "") > (best.lastActivityAt ?? "")
-    ) {
+    if (!best || (workspace.lastActivityAt ?? "") > (best.lastActivityAt ?? "")) {
       best = workspace;
     }
   }

@@ -1,19 +1,31 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { windowSnapshotInbox } from "../lib/windowSnapshotInbox.js";
-import { drainWindowSnapshotInbox, type SnapshotPayload } from "../../test/windowSnapshotInboxTestUtil.js";
+import {
+  drainWindowSnapshotInbox,
+  type SnapshotPayload,
+} from "../../test/windowSnapshotInboxTestUtil.js";
 import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 import { useWindowSnapshotAttach } from "./useWindowSnapshotAttach.js";
 
 const snapshot = (name: string): SnapshotPayload => ({
-  attachment: { filePath: `/attachments/window-snapshots/${name}.png`, mimeType: "image/png", sizeBytes: 9 },
-  source: { appName: "Safari", bundleId: "com.apple.Safari", windowTitle: name, capturedAt: "2026-10-04T08:00:00Z" }
+  attachment: {
+    filePath: `/attachments/window-snapshots/${name}.png`,
+    mimeType: "image/png",
+    sizeBytes: 9,
+  },
+  source: {
+    appName: "Safari",
+    bundleId: "com.apple.Safari",
+    windowTitle: name,
+    capturedAt: "2026-10-04T08:00:00Z",
+  },
 });
 
 function Composer({
   active,
   onAttach,
-  floating = false
+  floating = false,
 }: {
   active: boolean;
   onAttach: (s: SnapshotPayload) => void;

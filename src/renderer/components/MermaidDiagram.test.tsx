@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as MermaidRuntime from "../lib/mermaidRuntime.js";
 import { StreamingCodeContext } from "./streamingCodeContext.js";
@@ -9,14 +9,14 @@ const renderMermaidDiagram = vi.hoisted(() =>
       return Promise.reject(new Error("Parse error on line 1: expecting a diagram type"));
     }
     return Promise.resolve({ svg: `<svg data-testid="mermaid-svg"><title>flow</title></svg>` });
-  })
+  }),
 );
 
 vi.mock("../lib/mermaidRuntime.js", async (importOriginal) => {
   const actual = await importOriginal<typeof MermaidRuntime>();
   return {
     ...actual,
-    renderMermaidDiagram
+    renderMermaidDiagram,
   };
 });
 
@@ -29,7 +29,7 @@ describe("MermaidDiagram", () => {
   });
 
   afterEach(() => {
-  resetDrawnMermaidDiagramsForTests();
+    resetDrawnMermaidDiagramsForTests();
     cleanup();
   });
 
@@ -37,7 +37,7 @@ describe("MermaidDiagram", () => {
     const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
-      value: { writeText }
+      value: { writeText },
     });
 
     const source = "flowchart LR\n  A --> B";
@@ -109,7 +109,7 @@ describe("MermaidDiagram", () => {
     fireEvent.click(trigger);
     const dialog = screen.getByRole("dialog", { name: "Full diagram" });
     expect(dialog).toBeInTheDocument();
-    expect(dialog.querySelector("[data-testid='mermaid-svg']")).toBeTruthy();
+    expect(within(dialog).getByTestId("mermaid-svg")).toBeTruthy();
     const close = screen.getByRole("button", { name: "Close full diagram" });
     expect(close).toHaveFocus();
 
@@ -130,9 +130,9 @@ describe("MermaidDiagram", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "View full diagram" }));
-    const overlay = document.querySelector(".mermaid-diagram-overlay");
+    const overlay = screen.getByTestId("mermaid-diagram-overlay");
     expect(overlay).toBeTruthy();
-    fireEvent.mouseDown(overlay as HTMLElement);
+    fireEvent.mouseDown(overlay);
     expect(screen.queryByRole("dialog", { name: "Full diagram" })).toBeNull();
   });
 
@@ -149,7 +149,7 @@ describe("MermaidDiagram", () => {
 
   it("marks a drawing that is wider than its column so CSS can break out", async () => {
     renderMermaidDiagram.mockResolvedValueOnce({
-      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`
+      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`,
     });
     render(<MermaidDiagram source={"flowchart LR\n  A --> B"} />);
     const figure = await screen.findByLabelText("Diagram");
@@ -161,35 +161,35 @@ describe("MermaidDiagram", () => {
 
   it("sets a symmetric pixel breakout from the rendered session bounds", async () => {
     renderMermaidDiagram.mockResolvedValueOnce({
-      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`
+      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`,
     });
-    const { container } = render(
-      <div className="session-main-column">
-        <div className="conversation-content">
-          <div className="markdown">
+    render(
+      <div className="session-main-column" data-testid="session-main-column">
+        <div className="conversation-content" data-testid="conversation-content">
+          <div className="markdown" data-testid="markdown">
             <MermaidDiagram source={"flowchart LR\n  A --> B"} />
           </div>
         </div>
-      </div>
+      </div>,
     );
-    const session = container.querySelector<HTMLElement>(".session-main-column");
-    const transcript = container.querySelector<HTMLElement>(".conversation-content");
-    const column = container.querySelector<HTMLElement>(".markdown");
+    const session = screen.getByTestId("session-main-column");
+    const transcript = screen.getByTestId("conversation-content");
+    const column = screen.getByTestId("markdown");
     expect(session).toBeTruthy();
     expect(transcript).toBeTruthy();
     expect(column).toBeTruthy();
     column?.style.setProperty("--markdown-prose-width", "780px");
-    vi.spyOn(session as HTMLElement, "getBoundingClientRect").mockReturnValue({
+    vi.spyOn(session, "getBoundingClientRect").mockReturnValue({
       left: 0,
-      right: 1200
+      right: 1200,
     } as DOMRect);
-    vi.spyOn(transcript as HTMLElement, "getBoundingClientRect").mockReturnValue({
+    vi.spyOn(transcript, "getBoundingClientRect").mockReturnValue({
       left: 0,
-      right: 1200
+      right: 1200,
     } as DOMRect);
-    vi.spyOn(column as HTMLElement, "getBoundingClientRect").mockReturnValue({
+    vi.spyOn(column, "getBoundingClientRect").mockReturnValue({
       left: 130,
-      right: 1070
+      right: 1070,
     } as DOMRect);
     Object.defineProperty(column, "clientWidth", { configurable: true, value: 940 });
 
@@ -202,45 +202,45 @@ describe("MermaidDiagram", () => {
 
   it("breaks out to the clearance beside an open workspace card", async () => {
     renderMermaidDiagram.mockResolvedValueOnce({
-      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`
+      svg: `<svg data-testid="mermaid-svg" width="1200"><title>flow</title></svg>`,
     });
-    const { container } = render(
-      <div className="session-main-column">
-        <div className="workspace-card" style={{ display: "block" }} />
-        <div className="conversation-content">
+    render(
+      <div className="session-main-column" data-testid="session-main-column">
+        <div className="workspace-card" data-testid="workspace-card" style={{ display: "block" }} />
+        <div className="conversation-content" data-testid="conversation-content">
           <div className="chat-bubble assistant">
-            <div className="markdown">
+            <div className="markdown" data-testid="markdown">
               <MermaidDiagram source={"flowchart LR\n  A --> B"} />
             </div>
           </div>
         </div>
-      </div>
+      </div>,
     );
-    const session = container.querySelector<HTMLElement>(".session-main-column");
-    const card = container.querySelector<HTMLElement>(".workspace-card");
-    const transcript = container.querySelector<HTMLElement>(".conversation-content");
-    const column = container.querySelector<HTMLElement>(".markdown");
+    const session = screen.getByTestId("session-main-column");
+    const card = screen.getByTestId("workspace-card");
+    const transcript = screen.getByTestId("conversation-content");
+    const column = screen.getByTestId("markdown");
     expect(session).toBeTruthy();
     expect(card).toBeTruthy();
     expect(transcript).toBeTruthy();
     expect(column).toBeTruthy();
     session?.style.setProperty("--workspace-card-clearance", "14px");
     column?.style.setProperty("--markdown-prose-width", "780px");
-    vi.spyOn(session as HTMLElement, "getBoundingClientRect").mockReturnValue({
+    vi.spyOn(session, "getBoundingClientRect").mockReturnValue({
       left: 0,
-      right: 1117
+      right: 1117,
     } as DOMRect);
-    vi.spyOn(transcript as HTMLElement, "getBoundingClientRect").mockReturnValue({
+    vi.spyOn(transcript, "getBoundingClientRect").mockReturnValue({
       left: 10,
-      right: 1107
+      right: 1107,
     } as DOMRect);
-    vi.spyOn(card as HTMLElement, "getBoundingClientRect").mockReturnValue({
+    vi.spyOn(card, "getBoundingClientRect").mockReturnValue({
       left: 841,
-      right: 1097
+      right: 1097,
     } as DOMRect);
-    vi.spyOn(column as HTMLElement, "getBoundingClientRect").mockReturnValue({
+    vi.spyOn(column, "getBoundingClientRect").mockReturnValue({
       left: 38,
-      right: 790
+      right: 790,
     } as DOMRect);
     Object.defineProperty(column, "clientWidth", { configurable: true, value: 752 });
 
@@ -255,7 +255,7 @@ describe("MermaidDiagram", () => {
     render(
       <StreamingCodeContext.Provider value={true}>
         <MermaidDiagram source={"flowchart LR\n  A --> B"} />
-      </StreamingCodeContext.Provider>
+      </StreamingCodeContext.Provider>,
     );
     expect(screen.getByRole("status")).toHaveTextContent("Drawing diagram");
     expect(renderMermaidDiagram).not.toHaveBeenCalled();

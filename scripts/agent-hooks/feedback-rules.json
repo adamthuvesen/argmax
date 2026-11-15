@@ -1,0 +1,24 @@
+{
+  "guidance": [
+    { "pattern": "^src-tauri/crates/argmax-store/src/migrations", "text": "Migrations are append-only and checksummed. Add a new migration; never edit an applied one. Read docs/data.md." },
+    { "pattern": "^src-tauri/src/ipc/", "text": "A command change needs: an entry in ipc/catalogue.rs, the bridge method in src/renderer/lib/tauriBridge.ts, a line in remote/dispatch.rs, then npm run generate:contracts. Read docs/ipc.md." },
+    { "pattern": "^src-tauri/crates/argmax-store/", "text": "Read docs/data.md. SQL stays in this directory." },
+    { "pattern": "^src-tauri/src/providers/session_service", "text": "A turn ends only through commit_turn_end in session_service_turn_end.rs. Read docs/runtime.md." },
+    { "pattern": "^src-tauri/src/providers/", "text": "Read docs/providers.md. Provider bypass flags stay in adapters.rs." },
+    { "pattern": "^src-tauri/src/routing/", "text": "Read docs/routing.md." },
+    { "pattern": "^src-tauri/src/mcp/|^src-tauri/src/session_control/", "text": "Read docs/agent-tools.md." },
+    { "pattern": "^src-tauri/src/(workspaces|review)/", "text": "Read docs/workspaces.md." },
+    { "pattern": "^src-tauri/src/gh/", "text": "Read docs/gh.md." },
+    { "pattern": "^src-tauri/src/browser/|BrowserPanel", "text": "Read docs/browser.md." },
+    { "pattern": "^src-tauri/src/remote/", "text": "Read docs/remote.md. The iPhone ships separately: omit new optional input keys." },
+    { "pattern": "^src/shared/providerModels\\.ts$", "text": "Run npm run export:provider-models after a catalogue change. Read docs/providers.md." },
+    { "pattern": "^src/renderer/.*\\.css$|^src/renderer/components/.*\\.tsx$", "text": "A visual change ships light and dark screenshots: npm run verify -- launcher writes them under .verify/runs/. Read docs/styling.md. A visual-design request gets 3 mockups before code." },
+    { "pattern": "^src/renderer/.*(Conversation|Turn|Timeline|foldConversation)", "text": "Read docs/chat-cards.md. A new event type must pass isConversationVisible in lib/sessionConversationModel.ts. The phone mirrors chat rules: update ios/ in the same change." },
+    { "pattern": "^ios/", "text": "Read docs/ios-performance.md. Type goes through Sources/Design/Typography.swift. The phone ships separately from the Mac build." }
+  ],
+  "generatedInputs": [
+    { "pattern": "#\\[tauri::command", "paths": "^src-tauri/src/ipc/", "text": "Rust command changed: run npm run generate:contracts." },
+    { "pattern": "derive\\([^)]*\\bType\\b", "paths": "^src-tauri/(src|crates)/", "text": "A specta type may have changed: run npm run generate:bindings." },
+    { "pattern": "_[0-9]+[a-z]", "paths": "^src-tauri/src/ipc/", "text": "A field with a digit before letters needs #[serde(rename = \"...\")]: serde and specta split it differently." }
+  ]
+}

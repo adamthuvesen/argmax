@@ -1,12 +1,22 @@
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { baseSession, event, renderConversation, STARTED_TURN } from "../../test/sessionConversationTestHarness.js";
+import {
+  baseSession,
+  event,
+  renderConversation,
+  STARTED_TURN,
+} from "../../test/sessionConversationTestHarness.js";
 import type { ArgmaxApi } from "../../shared/types.js";
 import type { DiffNoteInput } from "../lib/composerAnnotations.js";
 
 const EVENTS = [
   event("u1", "user.message", "compare the score distributions", "2026-05-12T15:00:00.000Z"),
-  event("m1", "message.completed", "Day two looks reassuringly boring.", "2026-05-12T15:00:01.000Z")
+  event(
+    "m1",
+    "message.completed",
+    "Day two looks reassuringly boring.",
+    "2026-05-12T15:00:01.000Z",
+  ),
 ];
 
 const DIFF_NOTE: DiffNoteInput = {
@@ -15,7 +25,7 @@ const DIFF_NOTE: DiffNoteInput = {
   side: "addition",
   lineText: "let y = 0;",
   comment: "why mutable?",
-  base: "working tree vs HEAD"
+  base: "working tree vs HEAD",
 };
 
 function selectAssistantText(): void {
@@ -31,11 +41,20 @@ function selectAssistantText(): void {
 describe("SessionConversation selection annotations", () => {
   beforeEach(() => {
     // jsdom implements Range selection/toString but not layout measurement.
-    Range.prototype.getBoundingClientRect = () =>
-      ({ left: 40, top: 200, right: 240, bottom: 216, width: 200, height: 16, x: 40, y: 200, toJSON: () => ({}) });
+    Range.prototype.getBoundingClientRect = () => ({
+      left: 40,
+      top: 200,
+      right: 240,
+      bottom: 216,
+      width: 200,
+      height: 16,
+      x: 40,
+      y: 200,
+      toJSON: () => ({}),
+    });
     window.localStorage.clear();
     window.argmax = {
-      prs: { listForSession: vi.fn(() => new Promise(() => {})) }
+      prs: { listForSession: vi.fn(() => new Promise(() => {})) },
     } as unknown as ArgmaxApi;
   });
 
@@ -50,9 +69,7 @@ describe("SessionConversation selection annotations", () => {
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Add to Chat" }));
 
-    expect(
-      screen.getByLabelText("Annotation: Day two looks reassuringly boring.")
-    ).toBeTruthy();
+    expect(screen.getByLabelText("Annotation: Day two looks reassuringly boring.")).toBeTruthy();
     expect(screen.queryByRole("menu", { name: "Selection actions" })).toBeNull();
     expect(window.getSelection()?.isCollapsed ?? true).toBe(true);
   });
@@ -71,10 +88,10 @@ describe("SessionConversation selection annotations", () => {
     expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(
       "Regarding this excerpt from our conversation above:\n\n" +
         "> Day two looks reassuringly boring.\n\n" +
-        "why is that good?"
+        "why is that good?",
     );
     await waitFor(() =>
-      expect(screen.queryByLabelText("Annotation: Day two looks reassuringly boring.")).toBeNull()
+      expect(screen.queryByLabelText("Annotation: Day two looks reassuringly boring.")).toBeNull(),
     );
   });
 
@@ -93,7 +110,7 @@ describe("SessionConversation selection annotations", () => {
 
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalledOnce());
     expect(onSendSessionInput.mock.calls[0]?.[1]).toBe(
-      "Regarding this excerpt from our conversation above:\n\n> Day two looks reassuringly boring."
+      "Regarding this excerpt from our conversation above:\n\n> Day two looks reassuringly boring.",
     );
     await waitFor(() => expect(screen.queryByLabelText(/^Annotation:/)).toBeNull());
   });
@@ -159,7 +176,7 @@ describe("SessionConversation selection annotations", () => {
       onSendSessionInput,
       registerAnnotationSink: (next) => {
         sink = next;
-      }
+      },
     });
 
     expect(sink).not.toBeNull();
@@ -178,7 +195,7 @@ describe("SessionConversation selection annotations", () => {
     expect(sent).toContain("not a comment on a GitHub pull request");
     expect(sent).toContain(
       '<argmax-diff-note file="src/x.ts" line="9" side="added" base="working tree vs HEAD">\n' +
-        "> let y = 0;\nwhy mutable?\n</argmax-diff-note>"
+        "> let y = 0;\nwhy mutable?\n</argmax-diff-note>",
     );
     expect(sent.endsWith("\n\nfix it")).toBe(true);
   });
@@ -190,7 +207,7 @@ describe("SessionConversation selection annotations", () => {
       onSendSessionInput,
       registerAnnotationSink: (next) => {
         sink = next;
-      }
+      },
     });
 
     const send = screen.getByRole("button", { name: "Send follow-up" });
@@ -215,6 +232,7 @@ describe("SessionConversation selection annotations", () => {
     const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.change(prompt, { target: { value: "draft text" } });
     const range = document.createRange();
+    // oxlint-disable-next-line argmax/no-node-access -- the selection must span the prompt's whole container, which is outside the transcript
     range.selectNodeContents(prompt.parentElement as HTMLElement);
     const selection = window.getSelection();
     selection?.removeAllRanges();

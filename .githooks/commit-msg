@@ -1,0 +1,6 @@
+#!/bin/sh
+# AGENTS.md: commit messages carry no AI attribution.
+if grep -Eiq '^(co-authored-by:.*(claude|codex|cursor|grok|opencode|anthropic|openai)|.*generated (with|by) .*(claude|codex|cursor|grok|opencode))' "$1"; then
+  echo "commit-msg: remove the AI attribution line. Argmax commit messages carry none." >&2
+  exit 1
+fi

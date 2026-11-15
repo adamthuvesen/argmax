@@ -15,11 +15,13 @@ the result and treat dialog errors as failed actions. The plugin's injected
 | [src-tauri/src/ipc](../src-tauri/src/ipc) | Command handlers with `#[tauri::command(rename = "...")]` |
 | [src-tauri/src/ipc/catalogue.rs](../src-tauri/src/ipc/catalogue.rs) | Command registration, remote dispatch, and exposure policy |
 | [src-tauri/src/ipc/inputs.rs](../src-tauri/src/ipc/inputs.rs) | Transport inputs and application input re-exports |
-| [src-tauri/src/application/validation.rs](../src-tauri/src/application/validation.rs) | Validated application scalar types |
+| [src-tauri/crates/argmax-contracts/src/validation.rs](../src-tauri/crates/argmax-contracts/src/validation.rs) | Validated application scalar types |
 | [src-tauri/tests/fixtures/channels.txt](../src-tauri/tests/fixtures/channels.txt) | Generated request/response channel list |
 | [src/shared/bindings.d.ts](../src/shared/bindings.d.ts) | Generated TypeScript types |
 | [src/shared/ipcSchemas.ts](../src/shared/ipcSchemas.ts) | Generated channel names and request/result associations |
 | [src/renderer/lib/tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) | `window.argmax` implementation |
+| [src/renderer/data/useBridgeQuery.ts](../src/renderer/data/useBridgeQuery.ts) | The query hook that components read with |
+| [src/renderer/data/bridgeActions.ts](../src/renderer/data/bridgeActions.ts) | The accessors that components start writes with |
 
 ## Request Channels
 
@@ -52,6 +54,8 @@ same SQLite read transaction. `resetRequired` replaces retained history,
 client to continue paging. Legacy event/raw row cursors remain supported.
 
 `session:fork` takes `{ sessionId, boundaryEventId?, workspace? }` and returns `{ workspace, session, fork }`. `boundaryEventId` is the user message that started the finished turn to fork at; omitted, it forks the whole chat. `workspace` is `shared` (default) or `isolated`. `fork` says how the first message continues: `portable`, `codex-turn`, or `latest`. `session:fork-lineage` (read) returns `{ forkId, sourceSessionId, sourceWorkspaceId, sourceLabel, boundaryEventId, workspace, lastMergedThroughEventId }` for a fork, else `null`. `sourceLabel` is the source chat's title, and the fork bar follows renames of `sourceWorkspaceId` through `dashboard:delta`. Both are `null` once the source is deleted. `session:fork-merge-preview` (read) returns what bringing findings back would send, including `throughEventId`, which `session:fork-merge` takes back to send exactly that range. Preview writes nothing: a stale merge claim is only left out of its answer, and `session:fork-merge` withdraws it. See [workspaces.md](workspaces.md#bringing-findings-back).
+
+`session:turn-waterfalls` (`read`) takes `{ limit? }` (50 by default, at most 500) and returns the newest turn waterfalls, newest first: `{ id, sessionId, turnKey, provider, stamps: [{ name, offsetMs }], createdAt }`. `session:turn-painted` (desktop) takes `{ sessionId, turnKey, paintedAtMs }` from the renderer when a turn's first answer is painted, and closes that turn if it is still being timed. `providers:launch` and `providers:send-input` take an optional `submittedAtMs`, the click time; only the desktop handler reads it. See [performance.md](performance.md#turn-waterfall).
 
 `session:multitask` dispatches a sibling chat from a session that may still be mid-turn, and returns the new session and workspace ids so the composer can draw the card without waiting for the dashboard delta. See [multitask.md](multitask.md).
 
@@ -91,7 +95,7 @@ completed replies.
 
 `usage:router-cost` takes `{ window: "24h" | "7d" | "30d" }` and returns what each Auto tier cost in that window: chats, turns, escalations, reroutes, measured and estimated (Cursor) dollars, unpriced turns, the model mix, and grouped routing decisions, or `null` when no chat was routed in it. Each decision group carries task kind, difficulty, provider, model, effort, decision, reason, decision count, and turns. Dispatched over the remote bridge like `usage:summary`. See [usage.md](usage.md#router-cost).
 
-`activity:summary` takes `{ window: "24h" | "7d" | "30d" | "12m" | "year", projectId?, timeZone }` and returns the Activity page in one shape: totals, the previous-window comparison, per-repository rows, the chart series, a year-long heatmap, streaks, cadence, and the pull requests and reviews from `gh`. A `projectId` narrows everything but the repository rows and the heatmap. `timeZone` must be an IANA name — every bucket is cut on it, so an unresolvable name is rejected rather than silently read as UTC. The commit ledger is swept inline once it has completed before; the GitHub half is a cache the call refreshes in the background when stale and never waits on. Dispatched over the remote bridge like `usage:summary`. See [activity.md](activity.md).
+`activity:summary` takes `{ window: "24h" | "7d" | "30d" | "12m" | "year", projectId?, timeZone }` and returns the Activity page in one shape: totals, the previous-window comparison, per-repository rows, the chart series, a year-long heatmap, streaks, cadence, and the pull requests and reviews from `gh`. A `projectId` narrows everything but the repository rows and the heatmap. `timeZone` must be an IANA name — every bucket is cut on it, so an unresolvable name is rejected rather than silently read as UTC. The commit ledger and GitHub cache refresh in the background when stale. The read returns the stored snapshot. Dispatched over the remote bridge like `usage:summary`. See [activity.md](activity.md).
 
 Scheduled tasks ("routines") expose `routines:list`, `routines:upsert`, `routines:delete`, `routines:set-enabled`, `routines:run-now`, and `routines:reset-session`.
 
@@ -126,6 +130,15 @@ then replaces subscribed histories. Desktop and mobile use the same recovery.
 Metadata invalidations are coalesced over 100 ms, while transcript reads remain
 immediate and drain revision pages before settling.
 
+## Calling a Channel from a Component
+
+Components do not touch `window.argmax`. The `no-restricted-properties` lint rule rejects it in `src/renderer/components/**`.
+
+- A read that follows state uses [useBridgeQuery](../src/renderer/data/useBridgeQuery.ts). Pass the state in `key`. A reply lands only while its key is shown and no newer read or local write replaced it. A handler checks `query.isCurrent()` after an `await`.
+- A write, or a read that one click asks for, uses an accessor in [bridgeActions.ts](../src/renderer/data/bridgeActions.ts). An accessor returns `undefined` where the host has no such domain. List only those methods there, so a state-following read does not compile through an accessor.
+- A dashboard read does not use either. It stays on `loadDashboardSnapshot` and `dashboard:delta`, with no recurring poll.
+- Hooks in `src/renderer/hooks` and modules in `src/renderer/lib` may still call the bridge. Copy `useBridgeQuery` for a new read there.
+
 ## Adding a Channel
 
 Visualizations expose `visualization:import`, `visualization:read`,
@@ -146,7 +159,7 @@ historical marker syntax now uses import and artifact reads.
 3. Add one entry to `ipc/catalogue.rs` with its handler and remote access policy.
 4. Implement the typed remote operation in that entry, or mark it `desktop`.
 5. Add the method to `ArgmaxApi` in `src/shared/types.ts` and `src/renderer/lib/tauriBridge.ts`.
-6. Run `npm run generate:contracts`. Refer to new input and result types through `Bindings.*` from `types.ts`. Never re-declare the shape by hand. Then run `npm run precheck` (the Rust lane's `cargo test` includes the generated-file freshness test; the script also runs `check:tauri-bridge` and `check:main-thread`).
+6. Run `npm run generate:contracts`. Refer to new input and result types through `Bindings.*` from `types.ts`. Never re-declare the shape by hand. Then run `npm run push-gate` (the Rust lane's `cargo test` includes the generated-file freshness test; the script also runs `check:static`, which covers bridge parity and `check:main-thread`).
 
 A synchronous handler resolves on the macOS main thread. Make the handler
 `async` (or `spawn_blocking` for genuinely blocking work) unless it does no IO,
@@ -175,7 +188,7 @@ See [memory.md](memory.md).
 `arc:create`, `arc:list`, `arc:get`, `arc:update`, `arc:set-state`,
 `arc:set-archived`, and
 `arc:launch-coordinator` manage Arcs through `ipc/arcs.rs`, backed by
-`persistence/arcs.rs` and, for the launch, `arcs::launch_coordinator`.
+`argmax-store/src/arcs.rs` and, for the launch, `arcs::launch_coordinator`.
 `arc:create` takes `{ name, brief, homeProjectId, dir? }`; an absolute `dir`
 must already exist and its `BRIEF.md`/`NOTES.md` are never overwritten, while
 an omitted `dir` gets a fresh one under the app data dir. `arc:update` takes
@@ -224,7 +237,7 @@ Existing PR links open their stored URL. Agents create commits, push branches, a
 
 ## Contract checks
 
-`npm run check:contracts` checks handler names, application dependency direction, and generated client contracts.
+`npm run check:static` checks handler names, application dependency direction, and generated client contracts.
 The Rust integration tests also check generated TypeScript freshness.
 `remoteReadChannels.json` is generated from the catalogue, with the remote-only delta cursor added explicitly.
 MCP tools retain their own explicit session-control exposure. Registering an IPC channel does not expose an agent tool.

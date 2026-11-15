@@ -50,7 +50,7 @@ function completedBuckets(summary: UsageSummary): UsageSeriesPoint[] {
 function bucketTotal(point: UsageSeriesPoint, metric: UsageMetric): number {
   return point.values.reduce(
     (sum, value) => sum + (metric === "cost" ? value.costUsd : value.tokens),
-    0
+    0,
   );
 }
 
@@ -104,7 +104,7 @@ export function peakBucket(summary: UsageSummary, metric: UsageMetric): UsagePea
     peak = {
       bucketStart: point.bucketStart,
       label: bucketStamp(point.bucketStart, summary),
-      value
+      value,
     };
   }
   return peak;

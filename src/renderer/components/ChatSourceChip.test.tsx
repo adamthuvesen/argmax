@@ -4,7 +4,7 @@ import { chatReferenceLink } from "../lib/composerContext.js";
 import {
   publishChatDirectory,
   registerChatOpener,
-  resetChatDirectoryForTests
+  resetChatDirectoryForTests,
 } from "../state/chatDirectory.js";
 import { ChatSourceChip } from "./ChatSourceChip.js";
 import { SessionConversationUserMessage } from "./SessionConversationTurn.js";
@@ -20,7 +20,7 @@ const known = {
   workspaceId: "w1",
   title: "Billing rewrite",
   projectName: "Argmax",
-  lastActivityAt: "2026-10-01T00:00:00Z"
+  lastActivityAt: "2026-10-01T00:00:00Z",
 };
 
 describe("ChatSourceChip", () => {
@@ -58,9 +58,17 @@ describe("chat references in the transcript", () => {
     const message = `see ${chatReferenceLink({ sessionId: "s1", title: "Billing rewrite" })} for context`;
     render(
       <SessionConversationUserMessage
-        event={{ id: "e1", type: "user.message", message, payload: {}, createdAt: "2026-10-01T00:00:00Z" } as never}
+        event={
+          {
+            id: "e1",
+            type: "user.message",
+            message,
+            payload: {},
+            createdAt: "2026-10-01T00:00:00Z",
+          } as never
+        }
         attachments={[]}
-      />
+      />,
     );
 
     expect(screen.getByRole("button", { name: "Open chat: Billing rewrite" })).toBeInTheDocument();
@@ -70,7 +78,12 @@ describe("chat references in the transcript", () => {
 
   it("draws a chat an answer cites as a chip too", () => {
     publishChatDirectory([known]);
-    render(<StreamingMarkdown streaming={false} text="Per [Billing rewrite](argmax://chat/s1?v=1) the fix landed." />);
+    render(
+      <StreamingMarkdown
+        streaming={false}
+        text="Per [Billing rewrite](argmax://chat/s1?v=1) the fix landed."
+      />,
+    );
 
     expect(screen.getByRole("button", { name: "Open chat: Billing rewrite" })).toBeInTheDocument();
   });

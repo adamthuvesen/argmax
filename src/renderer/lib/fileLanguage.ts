@@ -23,7 +23,7 @@ const LANGUAGE_LABELS: Record<string, string> = {
   toml: "TOML",
   sql: "SQL",
   yaml: "YAML",
-  yml: "YAML"
+  yml: "YAML",
 };
 
 /** Human name for the status bar. Unknown extensions read as their own
@@ -36,4 +36,3 @@ export function languageLabelFor(path: string | null): string {
   const ext = name.slice(dot + 1).toLowerCase();
   return LANGUAGE_LABELS[ext] ?? ext.toUpperCase();
 }
-

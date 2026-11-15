@@ -14,23 +14,21 @@ use super::super::{
     MAX_CONTINUED_MOVES,
 };
 use super::resolve_or_register_project;
+use crate::workspaces::orchestration::WorkspaceService;
 use crate::{
-    error::ArgmaxError,
-    ipc::{
-        inputs::{ProvidersSendInput, WorkspacesArchiveInput},
-        validation::{Prompt, SessionId, WorkspaceId},
+    providers::inputs::ProvidersSendInput, providers::session_service::ProviderSessionService,
+    workspaces::inputs::WorkspacesArchiveInput, workspaces::orchestration::MoveDestination,
+};
+use argmax_contracts::error::ArgmaxError;
+use argmax_contracts::validation::{Prompt, SessionId, WorkspaceId};
+use argmax_store::{
+    after_turn::{
+        AfterTurnAction, ArchiveRequest, MergedPrRequest, MoveDestinationRecord, MoveRequest,
     },
-    persistence::{
-        after_turn::{
-            AfterTurnAction, ArchiveRequest, MergedPrRequest, MoveDestinationRecord, MoveRequest,
-        },
-        database::Database,
-        events::{count_move_arrivals, persist_timeline_event, PersistTimelineEventInput},
-        sessions::find_session_by_id,
-        workspaces::find_workspace_by_id,
-    },
-    providers::session_service::ProviderSessionService,
-    workspaces::{orchestration::MoveDestination, WorkspaceService},
+    database::Database,
+    events::{count_move_arrivals, persist_timeline_event, PersistTimelineEventInput},
+    sessions::find_session_by_id,
+    workspaces::find_workspace_by_id,
 };
 
 /// Archive the caller's own workspace once its turn settles.
@@ -547,6 +545,7 @@ async fn continue_moved_session(
     let asked = prompt.as_str().to_string();
     if let Err(error) = providers
         .send_moved_input(ProvidersSendInput {
+            submitted_at_ms: None,
             agent_references: None,
             session_id,
             input: prompt,

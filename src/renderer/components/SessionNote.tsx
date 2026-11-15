@@ -10,15 +10,26 @@ import { WebLink } from "./WebLink.js";
  * a note that borrowed that shape read as something to act on. Quieter than the
  * seam notices too, because nothing changed hands here.
  */
-export function SessionNote({ message, sourceActivity }: { message: string; sourceActivity?: ProjectSourceActivity }): JSX.Element {
+export function SessionNote({
+  message,
+  sourceActivity,
+}: {
+  message: string;
+  sourceActivity?: ProjectSourceActivity;
+}): JSX.Element {
   if (sourceActivity) return <SourceActivity activity={sourceActivity} />;
   const cloudHandoff = CLOUD_HANDOFF_NOTE.exec(message);
   return (
     <div className="conversation-note" role="status" aria-live="polite">
       <span className="conversation-note-text">
-        {cloudHandoff
-          ? <>Sent task to {cloudHandoff[1]} Cloud · <WebLink href={cloudHandoff[2]}>Open task</WebLink></>
-          : message}
+        {cloudHandoff ? (
+          <>
+            Sent task to {cloudHandoff[1]} Cloud ·{" "}
+            <WebLink href={cloudHandoff[2]}>Open task</WebLink>
+          </>
+        ) : (
+          message
+        )}
       </span>
     </div>
   );

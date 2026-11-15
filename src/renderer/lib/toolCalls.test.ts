@@ -19,7 +19,7 @@ import {
   parseMcpToolName,
   summarizeToolGroup,
   summarizeToolChangeCounts,
-  type ToolCall
+  type ToolCall,
 } from "./toolCalls.js";
 
 function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "name">): ToolCall {
@@ -36,7 +36,7 @@ function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "name">): ToolCall {
     completionObserved: overrides.completionObserved,
     activity: overrides.activity,
     error: overrides.error ?? null,
-    parentToolUseId: overrides.parentToolUseId ?? null
+    parentToolUseId: overrides.parentToolUseId ?? null,
   };
 }
 
@@ -59,12 +59,12 @@ describe("MCP tool names", () => {
   it("parses the Claude/Cursor prefix and drops the client from the server", () => {
     expect(parseMcpToolName("mcp__claude_ai_Notion__notion-fetch")).toEqual({
       server: "Notion",
-      tool: "fetch"
+      tool: "fetch",
     });
     expect(parseMcpToolName("mcp__engram__recall")).toEqual({ server: "engram", tool: "recall" });
     expect(parseMcpToolName("mcp__linear__list_issues")).toEqual({
       server: "linear",
-      tool: "list issues"
+      tool: "list issues",
     });
   });
 
@@ -90,11 +90,20 @@ describe("MCP tool names", () => {
   });
 
   it("parses OpenCode's <server>_<tool> shape for known MCP servers", () => {
-    expect(parseMcpToolName("engram_memory_stats")).toEqual({ server: "engram", tool: "memory stats" });
+    expect(parseMcpToolName("engram_memory_stats")).toEqual({
+      server: "engram",
+      tool: "memory stats",
+    });
     expect(parseMcpToolName("engram_remember")).toEqual({ server: "engram", tool: "remember" });
-    expect(parseMcpToolName("trace_get_document")).toEqual({ server: "trace", tool: "get document" });
+    expect(parseMcpToolName("trace_get_document")).toEqual({
+      server: "trace",
+      tool: "get document",
+    });
     expect(parseMcpToolName("trace-hq_search")).toEqual({ server: "trace hq", tool: "search" });
-    expect(parseMcpToolName("linear_list_issues")).toEqual({ server: "linear", tool: "list issues" });
+    expect(parseMcpToolName("linear_list_issues")).toEqual({
+      server: "linear",
+      tool: "list issues",
+    });
     expect(parseMcpToolName("shunt_shunt_read")).toEqual({ server: "shunt", tool: "read" });
     expect(mcpToolLabel("engram_memory_stats")).toBe("Engram memory stats");
     // Unknown prefixes stay plain tools so ordinary snake_case never gains a server.
@@ -105,30 +114,32 @@ describe("MCP tool names", () => {
   it("parses Codex app names and Cursor plugin identifiers", () => {
     expect(parseMcpToolName("linear.list_issues")).toEqual({
       server: "linear",
-      tool: "list issues"
+      tool: "list issues",
     });
     expect(parseMcpToolName("mcp__plugin-google-drive-google-drive__list_recent_files")).toEqual({
       server: "google drive",
-      tool: "list recent files"
+      tool: "list recent files",
     });
     expect(parseMcpToolName("mcp__plugin-notion-workspace-notion__notion-fetch")).toEqual({
       server: "notion",
-      tool: "fetch"
+      tool: "fetch",
     });
     expect(parseMcpToolName("mcp__browser_use__browser_exec")).toEqual({
       server: "browser use",
-      tool: "browser exec"
+      tool: "browser exec",
     });
     expect(parseMcpToolName("google-drive_google-drive-list_recent_files")).toEqual({
       server: "google drive",
-      tool: "list recent files"
+      tool: "list recent files",
     });
   });
 
   it("labels the tool by its own identity instead of a hijacked bucket verb", () => {
     // `mcp__claude_ai_Notion__notion-fetch` contains "fetch", so substring
     // bucketing used to render it as "Fetched URL" — a URL it never fetched.
-    expect(describeToolAction(tool({ name: "mcp__claude_ai_Notion__notion-fetch" }))).toBe("Notion fetch");
+    expect(describeToolAction(tool({ name: "mcp__claude_ai_Notion__notion-fetch" }))).toBe(
+      "Notion fetch",
+    );
     expect(mcpToolLabel("mcp__engram__recall")).toBe("Engram recall");
     expect(mcpToolLabel("Read")).toBeNull();
   });
@@ -141,41 +152,57 @@ describe("MCP tool names", () => {
   });
 
   it("resolves Cursor and Codex wrappers before the UI sees them", () => {
-    expect(extractToolName({
-      name: "mcpToolCall",
-      input: {
-        serverIdentifier: "plugin-google-drive-google-drive",
-        toolName: "list_recent_files"
-      }
-    })).toBe("mcp__plugin-google-drive-google-drive__list_recent_files");
-    expect(extractToolName({
-      name: "recall",
-      server: "engram",
-      tool: "recall"
-    })).toBe("mcp__engram__recall");
-    expect(extractToolName({
-      name: "mcp_tool_call",
-      server: "codex_apps",
-      tool: "linear.list_issues"
-    })).toBe("linear.list_issues");
-    expect(extractToolName({
-      name: "other",
-      input: { _toolName: "task", description: "Review code" }
-    })).toBe("task");
+    expect(
+      extractToolName({
+        name: "mcpToolCall",
+        input: {
+          serverIdentifier: "plugin-google-drive-google-drive",
+          toolName: "list_recent_files",
+        },
+      }),
+    ).toBe("mcp__plugin-google-drive-google-drive__list_recent_files");
+    expect(
+      extractToolName({
+        name: "recall",
+        server: "engram",
+        tool: "recall",
+      }),
+    ).toBe("mcp__engram__recall");
+    expect(
+      extractToolName({
+        name: "mcp_tool_call",
+        server: "codex_apps",
+        tool: "linear.list_issues",
+      }),
+    ).toBe("linear.list_issues");
+    expect(
+      extractToolName({
+        name: "other",
+        input: { _toolName: "task", description: "Review code" },
+      }),
+    ).toBe("task");
   });
 
   it("removes Cursor wrapper metadata from the expandable input", () => {
-    expect(cleanToolInput("mcp__engram__recall", {
-      args: { query: "Argmax" },
-      providerIdentifier: "engram",
-      toolCallId: "tool-1",
-      toolName: "recall"
-    }, "mcpToolCall")).toEqual({ query: "Argmax" });
+    expect(
+      cleanToolInput(
+        "mcp__engram__recall",
+        {
+          args: { query: "Argmax" },
+          providerIdentifier: "engram",
+          toolCallId: "tool-1",
+          toolName: "recall",
+        },
+        "mcpToolCall",
+      ),
+    ).toEqual({ query: "Argmax" });
   });
 
   it("does not erase a direct MCP tool's legitimate metadata-shaped arguments", () => {
     const input = { toolName: "child", serverIdentifier: "chosen-by-user" };
-    expect(cleanToolInput("mcp__custom__configure", input, "mcp__custom__configure")).toEqual(input);
+    expect(cleanToolInput("mcp__custom__configure", input, "mcp__custom__configure")).toEqual(
+      input,
+    );
   });
 
   it("humanizes direct provider aliases instead of leaking raw identifiers", () => {
@@ -193,7 +220,7 @@ describe("MCP tool names", () => {
       "TodoWrite",
       "TaskCreate",
       "TaskUpdate",
-      "get_command_or_subagent_output"
+      "get_command_or_subagent_output",
     ]) {
       expect(isHiddenToolName(name)).toBe(true);
     }
@@ -208,13 +235,13 @@ describe("unwrapOutputEnvelope", () => {
   it("lifts Grok's Text envelope so the inner payload is the output", () => {
     const envelope = JSON.stringify({
       type: "Text",
-      text: "Subagent started in background.\nsubagent_id: child-1"
+      text: "Subagent started in background.\nsubagent_id: child-1",
     });
     expect(unwrapOutputEnvelope(envelope)).toBe(
-      "Subagent started in background.\nsubagent_id: child-1"
+      "Subagent started in background.\nsubagent_id: child-1",
     );
     expect(extractToolOutput({ content: envelope })).toBe(
-      "Subagent started in background.\nsubagent_id: child-1"
+      "Subagent started in background.\nsubagent_id: child-1",
     );
   });
 
@@ -230,19 +257,19 @@ describe("formatToolOutput", () => {
       metadata: { type: "page" },
       title: "Todo",
       url: "https://app.notion.com/p/28df6da7",
-      text: "Prio\n- [ ] mpa\n- [x] docs"
+      text: "Prio\n- [ ] mpa\n- [x] docs",
     });
 
     expect(formatToolOutput(envelope)).toEqual({
       body: "Prio\n- [ ] mpa\n- [x] docs",
-      title: "Todo"
+      title: "Todo",
     });
   });
 
   it("pretty-prints JSON that carries no single text field", () => {
     expect(formatToolOutput('{"a":1,"b":[2]}')).toEqual({
       body: '{\n  "a": 1,\n  "b": [\n    2\n  ]\n}',
-      title: null
+      title: null,
     });
     expect(formatToolOutput('{"text":"a","result":"b"}').title).toBeNull();
     expect(formatToolOutput('{"text":"a","result":"b"}').body).toContain('"text": "a"');
@@ -259,7 +286,7 @@ describe("formatToolOutput", () => {
   it("leaves anything that is not JSON exactly as it arrived", () => {
     expect(formatToolOutput("total 8\ndrwxr-xr-x")).toEqual({
       body: "total 8\ndrwxr-xr-x",
-      title: null
+      title: null,
     });
     expect(formatToolOutput("{not json")).toEqual({ body: "{not json", title: null });
   });
@@ -267,7 +294,9 @@ describe("formatToolOutput", () => {
 
 describe("extractCompletionCorrelationId", () => {
   it("prefers tool_use_id (Claude)", () => {
-    expect(extractCompletionCorrelationId({ tool_use_id: "toolu_x", id: "should-not-win" })).toBe("toolu_x");
+    expect(extractCompletionCorrelationId({ tool_use_id: "toolu_x", id: "should-not-win" })).toBe(
+      "toolu_x",
+    );
   });
 
   it("falls back to id (Codex)", () => {
@@ -334,7 +363,7 @@ describe("Task / sub-agent tools", () => {
     const t = tool({
       name: "taskToolCall",
       inputPreview: "Map renderer surface",
-      inputFull: { description: "Map renderer surface", subagentType: { unspecified: {} } }
+      inputFull: { description: "Map renderer surface", subagentType: { unspecified: {} } },
     });
     expect(describeToolAction(t)).toBe("Started agent Map renderer surface");
   });
@@ -346,16 +375,17 @@ describe("Task / sub-agent tools", () => {
   it("previews Codex `collab_tool_call` from the spawn prompt when no description exists", () => {
     expect(
       extractToolInputPreview("collab_tool_call", {
-        prompt: "Explore the repo quickly and report the key files."
-      })
+        prompt: "Explore the repo quickly and report the key files.",
+      }),
     ).toBe("Explore the repo quickly and report the key files.");
   });
 
   it("drops Codex's `[local_image:…]` marker so the instruction leads the preview", () => {
     expect(
       extractToolInputPreview("collab_tool_call", {
-        prompt: "[local_image:/Users/a/Library/Application Support/com.argmax.rs/x.png]\nReview the screenshot."
-      })
+        prompt:
+          "[local_image:/Users/a/Library/Application Support/com.argmax.rs/x.png]\nReview the screenshot.",
+      }),
     ).toBe("Review the screenshot.");
   });
 
@@ -364,15 +394,15 @@ describe("Task / sub-agent tools", () => {
       extractToolInputPreview("Task", {
         description: "Audit shared + scripts",
         prompt: "A very long prompt body that should not surface in the row header...",
-        subagent_type: "general-purpose"
-      })
+        subagent_type: "general-purpose",
+      }),
     ).toBe("Audit shared + scripts");
   });
 
   it("group headline uses a quiet started-agent phrase", () => {
     const out = summarizeToolGroup([
       tool({ name: "Task", id: "1" }),
-      tool({ name: "Task", id: "2" })
+      tool({ name: "Task", id: "2" }),
     ]);
     expect(out.headline).toBe("Started 2 agents");
   });
@@ -384,9 +414,9 @@ describe("file_change tools", () => {
       extractToolInputPreview("file_change", {
         changes: [
           { path: "/repo/src/a.ts", kind: "update" },
-          { path: "/repo/src/b.ts", kind: "create" }
-        ]
-      })
+          { path: "/repo/src/b.ts", kind: "create" },
+        ],
+      }),
     ).toBe("/repo/src/a.ts +1");
   });
 
@@ -414,7 +444,7 @@ describe("summarizeToolGroup — single-bucket headlines", () => {
   it("keeps a running group countless, since the tally is still growing", () => {
     const out = summarizeToolGroup([
       tool({ name: "Read" }),
-      tool({ name: "read", id: "id-2", status: "running" })
+      tool({ name: "read", id: "id-2", status: "running" }),
     ]);
     expect(out.headline).toBe("Read files");
   });
@@ -423,7 +453,7 @@ describe("summarizeToolGroup — single-bucket headlines", () => {
     const out = summarizeToolGroup([
       tool({ name: "Bash" }),
       tool({ name: "shell", id: "id-2" }),
-      tool({ name: "exec", id: "id-3" })
+      tool({ name: "exec", id: "id-3" }),
     ]);
     expect(out.headline).toBe("Ran 3 commands");
   });
@@ -445,7 +475,7 @@ describe("summarizeToolGroup — mixed-bucket headlines", () => {
       tool({ name: "Read", id: "1" }),
       tool({ name: "list_dir", id: "2" }),
       tool({ name: "list_dir", id: "3" }),
-      tool({ name: "Bash", id: "4" })
+      tool({ name: "Bash", id: "4" }),
     ]);
     expect(out.headline).toBe("Read a file, listed 2 directories, ran a command");
   });
@@ -454,7 +484,7 @@ describe("summarizeToolGroup — mixed-bucket headlines", () => {
     const out = summarizeToolGroup([
       tool({ name: "Bash", id: "1" }),
       tool({ name: "Edit", id: "2" }),
-      tool({ name: "Grep", id: "3" })
+      tool({ name: "Grep", id: "3" }),
     ]);
     expect(out.headline).toBe("Edited a file, searched, ran a command");
   });
@@ -469,8 +499,8 @@ describe("summarizeToolGroup — currentAction while running", () => {
         id: "2",
         status: "running",
         inputPreview: "/repo/pyproject.toml",
-        completedAt: ""
-      })
+        completedAt: "",
+      }),
     ]);
     expect(out.status).toBe("running");
     expect(out.currentAction).toBe("Read pyproject.toml");
@@ -479,7 +509,7 @@ describe("summarizeToolGroup — currentAction while running", () => {
   it("returns null when nothing is running", () => {
     const out = summarizeToolGroup([
       tool({ name: "Read", id: "1", status: "done" }),
-      tool({ name: "Bash", id: "2", status: "done" })
+      tool({ name: "Bash", id: "2", status: "done" }),
     ]);
     expect(out.currentAction).toBeNull();
   });
@@ -487,7 +517,7 @@ describe("summarizeToolGroup — currentAction while running", () => {
   it("does not mark a mixed-success group as error when one child failed", () => {
     const out = summarizeToolGroup([
       tool({ name: "Read", id: "1", status: "done" }),
-      tool({ name: "Read", id: "2", status: "error", error: "EISDIR" })
+      tool({ name: "Read", id: "2", status: "error", error: "EISDIR" }),
     ]);
     expect(out.status).toBe("done");
     expect(out.headline).toBe("Read files");
@@ -496,7 +526,7 @@ describe("summarizeToolGroup — currentAction while running", () => {
   it("marks the group as error when every child failed", () => {
     const out = summarizeToolGroup([
       tool({ name: "Read", id: "1", status: "error", error: "ENOENT" }),
-      tool({ name: "Bash", id: "2", status: "error", error: "exit 1" })
+      tool({ name: "Bash", id: "2", status: "error", error: "exit 1" }),
     ]);
     expect(out.status).toBe("error");
     expect(out.headline).toBe("Read a file, ran a command");
@@ -505,36 +535,40 @@ describe("summarizeToolGroup — currentAction while running", () => {
 
 describe("describeToolAction", () => {
   it("reads → 'Read <basename>'", () => {
-    expect(describeToolAction(tool({ name: "Read", inputPreview: "/repo/src/foo.ts" }))).toBe("Read foo.ts");
+    expect(describeToolAction(tool({ name: "Read", inputPreview: "/repo/src/foo.ts" }))).toBe(
+      "Read foo.ts",
+    );
   });
 
   it("list_dir → 'Listed files in <basename>'", () => {
     expect(describeToolAction(tool({ name: "list_dir", inputPreview: "src-tauri/src" }))).toBe(
-      "Listed files in src"
+      "Listed files in src",
     );
   });
 
   it("bash → 'Ran <command>'", () => {
     expect(describeToolAction(tool({ name: "Bash", inputPreview: "git status --short" }))).toBe(
-      "Ran git status --short"
+      "Ran git status --short",
     );
   });
 
   it("bash strips /bin/zsh launch wrappers from action text", () => {
     expect(
-      describeToolAction(tool({ name: "command_execution", inputPreview: "/bin/zsh -lc \"npm run lint\"" }))
+      describeToolAction(
+        tool({ name: "command_execution", inputPreview: '/bin/zsh -lc "npm run lint"' }),
+      ),
     ).toBe("Ran npm run lint");
   });
 
   it("edit → 'Edited <basename>'", () => {
     expect(describeToolAction(tool({ name: "Write", inputPreview: "/repo/src/foo.ts" }))).toBe(
-      "Edited foo.ts"
+      "Edited foo.ts",
     );
   });
 
   it("search → 'Searched for <query>'", () => {
     expect(describeToolAction(tool({ name: "Grep", inputPreview: "sessionTurnView" }))).toBe(
-      "Searched for sessionTurnView"
+      "Searched for sessionTurnView",
     );
   });
 
@@ -545,22 +579,22 @@ describe("describeToolAction", () => {
           name: "Skill",
           inputPreview: "brain-curate",
           completionObserved: true,
-          activity: { version: 1, kind: "skill", evidence: "tool", targets: ["brain-curate"] }
-        })
-      )
+          activity: { version: 1, kind: "skill", evidence: "tool", targets: ["brain-curate"] },
+        }),
+      ),
     ).toBe("Activated brain-curate skill");
     expect(extractToolInputPreview("Skill", { skill: "brain-curate" })).toBe("brain-curate");
   });
 
   it("web → 'Fetched <url>'", () => {
     expect(
-      describeToolAction(tool({ name: "WebFetch", inputPreview: "https://example.com" }))
+      describeToolAction(tool({ name: "WebFetch", inputPreview: "https://example.com" })),
     ).toBe("Fetched https://example.com");
   });
 
   it("humanizes the tool name + preview for unknown buckets", () => {
     expect(describeToolAction(tool({ name: "custom_mcp_tool", inputPreview: "foo" }))).toBe(
-      "Custom mcp tool foo"
+      "Custom mcp tool foo",
     );
   });
 });
@@ -569,7 +603,7 @@ describe("buildGroupRows — sub-agent nesting", () => {
   it("keeps everything top-level when there are no parent links", () => {
     const rows = buildGroupRows([
       tool({ name: "Read", id: "a", toolUseId: "tu-a" }),
-      tool({ name: "Bash", id: "b", toolUseId: "tu-b" })
+      tool({ name: "Bash", id: "b", toolUseId: "tu-b" }),
     ]);
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.children.length === 0)).toBe(true);
@@ -580,7 +614,7 @@ describe("buildGroupRows — sub-agent nesting", () => {
       tool({ name: "Task", id: "task", toolUseId: "tu-task" }),
       tool({ name: "find", id: "c1", toolUseId: "tu-c1", parentToolUseId: "tu-task" }),
       tool({ name: "Read", id: "c2", toolUseId: "tu-c2", parentToolUseId: "tu-task" }),
-      tool({ name: "Bash", id: "top", toolUseId: "tu-top" })
+      tool({ name: "Bash", id: "top", toolUseId: "tu-top" }),
     ]);
     expect(rows.map((r) => r.tool.id)).toEqual(["task", "top"]);
     expect(rows[0]?.children.map((c) => c.id)).toEqual(["c1", "c2"]);
@@ -589,7 +623,7 @@ describe("buildGroupRows — sub-agent nesting", () => {
 
   it("treats a child as top-level when its parent is not in the group", () => {
     const rows = buildGroupRows([
-      tool({ name: "Read", id: "orphan", toolUseId: "tu-orphan", parentToolUseId: "tu-missing" })
+      tool({ name: "Read", id: "orphan", toolUseId: "tu-orphan", parentToolUseId: "tu-missing" }),
     ]);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.tool.id).toBe("orphan");
@@ -614,41 +648,58 @@ describe("Grok Build tool names", () => {
 
   // The user-visible consequence of the bucket, through the public label.
   it("describes a search_replace as an edit, not a search", () => {
-    expect(describeToolAction(tool({ name: "search_replace", inputPreview: "src/app.ts" })))
-      .toBe("Edited app.ts");
-    expect(describeToolAction(tool({ name: "read_file", inputPreview: "src/app.ts" })))
-      .toBe("Read app.ts");
+    expect(describeToolAction(tool({ name: "search_replace", inputPreview: "src/app.ts" }))).toBe(
+      "Edited app.ts",
+    );
+    expect(describeToolAction(tool({ name: "read_file", inputPreview: "src/app.ts" }))).toBe(
+      "Read app.ts",
+    );
   });
 });
 
 describe("summarizeToolChangeCounts", () => {
-  const edit = (id: string, oldText: string, newText: string): ToolCall => tool({
-    id, name: "Edit", completionObserved: true,
-    inputFull: { file_path: "app.ts", old_string: oldText, new_string: newText }
-  });
+  const edit = (id: string, oldText: string, newText: string): ToolCall =>
+    tool({
+      id,
+      name: "Edit",
+      completionObserved: true,
+      inputFull: { file_path: "app.ts", old_string: oldText, new_string: newText },
+    });
 
   it("accumulates later edits across other calls without counting one file twice", () => {
     const first = edit("first", "old", "new\nextra");
     const between = tool({ name: "Read", inputFull: { file_path: "app.ts" } });
     expect(summarizeToolChangeCounts([first, between])).toEqual({ adds: 2, dels: 1, files: 1 });
     const second = edit("second", "new\nextra", "final");
-    expect(summarizeToolChangeCounts([first, between, second])).toEqual({ adds: 3, dels: 3, files: 1 });
+    expect(summarizeToolChangeCounts([first, between, second])).toEqual({
+      adds: 3,
+      dels: 3,
+      files: 1,
+    });
   });
 
   it("counts each completed invocation once and excludes failed, running, and inferred edits", () => {
     const done = edit("done", "old", "new");
-    expect(summarizeToolChangeCounts([
-      done, done,
-      { ...edit("failed", "old", "new"), status: "error" },
-      { ...edit("running", "old", "new"), status: "running" },
-      { ...edit("inferred", "old", "new"), completionObserved: false }
-    ])).toEqual({ adds: 1, dels: 1, files: 1 });
+    expect(
+      summarizeToolChangeCounts([
+        done,
+        done,
+        { ...edit("failed", "old", "new"), status: "error" },
+        { ...edit("running", "old", "new"), status: "running" },
+        { ...edit("inferred", "old", "new"), completionObserved: false },
+      ]),
+    ).toEqual({ adds: 1, dels: 1, files: 1 });
   });
 
   it("uses measured Codex diffs and does not invent line counts for whole-file deletion", () => {
-    const patch = tool({ name: "file_change", inputFull: { changes: [
-      { kind: "update", path: "app.ts", unified_diff: "@@ -1,1 +1,2 @@\n-old\n+new\n+extra\n" }
-    ] } });
+    const patch = tool({
+      name: "file_change",
+      inputFull: {
+        changes: [
+          { kind: "update", path: "app.ts", unified_diff: "@@ -1,1 +1,2 @@\n-old\n+new\n+extra\n" },
+        ],
+      },
+    });
     const deletion = tool({ name: "delete_file", inputFull: { path: "removed.ts" } });
     expect(summarizeToolChangeCounts([patch, deletion])).toEqual({ adds: 2, dels: 1, files: 2 });
     expect(summarizeToolChangeCounts([deletion])).toBeNull();

@@ -3,7 +3,14 @@ import type * as MermaidRuntime from "../lib/mermaidRuntime.js";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { FilePreview } from "./FilePreview.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
-import { BROWSER_PAGE_OWNER_ID, createBrowserTab, getBrowserRequest, getBrowserTabs, resetBrowserTabsForTests, subscribeBrowserRequest } from "../lib/browserPanel.js";
+import {
+  BROWSER_PAGE_OWNER_ID,
+  createBrowserTab,
+  getBrowserRequest,
+  getBrowserTabs,
+  resetBrowserTabsForTests,
+  subscribeBrowserRequest,
+} from "../lib/browserPanel.js";
 import { LINK_TARGET_KEY } from "../lib/linkTarget.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { WORKSPACE_ASSET_PROTOCOL_SCHEME } from "../../shared/assetProtocol.js";
@@ -39,7 +46,7 @@ function makeState(overrides: Partial<WorkspaceFilesState> = {}): WorkspaceFiles
     saveFile: () => Promise.resolve(),
     reloadFile: () => undefined,
     dismissExternalChange: () => undefined,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -48,8 +55,8 @@ vi.mock("../lib/mermaidRuntime.js", async (importOriginal) => {
   return {
     ...actual,
     renderMermaidDiagram: vi.fn(() =>
-      Promise.resolve({ svg: `<svg data-testid="mermaid-svg"><title>flow</title></svg>` })
-    )
+      Promise.resolve({ svg: `<svg data-testid="mermaid-svg"><title>flow</title></svg>` }),
+    ),
   };
 });
 
@@ -60,55 +67,70 @@ describe("FilePreview", () => {
     ["HTTPS://example.com/docs", "system", { metaKey: true }, "argmax"],
     ["//example.com/docs", "system", { ctrlKey: true }, "argmax"],
     ["https://example.com/docs", "argmax", { metaKey: true }, "system"],
-    ["https://example.com/docs", "argmax", { ctrlKey: true }, "system"]
-  ])("routes preview link %s with preference %s and modifiers %j to %s", (href, preference, modifiers, destination) => {
-    const originalApi = Object.getOwnPropertyDescriptor(window, "argmax");
-    const originalPreference = localStorage.getItem(LINK_TARGET_KEY);
-    const openPath = vi.fn().mockResolvedValue({ ok: true });
-    Object.defineProperty(window, "argmax", { configurable: true, value: { system: { openPath } } });
-    localStorage.setItem(LINK_TARGET_KEY, preference);
-    const opened: string[] = [];
-    const unsubscribe = subscribeBrowserRequest(() => {
-      const request = getBrowserRequest();
-      if (request) opened.push(request.url);
-    });
-    try {
-      resetBrowserTabsForTests();
-      const existingTab = createBrowserTab(BROWSER_PAGE_OWNER_ID, "https://example.com/already-open");
-      const content = `[docs](${href})`;
-      render(<FilePreview state={makeState({
-        selectedPath: "README.md",
-        buffer: content,
-        preview: { kind: "text", content, size: content.length, mtimeMs: 1 }
-      })} />);
-      const link = screen.getByRole("link", { name: "docs" });
-      expect(fireEvent.click(link, modifiers)).toBe(false);
-      const expectedUrl = href.startsWith("//") ? `https:${href}` : href;
-      if (destination === "system") {
-        expect(openPath).toHaveBeenCalledExactlyOnceWith({ path: expectedUrl });
-        expect(opened).toEqual([]);
-      } else {
-        expect(opened).toEqual([expectedUrl]);
-        expect(openPath).not.toHaveBeenCalled();
-        expect(getBrowserRequest()).toMatchObject({ url: expectedUrl, newTab: true });
-        expect(getBrowserRequest()?.tabId).toBeUndefined();
-        expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toEqual([existingTab]);
-        fireEvent.click(link, modifiers);
-        expect(getBrowserRequest()?.seq).toBeGreaterThan(1);
-        expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toEqual([existingTab]);
+    ["https://example.com/docs", "argmax", { ctrlKey: true }, "system"],
+  ])(
+    "routes preview link %s with preference %s and modifiers %j to %s",
+    (href, preference, modifiers, destination) => {
+      const originalApi = Object.getOwnPropertyDescriptor(window, "argmax");
+      const originalPreference = localStorage.getItem(LINK_TARGET_KEY);
+      const openPath = vi.fn().mockResolvedValue({ ok: true });
+      Object.defineProperty(window, "argmax", {
+        configurable: true,
+        value: { system: { openPath } },
+      });
+      localStorage.setItem(LINK_TARGET_KEY, preference);
+      const opened: string[] = [];
+      const unsubscribe = subscribeBrowserRequest(() => {
+        const request = getBrowserRequest();
+        if (request) opened.push(request.url);
+      });
+      try {
+        resetBrowserTabsForTests();
+        const existingTab = createBrowserTab(
+          BROWSER_PAGE_OWNER_ID,
+          "https://example.com/already-open",
+        );
+        const content = `[docs](${href})`;
+        render(
+          <FilePreview
+            state={makeState({
+              selectedPath: "README.md",
+              buffer: content,
+              preview: { kind: "text", content, size: content.length, mtimeMs: 1 },
+            })}
+          />,
+        );
+        const link = screen.getByRole("link", { name: "docs" });
+        expect(fireEvent.click(link, modifiers)).toBe(false);
+        const expectedUrl = href.startsWith("//") ? `https:${href}` : href;
+        if (destination === "system") {
+          expect(openPath).toHaveBeenCalledExactlyOnceWith({ path: expectedUrl });
+          expect(opened).toEqual([]);
+        } else {
+          expect(opened).toEqual([expectedUrl]);
+          expect(openPath).not.toHaveBeenCalled();
+          expect(getBrowserRequest()).toMatchObject({ url: expectedUrl, newTab: true });
+          expect(getBrowserRequest()?.tabId).toBeUndefined();
+          expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toEqual([existingTab]);
+          fireEvent.click(link, modifiers);
+          expect(getBrowserRequest()?.seq).toBeGreaterThan(1);
+          expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toEqual([existingTab]);
+        }
+      } finally {
+        unsubscribe();
+        resetBrowserTabsForTests();
+        if (originalApi) Object.defineProperty(window, "argmax", originalApi);
+        else Reflect.deleteProperty(window, "argmax");
+        if (originalPreference === null) localStorage.removeItem(LINK_TARGET_KEY);
+        else localStorage.setItem(LINK_TARGET_KEY, originalPreference);
       }
-    } finally {
-      unsubscribe();
-      resetBrowserTabsForTests();
-      if (originalApi) Object.defineProperty(window, "argmax", originalApi);
-      else Reflect.deleteProperty(window, "argmax");
-      if (originalPreference === null) localStorage.removeItem(LINK_TARGET_KEY);
-      else localStorage.setItem(LINK_TARGET_KEY, originalPreference);
-    }
-  });
+    },
+  );
 
   it("shows the shortcut legend with no selection and yields to the editor once a file opens", () => {
-    const { rerender } = render(<FilePreview state={makeState({ selectedPath: null, activeTabPath: null })} />);
+    const { rerender } = render(
+      <FilePreview state={makeState({ selectedPath: null, activeTabPath: null })} />,
+    );
     expect(screen.getByLabelText("No file selected")).toBeInTheDocument();
     expect(screen.getByText("Select a file to preview")).toBeInTheDocument();
     expect(screen.getByText("Find a file")).toBeInTheDocument();
@@ -133,9 +155,9 @@ describe("FilePreview", () => {
           isDirty: true,
           externalChange: true,
           reloadFile,
-          dismissExternalChange
+          dismissExternalChange,
         })}
-      />
+      />,
     );
     expect(screen.getByLabelText("File changed on disk")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Reload from disk"));
@@ -149,9 +171,9 @@ describe("FilePreview", () => {
       <FilePreview
         state={makeState({
           isDirty: false,
-          externalChange: true
+          externalChange: true,
         })}
-      />
+      />,
     );
     expect(screen.getByLabelText("Reload from disk")).toBeInTheDocument();
     expect(screen.queryByLabelText("Keep my edits and overwrite on save")).not.toBeInTheDocument();
@@ -162,9 +184,9 @@ describe("FilePreview", () => {
       <FilePreview
         state={makeState({
           preview: { kind: "skipped", reason: "binary", size: 4096 },
-          buffer: null
+          buffer: null,
         })}
-      />
+      />,
     );
     expect(screen.getByText(/Binary file/)).toBeInTheDocument();
     expect(screen.queryByText("4.0 KB")).not.toBeInTheDocument();
@@ -175,9 +197,9 @@ describe("FilePreview", () => {
     render(
       <FilePreview
         state={makeState({
-          saveError: "disk full"
+          saveError: "disk full",
         })}
-      />
+      />,
     );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.queryByText("disk full")).not.toBeInTheDocument();
@@ -189,10 +211,15 @@ describe("FilePreview", () => {
         state={makeState({
           selectedPath: "README.md",
           rootPath: "/Users/me/repo",
-          preview: { kind: "text", content: "![logo](docs/assets/logo.png)\n", size: 30, mtimeMs: 1 },
-          buffer: "![logo](docs/assets/logo.png)\n"
+          preview: {
+            kind: "text",
+            content: "![logo](docs/assets/logo.png)\n",
+            size: 30,
+            mtimeMs: 1,
+          },
+          buffer: "![logo](docs/assets/logo.png)\n",
         })}
-      />
+      />,
     );
     const img = screen.getByRole("img", { name: "logo" });
     const src = img.getAttribute("src") ?? "";
@@ -204,18 +231,27 @@ describe("FilePreview", () => {
   });
 
   it("draws a mermaid fence in a markdown file and leaves other fences as code", async () => {
-    const content = ["```mermaid", "flowchart LR", "  A --> B", "```", "", "```sh", "echo hi", "```"].join("\n");
-    const { container } = render(
+    const content = [
+      "```mermaid",
+      "flowchart LR",
+      "  A --> B",
+      "```",
+      "",
+      "```sh",
+      "echo hi",
+      "```",
+    ].join("\n");
+    render(
       <FilePreview
         state={makeState({
           selectedPath: "docs/ARCHITECTURE.md",
           preview: { kind: "text", content, size: content.length, mtimeMs: 1 },
-          buffer: content
+          buffer: content,
         })}
-      />
+      />,
     );
     expect(await screen.findByTestId("mermaid-svg")).toBeInTheDocument();
-    expect(container.querySelectorAll("pre")).toHaveLength(1);
+    expect(screen.getAllByTestId("markdown-code-block")).toHaveLength(1);
     expect(screen.getByText("echo hi")).toBeInTheDocument();
   });
 
@@ -227,13 +263,13 @@ describe("FilePreview", () => {
           activeTabPath: "docs/design/fox.png",
           rootPath: "/Users/me/repo",
           preview: { kind: "skipped", reason: "binary", size: 4096 },
-          buffer: null
+          buffer: null,
         })}
-      />
+      />,
     );
     const img = screen.getByRole("img", { name: "docs/design/fox.png" });
     expect(img.getAttribute("src")).toBe(
-      `${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/Users/me/repo/docs/design/fox.png`
+      `${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/Users/me/repo/docs/design/fox.png`,
     );
     expect(screen.queryByText(/Binary file/)).not.toBeInTheDocument();
     expect(screen.getByText("4.0 KB")).toBeInTheDocument();
@@ -246,9 +282,9 @@ describe("FilePreview", () => {
           selectedPath: "sheet.png",
           activeTabPath: "sheet.png",
           preview: { kind: "skipped", reason: "too-large", size: 4_000_000 },
-          buffer: null
+          buffer: null,
         })}
-      />
+      />,
     );
     expect(screen.queryByText(/File too large/)).not.toBeInTheDocument();
     const frame = screen.getByLabelText("View image at actual size");
@@ -263,9 +299,9 @@ describe("FilePreview", () => {
           selectedPath: "link.png",
           activeTabPath: "link.png",
           preview: { kind: "skipped", reason: "not-a-file" },
-          buffer: null
+          buffer: null,
         })}
-      />
+      />,
     );
     expect(screen.getByText("Not a regular file.")).toBeInTheDocument();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
@@ -279,9 +315,9 @@ describe("FilePreview", () => {
           activeTabPath: "assets/icon.svg",
           rootPath: "/Users/me/repo",
           preview: { kind: "text", content: "<svg/>", size: 6, mtimeMs: 1 },
-          buffer: "<svg/>"
+          buffer: "<svg/>",
         })}
-      />
+      />,
     );
     expect(screen.getByRole("img", { name: "assets/icon.svg" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Editor for assets/icon.svg")).not.toBeInTheDocument();
@@ -295,10 +331,10 @@ describe("FilePreview", () => {
 describe("resolveMarkdownImageSrc", () => {
   it("passes through absolute http(s) and data URLs untouched", () => {
     expect(resolveMarkdownImageSrc("https://example.com/x.png", "/repo", "README.md")).toBe(
-      "https://example.com/x.png"
+      "https://example.com/x.png",
     );
     expect(resolveMarkdownImageSrc("data:image/png;base64,AAA", "/repo", "README.md")).toBe(
-      "data:image/png;base64,AAA"
+      "data:image/png;base64,AAA",
     );
   });
 
@@ -318,7 +354,9 @@ describe("resolveMarkdownImageSrc", () => {
   });
 
   it("returns undefined when traversal escapes the root", () => {
-    expect(resolveMarkdownImageSrc("../../../etc/passwd.png", "/repo", "README.md")).toBeUndefined();
+    expect(
+      resolveMarkdownImageSrc("../../../etc/passwd.png", "/repo", "README.md"),
+    ).toBeUndefined();
   });
 
   it("returns the original src when there is no rootPath or selectedPath", () => {

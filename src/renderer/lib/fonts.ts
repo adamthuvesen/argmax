@@ -45,50 +45,50 @@ export const FONT_OPTIONS: readonly FontOption[] = [
     id: "system",
     label: "System Sans (SF Pro)",
     hint: "The native system font: San Francisco on macOS, with system mono for the terminal.",
-    stack: '-apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif'
+    stack: '-apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif',
   },
   {
     id: "system-mono",
     label: "System Mono",
     hint: "Your OS's default mono — SF Mono on macOS, Cascadia on Windows. Zero bundle, fully native.",
-    stack: `ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace`
+    stack: `ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace`,
   },
   {
     id: "dm-sans",
     label: "DM Sans",
     hint: "A clean geometric sans with a warm, open feel, designed for small text.",
-    stack: `"DM Sans Variable", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
+    stack: `"DM Sans Variable", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`,
   },
   {
     id: "geist-sans",
     label: "Geist Sans",
     hint: "Vercel's modern UI sans, paired with Geist Mono for code. Clean, slightly geometric, neutral.",
-    stack: `"Geist Variable", "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
+    stack: `"Geist Variable", "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`,
   },
   {
     id: "geist-mono",
     label: "Geist Mono",
     hint: "Vercel's modern mono; clean and rounded, used across v0 and similar AI tools.",
-    stack: `"Geist Mono Variable", "Geist Mono", ${SYSTEM_MONO_FALLBACK}`
+    stack: `"Geist Mono Variable", "Geist Mono", ${SYSTEM_MONO_FALLBACK}`,
   },
   {
     id: "ibm-plex-sans",
     label: "IBM Plex Sans",
     hint: "Warm humanist sans — slightly bookish, pairs well with the paper-grain background.",
-    stack: `"IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
+    stack: `"IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`,
   },
   {
     id: "ibm-plex-mono",
     label: "IBM Plex Mono",
     hint: "Slightly bookish, pairs well with the paper-grain background.",
-    stack: `"IBM Plex Mono", ${SYSTEM_MONO_FALLBACK}`
+    stack: `"IBM Plex Mono", ${SYSTEM_MONO_FALLBACK}`,
   },
   {
     id: "inter",
     label: "Inter",
     hint: "Proportional humanist sans — book-like, less editor-y. Code blocks stay mono.",
-    stack: `"Inter Variable", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
-  }
+    stack: `"Inter Variable", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`,
+  },
 ] as const;
 
 export const DEFAULT_FONT_ID: FontFamilyId = "system";
@@ -113,7 +113,7 @@ const LEGACY_CHAT_FONT_SIZE_STORAGE_KEY = "argmax.font.size.chat";
 const LEGACY_STRING_FONT_SIZES: Readonly<Record<string, FontSize>> = {
   small: 5,
   default: 6,
-  large: 7
+  large: 7,
 };
 
 function readLegacyFontSize(key: string): FontSize | null {
@@ -228,15 +228,15 @@ const FONT_CSS_LOADERS: Partial<Record<FontFamilyId, () => Promise<unknown>>> = 
       import("@fontsource/ibm-plex-mono/latin-400.css"),
       import("@fontsource/ibm-plex-mono/latin-500.css"),
       import("@fontsource/ibm-plex-mono/latin-700.css"),
-      loadIbmPlexMonoText()
+      loadIbmPlexMonoText(),
     ]),
   inter: () => import("@fontsource-variable/inter/wght.css"),
   "geist-sans": () =>
     Promise.all([
       import("@fontsource-variable/geist/wght.css"),
-      import("@fontsource-variable/geist-mono/wght.css")
+      import("@fontsource-variable/geist-mono/wght.css"),
     ]),
-  "ibm-plex-sans": () => import("@fontsource-variable/ibm-plex-sans/wght.css")
+  "ibm-plex-sans": () => import("@fontsource-variable/ibm-plex-sans/wght.css"),
 };
 
 const loadedFonts = new Set<FontFamilyId>();

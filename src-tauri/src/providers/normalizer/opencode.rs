@@ -20,10 +20,8 @@ use super::{
     number_value, object_value, string_value, timeline_event, NormalizedUsage,
     NormalizerSessionContext, ProviderOutputEvent, UsageCounts,
 };
-use crate::{
-    persistence::events::PersistTimelineEventInput,
-    providers::pricing::{cost_of, opencode_cost_is_billed},
-};
+use crate::providers::pricing::{cost_of, opencode_cost_is_billed};
+use argmax_store::events::PersistTimelineEventInput;
 
 /// OpenCode only puts native `task` lifecycle information in the parent's
 /// tool row. The child body never reaches the parent's event stream, but the
@@ -396,7 +394,7 @@ mod tests {
     use crate::providers::normalizer::{
         normalize_provider_event, tests::output_event, NormalizerSessionContext,
     };
-    use crate::providers::ProviderId;
+    use argmax_contracts::validation::ProviderId;
 
     #[test]
     fn opencode_reasoning_part_becomes_thinking_delta() {
@@ -709,7 +707,7 @@ mod tests {
 
     #[test]
     fn opencode_tool_turn_fixture_replays() {
-        use crate::providers::normalizer::{Dispatcher, EventNormalizer};
+        use crate::providers::normalizer::Dispatcher;
         use serde_json::Value;
 
         let fixture = include_str!("../../../tests/fixtures/opencode/tool_turn.jsonl");

@@ -12,7 +12,7 @@ export type LedgerPage = "usage" | "activity";
 
 const PAGES: ReadonlyArray<{ value: LedgerPage; label: string }> = [
   { value: "usage", label: "Usage" },
-  { value: "activity", label: "Activity" }
+  { value: "activity", label: "Activity" },
 ];
 
 export function LedgerSwitch({ active }: { active: LedgerPage }): JSX.Element {

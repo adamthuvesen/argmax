@@ -4,16 +4,16 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::State;
 
-use super::validation::ProjectId;
-use super::{live_database, read_off_main};
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::{
+use crate::providers::one_shot::ProjectOverviewAnswer;
+use crate::state::AppState;
+use crate::state::{live_database, read_off_main};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ProjectId;
+use argmax_store::{
     project_overviews as store,
     projects::{require_project, ProjectSummary},
     Database,
 };
-use crate::providers::one_shot::ProjectOverviewAnswer;
-use crate::state::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -190,7 +190,7 @@ async fn generate(
         let connection = request_database.read_connection();
         Ok((
             require_project(&connection, &id)?.name,
-            crate::persistence::project_folders::list_project_folders(&connection, &id)?,
+            argmax_store::project_folders::list_project_folders(&connection, &id)?,
         ))
     })
     .await?;
@@ -218,7 +218,7 @@ async fn generate(
                 "context"
             }
         );
-        let repo = crate::persistence::linked_repos::LinkedRepo {
+        let repo = argmax_store::linked_repos::LinkedRepo {
             id: folder.id.clone(),
             project_id: folder.project_id,
             name: folder.name,
@@ -244,9 +244,10 @@ async fn generate(
         return Err(ArgmaxError::service("PROJECT_OVERVIEW_UNAVAILABLE", "No supported project documents were found. Add an overview manually or add a README, then refresh."));
     }
     for provider in discovery.available_providers().await {
+        let provider = provider.id();
         match crate::providers::one_shot::generate_project_overview(
             provider,
-            crate::providers::one_shot::helper_model(provider),
+            crate::providers::model_catalogue::helper_model(provider),
             &context,
             &sources,
         )

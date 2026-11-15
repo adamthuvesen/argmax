@@ -79,7 +79,13 @@ export function ContextRing({ session }: { session: SessionSummary }): JSX.Eleme
         title={label}
         onClick={() => setOpen((o) => !o)}
       >
-        <svg className="context-ring-svg" width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+        <svg
+          className="context-ring-svg"
+          width="15"
+          height="15"
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+        >
           <circle cx="8" cy="8" r={RADIUS} fill="none" stroke="var(--line)" strokeWidth={STROKE} />
           <circle
             cx="8"

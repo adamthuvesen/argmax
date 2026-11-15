@@ -23,7 +23,9 @@ describe("NewProjectDialog", () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     render(<NewProjectDialog onCreate={onCreate} onClose={vi.fn()} />);
     expect(screen.getByLabelText("Project name")).toHaveFocus();
-    fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "  AI Analytics  " } });
+    fireEvent.change(screen.getByLabelText("Project name"), {
+      target: { value: "  AI Analytics  " },
+    });
     const submit = screen.getByRole("button", { name: "Create project" });
     expect(submit).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
@@ -33,12 +35,18 @@ describe("NewProjectDialog", () => {
     expect(await screen.findByText("dbt")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Add folder" })).toBeEnabled());
-    expect(within(screen.getByRole("list", { name: "Project folders" })).getAllByRole("listitem")).toHaveLength(2);
+    expect(
+      within(screen.getByRole("list", { name: "Project folders" })).getAllByRole("listitem"),
+    ).toHaveLength(2);
     fireEvent.click(screen.getByRole("radio", { name: "Make dbt primary" }));
     fireEvent.click(submit);
-    await waitFor(() => expect(onCreate).toHaveBeenCalledWith({
-      name: "AI Analytics", folders: ["/repos/app", "/repos/dbt"], primaryPath: "/repos/dbt"
-    }));
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith({
+        name: "AI Analytics",
+        folders: ["/repos/app", "/repos/dbt"],
+        primaryPath: "/repos/dbt",
+      }),
+    );
   });
 
   it("cancels the draft without creating a project or retaining a cancelled directory selection", async () => {
@@ -82,7 +90,7 @@ describe("NewProjectDialog", () => {
     fireEvent.mouseDown(toast);
     fireEvent.mouseDown(screen.getByLabelText("Project name"));
     expect(onClose).not.toHaveBeenCalled();
-    fireEvent.mouseDown(screen.getByRole("dialog").parentElement!);
+    fireEvent.mouseDown(screen.getByTestId("new-project-dialog-overlay"));
     expect(onClose).toHaveBeenCalledTimes(1);
     toast.remove();
   });
@@ -101,7 +109,11 @@ describe("NewProjectDialog", () => {
   it("keeps the draft after a backend failure and prevents dismissal during creation", async () => {
     install(["/repos/app"]);
     let reject!: (reason: Error) => void;
-    const onCreate = vi.fn().mockReturnValue(new Promise<void>((_, fail) => { reject = fail; }));
+    const onCreate = vi.fn().mockReturnValue(
+      new Promise<void>((_, fail) => {
+        reject = fail;
+      }),
+    );
     const onClose = vi.fn();
     render(<NewProjectDialog onCreate={onCreate} onClose={onClose} />);
     fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "AI" } });
@@ -111,7 +123,9 @@ describe("NewProjectDialog", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
-    act(() => { reject(new Error("Primary folder must be a Git repository.")); });
+    act(() => {
+      reject(new Error("Primary folder must be a Git repository."));
+    });
     await waitFor(() => expect(toastSnapshot()?.message).toContain("Git repository"));
     expect(screen.getByLabelText("Project name")).toHaveValue("AI");
     expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();

@@ -53,15 +53,6 @@ Click the condition to expand its full text. Expanded text scrolls within a
 height cap of 150 px or 25% of the viewport, whichever is smaller. A settled
 Goal stays there until dismissed so its outcome remains visible.
 
-The phone draws that same bar. In the native app the composer card is native
-chrome and the page hides its own composer stack, so the bar rides in a stack
-of its own above the card (`nativeComposerFloor` on
-[SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx),
-exempt from the hiding rule in
-[mobile.css](../src/renderer/styles/mobile.css) the way a docked question is).
-Tucking it inside the composer instead left a running Goal with no clear
-button anywhere on the phone. See [remote.md](remote.md).
-
 Settings → Agents → Conversation turns Goals off entirely and sets the turn
 budget (5–50, default 20).
 
@@ -77,7 +68,7 @@ What it reads is the tail of the conversation: the prompts, the agent's prose,
 and each tool call with the command it ran and what that printed. The tool rows
 matter — a tool event's `message` is only the tool's *name*, so the evidence a
 verdict turns on lives in the payload, and `goal_transcript_tail`
-([events.rs](../src-tauri/src/persistence/events.rs)) pulls it out across the
+([events.rs](../src-tauri/crates/argmax-store/src/events.rs)) pulls it out across the
 shapes the five providers record it in.
 
 It reads that generously. The evaluator is there to catch a Goal that is *not*
@@ -104,7 +95,7 @@ settles the Goal. Four things stop it besides a verdict:
   to keep working over the person's Stop, or retrying a crash.
 
 An evaluator that fails — CLI missing, timeout, junk output — is not a verdict.
-The settled turn is simply judged again, and the agent is never told "not met
+The settled turn is judged again, and the agent is never told "not met
 yet" by a call that never happened: that costs it a turn and gives it no
 guidance, so it re-runs the checks it just ran. Three failures in a row is not a
 hiccup, and the Goal settles `stopped` saying the evaluator could not be

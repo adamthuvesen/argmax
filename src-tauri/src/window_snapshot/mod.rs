@@ -22,7 +22,7 @@ use serde::Serialize;
 use specta::Type;
 
 use crate::attachments::store::AttachmentStore;
-use crate::ipc::validation::{AttachmentMimeType, SessionId};
+use argmax_contracts::validation::{AttachmentMimeType, SessionId};
 
 pub const ATTACH_EVENT: &str = "composer:attach-window-snapshot";
 pub const FAILED_EVENT: &str = "window-snapshot:failed";

@@ -10,7 +10,7 @@ use serde::Serialize;
 use specta::Type;
 
 use crate::browser::chrome_history_snapshot;
-use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 
 const MAX_IMPORTED_ENTRIES: usize = 10_000;
 const CHROME_TO_UNIX_EPOCH_MICROS: i64 = 11_644_473_600_000_000;

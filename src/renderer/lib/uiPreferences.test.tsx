@@ -6,7 +6,7 @@ import {
   TOOL_CALLS_EXPANDED_KEY,
   TOOL_CALL_GROUPS_EXPANDED_KEY,
   useChatVerbosityPreference,
-  type ChatVerbosity
+  type ChatVerbosity,
 } from "./uiPreferences.js";
 
 afterEach(() => {
@@ -29,7 +29,7 @@ describe("chat verbosity preference", () => {
       const { result } = renderHook(() => useChatVerbosityPreference());
 
       expect(result.current[0]).toBe(verbosity);
-    }
+    },
   );
 
   it("migrates the removed Full trace level to Detailed", () => {
@@ -46,7 +46,7 @@ describe("chat verbosity preference", () => {
     { display: "collapsed", groupsExpanded: null, expected: 2 },
     { display: "collapsed", groupsExpanded: "false", expected: 2 },
     { display: "collapsed", groupsExpanded: "true", expected: 3 },
-    { display: "expanded", groupsExpanded: null, expected: 4 }
+    { display: "expanded", groupsExpanded: null, expected: 4 },
   ] as const)(
     "migrates legacy $display preferences to level $expected",
     ({ display, groupsExpanded, expected }) => {
@@ -58,7 +58,7 @@ describe("chat verbosity preference", () => {
       const { result } = renderHook(() => useChatVerbosityPreference());
 
       expect(result.current[0]).toBe(expected);
-    }
+    },
   );
 
   it("migrates the oldest expanded boolean to Detailed", () => {

@@ -15,23 +15,36 @@ try {
     const response = await fetch(new URL(name, base), { signal: AbortSignal.timeout(30_000) });
     if (!response.ok) throw new Error(`${name}: HTTP ${response.status}`);
     const text = await response.text();
-    if (Buffer.byteLength(text) > 4 * 1024 * 1024) throw new Error(`${name} exceeds the 4 MiB limit`);
+    if (Buffer.byteLength(text) > 4 * 1024 * 1024)
+      throw new Error(`${name} exceeds the 4 MiB limit`);
     return text;
   };
   const [source, license] = await Promise.all([download("adblock/light.txt"), download("LICENSE")]);
-  const domains = source.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("!") && line !== "[Adblock Plus]");
-  if (domains.length < 1_000 || domains.length > 100_000 || domains.some((line) => !/^\|\|[a-z0-9-]+(?:\.[a-z0-9-]+)+\^$/.test(line))) {
+  const domains = source
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("!") && line !== "[Adblock Plus]");
+  if (
+    domains.length < 1_000 ||
+    domains.length > 100_000 ||
+    domains.some((line) => !/^\|\|[a-z0-9-]+(?:\.[a-z0-9-]+)+\^$/.test(line))
+  ) {
     throw new Error("The upstream list changed format or has an unexpected domain count");
   }
-  if (!license.includes("GNU GENERAL PUBLIC LICENSE") || !license.includes("Version 3, 29 June 2007")) {
+  if (
+    !license.includes("GNU GENERAL PUBLIC LICENSE") ||
+    !license.includes("Version 3, 29 June 2007")
+  ) {
     throw new Error("The upstream license changed; review it before updating");
   }
   const destination = new URL("../assets/browser-blocking/", import.meta.url);
   const provenance = {
-    name: "HaGeZi Multi LIGHT", revision,
+    name: "HaGeZi Multi LIGHT",
+    revision,
     source: new URL("adblock/light.txt", base).href,
-    license: "GPL-3.0", domains: domains.length,
-    sha256: createHash("sha256").update(source).digest("hex")
+    license: "GPL-3.0",
+    domains: domains.length,
+    sha256: createHash("sha256").update(source).digest("hex"),
   };
   await mkdir(destination, { recursive: true });
   await writeFile(new URL("light.txt", destination), source);

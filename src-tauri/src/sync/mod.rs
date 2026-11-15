@@ -14,6 +14,7 @@
 
 pub mod claude;
 mod engine;
+pub(crate) mod sweep;
 
 use std::path::{Path, PathBuf};
 
@@ -33,7 +34,7 @@ pub struct SyncReport {
 impl SyncReport {
     pub fn ok(outcome: SyncOutcome) -> Self {
         Self {
-            ran_at: crate::persistence::time::now_iso(),
+            ran_at: argmax_store::time::now_iso(),
             imported: outcome.imported,
             error: None,
         }
@@ -41,7 +42,7 @@ impl SyncReport {
 
     pub fn failed(error: String) -> Self {
         Self {
-            ran_at: crate::persistence::time::now_iso(),
+            ran_at: argmax_store::time::now_iso(),
             imported: 0,
             error: Some(error),
         }
@@ -105,13 +106,13 @@ impl Default for SyncConfig {
 
 impl SyncConfig {
     pub fn enabled_for(&self, provider: &str) -> bool {
-        match provider {
-            "claude" => self.claude,
-            "codex" => self.codex,
-            "cursor" => self.cursor,
-            "opencode" => self.opencode,
-            "grok" => self.grok,
-            _ => false,
+        match argmax_contracts::validation::ProviderId::parse(provider) {
+            Some(argmax_contracts::validation::ProviderId::Claude) => self.claude,
+            Some(argmax_contracts::validation::ProviderId::Codex) => self.codex,
+            Some(argmax_contracts::validation::ProviderId::Cursor) => self.cursor,
+            Some(argmax_contracts::validation::ProviderId::Opencode) => self.opencode,
+            Some(argmax_contracts::validation::ProviderId::Grok) => self.grok,
+            None => false,
         }
     }
 
@@ -172,7 +173,10 @@ pub fn load_or_create_config(app_data_dir: &Path) -> SyncConfig {
     }
 }
 
-pub fn save_config(app_data_dir: &Path, config: &SyncConfig) -> crate::error::ArgmaxResult<()> {
+pub fn save_config(
+    app_data_dir: &Path,
+    config: &SyncConfig,
+) -> argmax_contracts::error::ArgmaxResult<()> {
     write_config(&config_path(app_data_dir), config)
 }
 
@@ -180,12 +184,12 @@ fn config_path(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join(CONFIG_FILE_NAME)
 }
 
-fn write_config(path: &Path, config: &SyncConfig) -> crate::error::ArgmaxResult<()> {
+fn write_config(path: &Path, config: &SyncConfig) -> argmax_contracts::error::ArgmaxResult<()> {
     let body = serde_json::to_vec_pretty(config).map_err(|error| {
-        crate::error::ArgmaxError::service("SYNC_CONFIG_ENCODE", error.to_string())
+        argmax_contracts::error::ArgmaxError::service("SYNC_CONFIG_ENCODE", error.to_string())
     })?;
     std::fs::write(path, body).map_err(|error| {
-        crate::error::ArgmaxError::service(
+        argmax_contracts::error::ArgmaxError::service(
             "SYNC_CONFIG_WRITE",
             format!("failed to write {}: {error}", path.display()),
         )

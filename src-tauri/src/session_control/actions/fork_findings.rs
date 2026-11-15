@@ -14,11 +14,11 @@ use super::{
     },
     argmax_protocol_error, protocol_error,
 };
-use crate::persistence::{continuity::fork_for_child, database::Database};
 use crate::providers::{
     fork_merge::{confirm, preview, ClaimOptions},
     session_service::ProviderSessionService,
 };
+use argmax_store::{continuity::fork_for_child, database::Database};
 
 pub(super) async fn bring_fork_findings(
     action: MessageAction,

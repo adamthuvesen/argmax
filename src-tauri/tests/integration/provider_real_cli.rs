@@ -21,11 +21,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId};
 use argmax_lib::providers::runtime::{
     EventCallback, ProviderProcessLauncher, ProviderRuntimeEvent, ProviderRuntimeEventType,
     RealProviderProcessLauncher,
 };
-use argmax_lib::providers::{AgentMode, PermissionMode, ProviderId, ProviderLaunchInput};
+use argmax_lib::providers::ProviderLaunchInput;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -90,7 +91,10 @@ async fn real_cursor_acp_turn_and_warm_follow_up() {
         workspace_path: workspace_root(),
         prompt: "Reply with exactly the word: pong".to_string(),
         model_label: "Composer 2.5 (Cursor)".to_string(),
-        model_id: "composer-2.5".to_string(),
+        model_id: argmax_lib::providers::model_catalogue::ModelId::resolve(
+            ProviderId::Cursor,
+            "composer-2.5",
+        ),
         reasoning_effort: None,
         fast_mode: false,
         resume_conversation_id: None,
@@ -196,7 +200,10 @@ async fn real_cursor_edit_reports_its_path_and_diff() {
                          Change nothing else and do not explain."
                     .to_string(),
                 model_label: "Composer 2.5 (Cursor)".to_string(),
-                model_id: "composer-2.5".to_string(),
+                model_id: argmax_lib::providers::model_catalogue::ModelId::resolve(
+                    ProviderId::Cursor,
+                    "composer-2.5",
+                ),
                 reasoning_effort: None,
                 fast_mode: false,
                 resume_conversation_id: None,
@@ -266,7 +273,10 @@ async fn real_claude_launcher_streams_json_and_exits_cleanly() {
         workspace_path: workspace_root(),
         prompt: "Reply with exactly the word: pong".to_string(),
         model_label: "Haiku 4.5".to_string(),
-        model_id: "claude-haiku-4-5".to_string(),
+        model_id: argmax_lib::providers::model_catalogue::ModelId::resolve(
+            ProviderId::Claude,
+            "claude-haiku-4-5",
+        ),
         reasoning_effort: None,
         fast_mode: false,
         resume_conversation_id: None,
@@ -345,7 +355,10 @@ async fn real_grok_launcher_streams_json_and_exits_cleanly() {
         workspace_path: workspace_root(),
         prompt: "Reply with exactly the word: pong".to_string(),
         model_label: "Grok 4.6".to_string(),
-        model_id: "grok-4.6".to_string(),
+        model_id: argmax_lib::providers::model_catalogue::ModelId::resolve(
+            ProviderId::Grok,
+            "grok-4.6",
+        ),
         reasoning_effort: None,
         fast_mode: false,
         resume_conversation_id: None,

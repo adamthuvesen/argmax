@@ -3,7 +3,7 @@ import { Mascot } from "./Mascot.js";
 
 export function EmptyState({
   message,
-  onRetry
+  onRetry,
 }: {
   message?: string | null;
   onRetry?: () => void;

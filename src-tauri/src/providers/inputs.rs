@@ -1,9 +1,9 @@
 //! Validated provider session commands shared across transports.
 
-use crate::application::validation::{
-    AgentMode, AttachmentMimeType, AttachmentPath, NonEmptyString, PermissionMode, Prompt,
-    ProviderId, ReasoningEffort, SessionId, TerminalCols, TerminalRows, WorkspaceId,
-    ATTACHMENT_BYTE_CAP,
+use argmax_contracts::messages::{AgentReference, ComposerAttachmentInput};
+use argmax_contracts::validation::{
+    AgentMode, NonEmptyString, PermissionMode, Prompt, ProviderId, ReasoningEffort, SessionId,
+    TerminalCols, TerminalRows, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -15,34 +15,6 @@ use specta::Type;
 /// them, so those prompts stay ordinary text.
 pub fn is_compact_command(prompt: &str) -> bool {
     prompt.trim().eq_ignore_ascii_case("/compact")
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ComposerAttachmentInput {
-    pub file_path: AttachmentPath,
-    pub mime_type: AttachmentMimeType,
-    pub size_bytes: AttachmentSizeBytes,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Type)]
-#[serde(transparent)]
-pub struct AttachmentSizeBytes(u64);
-
-impl<'de> Deserialize<'de> for AttachmentSizeBytes {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = u64::deserialize(deserializer)?;
-        if value == 0 || value as usize > ATTACHMENT_BYTE_CAP {
-            Err(serde::de::Error::custom(format!(
-                "sizeBytes must be in 1..={ATTACHMENT_BYTE_CAP}"
-            )))
-        } else {
-            Ok(Self(value))
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -81,7 +53,12 @@ pub struct ProvidersLaunchInput {
     /// provider/model/effort fields above are then only the fallback the
     /// router overwrites. See docs/routing.md.
     #[serde(default)]
-    pub auto_tier: Option<crate::routing::table::AutoTier>,
+    pub auto_tier: Option<argmax_contracts::routing::AutoTier>,
+    /// When the person clicked send, as `Date.now()` epoch milliseconds. Only
+    /// the turn waterfall reads it, and only from the desktop window; see
+    /// `providers::turn_waterfall`. Older clients omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submitted_at_ms: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -108,14 +85,11 @@ pub struct ProvidersSendInput {
     pub attachments: Option<Vec<ComposerAttachmentInput>>,
     #[serde(default)]
     pub agent_references: Option<Vec<AgentReference>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AgentReference {
-    pub name: NonEmptyString,
-    pub provider_child_session_id: NonEmptyString,
-    pub provider_parent_conversation_id: NonEmptyString,
+    /// When the person clicked send, as `Date.now()` epoch milliseconds. Only
+    /// the turn waterfall reads it, and only from the desktop window; see
+    /// `providers::turn_waterfall`. Older clients omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submitted_at_ms: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

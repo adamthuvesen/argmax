@@ -472,6 +472,22 @@ async sessionClear(input: SessionClearInput) : Promise<Result<SessionSummary, Ar
     else return { status: "error", error: e  as any };
 }
 },
+async sessionTurnPainted(input: SessionTurnPaintedInput) : Promise<Result<SystemOk, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("session_turn_painted", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async sessionTurnWaterfalls(input: SessionTurnWaterfallsInput) : Promise<Result<TurnWaterfall[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("session_turn_waterfalls", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async sessionSuggestFollowUp(input: SessionSuggestFollowUpInput) : Promise<Result<FollowUpSuggestion, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("session_suggest_follow_up", { input }) };
@@ -496,6 +512,43 @@ async settingsAgentTools() : Promise<Result<AgentToolsSettings, ArgmaxError>> {
 async settingsSetBrowserTools(input: SetBrowserToolsInput) : Promise<Result<AgentToolsSettings, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("settings_set_browser_tools", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Which MCP servers a Claude turn starts, and the user's own servers to
+ * choose from. Reads files only, so it answers at once; the counts that need
+ * `claude mcp list` come from `settings:claude-mcp-probe`.
+ */
+async settingsClaudeMcp() : Promise<Result<ClaudeMcpSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_claude_mcp") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Takes effect on each Claude chat's next turn.
+ */
+async settingsSetClaudeMcp(input: SetClaudeMcpInput) : Promise<Result<ClaudeMcpSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_set_claude_mcp", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * How many claude.ai connectors and plugin servers Claude starts beside the
+ * user's own servers. Runs `claude mcp list`, which starts every server, so
+ * it takes seconds. `None` when Claude is not installed or the probe fails.
+ */
+async settingsClaudeMcpProbe() : Promise<Result<ClaudeProbeCounts | null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_claude_mcp_probe") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2224,6 +2277,61 @@ export type ChromeHistoryEntry = { url: string; title: string | null; visitedAt:
 export type ChromeHistoryImport = { entries: ChromeHistoryEntry[]; totalAvailable: number }
 export type ChromeProfile = { id: string; name: string }
 export type ChromeProfilesInput = Record<string, never>
+/**
+ * Which MCP servers a Claude turn starts with. Every server Claude starts adds
+ * to the time before the turn can begin, so the presets trade tools for speed.
+ */
+export type ClaudeMcpPreset =
+/**
+ * Claude's own choice: no flags, every configured server.
+ */
+"everything" |
+/**
+ * Everything except the claude.ai connectors.
+ */
+"without-connectors" |
+/**
+ * Argmax plus the servers in the user's own config files.
+ */
+"your-servers" |
+/**
+ * Argmax alone.
+ */
+"argmax-only" |
+/**
+ * Argmax plus the named subset of the user's own servers.
+ */
+"custom"
+export type ClaudeMcpSettings = { preset: ClaudeMcpPreset; customServers: string[]; ownServers: ClaudeOwnServerSummary[] }
+/**
+ * A server in the user's own Claude config (`~/.claude.json` user scope).
+ * Project and local servers depend on the checkout, so Settings lists only
+ * these; a launch also adds the checkout's own.
+ */
+export type ClaudeOwnServerSummary = { name: string;
+/**
+ * False when the definition says `"enabled": false`; a launch skips it.
+ */
+enabled: boolean }
+/**
+ * The servers Claude adds from outside the user's config files, counted from
+ * `claude mcp list`. Neither kind can be passed through `--mcp-config`.
+ */
+export type ClaudeProbeCounts = {
+/**
+ * claude.ai connectors (`claude.ai <name>` lines).
+ */
+connectors: number;
+/**
+ * Servers that installed plugins bring (`plugin:<plugin>:<server>` lines).
+ */
+pluginServers: number;
+/**
+ * Plugin servers at a URL a connector already serves. Claude starts only
+ * the connector while connectors load (2.1.310: 24 plugin servers listed,
+ * 4 at connector URLs, 20 in the init event).
+ */
+pluginServersAtConnectorUrls: number }
 export type ClearOpencodeGatewayKeyInput = { gateway: OpencodeGateway }
 export type CloudEnvironment = { id: string; name: string }
 export type CloudHandoffPreview = { provider: CloudProvider; repository: string; branch: string; commit: string; brief: string; environments: CloudEnvironment[]; environmentDescription: string; environmentId: string }
@@ -2282,11 +2390,11 @@ export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutoche
  * interval. Deliberately excludes the DB row counts (nine `COUNT(*)` scans)
  * and the runtime block (`ps` shellout) that `system:diagnostics` collects.
  */
-export type DebugSnapshot = { generatedAt: string; ipcStats: IpcChannelStats[]; logs: LogEntry[] }
+export type DebugSnapshot = { generatedAt: string; logs: LogEntry[] }
 export type DeleteOldChatsInput = { cleanupId: string }
 export type DeleteOldChatsResult = { deletedChatCount: number; skippedRecentCount: number; skippedRunningCount: number }
 export type DetectedIde = { id: IdeId; label: string; appPath: string; hasCli: boolean }
-export type DiagnosticsReport = { appVersion: string; sqliteVersion: string; databasePath: string; archiveRecoveryPath: string; platform: string; arch: string; generatedAt: string; startupPhases: StartupPhaseRecord[]; databaseStats: DatabaseStats; ipcStats: IpcChannelStats[]; recentLogs: LogEntry[]; sqlitePragmas: SqlitePragmas; runtime: RuntimeDiagnostics }
+export type DiagnosticsReport = { appVersion: string; sqliteVersion: string; databasePath: string; archiveRecoveryPath: string; platform: string; arch: string; generatedAt: string; startupPhases: StartupPhaseRecord[]; databaseStats: DatabaseStats; recentLogs: LogEntry[]; sqlitePragmas: SqlitePragmas; runtime: RuntimeDiagnostics }
 /**
  * Lines of unchanged context a review diff carries on each side of a hunk.
  * Absent means "let git use its default", which keeps the untouched request
@@ -2417,7 +2525,6 @@ export type ImportChromeHistoryInput = { profileId: string }
  * `InvalidInputIssue { path, code, message }` shape.
  */
 export type InvalidInputIssue = { path: string[]; code: string; message: string }
-export type IpcChannelStats = { channel: string; count: number; totalRecorded: number; p50: number; p99: number }
 export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
 export type Learning = { id: string; projectId: string; kind: string; summary: string; evidenceSessionId: string | null; evidenceEventId: string | null; verified: boolean; hits: number; createdAt: string; lastSeenAt: string }
 export type LearningsDeleteInput = { id: NonEmptyString }
@@ -2568,9 +2675,9 @@ provider?: ProviderId | null; modelLabel?: string | null; modelId?: string | nul
  */
 recoveryStatus?: string | null; queuedAt: string }
 export type PerformanceCapture = { startedAt: string | null; stoppedAt: string | null; recording: boolean; droppedSamples: number; environment: PerformanceEnvironment; summary: PerformanceCaptureSummary; samples: PerformanceSample[] }
-export type PerformanceCaptureSummary = { cpuPercent: NumericSummary; rssBytes: NumericSummary; cpuPercentPerRunningChat: NumericSummary; samplerOverheadMs: NumericSummary; rendererStallCount: number; rendererStallMs: number; sqliteWaitCount: number; sqliteWaitMs: number; providerEvents: number; ipcCalls: number }
+export type PerformanceCaptureSummary = { cpuPercent: NumericSummary; rssBytes: NumericSummary; cpuPercentPerRunningChat: NumericSummary; samplerOverheadMs: NumericSummary; rendererStallCount: number; rendererStallMs: number; sqliteWaitCount: number; sqliteWaitMs: number; providerEvents: number }
 export type PerformanceEnvironment = { appVersion: string; platform: string; arch: string; buildProfile: string; logicalCpuCount: number; sampleIntervalMs: number; sampleCapacity: number }
-export type PerformanceSample = { capturedAt: string; elapsedMs: number; samplerOverheadMs: number; processes: ProcessTreeMetrics; runningChats: number; runningChatsByProvider: Partial<{ [key in string]: number }>; providerEvents: number; providerEventsPerSecond: number; ipcCalls: number; ipcCallsPerSecond: number; pendingProviderItems: number; sqlite: SqlitePressureMetrics; rendererStalls: RendererStallMetrics }
+export type PerformanceSample = { capturedAt: string; elapsedMs: number; samplerOverheadMs: number; processes: ProcessTreeMetrics; runningChats: number; runningChatsByProvider: Partial<{ [key in string]: number }>; providerEvents: number; providerEventsPerSecond: number; pendingProviderItems: number; sqlite: SqlitePressureMetrics; rendererStalls: RendererStallMetrics }
 export type PerformanceStatus = { recording: boolean; startedAt: string | null; sampleCount: number; droppedSamples: number; latest: PerformanceSample | null }
 export type PermissionMode = "provider-defaults" | "auto-approve" | "ask-each-time"
 export type PrCleanupOutcome =
@@ -2793,7 +2900,13 @@ arcIsCoordinatorLaunch?: boolean;
  * provider/model/effort fields above are then only the fallback the
  * router overwrites. See docs/routing.md.
  */
-autoTier?: AutoTier | null }
+autoTier?: AutoTier | null;
+/**
+ * When the person clicked send, as `Date.now()` epoch milliseconds. Only
+ * the turn waterfall reads it, and only from the desktop window; see
+ * `providers::turn_waterfall`. Older clients omit it.
+ */
+submittedAtMs?: number | null }
 export type ProvidersResizeInput = { sessionId: SessionId; cols: TerminalCols; rows: TerminalRows }
 export type ProvidersSendInput = { sessionId: SessionId; input: Prompt;
 /**
@@ -2806,7 +2919,13 @@ export type ProvidersSendInput = { sessionId: SessionId; input: Prompt;
  * and the switch happens when it drains. A send that needs a model and has
  * none is refused when it is queued, not when it drains.
  */
-provider?: ProviderId | null; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null; agentReferences?: AgentReference[] | null }
+provider?: ProviderId | null; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null; agentReferences?: AgentReference[] | null;
+/**
+ * When the person clicked send, as `Date.now()` epoch milliseconds. Only
+ * the turn waterfall reads it, and only from the desktop window; see
+ * `providers::turn_waterfall`. Older clients omit it.
+ */
+submittedAtMs?: number | null }
 export type ProvidersSendQueuedMessageNowInput = { sessionId: SessionId; messageId: NonEmptyString; delivery?: QueuedMessageDelivery | null }
 export type ProvidersTerminateInput = { sessionId: SessionId }
 export type PrsCleanupInput = { sessionId: SessionId; prNumber: number }
@@ -3180,12 +3299,31 @@ autoTier?: string | null;
  * Why the router picked the current model, e.g. `coding · standard`.
  */
 autoRoute?: string | null }
+export type SessionTurnPaintedInput = { sessionId: SessionId;
+/**
+ * The `user.message` event id of the turn whose answer was painted.
+ */
+turnKey: NonEmptyString;
+/**
+ * `Date.now()` epoch milliseconds when the first answer was painted.
+ */
+paintedAtMs: number }
+export type SessionTurnWaterfallsInput = {
+/**
+ * Newest turns to return; 50 when omitted, at most 500.
+ */
+limit?: number | null }
 export type SetBranchTemplateInput = {
 /**
  * `null` returns to Argmax's built-in template.
  */
 template: string | null }
 export type SetBrowserToolsInput = { enabled: boolean }
+export type SetClaudeMcpInput = { preset: ClaudeMcpPreset;
+/**
+ * Server names for the Custom preset, kept while another preset is chosen.
+ */
+customServers: string[] }
 export type SetOpencodeGatewayInput = { gateway: OpencodeGateway }
 export type SetOpencodeGatewayKeyInput = { gateway: OpencodeGateway; apiKey: string }
 export type SetProjectCheckInput = { mode: ProjectCheckMode }
@@ -3297,6 +3435,20 @@ export type TimelineEvent = { id: string; sessionId: string; type: string; messa
 export type TimelineSemantics = { version: number; context: TimelineContext; event: SemanticEvent }
 export type ToolOutcome = "succeeded" | "failed" | "cancelled"
 export type ToolPhase = "started" | "output" | "completed"
+/**
+ * One step of a turn, in milliseconds from the moment the send reached the
+ * backend (`ipc_received`). `submit` is negative: the click came first.
+ */
+export type TurnStamp = { name: string; offsetMs: number }
+export type TurnWaterfall = { id: number; sessionId: string;
+/**
+ * The `user.message` event id the turn answers, when one was persisted.
+ */
+turnKey: string | null; provider: string | null;
+/**
+ * In the order the steps happen in a turn, not sorted by time.
+ */
+stamps: TurnStamp[]; createdAt: string }
 export type UnknownReason = "invalid-payload" | "unsupported-type"
 /**
  * Where a dollar figure came from. `provider_reported` is the CLI's own

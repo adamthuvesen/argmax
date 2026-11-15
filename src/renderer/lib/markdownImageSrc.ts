@@ -11,7 +11,7 @@ import { workspaceAssetUrl } from "../../shared/assetProtocol.js";
 export function resolveMarkdownImageSrc(
   src: string | undefined,
   rootPath: string | null,
-  markdownRelPath: string | null
+  markdownRelPath: string | null,
 ): string | undefined {
   if (!src) return src;
   if (/^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//")) return src;

@@ -12,16 +12,15 @@ pub(crate) mod continuity_tests;
 pub mod cursor_acp;
 pub mod cursor_cloud;
 pub mod discovery;
-pub mod environment;
 pub mod flush_queue;
 pub(crate) mod follow_up;
 pub mod fork_merge;
 pub mod grok_acp;
 pub mod grok_trust;
-mod heredoc_activity;
 pub mod inputs;
 pub mod mcp_injection;
 pub mod measured_diffs;
+pub mod model_catalogue;
 pub mod normalizer;
 pub mod one_shot;
 pub mod opencode_gateway;
@@ -29,10 +28,11 @@ mod opencode_isolation;
 pub mod opencode_server;
 mod orphan_cleanup;
 pub mod pricing;
+pub mod prompt_gate;
 pub mod runtime;
 pub mod session_service;
 pub mod subagent_trace;
-pub mod tool_activity;
+pub(crate) mod turn_waterfall;
 pub mod unified_diff;
 pub mod verification;
 
@@ -41,7 +41,9 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-pub use crate::application::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
+use model_catalogue::ModelId;
+
+use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
 
 /// What Argmax can truthfully do with a provider's native permission gate.
 /// Observable-only means the CLI can emit a request, but this runtime does not
@@ -54,15 +56,14 @@ pub enum ApprovalSupport {
     Respondable,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProviderLaunchInput {
     pub provider: ProviderId,
     pub session_id: String,
     pub workspace_path: PathBuf,
     pub prompt: String,
     pub model_label: String,
-    pub model_id: String,
+    pub model_id: ModelId,
     pub reasoning_effort: Option<ReasoningEffort>,
     pub fast_mode: bool,
     pub resume_conversation_id: Option<String>,
@@ -76,7 +77,6 @@ pub struct ProviderLaunchInput {
     pub cols: u16,
     pub rows: u16,
     /// Native-continuity instructions for this launch; see `LaunchContinuity`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub continuity: Option<LaunchContinuity>,
 }
 
@@ -105,39 +105,6 @@ impl ProviderLaunchInput {
             .as_ref()
             .and_then(|continuity| continuity.fresh_native_id.as_deref())
             .unwrap_or(&self.session_id)
-    }
-}
-
-impl ProviderId {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ProviderId::Claude => "claude",
-            ProviderId::Codex => "codex",
-            ProviderId::Cursor => "cursor",
-            ProviderId::Opencode => "opencode",
-            ProviderId::Grok => "grok",
-        }
-    }
-}
-
-impl ReasoningEffort {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ReasoningEffort::Low => "low",
-            ReasoningEffort::Medium => "medium",
-            ReasoningEffort::High => "high",
-            ReasoningEffort::Xhigh => "xhigh",
-            ReasoningEffort::Max => "max",
-            ReasoningEffort::Ultra => "ultra",
-        }
-    }
-}
-
-impl AgentMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            AgentMode::Auto => "auto",
-        }
     }
 }
 

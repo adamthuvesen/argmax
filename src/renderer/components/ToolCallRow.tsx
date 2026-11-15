@@ -9,7 +9,7 @@ import {
   isWebToolName,
   parseMcpToolName,
   splitLeadingVerb,
-  type ToolCall
+  type ToolCall,
 } from "../lib/toolCalls.js";
 import { ActivityStat } from "./ActivityStat.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
@@ -49,7 +49,7 @@ function ToolCallRowInner({
   onExpandedChange,
   agentCodename,
   onOpenFile,
-  onOpenAgent
+  onOpenAgent,
 }: {
   tool: ToolCall;
   childTools?: ToolCall[];
@@ -80,23 +80,29 @@ function ToolCallRowInner({
 
   const changes = useMemo(
     () => interpretFileChange(tool.name, tool.inputFull),
-    [tool.name, tool.inputFull]
+    [tool.name, tool.inputFull],
   );
-  const counts = tool.status === "done" && !tool.cancelled && tool.completionObserved !== false && changes && changes.length > 0
-    ? summarizeFileChanges(changes)
-    : null;
-  const overrideVerb = !tool.activity && counts && changes && changes.length > 0 ? verbForChanges(changes) : null;
+  const counts =
+    tool.status === "done" &&
+    !tool.cancelled &&
+    tool.completionObserved !== false &&
+    changes &&
+    changes.length > 0
+      ? summarizeFileChanges(changes)
+      : null;
+  const overrideVerb =
+    !tool.activity && counts && changes && changes.length > 0 ? verbForChanges(changes) : null;
   const verb = overrideVerb ?? baseSplit.verb;
   const target = baseSplit.rest;
   const toolTypeBucket = getToolTypeBucket(tool.name);
   const mcpServer = parseMcpToolName(tool.name)?.server ?? null;
-  const iconServer = tool.activity?.kind === "computer" ? null : mcpServer ?? commandIconServer(tool);
+  const iconServer =
+    tool.activity?.kind === "computer" ? null : (mcpServer ?? commandIconServer(tool));
   const iconKind = tool.activity?.kind ?? "tool";
   // A delete is a file change, not a failure: it keeps the edit colour so red
   // stays the mark of work that did not finish.
-  const iconIsDanger = tool.status === "error"
-    || tool.cancelled === true
-    || iconKind === "agent-stop";
+  const iconIsDanger =
+    tool.status === "error" || tool.cancelled === true || iconKind === "agent-stop";
   const hasLeadingContent = Boolean(childTools && childTools.length > 0);
   const hasDetail = toolCallHasExpandableDetail(tool, { hasLeadingContent });
   // A backgrounded launch is marked running by inference, not by evidence:
@@ -105,15 +111,13 @@ function ToolCallRowInner({
   const ownsBeat = useOwnsActivityBeat(useMemo(() => [tool.id], [tool.id]));
   // A settled row keeps the beat while the cue waits out its gap, which is the
   // only live line a provider that reports a call atomically ever has.
-  const isRunning =
-    (tool.status === "running" || ownsBeat) && tool.backgroundLaunch !== true;
+  const isRunning = (tool.status === "running" || ownsBeat) && tool.backgroundLaunch !== true;
   const rowButtonRef = useRef<HTMLElement | null>(null);
   const setRowButton = useCallback((node: HTMLElement | null) => {
     rowButtonRef.current = node;
   }, []);
   useReadingWave(rowButtonRef, isRunning, `${verb}\u0000${target ?? ""}`);
-  const expanded =
-    hasDetail && (expandedOverride ?? localExpanded ?? defaultExpanded ?? false);
+  const expanded = hasDetail && (expandedOverride ?? localExpanded ?? defaultExpanded ?? false);
   // An agent row exists to open its run in the pane's Agents view. A surface
   // with no dock to host that view — the phone — keeps the row as a record:
   // same icon, verb and target, no control, since expanding the launch input
@@ -145,12 +149,19 @@ function ToolCallRowInner({
   const rowContent = (
     <>
       <span className="activity-icon-slot">
-        {iconServer || (!tool.activity && isWebToolName(tool.name)) ? <ServerIcon server={iconServer} web={isWebToolName(tool.name)} />
-          : <ToolActivityIcon kind={iconKind} danger={iconIsDanger} />}
+        {iconServer || (!tool.activity && isWebToolName(tool.name)) ? (
+          <ServerIcon server={iconServer} web={isWebToolName(tool.name)} />
+        ) : (
+          <ToolActivityIcon kind={iconKind} danger={iconIsDanger} />
+        )}
       </span>
-      <span className="tool-call-row-verb reading-wave-text">{verb}</span>
+      <span className="tool-call-row-verb reading-wave-text" data-testid="reading-wave-text">
+        {verb}
+      </span>
       {target ? (
-        <span className="tool-call-row-target reading-wave-text">{shortenPathsInText(target)}</span>
+        <span className="tool-call-row-target reading-wave-text" data-testid="reading-wave-text">
+          {shortenPathsInText(target)}
+        </span>
       ) : null}
       {counts ? <ActivityStat counts={counts} /> : null}
       {opensAgentPane || inertAgentRow || !hasDetail ? null : (
@@ -162,15 +173,10 @@ function ToolCallRowInner({
   const rowButtonProps = {
     ref: setRowButton,
     className: "tool-call-row-button",
-    "data-reading-wave": isRunning ? "true" : undefined
+    "data-reading-wave": isRunning ? "true" : undefined,
   };
   const rowButton = opensAgentPane ? (
-    <button
-      {...rowButtonProps}
-      type="button"
-      aria-label={action}
-      onClick={() => onOpenAgent(tool)}
-    >
+    <button {...rowButtonProps} type="button" aria-label={action} onClick={() => onOpenAgent(tool)}>
       {rowContent}
     </button>
   ) : inertAgentRow ? (
@@ -190,7 +196,12 @@ function ToolCallRowInner({
   );
 
   return (
-    <div className="tool-call-row" data-status={tool.status} data-tool-type={toolTypeBucket}>
+    <div
+      className="tool-call-row"
+      data-status={tool.status}
+      data-tool-type={toolTypeBucket}
+      data-testid={`tool-call-row-${tool.id}`}
+    >
       {opensAgentPane ? (
         <div className="tool-call-row-main">
           {rowButton}

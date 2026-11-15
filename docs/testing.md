@@ -1,6 +1,6 @@
 # Testing
 
-Argmax has two test suites: Vitest for the frontend and Cargo for the Rust backend.
+Argmax has Vitest suites for the frontend, Cargo suites for the Rust backend, and XCTest suites for the iPhone app.
 
 The suites are the first rung of the verification ladder; driving the real app
 (scratch instance, bridge, screenshots) is covered in [verification.md](verification.md).
@@ -8,21 +8,44 @@ The suites are the first rung of the verification ladder; driving the real app
 ## Commands
 
 ```bash
-npm run precheck        # The pre-push gate: CI's checks, scoped to the branch's diff
-npm run precheck -- --all  # Every lane regardless of what changed
+npm run push-gate       # The pre-push gate: CI's checks, scoped to the branch's diff
+npm run push-gate -- --all  # Every lane regardless of what changed
 npm test                # Run unit, perf, and Rust test suites
 npm run test:unit       # Vitest unit and component tests
 npm run test:perf       # Vitest performance benchmarks
-npm run test:rust       # Cargo test suite for src-tauri (includes the bindings freshness test)
+npm run test:rust       # Cargo test suite for every crate in the src-tauri workspace (includes the bindings freshness test)
+npm run test:ios        # XCTest suite on a simulator (see "iPhone Tests" below)
 npm run lint:rust       # cargo clippy over every target, warnings are errors
-npm run check:tauri-bridge # Check IPC channel inventory parity
-npm run check:main-thread  # Every synchronous IPC handler is on the allowlist
+npm run check          # The fast lane: oxlint with type check, oxfmt --check, and check:static in parallel; CI js-static runs this
+npm run fix            # oxlint --fix, then oxfmt
+npm run lint           # oxlint with type check and the argmax rules (part of check)
+npm run fmt:check      # oxfmt --check (part of check)
+npm run check:static   # Every static gate; push-gate runs this same list
+npm run slow           # The perf budgets and the Cargo tests
+npm run check:rust-boundaries # Rust layer rules, with a ratchet on existing violations
 npm run doctor          # Check the local verification environment
-npm run verify          # Build and exercise a disposable app with scripted providers
+npm run verify          # Drive the renderer in headless Chrome: launcher, chat, settings, editor
+npm run verify:native   # Extra, slower lane: build and exercise a disposable app with scripted providers
 ```
 
-`verify` is a local end-to-end loop described in [verification.md](verification.md).
-It is intentionally separate from CI and `precheck`.
+`verify` and `verify:native` are local end-to-end loops described in [verification.md](verification.md).
+`verify` runs in CI. `verify:native` stays separate from CI and `push-gate`.
+
+## Ratchets
+
+The Rust layer rules record existing violations in
+`scripts/rust-boundaries-baseline.json`. They fail only on new additions.
+After you fix a violation, tighten the record:
+
+```bash
+node scripts/check-rust-boundaries.mjs --update
+```
+
+The latency bench keeps a record of the last accepted p50 per metric in `scripts/bench-latency/record.json`. It needs the native app, so it is not in CI. Run `npm run bench:latency -- --check` after a change that can affect latency, and `--update-record` after a win. See [performance.md](performance.md#latency-bench).
+
+The `argmax` oxlint rules in `scripts/oxlint-plugin.mjs` have no record. Any hit fails `npm run lint`.
+
+Do not add a new suppression. Use the fix that the error message names.
 
 ## The pre-push gate
 
@@ -34,39 +57,34 @@ touches:
 
 | Touched | Runs |
 |---|---|
-| JS, Rust, iOS, assets, or unclassified paths | `check:tauri-bridge`, `check:main-thread` |
-| `src/**`, `src-tauri/**`, `ios/**`, assets, HTML entrypoints, package or tool config, `scripts/**` | eslint, tsc, `vitest run --changed <merge-base>`, perf budgets |
+| any path, docs included | `check:static` ([scripts/static-checks.mjs](../scripts/static-checks.mjs)) |
+| `src/**`, `src-tauri/**`, `ios/**`, `fixtures/parity/**`, assets, HTML entrypoints, package or tool config, `scripts/**` | oxlint with type check, oxfmt --check, `vitest run --changed <merge-base>`, perf budgets |
 | `src-tauri/**`, browser-blocking assets, Cargo or workflow config | `cargo fmt --check`, `cargo test`, `cargo clippy -D warnings` |
-| `ios/**` | `check:ios-fonts` |
-| `src/**` or `ios/**` | `check:provider-models` (generated iPhone catalogue is current; iOS test model ids exist) |
 | any JS lane change | `vite build` + the bundle budget |
+| `ios/**`, `fixtures/parity/**`, `scripts/ios-tests.mjs` | `npm run test:ios` |
 
-`npm run typecheck` (the tsc lane here and in CI) runs TypeScript 7, the native
-compiler, installed as the `typescript-7` alias: it checks the renderer in about
-1 s against 4.5–4.9 s for TypeScript 5.9, and reports the same diagnostics. The
-`typescript` 5.9 package stays because typescript-eslint's type-aware rules
-support only `<6.1`, and editors load their language service from it.
+`oxlint --type-aware --type-check` (run by `npm run lint`) type-checks the
+renderer with `oxlint-tsgolint` and TypeScript 7 (`typescript`, pinned exactly),
+so `check` runs no separate `tsc` step. `npm run typecheck` still runs
+`tsc --noEmit` for `check:changed`, which filters its diagnostics by file.
 
-`cargo fmt --check` runs first in the Rust lane, because it takes about a second and is the likeliest push-time failure. `git push` re-runs the whole script through the pre-push hook, so a tool call that pushes needs a 600 s timeout. The iOS XCTest suite is not part of CI or precheck (macOS minutes bill 10x); run it from `ios/Argmax` per [ios-performance.md](ios-performance.md) when you change Swift.
+`cargo fmt --check` runs first in the Rust lane, because it takes about a second and is the likeliest push-time failure. `git push` re-runs the whole script through the pre-push hook, so a tool call that pushes needs a 600 s timeout.
 
 Workflow changes run both language lanes. Paths are read from Git without quoting,
 so spaces and non-ASCII filenames cannot hide a change. Documentation-only
-changes skip checks. An unclassified path runs both language lanes until it is
+changes run the static checks and skip the language lanes. An unclassified path runs both language lanes until it is
 deliberately classified.
 
-CI runs the same lanes with the same path filter, so a push that passes the
-hook should not be failed by CI for a reason the hook could have caught.
+CI runs the same lanes with the same path filter. CI also runs `npm audit` and
+`cargo audit`, because advisories change without a code change and need network.
 Never bypass the hook with `--no-verify`; if a lane is wrong for the change,
 fix the filters in `precheck.mjs` and `.github/workflows/ci.yml`.
 
 ### CI execution
 
 CI distributes the complete Vitest suite across eight shards. The first shard
-also runs the performance budgets. ESLint reuses cached results only when all
-TypeScript sources and configuration match. Its type-aware rules can report an
-error in an unchanged file when an imported type changes, so a per-file content
-cache alone is insufficient. Fresh checkout timestamps do not invalidate a
-matching cache.
+also runs the performance budgets. The js-static job runs `npm run check`
+with no lint cache.
 
 Two macOS Rust lanes run library tests and integration checks. The integration
 lane builds its test binary first, then runs tests, doctests, and Clippy in
@@ -98,6 +116,56 @@ it lands.
 - **Timers:** A test that waits on a `setInterval` or `setTimeout` in the component must fake it (`vi.useFakeTimers`, or `toFake: ["setInterval", "clearInterval"]` when `waitFor` still needs real `setTimeout`) and advance it with `vi.advanceTimersByTimeAsync`. Sleeping through a real interval is the suite's largest cost and its main flake source on shared CI runners.
 - **Performance Benchmarks:** Run through [vitest.perf.config.ts](../vitest.perf.config.ts) and [src/test/perf.test.ts](../src/test/perf.test.ts).
 
+## iPhone Tests
+
+`npm run test:ios` ([scripts/ios-tests.mjs](../scripts/ios-tests.mjs)) regenerates
+the Xcode project, builds the `ArgmaxTests` target, and runs it on a simulator
+named "Argmax Test Lane", which it creates when it is missing. The pre-push gate runs it
+when the diff touches the paths in the table above. CI runs the same command in
+a path-filtered macOS job, and on every push to `main`. The log goes to
+`node_modules/.cache/ios-tests/last-run.log`. `--only ParityTableTests` narrows a
+run to one class, or to `Class/testMethod`.
+
+On 4 November 2026 the suite ran 494 tests on an already booted simulator in
+81 s from empty DerivedData (59 s build, 22 s tests) and 21 s with nothing to
+rebuild. Booting the simulator first raised the test step to 50–60 s.
+
+UI tests and `NativePerformanceTests` stay out of this lane. See
+[ios-performance.md](ios-performance.md#run-the-checks).
+
+When `xcodebuild -checkFirstLaunchStatus` fails, xcodebuild lists no simulator.
+The script then warns and injects the test bundle into the app through the
+CoreSimulator `simctl`, so a push from that machine still gets a real result.
+The fix is `sudo xcodebuild -runFirstLaunch`, which needs an administrator.
+
+### Rules that exist on both platforms
+
+A rule that the desktop and the phone both implement has one case table in
+[fixtures/parity](../fixtures/parity):
+
+| Table | Desktop | Phone |
+|---|---|---|
+| `chat-detail.json` | `sessionTurnView.ts`, `uiPreferences.ts` | `MobileChatDetail.swift`, `MobileTranscriptRows.swift` |
+| `inline-math.json` | `normalizeMathDelimiters.ts`, read back through remark-math | `TranscriptMarkdownPreparation.swift` |
+| `workspace-chat.json` | `workspaceChat.ts` | `ChatSections.swift` |
+
+[parityTables.test.ts](../src/renderer/lib/parityTables.test.ts) and
+[ParityTableTests.swift](../ios/Argmax/Tests/ParityTableTests.swift) run each table
+against the real functions. To change a rule, change the table first, then both
+functions. Where the platforms really differ, a case carries a `desktop` or
+`phone` object with that platform's expected value and a `reason`. A new mirrored
+rule gets a new table.
+
+### Recorded scroll sequences
+
+[TranscriptScrollModel](../ios/Argmax/Sources/Transcript/TranscriptScrollModel.swift)
+holds every transcript scroll decision. The `scroll-*.json` files in
+`ios/Argmax/Tests/Fixtures` are event sequences recorded from the real list in
+hosted `NativeTranscriptListTests` runs. Each step holds the event, the props, and
+the decisions the model made. A deliberate behavior change needs a new recording.
+Sequences a hosted test cannot perform, such as a drag during layout, are written
+out in [TranscriptScrollModelTests](../ios/Argmax/Tests/TranscriptScrollModelTests.swift).
+
 ## Rust Tests
 
 Unit tests live inline in `src-tauri/src`. Integration tests are one binary,
@@ -122,5 +190,5 @@ Run only the integration binary, or only the unit tests:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml --test integration
-cargo test --manifest-path src-tauri/Cargo.toml --lib
+cargo test --manifest-path src-tauri/Cargo.toml --workspace --lib
 ```

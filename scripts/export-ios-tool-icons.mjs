@@ -31,18 +31,13 @@ const integrations = [
   { key: "executor", aliases: ["executor"] },
   { key: "engram", aliases: ["engram"] },
   { key: "shunt", aliases: ["shunt"] },
-  { key: "trace", aliases: ["trace", "trace hq"] }
+  { key: "trace", aliases: ["trace", "trace hq"] },
 ];
 
 // Kept in the generated manifest because OpenCode omits the MCP marker and
 // only its known-server list distinguishes these from ordinary snake_case
 // tool names. They intentionally have no image set and fall back to a plug.
-const mcpServersWithoutIcons = [
-  "browser use",
-  "confidence experiments",
-  "context7",
-  "profound"
-];
+const mcpServersWithoutIcons = ["browser use", "confidence experiments", "context7", "profound"];
 
 const foxFills = {
   "var(--fox-line)": "#592718",
@@ -50,7 +45,7 @@ const foxFills = {
   "var(--fox-fur-shade)": "#99442D",
   "var(--fox-cream)": "#EBE1CF",
   "var(--fox-cream-shade)": "#BCA595",
-  "var(--fox-nose)": "#110B0F"
+  "var(--fox-nose)": "#110B0F",
 };
 
 function xml(value) {
@@ -59,8 +54,9 @@ function xml(value) {
 
 function svg(icon, monochromeFill, toneDepth) {
   const layers = icon.layers.map((layer) => {
-    const fill = layer.fill === null ? monochromeFill : foxFills[layer.fill] ?? layer.fill;
-    if (!fill || fill.startsWith("var(")) throw new Error(`Unsupported fill ${layer.fill} in ${icon.title}`);
+    const fill = layer.fill === null ? monochromeFill : (foxFills[layer.fill] ?? layer.fill);
+    if (!fill || fill.startsWith("var("))
+      throw new Error(`Unsupported fill ${layer.fill} in ${icon.title}`);
     // A tinted rendition carries its depth as alpha, because the iPhone tints
     // the mark through its alpha channel and discards these colours entirely.
     const depth = toneDepth ? ` fill-opacity="${toneDepth[layer.tone]}"` : "";
@@ -72,7 +68,7 @@ function svg(icon, monochromeFill, toneDepth) {
     `  <title>${xml(icon.title)}</title>`,
     ...layers,
     "</svg>",
-    ""
+    "",
   ].join("\n");
 }
 
@@ -83,14 +79,14 @@ function imageSetContents(key, hasAppearanceVariants) {
         {
           appearances: [{ appearance: "luminosity", value: "dark" }],
           filename: `${key}-dark.svg`,
-          idiom: "universal"
-        }
+          idiom: "universal",
+        },
       ]
     : [{ filename: `${key}.svg`, idiom: "universal" }];
   return {
     images,
     info: { author: "xcode", version: 1 },
-    properties: { "preserves-vector-representation": true }
+    properties: { "preserves-vector-representation": true },
   };
 }
 
@@ -99,7 +95,7 @@ async function loadServerIcons() {
     configFile: false,
     root: repoRoot,
     server: { middlewareMode: true },
-    logLevel: "error"
+    logLevel: "error",
   });
   try {
     return await server.ssrLoadModule("/src/renderer/lib/serverIcons.ts");
@@ -115,7 +111,8 @@ const catalogue = integrations.map((entry) => {
   // Tinting a layered drawing by alpha flattens it to its own silhouette, so a
   // mark that names its tones gets a second image set carrying the monochrome
   // ramp as alpha. Badges export their dedicated bare glyph instead.
-  const monochromeKey = icon.monochrome || icon.layers.every((layer) => layer.tone) ? `${entry.key}-mono` : null;
+  const monochromeKey =
+    icon.monochrome || icon.layers.every((layer) => layer.tone) ? `${entry.key}-mono` : null;
   return { ...entry, title: icon.title, icon, monochromeKey };
 });
 
@@ -123,7 +120,7 @@ await rm(assetsRoot, { recursive: true, force: true });
 await mkdir(assetsRoot, { recursive: true });
 await writeFile(
   path.join(assetsRoot, "Contents.json"),
-  `${JSON.stringify({ info: { author: "xcode", version: 1 }, properties: { "provides-namespace": true } }, null, 2)}\n`
+  `${JSON.stringify({ info: { author: "xcode", version: 1 }, properties: { "provides-namespace": true } }, null, 2)}\n`,
 );
 
 async function writeImageSet(key, light, dark) {
@@ -137,7 +134,7 @@ async function writeImageSet(key, light, dark) {
   }
   await writeFile(
     path.join(imageSet, "Contents.json"),
-    `${JSON.stringify(imageSetContents(key, dark !== undefined), null, 2)}\n`
+    `${JSON.stringify(imageSetContents(key, dark !== undefined), null, 2)}\n`,
   );
 }
 
@@ -146,14 +143,18 @@ for (const { key, icon, monochromeKey } of catalogue) {
   await writeImageSet(
     key,
     svg(icon, "#1F1D18"),
-    hasAppearanceVariants ? svg(icon, "#F4F2EC") : undefined
+    hasAppearanceVariants ? svg(icon, "#F4F2EC") : undefined,
   );
   if (monochromeKey) {
     // The ramp reads away from the row, so each appearance carries its own.
     await writeImageSet(
       monochromeKey,
-      svg({ ...icon, ...icon.monochrome }, "#1F1D18", icon.monochrome ? undefined : SERVER_ICON_TONE_DEPTH.light),
-      icon.monochrome ? undefined : svg(icon, "#1F1D18", SERVER_ICON_TONE_DEPTH.dark)
+      svg(
+        { ...icon, ...icon.monochrome },
+        "#1F1D18",
+        icon.monochrome ? undefined : SERVER_ICON_TONE_DEPTH.light,
+      ),
+      icon.monochrome ? undefined : svg(icon, "#1F1D18", SERVER_ICON_TONE_DEPTH.dark),
     );
   }
 }
@@ -164,9 +165,9 @@ const manifest = {
     key,
     title,
     aliases,
-    ...(monochromeKey ? { monochromeKey } : {})
+    ...(monochromeKey ? { monochromeKey } : {}),
   })),
-  mcpServersWithoutIcons
+  mcpServersWithoutIcons,
 };
 await mkdir(path.dirname(manifestPath), { recursive: true });
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);

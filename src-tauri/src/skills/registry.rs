@@ -1,4 +1,4 @@
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use std::{
     collections::BTreeMap,
     fs,
@@ -10,7 +10,7 @@ use std::{
 use serde::Serialize;
 use specta::Type;
 
-use crate::ipc::validation::ProviderId;
+use argmax_contracts::validation::ProviderId;
 
 pub const SKILL_FILE_SIZE_CAP_BYTES: u64 = 262_144;
 

@@ -9,7 +9,7 @@ export const ARC_TIMELINE_FILTERS: ReadonlyArray<{ value: ArcTimelineFilter; lab
   { value: "members", label: "Members" },
   { value: "prs", label: "Pull requests" },
   { value: "notes", label: "Notes" },
-  { value: "arc", label: "Arc" }
+  { value: "arc", label: "Arc" },
 ];
 
 const FILTER_OF_KIND: Record<ArcEventKind, Exclude<ArcTimelineFilter, "all">> = {
@@ -23,16 +23,19 @@ const FILTER_OF_KIND: Record<ArcEventKind, Exclude<ArcTimelineFilter, "all">> = 
   notes_updated: "notes",
   brief_updated: "arc",
   state_changed: "arc",
-  scheduled_run: "arc"
+  scheduled_run: "arc",
 };
 
-export function matchesArcTimelineFilter(event: ArcTimelineEvent, filter: ArcTimelineFilter): boolean {
+export function matchesArcTimelineFilter(
+  event: ArcTimelineEvent,
+  filter: ArcTimelineFilter,
+): boolean {
   return filter === "all" || FILTER_OF_KIND[event.kind] === filter;
 }
 
 /** What a row's glyph and colour say. Tone maps to CSS, never to a literal
  *  colour, so both themes and the monochrome activity setting follow. */
-export type ArcEventTone =
+type ArcEventTone =
   | "accent"
   | "agent"
   | "success"
@@ -94,7 +97,7 @@ export function presentArcEvent(event: ArcTimelineEvent): ArcEventPresentation {
         subject: prSubject(event),
         glyph: "pr",
         tone: "danger",
-        badge: event.status
+        badge: event.status,
       };
     case "pr_checks_passing":
       return {
@@ -103,10 +106,16 @@ export function presentArcEvent(event: ArcTimelineEvent): ArcEventPresentation {
         subject: prSubject(event),
         glyph: "pr",
         tone: "success",
-        badge: event.status
+        badge: event.status,
       };
     case "pr_merged":
-      return { ...base, verb: "Merged", subject: prSubject(event), glyph: "merged", tone: "merged" };
+      return {
+        ...base,
+        verb: "Merged",
+        subject: prSubject(event),
+        glyph: "merged",
+        tone: "merged",
+      };
     case "notes_updated":
       return {
         ...base,
@@ -115,14 +124,20 @@ export function presentArcEvent(event: ArcTimelineEvent): ArcEventPresentation {
         glyph: "notes",
         tone: "notes",
         badge: event.status,
-        detailIsQuote: true
+        detailIsQuote: true,
       };
     case "brief_updated":
       return { ...base, verb: "Brief edited", glyph: "brief", tone: "quiet" };
     case "state_changed":
       return presentStateChange(event);
     case "scheduled_run":
-      return { ...base, verb: "Scheduled run", subject: event.title, glyph: "schedule", tone: "schedule" };
+      return {
+        ...base,
+        verb: "Scheduled run",
+        subject: event.title,
+        glyph: "schedule",
+        tone: "schedule",
+      };
   }
 }
 
@@ -226,6 +241,6 @@ export function formatArcEventStamp(occurredAt: string): string {
     day: "numeric",
     year: "numeric",
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
   });
 }

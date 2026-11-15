@@ -36,7 +36,7 @@ interface AgentRoster {
 export function buildAgentRoster(
   tools: readonly ToolCall[],
   codenames: Map<string, string>,
-  multitasks: readonly MultitaskChild[] = []
+  multitasks: readonly MultitaskChild[] = [],
 ): AgentRoster {
   const runsByIdentity = new Map<string, { first: ToolCall; latest: ToolCall }>();
   for (const tool of tools) {
@@ -58,7 +58,7 @@ export function buildAgentRoster(
         emblem: emblemForCodename(codename),
         multitask: null,
         rootToolUseId: agentRootToolUseId(first),
-        latestTransitionAt: latest.completedAt ?? latest.createdAt
+        latestTransitionAt: latest.completedAt ?? latest.createdAt,
       };
     }),
     ...multitasks.map((child) => ({
@@ -69,15 +69,15 @@ export function buildAgentRoster(
       emblem: emblemForKey(child.session.id),
       multitask: child,
       rootToolUseId: null,
-      latestTransitionAt: child.session.lastActivityAt
-    }))
+      latestTransitionAt: child.session.lastActivityAt,
+    })),
   ];
 
   return {
     entries,
     running: entries.filter((entry) => entry.status === "running").length,
     failed: entries.filter((entry) => entry.status === "error").length,
-    completed: entries.filter((entry) => entry.status === "done").length
+    completed: entries.filter((entry) => entry.status === "done").length,
   };
 }
 

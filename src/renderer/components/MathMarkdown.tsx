@@ -24,7 +24,7 @@ import { remarkVisualizationReferences } from "../lib/visualizationReference.js"
 export function ChatMathMarkdown({
   text,
   components,
-  urlTransform
+  urlTransform,
 }: {
   text: string;
   components?: Components;

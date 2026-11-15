@@ -9,7 +9,7 @@ type Level = (typeof LEVELS)[number];
 export function DebugLogsTab({
   logs,
   error,
-  onClear
+  onClear,
 }: {
   logs: BackendLogEntry[];
   error: string | null;
@@ -32,7 +32,9 @@ export function DebugLogsTab({
       if (rank !== -1 && rank < threshold) return false;
       if (scope !== "all" && entry.scope !== scope) return false;
       if (!needle) return true;
-      return `${entry.scope} ${entry.message} ${JSON.stringify(entry.fields)}`.toLowerCase().includes(needle);
+      return `${entry.scope} ${entry.message} ${JSON.stringify(entry.fields)}`
+        .toLowerCase()
+        .includes(needle);
     });
   }, [logs, threshold, scope, query]);
 
@@ -88,7 +90,9 @@ export function DebugLogsTab({
       </div>
       <div className="debug-count" role="status">
         <span>
-          {visible.length === logs.length ? `${logs.length} lines` : `${visible.length} of ${logs.length} lines`}
+          {visible.length === logs.length
+            ? `${logs.length} lines`
+            : `${visible.length} of ${logs.length} lines`}
         </span>
         <span className="debug-count-actions">
           <button type="button" aria-pressed={follow} onClick={() => setFollow((on) => !on)}>

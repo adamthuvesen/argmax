@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::state::AppState;
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use chrono::Utc;
 use serde::Serialize;
 use specta::Type;
@@ -55,8 +55,6 @@ pub struct PerformanceSample {
     pub running_chats_by_provider: BTreeMap<String, u64>,
     pub provider_events: u64,
     pub provider_events_per_second: f64,
-    pub ipc_calls: u64,
-    pub ipc_calls_per_second: f64,
     pub pending_provider_items: u64,
     pub sqlite: SqlitePressureMetrics,
     pub renderer_stalls: RendererStallMetrics,
@@ -82,7 +80,6 @@ pub struct PerformanceCaptureSummary {
     pub sqlite_wait_count: u64,
     pub sqlite_wait_ms: f64,
     pub provider_events: u64,
-    pub ipc_calls: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -260,7 +257,7 @@ fn status_from(state: &RecorderState) -> PerformanceStatus {
 #[derive(Clone)]
 struct PerformanceSources {
     providers: Option<Arc<crate::providers::session_service::ProviderSessionService>>,
-    database: Option<Arc<crate::persistence::Database>>,
+    database: Option<Arc<argmax_store::Database>>,
 }
 
 impl PerformanceSources {
@@ -319,8 +316,6 @@ fn sample_loop(sources: PerformanceSources, recorder: Arc<PerformanceRecorder>, 
                 previous.provider_events,
                 elapsed_seconds,
             ),
-            ipc_calls: current.ipc_calls.saturating_sub(previous.ipc_calls),
-            ipc_calls_per_second: rate(current.ipc_calls, previous.ipc_calls, elapsed_seconds),
             pending_provider_items: provider.pending_items,
             sqlite: sqlite.map_or_else(SqlitePressureMetrics::default, |stats| {
                 SqlitePressureMetrics {
@@ -355,7 +350,6 @@ fn rate(current: u64, previous: u64, elapsed_seconds: f64) -> f64 {
 struct Counters {
     observed_at: Instant,
     provider_events: u64,
-    ipc_calls: u64,
     sqlite_wait_count: u64,
     sqlite_wait: Duration,
 }
@@ -376,23 +370,10 @@ impl Counters {
         Self {
             observed_at: Instant::now(),
             provider_events,
-            ipc_calls: total_ipc_calls(),
             sqlite_wait_count,
             sqlite_wait,
         }
     }
-}
-
-fn total_ipc_calls() -> u64 {
-    std::panic::catch_unwind(crate::util::tracing_init::ipc_latency)
-        .map(|registry| {
-            registry
-                .known_channels()
-                .iter()
-                .map(|channel| registry.total_recorded(channel) as u64)
-                .sum()
-        })
-        .unwrap_or(0)
 }
 
 fn summarize(samples: &[PerformanceSample]) -> PerformanceCaptureSummary {
@@ -432,7 +413,6 @@ fn summarize(samples: &[PerformanceSample]) -> PerformanceCaptureSummary {
             .sum(),
         sqlite_wait_ms: samples.iter().map(|sample| sample.sqlite.wait_ms).sum(),
         provider_events: samples.iter().map(|sample| sample.provider_events).sum(),
-        ipc_calls: samples.iter().map(|sample| sample.ipc_calls).sum(),
     }
 }
 
@@ -711,8 +691,6 @@ mod tests {
                 running_chats_by_provider: BTreeMap::new(),
                 provider_events: 0,
                 provider_events_per_second: 0.0,
-                ipc_calls: 0,
-                ipc_calls_per_second: 0.0,
                 pending_provider_items: 0,
                 sqlite: SqlitePressureMetrics::default(),
                 renderer_stalls: RendererStallMetrics::default(),

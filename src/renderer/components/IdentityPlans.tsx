@@ -1,9 +1,13 @@
 import { useEffect, useState, type JSX } from "react";
-import type { UsageLimitWindow, UsageProviderRemaining, UsageRemaining } from "../../shared/types.js";
+import type {
+  UsageLimitWindow,
+  UsageProviderRemaining,
+  UsageRemaining,
+} from "../../shared/types.js";
 import {
   getCachedUsageRemaining,
   requestUsageRemaining,
-  recordUsageRemainingFailure
+  recordUsageRemainingFailure,
 } from "../lib/ledgerPageState.js";
 import { fetchUsageRemaining, isUsageRemainingStale } from "../lib/usageRemainingLookup.js";
 import { LoadingLine } from "./LoadingLine.js";
@@ -44,7 +48,7 @@ function PlanWindow({ window }: { window: UsageLimitWindow }): JSX.Element {
  */
 export function IdentityPlans({ onOpenUsage }: { onOpenUsage: () => void }): JSX.Element | null {
   const [remaining, setRemaining] = useState<UsageRemaining | null>(() =>
-    getCachedUsageRemaining()
+    getCachedUsageRemaining(),
   );
   const [failed, setFailed] = useState(false);
 
@@ -59,7 +63,7 @@ export function IdentityPlans({ onOpenUsage }: { onOpenUsage: () => void }): JSX
         const message = cause instanceof Error ? cause.message : "Could not read remaining usage.";
         recordUsageRemainingFailure(message, Date.now());
         if (live) setFailed(true);
-      }
+      },
     );
     return () => {
       live = false;

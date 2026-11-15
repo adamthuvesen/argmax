@@ -1,6 +1,6 @@
 # Argmax
 
-![License](https://img.shields.io/github/license/adamthuvesen/argmax) ![Rust](https://img.shields.io/badge/rust-1.95%2B-orange)
+![License](https://img.shields.io/github/license/adamthuvesen/argmax) ![Rust](https://img.shields.io/badge/rust-1.100%2B-orange)
 
 <p align="center">
   <picture>
@@ -45,17 +45,18 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Build from Source
 
-For contributing, or to run an unreleased `main`:
-
-- Node.js 20.19+ or 22.12+ and npm
-- Rust 1.95+
-- macOS with Xcode Command Line Tools and Git
-- At least one supported provider CLI, as above
+For local checks, use the Node.js version in [`.node-version`](.node-version), npm, Git, and Chrome or Chromium.
 
 ```bash
-npm install
-npm run tauri:dev
+npm ci
+npm run check
+npm run verify -- launcher
 ```
+
+The launcher drive uses demo data without a provider. Set `CHROME_PATH` if it cannot find your browser.
+
+To run the native dev app, install Rust 1.100+, the Xcode Command Line Tools, and a supported provider CLI.
+Run `npm run tauri:dev:isolated` to start it with a separate profile.
 
 `npm run tauri:build` produces a DMG for your own architecture; `npm run tauri:build:universal` produces the Intel + Apple silicon bundle a release ships. See [release](docs/release.md) for signing and the tag-driven release flow.
 
@@ -74,7 +75,7 @@ npx vite --host 127.0.0.1
 - [Scheduled tasks](docs/scheduled-tasks.md): run saved prompts on a schedule while the app is running. Missed runs collapse into one run when it reopens.
 - [Usage](docs/usage.md): inspect tokens and cost estimates. Coverage varies by provider, and list-price estimates can differ from subscription charges.
 - [Mobile access](docs/remote.md): enable Remote access in Settings and pair a phone over Tailscale.
-- [Approvals and checks](docs/approvals-checks.md): auto-approve is the default. Native permission handling varies by provider.
+- [Approvals and checks](docs/approvals-checks.md): provider defaults apply to new installations. Native permission handling varies by provider.
 
 ## Stack
 

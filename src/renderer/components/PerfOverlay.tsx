@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type JSX } from "react";
-import type { IpcChannelStats, PerformanceStatus } from "../../shared/types.js";
+import { systemActions } from "../data/bridgeActions.js";
+import type { PerformanceStatus } from "../../shared/types.js";
+import { ipcLatencySnapshot } from "../lib/ipcLatency.js";
+import type { IpcChannelStats } from "../lib/perfRegistry.js";
 import { formatBytes } from "../lib/formatBytes.js";
+import { recentInteractions, type InteractionRecord } from "../lib/interactionTimings.js";
 
 export const PERF_OVERLAY_KEY = "argmax.perfOverlay";
 
 const POLL_INTERVAL_MS = 1000;
+const RECENT_INTERACTIONS = 5;
 
 // Canonical channels surfaced in the dev HUD. Order matters — top to bottom
 // in the rendered overlay. Names are the real registered IPC channels; the
@@ -15,7 +20,7 @@ const TRACKED_CHANNELS = [
   "session:events-since",
   "workspace:status",
   "approvals:pending",
-  "review:load-diff"
+  "review:load-diff",
 ] as const;
 
 function readEnabled(): boolean {
@@ -50,20 +55,20 @@ function fmt(ms: number): string {
 export function PerfOverlay(): JSX.Element | null {
   const enabled = useSyncExternalStore(subscribeEnabled, readEnabled, () => false);
   const [stats, setStats] = useState<IpcChannelStats[]>([]);
+  const [interactions, setInteractions] = useState<InteractionRecord[]>([]);
   const [performance, setPerformance] = useState<PerformanceStatus | null>(null);
   const aliveRef = useRef<boolean>(true);
-  const logCursor = useRef<number | undefined>(undefined);
   const ownedRecording = useRef<string | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
     aliveRef.current = true;
     const ensureRecorder = async (): Promise<void> => {
-      const api = typeof window !== "undefined" ? window.argmax : undefined;
-      if (typeof api?.system?.performanceStatus !== "function") return;
-      const current = await api.system.performanceStatus();
-      if (!current.recording && typeof api.system.performanceStart === "function") {
-        const started = await api.system.performanceStart();
+      const system = systemActions();
+      if (typeof system?.performanceStatus !== "function") return;
+      const current = await system.performanceStatus();
+      if (!current.recording && typeof system.performanceStart === "function") {
+        const started = await system.performanceStart();
         ownedRecording.current = started.startedAt;
         if (aliveRef.current) setPerformance(started);
       } else if (aliveRef.current) {
@@ -71,41 +76,39 @@ export function PerfOverlay(): JSX.Element | null {
       }
     };
     const tick = async (): Promise<void> => {
-      const api = typeof window !== "undefined" ? window.argmax : undefined;
-      if (!api?.system?.debugSnapshot) return;
+      setStats(ipcLatencySnapshot());
+      setInteractions(recentInteractions(RECENT_INTERACTIONS));
+      const system = systemActions();
+      if (typeof system?.performanceStatus !== "function") return;
       try {
-        // Not `system:diagnostics`: at 1 Hz its nine `COUNT(*)` scans and `ps`
-        // shellout cost far more than the five numbers drawn here. The log
-        // cursor is advanced and the lines dropped — the HUD only wants stats,
-        // and carrying the cursor keeps each tick from re-sending the ring.
-        const snapshot = await api.system.debugSnapshot({ afterLogSeq: logCursor.current });
-        if (!aliveRef.current) return;
-        logCursor.current = snapshot.logs.at(-1)?.seq ?? logCursor.current;
-        setStats(snapshot.ipcStats);
-        if (typeof api.system.performanceStatus === "function") {
-          setPerformance(await api.system.performanceStatus());
-        }
+        const status = await system.performanceStatus();
+        if (aliveRef.current) setPerformance(status);
       } catch {
         // Diagnostics IPC is non-essential for the HUD; swallow polling errors.
       }
     };
-    void ensureRecorder().then(tick).catch(() => {
-      void tick();
-    });
+    void ensureRecorder()
+      .then(tick)
+      .catch(() => {
+        void tick();
+      });
     const id = window.setInterval(() => void tick(), POLL_INTERVAL_MS);
     return () => {
       aliveRef.current = false;
       window.clearInterval(id);
       const startedAt = ownedRecording.current;
       ownedRecording.current = null;
-      const api = typeof window !== "undefined" ? window.argmax : undefined;
-      if (startedAt && typeof api?.system?.performanceStatus === "function") {
-        void api.system.performanceStatus().then((current) => {
-          if (current.recording && current.startedAt === startedAt) {
-            return api.system.performanceStop();
-          }
-          return undefined;
-        }).catch(() => undefined);
+      const system = systemActions();
+      if (startedAt && typeof system?.performanceStatus === "function") {
+        void system
+          .performanceStatus()
+          .then((current) => {
+            if (current.recording && current.startedAt === startedAt) {
+              return system.performanceStop();
+            }
+            return undefined;
+          })
+          .catch(() => undefined);
       }
     };
   }, [enabled]);
@@ -131,16 +134,33 @@ export function PerfOverlay(): JSX.Element | null {
         borderRadius: "var(--radius-lg)",
         boxShadow: "var(--shadow-2)",
         pointerEvents: "none",
-        minWidth: 220
+        minWidth: 220,
       }}
     >
-      <div style={{ opacity: 0.7, marginBottom: 4, fontSize: "var(--text-2xs)", letterSpacing: 0.4, textTransform: "uppercase" }}>
+      <div
+        style={{
+          opacity: 0.7,
+          marginBottom: 4,
+          fontSize: "var(--text-2xs)",
+          letterSpacing: 0.4,
+          textTransform: "uppercase",
+        }}
+      >
         Argmax performance
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "2px 10px", marginBottom: 6 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, 1fr)",
+          gap: "2px 10px",
+          marginBottom: 6,
+        }}
+      >
         <span>CPU</span>
         <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-          {performance?.latest ? `${performance.latest.processes.total.cpuPercent.toFixed(1)}%` : "—"}
+          {performance?.latest
+            ? `${performance.latest.processes.total.cpuPercent.toFixed(1)}%`
+            : "—"}
         </span>
         <span>Memory</span>
         <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
@@ -155,7 +175,15 @@ export function PerfOverlay(): JSX.Element | null {
           {performance?.latest?.rendererStalls.count ?? "—"}
         </span>
       </div>
-      <div style={{ opacity: 0.7, marginBottom: 4, fontSize: "var(--text-2xs)", letterSpacing: 0.4, textTransform: "uppercase" }}>
+      <div
+        style={{
+          opacity: 0.7,
+          marginBottom: 4,
+          fontSize: "var(--text-2xs)",
+          letterSpacing: 0.4,
+          textTransform: "uppercase",
+        }}
+      >
         IPC p50 / p99
       </div>
       <table style={{ borderCollapse: "collapse", width: "100%" }}>
@@ -165,10 +193,22 @@ export function PerfOverlay(): JSX.Element | null {
             return (
               <tr key={channel} data-channel={channel}>
                 <td style={{ paddingRight: 8, opacity: entry ? 1 : 0.5 }}>{channel}</td>
-                <td style={{ textAlign: "right", paddingRight: 6, fontVariantNumeric: "tabular-nums" }}>
+                <td
+                  style={{
+                    textAlign: "right",
+                    paddingRight: 6,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
                   {entry ? fmt(entry.p50) : "—"}
                 </td>
-                <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", opacity: entry ? 1 : 0.5 }}>
+                <td
+                  style={{
+                    textAlign: "right",
+                    fontVariantNumeric: "tabular-nums",
+                    opacity: entry ? 1 : 0.5,
+                  }}
+                >
                   {entry ? fmt(entry.p99) : "—"}
                 </td>
               </tr>
@@ -176,6 +216,38 @@ export function PerfOverlay(): JSX.Element | null {
           })}
         </tbody>
       </table>
+      {interactions.length > 0 ? (
+        <>
+          <div
+            style={{
+              opacity: 0.7,
+              margin: "6px 0 4px",
+              fontSize: "var(--text-2xs)",
+              letterSpacing: 0.4,
+              textTransform: "uppercase",
+            }}
+          >
+            Interactions shown / painted / settled
+          </div>
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <tbody>
+              {interactions.map((record, index) => (
+                <tr key={`${record.start}-${index}`} data-interaction={record.name}>
+                  <td style={{ paddingRight: 8 }}>
+                    {record.name}
+                    {record.detail?.visit ? ` (${record.detail.visit})` : ""}
+                  </td>
+                  <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {[record.shownMs, record.paintedMs, record.settledMs]
+                      .map((ms) => (ms === undefined ? "—" : fmt(ms)))
+                      .join(" / ")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : null}
     </div>
   );
 }

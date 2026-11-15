@@ -1,29 +1,55 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import type { DashboardSnapshot, ProjectSummary, TimelineEvent } from "../../shared/types.js";
-import { emptySnapshot, mergeDashboardDelta, mergeProjectSummary, pruneSupersededDeltas } from "./snapshot.js";
+import {
+  emptySnapshot,
+  mergeDashboardDelta,
+  mergeProjectSummary,
+  pruneSupersededDeltas,
+} from "./snapshot.js";
 
 describe("project overview revisions", () => {
   const project: ProjectSummary = {
-    id: "p-1", name: "Argmax", repoPath: "/tmp/argmax", currentBranch: "main", defaultBranch: "main",
-    settings: { mergeCleanup: "off", worktreeLocation: "/tmp", setupCommand: "", checkCommands: [] },
-    counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 }, latestActivityAt: null
+    id: "p-1",
+    name: "Argmax",
+    repoPath: "/tmp/argmax",
+    currentBranch: "main",
+    defaultBranch: "main",
+    settings: {
+      mergeCleanup: "off",
+      worktreeLocation: "/tmp",
+      setupCommand: "",
+      checkCommands: [],
+    },
+    counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
+    latestActivityAt: null,
   };
   const current: ProjectSummary = {
     ...project,
-    overview: { revision: 3, saved: { text: "Saved overview", sources: [], generatedAt: null }, draft: null, status: "idle", error: null }
+    overview: {
+      revision: 3,
+      saved: { text: "Saved overview", sources: [], generatedAt: null },
+      draft: null,
+      status: "idle",
+      error: null,
+    },
   };
 
   it("preserves the newer overview when a delayed action or delta updates other project fields", () => {
     const delayed = {
-      ...project, name: "Renamed", currentBranch: "feature",
-      overview: { ...current.overview!, revision: 2, status: "generating" as const }
+      ...project,
+      name: "Renamed",
+      currentBranch: "feature",
+      overview: { ...current.overview!, revision: 2, status: "generating" as const },
     };
     const merged = mergeProjectSummary(current, delayed);
     expect(merged.name).toBe("Renamed");
     expect(merged.currentBranch).toBe("feature");
     expect(merged.overview).toBe(current.overview);
-    const delta = mergeDashboardDelta({ ...emptySnapshot, projects: [current] }, { projects: [delayed] });
+    const delta = mergeDashboardDelta(
+      { ...emptySnapshot, projects: [current] },
+      { projects: [delayed] },
+    );
     expect(delta.projects[0]).toEqual(merged);
     expect(mergeProjectSummary(current, project).overview).toBe(current.overview);
   });
@@ -40,7 +66,7 @@ function event(
   id: string,
   type: TimelineEvent["type"],
   createdAt: string,
-  rowCursor?: number
+  rowCursor?: number,
 ): TimelineEvent {
   return {
     id,
@@ -49,7 +75,7 @@ function event(
     message: "",
     payload: {},
     createdAt,
-    ...(rowCursor !== undefined ? { rowCursor } : {})
+    ...(rowCursor !== undefined ? { rowCursor } : {}),
   };
 }
 
@@ -61,7 +87,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
   it("returns the same array reference when there is nothing to prune", () => {
     const events = [
       event("e1", "user.message", "2026-05-12T15:00:00.000Z"),
-      event("e2", "message.completed", "2026-05-12T15:00:01.000Z")
+      event("e2", "message.completed", "2026-05-12T15:00:01.000Z"),
     ];
     expect(pruneSupersededDeltas(events)).toBe(events);
   });
@@ -71,7 +97,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
     const events = [
       event("e1", "user.message", "2026-05-12T15:00:00.000Z"),
       event("e2", "message.delta", "2026-05-12T15:00:01.000Z"),
-      event("e3", "message.delta", "2026-05-12T15:00:02.000Z")
+      event("e3", "message.delta", "2026-05-12T15:00:02.000Z"),
     ];
     expect(pruneSupersededDeltas(events)).toBe(events);
   });
@@ -81,7 +107,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
       event("e1", "user.message", "2026-05-12T15:00:00.000Z"),
       event("e2", "message.delta", "2026-05-12T15:00:01.000Z"),
       event("e3", "message.delta", "2026-05-12T15:00:02.000Z"),
-      event("e4", "message.completed", "2026-05-12T15:00:03.000Z")
+      event("e4", "message.completed", "2026-05-12T15:00:03.000Z"),
     ];
     const result = pruneSupersededDeltas(events);
     expect(result).not.toBe(events);
@@ -97,9 +123,9 @@ describe("pruneSupersededDeltas — reference stability", () => {
       event("e1", "user.message", "2026-05-12T15:00:00.000Z"),
       {
         ...event("e2", "message.delta", "2026-05-12T15:00:01.000Z"),
-        payload: { thinking: true }
+        payload: { thinking: true },
       },
-      event("e3", "message.completed", "2026-05-12T15:00:02.000Z")
+      event("e3", "message.completed", "2026-05-12T15:00:02.000Z"),
     ];
     const result = pruneSupersededDeltas(events);
     expect(result.map((e) => e.id)).toEqual(["e1", "e2", "e3"]);
@@ -111,7 +137,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
       event("e2", "message.delta", "2026-05-12T15:00:01.000Z"),
       event("e3", "command.started", "2026-05-12T15:00:02.000Z"),
       event("e4", "message.delta", "2026-05-12T15:00:03.000Z"),
-      event("e5", "message.completed", "2026-05-12T15:00:04.000Z")
+      event("e5", "message.completed", "2026-05-12T15:00:04.000Z"),
     ];
 
     const result = pruneSupersededDeltas(events);
@@ -123,13 +149,13 @@ describe("pruneSupersededDeltas — reference stability", () => {
       event("e1", "user.message", "2026-05-12T15:00:00.000Z"),
       {
         ...event("e2", "message.delta", "2026-05-12T15:00:01.000Z"),
-        message: "Ver"
+        message: "Ver",
       },
       event("e3", "command.started", "2026-05-12T15:00:02.000Z"),
       {
         ...event("e4", "message.completed", "2026-05-12T15:00:03.000Z"),
-        message: "Verification agent is running."
-      }
+        message: "Verification agent is running.",
+      },
     ];
 
     const result = pruneSupersededDeltas(events);
@@ -140,18 +166,31 @@ describe("pruneSupersededDeltas — reference stability", () => {
     // Cursor's completion repeats the turn's narration. Its first token alone
     // prefixes that text, so a per-token check dropped "Pull" and left "ing up…".
     const tokens = (ids: string[], parts: string[], at: string): TimelineEvent[] =>
-      parts.map((part, index) => ({ ...event(ids[index] ?? "", "message.delta", at), message: part }));
+      parts.map((part, index) => ({
+        ...event(ids[index] ?? "", "message.delta", at),
+        message: part,
+      }));
     const events: TimelineEvent[] = [
       event("u", "user.message", "2026-05-12T15:00:00.000Z"),
       ...tokens(["n1", "n2", "n3"], ["Pull", "ing", " up."], "2026-05-12T15:00:01.000Z"),
       event("tool", "command.started", "2026-05-12T15:00:02.000Z"),
       ...tokens(["a1", "a2"], ["\nDone", " here."], "2026-05-12T15:00:03.000Z"),
-      { ...event("done", "message.completed", "2026-05-12T15:00:04.000Z"), message: "Pulling up.\nDone here." }
+      {
+        ...event("done", "message.completed", "2026-05-12T15:00:04.000Z"),
+        message: "Pulling up.\nDone here.",
+      },
     ];
     expect(pruneSupersededDeltas(events).map((e) => e.id)).toEqual(["u", "tool", "done"]);
 
     const kept = events.map((e) => (e.id === "done" ? { ...e, message: "Something else." } : e));
-    expect(pruneSupersededDeltas(kept).map((e) => e.id)).toEqual(["u", "n1", "n2", "n3", "tool", "done"]);
+    expect(pruneSupersededDeltas(kept).map((e) => e.id)).toEqual([
+      "u",
+      "n1",
+      "n2",
+      "n3",
+      "tool",
+      "done",
+    ]);
   });
 
   it("does not split a parent answer at a subagent tool boundary", () => {
@@ -160,23 +199,19 @@ describe("pruneSupersededDeltas — reference stability", () => {
       { ...event("prefix", "message.delta", "2026-05-12T15:00:01.000Z"), message: "H" },
       {
         ...event("child-tool", "command.started", "2026-05-12T15:00:02.000Z"),
-        payload: { id: "child-tool-1", name: "Bash", parent_tool_use_id: "task-1" }
+        payload: { id: "child-tool-1", name: "Bash", parent_tool_use_id: "task-1" },
       },
       {
         ...event("suffix", "message.delta", "2026-05-12T15:00:03.000Z"),
-        message: "ero label restored."
+        message: "ero label restored.",
       },
       {
         ...event("done", "message.completed", "2026-05-12T15:00:04.000Z"),
-        message: "Hero label restored."
-      }
+        message: "Hero label restored.",
+      },
     ];
 
-    expect(pruneSupersededDeltas(events).map((e) => e.id)).toEqual([
-      "user",
-      "child-tool",
-      "done"
-    ]);
+    expect(pruneSupersededDeltas(events).map((e) => e.id)).toEqual(["user", "child-tool", "done"]);
   });
 
   it("drops streamed answer deltas when a completed message and tools land in chronological order", () => {
@@ -188,7 +223,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
       event("tool", "command.started", "2026-05-12T15:00:03.000Z"),
       event("tool-res", "command.completed", "2026-05-12T15:00:04.000Z"),
       event("d3", "message.delta", "2026-05-12T15:00:05.000Z"),
-      event("c2", "message.completed", "2026-05-12T15:00:07.000Z")
+      event("c2", "message.completed", "2026-05-12T15:00:07.000Z"),
     ];
 
     const result = pruneSupersededDeltas(events);
@@ -204,12 +239,12 @@ describe("pruneSupersededDeltas — reference stability", () => {
       event("e2", "message.delta", "2026-05-12T15:00:01.000Z"),
       {
         ...event("e3", "message.completed", "2026-05-12T15:00:02.000Z"),
-        payload: { parent_tool_use_id: "task-1" }
+        payload: { parent_tool_use_id: "task-1" },
       },
       {
         ...event("e4", "message.completed", "2026-05-12T15:00:03.000Z"),
-        payload: { item_type: "agent_message", thread_id: "thread-child" }
-      }
+        payload: { item_type: "agent_message", thread_id: "thread-child" },
+      },
     ];
 
     expect(pruneSupersededDeltas(events)).toBe(events);
@@ -233,12 +268,12 @@ describe("pruneSupersededDeltas — reference stability", () => {
             mergeCleanup: "off",
             worktreeLocation: "/tmp",
             setupCommand: "",
-            checkCommands: []
+            checkCommands: [],
           },
           counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
-          latestActivityAt: "2026-05-12T00:00:00.000Z"
-        }
-      ]
+          latestActivityAt: "2026-05-12T00:00:00.000Z",
+        },
+      ],
     };
     expect(mergeDashboardDelta(base, {})).toBe(base);
     expect(mergeDashboardDelta(base, { events: [], rawOutputs: [] })).toBe(base);
@@ -257,8 +292,8 @@ describe("pruneSupersededDeltas — reference stability", () => {
       ...emptySnapshot,
       events: [
         event("e1", "message.delta", "2026-05-12T15:00:01.000Z"),
-        event("e2", "message.completed", "2026-05-12T15:00:02.000Z")
-      ]
+        event("e2", "message.completed", "2026-05-12T15:00:02.000Z"),
+      ],
     };
     const next = mergeDashboardDelta(base, {
       pendingMessages: {
@@ -268,10 +303,10 @@ describe("pruneSupersededDeltas — reference stability", () => {
             sessionId: "session-1",
             content: "queued",
             agentMode: "auto",
-            queuedAt: "2026-05-12T15:00:03.000Z"
-          }
-        ]
-      }
+            queuedAt: "2026-05-12T15:00:03.000Z",
+          },
+        ],
+      },
     });
     expect(next).not.toBe(base);
     expect(next.events).toBe(base.events);
@@ -280,7 +315,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
   it("mergeDashboardDelta returns a new reference when any slice actually changes", () => {
     const base: DashboardSnapshot = { ...emptySnapshot };
     const next = mergeDashboardDelta(base, {
-      events: [event("e1", "user.message", "2026-05-12T15:00:00.000Z")]
+      events: [event("e1", "user.message", "2026-05-12T15:00:00.000Z")],
     });
     expect(next).not.toBe(base);
     expect(next.events).toHaveLength(1);
@@ -293,7 +328,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
       event("e4", "message.completed", "2026-05-12T15:00:03.000Z"),
       event("e3", "message.delta", "2026-05-12T15:00:02.000Z"),
       event("e2", "message.delta", "2026-05-12T15:00:01.000Z"),
-      event("e1", "user.message", "2026-05-12T15:00:00.000Z")
+      event("e1", "user.message", "2026-05-12T15:00:00.000Z"),
     ];
     const result = pruneSupersededDeltas(events);
     expect(result).not.toBe(events);
@@ -307,8 +342,8 @@ describe("pruneSupersededDeltas — reference stability", () => {
       events: [
         event("e1", "message.delta", createdAt, 1),
         event("e2", "message.delta", createdAt, 2),
-        event("e3", "message.delta", createdAt, 3)
-      ]
+        event("e3", "message.delta", createdAt, 3),
+      ],
     });
 
     expect(next.events.map((e) => e.id)).toEqual(["e3", "e2", "e1"]);
@@ -321,7 +356,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
       event("e4", "message.completed", createdAt, 4),
       event("e3", "message.delta", createdAt, 3),
       event("e2", "message.delta", createdAt, 2),
-      event("e1", "user.message", createdAt, 1)
+      event("e1", "user.message", createdAt, 1),
     ];
 
     const result = pruneSupersededDeltas(events);
@@ -339,13 +374,13 @@ describe("pruneSupersededDeltas — reference stability", () => {
       events: [
         event("u1", "user.message", "2026-05-12T15:00:00.000Z", 1),
         event("c1", "command.started", "2026-05-12T15:00:01.000Z", 2),
-        event("c2", "command.completed", "2026-05-12T15:00:02.000Z", 3)
-      ]
+        event("c2", "command.completed", "2026-05-12T15:00:02.000Z", 3),
+      ],
     };
     // 600 in-flight answer deltas (no completion yet → not prunable). Naive
     // newest-N capping would push u1/c1/c2 (oldest) out and flicker them.
     const deltas: TimelineEvent[] = Array.from({ length: 600 }, (_, i) =>
-      event(`d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i)
+      event(`d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i),
     );
     const merged = mergeDashboardDelta(base, { events: deltas });
     const ids = new Set(merged.events.map((e) => e.id));
@@ -362,10 +397,10 @@ describe("pruneSupersededDeltas — reference stability", () => {
     const streamFor = (sessionId: string): TimelineEvent[] =>
       Array.from({ length: 600 }, (_, i) => ({
         ...event(`${sessionId}-d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i),
-        sessionId
+        sessionId,
       }));
     const merged = mergeDashboardDelta(emptySnapshot, {
-      events: [...streamFor("session-1"), ...streamFor("session-2")]
+      events: [...streamFor("session-1"), ...streamFor("session-2")],
     });
     const ids = new Set(merged.events.map((e) => e.id));
     // Both panes keep the opening of their own answer.
@@ -377,18 +412,18 @@ describe("pruneSupersededDeltas — reference stability", () => {
 
   it("prunes the answer deltas once the turn completes, keeping tool rows", () => {
     const deltas: TimelineEvent[] = Array.from({ length: 500 }, (_, i) =>
-      event(`d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i)
+      event(`d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i),
     );
     const base: DashboardSnapshot = {
       ...emptySnapshot,
       events: [
         event("u1", "user.message", "2026-05-12T15:00:00.000Z", 1),
         event("c1", "command.started", "2026-05-12T15:00:01.000Z", 2),
-        ...deltas
-      ]
+        ...deltas,
+      ],
     };
     const merged = mergeDashboardDelta(base, {
-      events: [event("done", "message.completed", "2026-05-12T15:02:00.000Z", 9999)]
+      events: [event("done", "message.completed", "2026-05-12T15:02:00.000Z", 9999)],
     });
     const ids = merged.events.map((e) => e.id);
     expect(ids).toContain("u1");
@@ -404,12 +439,12 @@ describe("pruneSupersededDeltas — reference stability", () => {
       events: [
         {
           ...event("t1", "message.delta", "2026-05-12T15:00:00.000Z", 5),
-          payload: { thinking: true }
-        }
-      ]
+          payload: { thinking: true },
+        },
+      ],
     };
     const deltas: TimelineEvent[] = Array.from({ length: 600 }, (_, i) =>
-      event(`d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i)
+      event(`d${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 100 + i),
     );
     const merged = mergeDashboardDelta(base, { events: deltas });
     expect(merged.events.some((e) => e.id === "t1")).toBe(true);
@@ -422,16 +457,21 @@ describe("pruneSupersededDeltas — reference stability", () => {
   // bucket, so even a huge thinking flood leaves every tool row intact.
   it("keeps tool rows when a long thinking phase floods thinking deltas", () => {
     const toolRows: TimelineEvent[] = Array.from({ length: 400 }, (_, i) =>
-      event(`c${i}`, i % 2 === 0 ? "command.started" : "command.completed", "2026-05-12T15:00:00.000Z", i + 1)
+      event(
+        `c${i}`,
+        i % 2 === 0 ? "command.started" : "command.completed",
+        "2026-05-12T15:00:00.000Z",
+        i + 1,
+      ),
     );
     const base: DashboardSnapshot = {
       ...emptySnapshot,
-      events: [event("u1", "user.message", "2026-05-12T14:59:59.000Z", 0), ...toolRows]
+      events: [event("u1", "user.message", "2026-05-12T14:59:59.000Z", 0), ...toolRows],
     };
     // 1200 in-flight thinking deltas — well past any single-bucket cap.
     const thinking: TimelineEvent[] = Array.from({ length: 1200 }, (_, i) => ({
       ...event(`t${i}`, "message.delta", "2026-05-12T15:01:00.000Z", 10_000 + i),
-      payload: { thinking: true }
+      payload: { thinking: true },
     }));
     const merged = mergeDashboardDelta(base, { events: thinking });
     const ids = new Set(merged.events.map((e) => e.id));
@@ -449,13 +489,21 @@ describe("pruneSupersededDeltas — reference stability", () => {
     const base: DashboardSnapshot = {
       ...emptySnapshot,
       events: [
-        { ...event("u1", "user.message", "2026-05-12T14:59:59.000Z", 1), sessionId: "session-other" }
-      ]
+        {
+          ...event("u1", "user.message", "2026-05-12T14:59:59.000Z", 1),
+          sessionId: "session-other",
+        },
+      ],
     };
     // More imported rows than the protected budget (2000).
     const imported: TimelineEvent[] = Array.from({ length: 2100 }, (_, i) => ({
-      ...event(`tr${i}`, i % 2 === 0 ? "command.started" : "command.completed", "2026-05-12T15:01:00.000Z", 100 + i),
-      payload: { traceImported: true, parent_tool_use_id: "task-1" }
+      ...event(
+        `tr${i}`,
+        i % 2 === 0 ? "command.started" : "command.completed",
+        "2026-05-12T15:01:00.000Z",
+        100 + i,
+      ),
+      payload: { traceImported: true, parent_tool_use_id: "task-1" },
     }));
     const merged = mergeDashboardDelta(base, { events: imported });
     expect(merged.events.some((e) => e.id === "u1")).toBe(true);
@@ -470,18 +518,18 @@ describe("pruneSupersededDeltas — reference stability", () => {
       ...emptySnapshot,
       workspaces: [
         { id: "w-imported" } as DashboardSnapshot["workspaces"][number],
-        { id: "w-kept" } as DashboardSnapshot["workspaces"][number]
+        { id: "w-kept" } as DashboardSnapshot["workspaces"][number],
       ],
       sessions: [
         { id: "s-imported", workspaceId: "w-imported" } as DashboardSnapshot["sessions"][number],
-        { id: "s-kept", workspaceId: "w-kept" } as DashboardSnapshot["sessions"][number]
+        { id: "s-kept", workspaceId: "w-kept" } as DashboardSnapshot["sessions"][number],
       ],
-      events: [event("e1", "user.message", "2026-05-12T15:00:00.000Z")]
+      events: [event("e1", "user.message", "2026-05-12T15:00:00.000Z")],
     };
 
     const next = mergeDashboardDelta(base, {
       removedSessionIds: ["s-imported"],
-      removedWorkspaceIds: ["w-imported"]
+      removedWorkspaceIds: ["w-imported"],
     });
 
     expect(next.sessions.map((session) => session.id)).toEqual(["s-kept"]);
@@ -495,8 +543,8 @@ describe("pruneSupersededDeltas — reference stability", () => {
       ...emptySnapshot,
       workspaces: [{ id: "w-gone" } as DashboardSnapshot["workspaces"][number]],
       sessions: [
-        { id: "s-orphaned", workspaceId: "w-gone" } as DashboardSnapshot["sessions"][number]
-      ]
+        { id: "s-orphaned", workspaceId: "w-gone" } as DashboardSnapshot["sessions"][number],
+      ],
     };
     const next = mergeDashboardDelta(base, { removedWorkspaceIds: ["w-gone"] });
     expect(next.workspaces).toHaveLength(0);
@@ -515,14 +563,14 @@ describe("pruneSupersededDeltas — reference stability", () => {
       ...emptySnapshot,
       events: [
         event("e2", "command.completed", "2026-05-12T15:00:02.000Z", 2),
-        event("e1", "user.message", "2026-05-12T15:00:01.000Z", 1)
-      ]
+        event("e1", "user.message", "2026-05-12T15:00:01.000Z", 1),
+      ],
     };
     const next = mergeDashboardDelta(base, {
       events: [
         event("e4", "command.completed", "2026-05-12T15:00:04.000Z", 4),
-        event("e3", "command.started", "2026-05-12T15:00:03.000Z", 3)
-      ]
+        event("e3", "command.started", "2026-05-12T15:00:03.000Z", 3),
+      ],
     });
     expect(next.events.map((e) => e.id)).toEqual(["e4", "e3", "e2", "e1"]);
   });
@@ -531,14 +579,14 @@ describe("pruneSupersededDeltas — reference stability", () => {
     const retained = [
       event("e1", "user.message", "2026-05-12T15:00:01.000Z", 1),
       event("e3", "command.completed", "2026-05-12T15:00:03.000Z", 3),
-      event("e2", "command.started", "2026-05-12T15:00:02.000Z", 2)
+      event("e2", "command.started", "2026-05-12T15:00:02.000Z", 2),
     ];
     const delta = { events: [event("e4", "command.completed", "2026-05-12T15:00:04.000Z", 4)] };
     // The ordered array takes the splice; the scrambled one falls back to the
     // Map-and-sort. Both must land on the same list.
     const spliced = mergeDashboardDelta(
       { ...emptySnapshot, events: [retained[1], retained[2], retained[0]] },
-      delta
+      delta,
     );
     const sorted = mergeDashboardDelta({ ...emptySnapshot, events: retained }, delta);
     expect(spliced.events.map((e) => e.id)).toEqual(sorted.events.map((e) => e.id));
@@ -553,11 +601,11 @@ describe("pruneSupersededDeltas — reference stability", () => {
       ...emptySnapshot,
       events: [
         event("e2", "command.completed", "2026-05-12T15:00:02.000Z", 2),
-        event("e1", "user.message", "2026-05-12T15:00:01.000Z", 1)
-      ]
+        event("e1", "user.message", "2026-05-12T15:00:01.000Z", 1),
+      ],
     };
     const next = mergeDashboardDelta(base, {
-      events: [event("e2", "command.completed", "2026-05-12T15:00:09.000Z", 9)]
+      events: [event("e2", "command.completed", "2026-05-12T15:00:09.000Z", 9)],
     });
     expect(next.events.map((e) => e.id)).toEqual(["e2", "e1"]);
     expect(next.events[0]?.rowCursor).toBe(9);
@@ -568,11 +616,11 @@ describe("pruneSupersededDeltas — reference stability", () => {
       ...emptySnapshot,
       events: [
         event("e3", "command.completed", "2026-05-12T15:00:03.000Z", 3),
-        event("e1", "user.message", "2026-05-12T15:00:01.000Z", 1)
-      ]
+        event("e1", "user.message", "2026-05-12T15:00:01.000Z", 1),
+      ],
     };
     const next = mergeDashboardDelta(base, {
-      events: [event("e2", "command.started", "2026-05-12T15:00:02.000Z", 2)]
+      events: [event("e2", "command.started", "2026-05-12T15:00:02.000Z", 2)],
     });
     expect(next.events.map((e) => e.id)).toEqual(["e3", "e2", "e1"]);
   });
@@ -580,10 +628,10 @@ describe("pruneSupersededDeltas — reference stability", () => {
   it("falls back to the general merge for events that carry no row cursor", () => {
     const base: DashboardSnapshot = {
       ...emptySnapshot,
-      events: [event("e1", "user.message", "2026-05-12T15:00:01.000Z")]
+      events: [event("e1", "user.message", "2026-05-12T15:00:01.000Z")],
     };
     const next = mergeDashboardDelta(base, {
-      events: [event("e2", "command.started", "2026-05-12T15:00:02.000Z", 2)]
+      events: [event("e2", "command.started", "2026-05-12T15:00:02.000Z", 2)],
     });
     expect(next.events.map((e) => e.id)).toEqual(["e2", "e1"]);
   });

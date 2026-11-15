@@ -26,8 +26,6 @@ import { createServer } from "vite";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outPath = path.join(repoRoot, "ios/Argmax/Sources/Design/AgentEmblemArt.swift");
 
-// ---------------------------------------------------------------- path maths
-
 /** The `d` attribute as a flat command list, absolute coordinates only. */
 function parsePath(d) {
   const tokens = d.match(/[MLCZA]|-?\d*\.?\d+(?:e-?\d+)?/gi) ?? [];
@@ -58,7 +56,7 @@ function parsePath(d) {
           x2: number(),
           y2: number(),
           x: number(),
-          y: number()
+          y: number(),
         });
         break;
       case "A":
@@ -70,7 +68,7 @@ function parsePath(d) {
           largeArc: number(),
           sweep: number(),
           x: number(),
-          y: number()
+          y: number(),
         });
         break;
       case "Z":
@@ -125,12 +123,7 @@ function arcToCurves(from, arc) {
     return sign * Math.acos(Math.min(1, Math.max(-1, cosine)));
   };
   const start = angle(1, 0, (x1 - cx1) / rx, (y1 - cy1) / ry);
-  let sweepAngle = angle(
-    (x1 - cx1) / rx,
-    (y1 - cy1) / ry,
-    (-x1 - cx1) / rx,
-    (-y1 - cy1) / ry
-  );
+  let sweepAngle = angle((x1 - cx1) / rx, (y1 - cy1) / ry, (-x1 - cx1) / rx, (-y1 - cy1) / ry);
   if (!sweep && sweepAngle > 0) sweepAngle -= 2 * Math.PI;
   if (sweep && sweepAngle < 0) sweepAngle += 2 * Math.PI;
 
@@ -141,11 +134,11 @@ function arcToCurves(from, arc) {
   const reach = (4 / 3) * Math.tan(step / 4);
   const point = (theta) => ({
     x: cx + rx * Math.cos(theta) * cos - ry * Math.sin(theta) * sin,
-    y: cy + rx * Math.cos(theta) * sin + ry * Math.sin(theta) * cos
+    y: cy + rx * Math.cos(theta) * sin + ry * Math.sin(theta) * cos,
   });
   const derivative = (theta) => ({
     x: -rx * Math.sin(theta) * cos - ry * Math.cos(theta) * sin,
-    y: -rx * Math.sin(theta) * sin + ry * Math.cos(theta) * cos
+    y: -rx * Math.sin(theta) * sin + ry * Math.cos(theta) * cos,
   });
 
   const curves = [];
@@ -165,7 +158,7 @@ function arcToCurves(from, arc) {
       // The last segment lands on the command's own endpoint, so an arc never
       // drifts off its declared destination through accumulated rounding.
       x: segment === segments - 1 ? x : p2.x,
-      y: segment === segments - 1 ? y : p2.y
+      y: segment === segments - 1 ? y : p2.y,
     });
   }
   return curves;
@@ -195,14 +188,12 @@ function flatten(d) {
   return out;
 }
 
-// ------------------------------------------------------------------- sources
-
 async function loadEmblems() {
   const server = await createServer({
     configFile: false,
     root: repoRoot,
     server: { middlewareMode: true },
-    logLevel: "error"
+    logLevel: "error",
   });
   try {
     return await server.ssrLoadModule("/src/renderer/lib/agentEmblems.ts");
@@ -213,7 +204,7 @@ async function loadEmblems() {
 
 const { EMBLEM_PATHS, EMBLEM_SHAPES, EMBLEM_HUES, EMBLEM_BY_CODENAME } = await loadEmblems();
 const codenames = JSON.parse(
-  await readFile(path.join(repoRoot, "src/shared/agentCodenames.json"), "utf8")
+  await readFile(path.join(repoRoot, "src/shared/agentCodenames.json"), "utf8"),
 );
 
 for (const codename of Object.keys(EMBLEM_BY_CODENAME)) {
@@ -224,8 +215,6 @@ for (const codename of Object.keys(EMBLEM_BY_CODENAME)) {
 for (const codename of codenames) {
   if (!EMBLEM_BY_CODENAME[codename]) throw new Error(`No emblem assigned to ${codename}`);
 }
-
-// ------------------------------------------------------------------- emitter
 
 const round = (value) => `${Number(value.toFixed(3))}`;
 const point = (x, y) => `CGPoint(x: ${round(x)}, y: ${round(y)})`;
@@ -239,7 +228,7 @@ function swiftPath(shape) {
     else if (command.op === "C")
       lines.push(
         `            path.addCurve(to: ${point(command.x, command.y)}, ` +
-          `control1: ${point(command.x1, command.y1)}, control2: ${point(command.x2, command.y2)})`
+          `control1: ${point(command.x1, command.y1)}, control2: ${point(command.x2, command.y2)})`,
       );
     else lines.push("            path.closeSubpath()");
   }
@@ -308,5 +297,5 @@ ${EMBLEM_SHAPES.map(swiftPath).join("\n")}
 await writeFile(outPath, source);
 console.log(
   `Wrote ${EMBLEM_SHAPES.length} shapes and ${codenames.length} codenames to ` +
-    `${path.relative(repoRoot, outPath)}`
+    `${path.relative(repoRoot, outPath)}`,
 );

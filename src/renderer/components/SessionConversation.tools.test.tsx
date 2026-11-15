@@ -5,7 +5,7 @@ import {
   baseSession,
   event,
   renderConversation,
-  rerenderConversation
+  rerenderConversation,
 } from "../../test/sessionConversationTestHarness.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { startedAgentName, toggleAgentDetailsName } from "../../test/agentRowName.js";
@@ -21,16 +21,11 @@ function sameEnvelopeMinimalTurn(tools: TimelineEvent[]): TimelineEvent[] {
   return [
     event("u1", "user.message", "summarize this repo", "2026-05-12T15:00:00.000Z"),
     event("think", "message.delta", SAME_ENVELOPE_THINKING, "2026-05-12T15:00:01.000Z", {
-      thinking: true
+      thinking: true,
     }),
     event("narrate", "message.completed", SAME_ENVELOPE_WORK, SAME_ENVELOPE_AT),
     ...tools,
-    event(
-      "answer",
-      "message.completed",
-      SAME_ENVELOPE_ANSWER,
-      "2026-05-12T15:00:04.000Z"
-    )
+    event("answer", "message.completed", SAME_ENVELOPE_ANSWER, "2026-05-12T15:00:04.000Z"),
   ];
 }
 
@@ -48,13 +43,13 @@ const sameEnvelopeProviderCases: Array<{
       event("read-start", "command.started", "Read", SAME_ENVELOPE_AT, {
         id: "read-1",
         name: "Read",
-        input: { file_path: "README.md" }
+        input: { file_path: "README.md" },
       }),
       event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
         tool_use_id: "read-1",
-        content: "readme"
-      })
-    ])
+        content: "readme",
+      }),
+    ]),
   },
   {
     provider: "grok",
@@ -64,11 +59,11 @@ const sameEnvelopeProviderCases: Array<{
       event("read-start", "command.started", "read_file", SAME_ENVELOPE_AT, {
         id: "read-1",
         name: "read_file",
-        input: { target_file: "README.md" }
+        input: { target_file: "README.md" },
       }),
       event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.500Z", {
         tool_use_id: "read-1",
-        content: "readme"
+        content: "readme",
       }),
       event(
         "wait-start",
@@ -77,14 +72,14 @@ const sameEnvelopeProviderCases: Array<{
         "2026-05-12T15:00:03.000Z",
         {
           id: "wait-1",
-          name: "get_command_or_subagent_output"
-        }
+          name: "get_command_or_subagent_output",
+        },
       ),
       event("wait-end", "command.completed", "tool_result", "2026-05-12T15:00:03.500Z", {
         tool_use_id: "wait-1",
-        content: "ok"
-      })
-    ])
+        content: "ok",
+      }),
+    ]),
   },
   {
     provider: "opencode",
@@ -94,17 +89,24 @@ const sameEnvelopeProviderCases: Array<{
       event("bash-start", "command.started", "bash", SAME_ENVELOPE_AT, {
         name: "bash",
         call_id: "call_1",
-        input: { command: "git status --short" }
+        input: { command: "git status --short" },
       }),
       event("bash-end", "command.completed", "bash", SAME_ENVELOPE_AT, {
         name: "bash",
         call_id: "call_1",
         input: { command: "git status --short" },
-        result: ""
-      })
-    ])
-  }
+        result: "",
+      }),
+    ]),
+  },
 ];
+
+function innermostToolCallGroup(element: HTMLElement): HTMLElement | undefined {
+  return screen
+    .getAllByTestId("tool-call-group")
+    .filter((group) => group.contains(element))
+    .at(-1);
+}
 
 describe("SessionConversation — tools & chrome", () => {
   afterEach(() => {
@@ -119,10 +121,10 @@ describe("SessionConversation — tools & chrome", () => {
           "m1",
           "message.completed",
           "See `src/foo.ts:42` for details.",
-          "2026-05-12T15:00:00.000Z"
-        )
+          "2026-05-12T15:00:00.000Z",
+        ),
       ],
-      { onOpenFile }
+      { onOpenFile },
     );
 
     fireEvent.click(screen.getByLabelText("Open src/foo.ts at line 42"));
@@ -139,10 +141,10 @@ describe("SessionConversation — tools & chrome", () => {
           "m1",
           "message.completed",
           "Open [foo](src/bar.ts) please.",
-          "2026-05-12T15:00:00.000Z"
-        )
+          "2026-05-12T15:00:00.000Z",
+        ),
       ],
-      { onOpenFile }
+      { onOpenFile },
     );
 
     fireEvent.click(screen.getByLabelText("Open src/bar.ts"));
@@ -158,10 +160,10 @@ describe("SessionConversation — tools & chrome", () => {
           "m1",
           "message.completed",
           "See `src/foo.ts` for details.",
-          "2026-05-12T15:00:00.000Z"
-        )
+          "2026-05-12T15:00:00.000Z",
+        ),
       ],
-      { onOpenFile }
+      { onOpenFile },
     );
 
     fireEvent.click(screen.getByLabelText("Open src/foo.ts"), { metaKey: true });
@@ -173,17 +175,20 @@ describe("SessionConversation — tools & chrome", () => {
       baseSession({ provider: "claude", modelLabel: "Opus 5", state: "complete" }),
       [
         event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
-        event("m1", "message.completed", "Here is the summary.", "2026-05-12T15:00:01.000Z")
-      ]
+        event("m1", "message.completed", "Here is the summary.", "2026-05-12T15:00:01.000Z"),
+      ],
     );
 
     expect(screen.getByText("Here is the summary.")).toBeInTheDocument();
     expect(screen.getByText("Worked for 1s")).toBeInTheDocument();
     // The model name belongs to the composer chip, not the turn header — scope
     // the check to the header so the composer's own "Opus 5" doesn't count.
-    const turnHeader = screen.getByText("Worked for 1s").closest(".turn-block-header");
-    expect(turnHeader).not.toBeNull();
-    expect(turnHeader && within(turnHeader as HTMLElement).queryByText("Opus 5")).toBeNull();
+    const workedFor = screen.getByText("Worked for 1s");
+    const turnHeader = screen
+      .getAllByTestId("turn-block-header")
+      .find((header) => header.contains(workedFor));
+    expect(turnHeader).toBeDefined();
+    expect(turnHeader && within(turnHeader).queryByText("Opus 5")).toBeNull();
   });
 
   it("collapses a single MCP tool row when the turn chip is toggled", () => {
@@ -195,24 +200,30 @@ describe("SessionConversation — tools & chrome", () => {
           type: "tool_use",
           id: "toolu_mcp_recall",
           name: "mcp__engram__recall",
-          input: { query: "Argmax project state" }
+          input: { query: "Argmax project state" },
         }),
         event("mcp-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
           tool_use_id: "toolu_mcp_recall",
-          content: "{\"status\":\"ok\",\"data\":{\"answer\":\"stored fact\"}}"
-        })
+          content: '{"status":"ok","data":{"answer":"stored fact"}}',
+        }),
       ],
-      { defaultToolCallsDisplay: "expanded" }
+      { defaultToolCallsDisplay: "expanded" },
     );
 
-    expect(screen.getByRole("button", { name: /Engram recall/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /Engram recall/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     // Arguments read as a key/value list, the payload needs no label at all.
     expect(screen.getByText(/query Argmax project state/)).toBeInTheDocument();
     expect(screen.getByText(/stored fact/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
 
-    expect(screen.getByRole("button", { name: /Engram recall/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /Engram recall/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     expect(screen.queryByText(/query Argmax project state/)).toBeNull();
     expect(screen.queryByText(/stored fact/)).toBeNull();
   });
@@ -226,11 +237,11 @@ describe("SessionConversation — tools & chrome", () => {
         event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
           id: "read",
           name: "Read",
-          input: { file_path: "README.md" }
+          input: { file_path: "README.md" },
         }),
         event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
           tool_use_id: "read",
-          content: "readme"
+          content: "readme",
         }),
         event("task-start", "command.started", "Task", "2026-05-12T15:00:03.000Z", {
           id: "task",
@@ -238,34 +249,34 @@ describe("SessionConversation — tools & chrome", () => {
           input: {
             description: "Audit renderer tools",
             prompt: "Audit renderer tool-call grouping.",
-            subagent_type: "reviewer"
-          }
+            subagent_type: "reviewer",
+          },
         }),
         event("task-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
           tool_use_id: "task",
-          content: "done"
+          content: "done",
         }),
         event("child-read-start", "command.started", "Read", "2026-05-12T15:00:04.200Z", {
           id: "child-read",
           name: "Read",
           parent_tool_use_id: "task",
-          input: { file_path: "src/renderer/lib/toolCalls.tsx" }
+          input: { file_path: "src/renderer/lib/toolCalls.tsx" },
         }),
         event("child-read-end", "command.completed", "tool_result", "2026-05-12T15:00:04.500Z", {
           tool_use_id: "child-read",
-          content: "tool calls"
+          content: "tool calls",
         }),
         event("bash-start", "command.started", "Bash", "2026-05-12T15:00:05.000Z", {
           id: "bash",
           name: "Bash",
-          input: { command: "git status --short" }
+          input: { command: "git status --short" },
         }),
         event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:06.000Z", {
           tool_use_id: "bash",
-          content: ""
-        })
+          content: "",
+        }),
       ],
-      { onOpenAgent }
+      { onOpenAgent },
     );
 
     expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
@@ -280,7 +291,9 @@ describe("SessionConversation — tools & chrome", () => {
     const openedTool = onOpenAgent.mock.calls[0]?.[0];
     expect(openedTool?.toolUseId).toBe("task");
     expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: toggleAgentDetailsName("Audit renderer tools") }));
+    fireEvent.click(
+      screen.getByRole("button", { name: toggleAgentDetailsName("Audit renderer tools") }),
+    );
     expect(screen.queryByText("Activity")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Read toolCalls.tsx" })).toBeNull();
     expect(screen.getByText("git status --short")).toBeInTheDocument();
@@ -295,33 +308,33 @@ describe("SessionConversation — tools & chrome", () => {
         event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
           id: "read",
           name: "Read",
-          input: { file_path: "README.md" }
+          input: { file_path: "README.md" },
         }),
         event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
           tool_use_id: "read",
-          content: "readme"
+          content: "readme",
         }),
         event("task-start", "command.started", "Task", "2026-05-12T15:00:03.000Z", {
           id: "task",
           name: "Task",
-          input: { description: "Audit renderer tools", prompt: "Audit the tool UI." }
+          input: { description: "Audit renderer tools", prompt: "Audit the tool UI." },
         }),
         event("task-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
           tool_use_id: "task",
-          content: "done"
+          content: "done",
         }),
         event("bash-start", "command.started", "Bash", "2026-05-12T15:00:05.000Z", {
           id: "bash",
           name: "Bash",
-          input: { command: "git status --short" }
+          input: { command: "git status --short" },
         }),
         event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:06.000Z", {
           tool_use_id: "bash",
-          content: ""
+          content: "",
         }),
-        event("answer", "message.completed", "The audit is complete.", "2026-05-12T15:00:07.000Z")
+        event("answer", "message.completed", "The audit is complete.", "2026-05-12T15:00:07.000Z"),
       ],
-      { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false }
+      { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false },
     );
 
     // The launch is the row that opens the subagent's pane, so it stays
@@ -333,7 +346,9 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
     expect(screen.queryByText("git status --short")).toBeNull();
     expect(readGroup.compareDocumentPosition(agent) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(agent.compareDocumentPosition(commandGroup) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(agent.compareDocumentPosition(commandGroup) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
+    );
 
     fireEvent.click(readGroup);
     expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
@@ -347,34 +362,38 @@ describe("SessionConversation — tools & chrome", () => {
         event("success-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
           id: "success",
           name: "Task",
-          input: { description: "Successful audit", prompt: "Audit the renderer." }
+          input: { description: "Successful audit", prompt: "Audit the renderer." },
         }),
         event("success-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
           tool_use_id: "success",
-          content: "done"
+          content: "done",
         }),
         event("failed-start", "command.started", "Task", "2026-05-12T15:00:03.000Z", {
           id: "failed",
           name: "Task",
-          input: { description: "Failed audit", prompt: "Audit the tests." }
+          input: { description: "Failed audit", prompt: "Audit the tests." },
         }),
         event("failed-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
           tool_use_id: "failed",
           content: "The agent could not start.",
-          is_error: true
+          is_error: true,
         }),
-        event("answer", "message.completed", "One audit failed.", "2026-05-12T15:00:05.000Z")
+        event("answer", "message.completed", "One audit failed.", "2026-05-12T15:00:05.000Z"),
       ],
-      { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false }
+      { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false },
     );
 
     expect(screen.queryByRole("button", { name: "Started an agent" })).toBeNull();
 
-    const successfulAgent = screen.getByRole("button", { name: startedAgentName("Successful audit") });
+    const successfulAgent = screen.getByRole("button", {
+      name: startedAgentName("Successful audit"),
+    });
     expect(successfulAgent).toHaveTextContent("Completed");
     const failedAgent = screen.getByRole("button", { name: startedAgentName("Failed audit") });
     expect(failedAgent).toHaveTextContent("Failed");
-    expect(successfulAgent.compareDocumentPosition(failedAgent) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(
+      successfulAgent.compareDocumentPosition(failedAgent) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
   });
 
   it("keeps a completed launch to its title alone and marks only the failed one", () => {
@@ -388,23 +407,23 @@ describe("SessionConversation — tools & chrome", () => {
         event("task-1-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
           id: "task-1",
           name: "Task",
-          input: { prompt }
+          input: { prompt },
         }),
         event("task-1-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
           tool_use_id: "task-1",
           is_error: true,
-          content: "Launch did not complete."
+          content: "Launch did not complete.",
         }),
         event("task-2-start", "command.started", "Task", "2026-05-12T15:00:03.000Z", {
           id: "task-2",
           name: "Task",
-          input: { prompt }
+          input: { prompt },
         }),
         event("task-2-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
           tool_use_id: "task-2",
-          content: "done"
-        })
-      ]
+          content: "done",
+        }),
+      ],
     );
 
     const rows = screen.getAllByRole("button", { name: startedAgentName(preview) });
@@ -426,23 +445,25 @@ describe("SessionConversation — tools & chrome", () => {
           name: "Task",
           input: {
             description: "Explore repo structure",
-            prompt: "Map the repo."
-          }
+            prompt: "Map the repo.",
+          },
         }),
         event("child-read-start", "command.started", "Read", "2026-05-12T15:00:02.000Z", {
           type: "tool_use",
           id: "child-read",
           name: "Read",
           parent_tool_use_id: "task",
-          input: { file_path: "README.md" }
-        })
+          input: { file_path: "README.md" },
+        }),
       ],
-      { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false, onOpenAgent }
+      { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false, onOpenAgent },
     );
 
     expect(screen.queryByRole("button", { name: "Started an agent" })).toBeNull();
 
-    const agentRow = screen.getByRole("button", { name: startedAgentName("Explore repo structure") });
+    const agentRow = screen.getByRole("button", {
+      name: startedAgentName("Explore repo structure"),
+    });
     expect(agentRow).toHaveTextContent("Running");
     fireEvent.click(agentRow);
     expect(onOpenAgent).toHaveBeenCalledTimes(1);
@@ -460,8 +481,8 @@ describe("SessionConversation — tools & chrome", () => {
           input: {
             prompt: "Explore repo quickly and report key files.",
             receiver_thread_ids: [],
-            sender_thread_id: "sender-thread"
-          }
+            sender_thread_id: "sender-thread",
+          },
         }),
         event("agent-end", "command.completed", "spawn_agent", "2026-05-12T15:00:02.000Z", {
           id: "item_2",
@@ -469,22 +490,26 @@ describe("SessionConversation — tools & chrome", () => {
           input: {
             prompt: "Explore repo quickly and report key files.",
             receiver_thread_ids: ["receiver-thread"],
-            sender_thread_id: "sender-thread"
-          }
-        })
+            sender_thread_id: "sender-thread",
+          },
+        }),
       ],
-      { onOpenAgent }
+      { onOpenAgent },
     );
 
-    const agentRow = screen.getByRole("button", { name: startedAgentName("Explore repo quickly and report key files.") });
+    const agentRow = screen.getByRole("button", {
+      name: startedAgentName("Explore repo quickly and report key files."),
+    });
     expect(screen.queryByText("prompt")).not.toBeInTheDocument();
 
     fireEvent.click(agentRow);
     expect(onOpenAgent).toHaveBeenCalledTimes(1);
     expect(screen.queryByText("prompt")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", {
-      name: toggleAgentDetailsName("Explore repo quickly and report key files.")
-    }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: toggleAgentDetailsName("Explore repo quickly and report key files."),
+      }),
+    );
 
     // Codex spawn metadata is the only detail it gives us: shown as arguments,
     // not as a JSON dump behind an Input disclosure.
@@ -498,39 +523,44 @@ describe("SessionConversation — tools & chrome", () => {
   // level: Steps names the delegated work and stops there.
   it.each([
     { label: "Steps", display: "collapsed" as const, open: false },
-    { label: "Detailed", display: "expanded" as const, open: true }
-  ])("opens a launch row's receipt from Detailed up, not at Steps ($label)", ({ display, open }) => {
-    const task = "Explore repo quickly and report key files.";
-    renderConversation(
-      baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "complete" }),
-      [
-        event("u1", "user.message", "spawn an agent", "2026-05-12T15:00:00.000Z"),
-        event("agent-start", "command.started", "spawn_agent", "2026-05-12T15:00:01.000Z", {
-          id: "item_2",
-          name: "spawn_agent",
-          input: { prompt: task, receiver_thread_ids: [], sender_thread_id: "sender-thread" }
-        }),
-        event("agent-end", "command.completed", "spawn_agent", "2026-05-12T15:00:02.000Z", {
-          id: "item_2",
-          name: "spawn_agent",
-          input: {
-            prompt: task,
-            receiver_thread_ids: ["receiver-thread"],
-            sender_thread_id: "sender-thread"
-          }
-        })
-      ],
-      {
-        defaultToolCallsDisplay: display,
-        defaultToolCallGroupsExpanded: true,
-        onOpenAgent: vi.fn<(tool: ToolCall) => void>()
-      }
-    );
+    { label: "Detailed", display: "expanded" as const, open: true },
+  ])(
+    "opens a launch row's receipt from Detailed up, not at Steps ($label)",
+    ({ display, open }) => {
+      const task = "Explore repo quickly and report key files.";
+      renderConversation(
+        baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "complete" }),
+        [
+          event("u1", "user.message", "spawn an agent", "2026-05-12T15:00:00.000Z"),
+          event("agent-start", "command.started", "spawn_agent", "2026-05-12T15:00:01.000Z", {
+            id: "item_2",
+            name: "spawn_agent",
+            input: { prompt: task, receiver_thread_ids: [], sender_thread_id: "sender-thread" },
+          }),
+          event("agent-end", "command.completed", "spawn_agent", "2026-05-12T15:00:02.000Z", {
+            id: "item_2",
+            name: "spawn_agent",
+            input: {
+              prompt: task,
+              receiver_thread_ids: ["receiver-thread"],
+              sender_thread_id: "sender-thread",
+            },
+          }),
+        ],
+        {
+          defaultToolCallsDisplay: display,
+          defaultToolCallGroupsExpanded: true,
+          onOpenAgent: vi.fn<(tool: ToolCall) => void>(),
+        },
+      );
 
-    expect(screen.getByRole("button", { name: toggleAgentDetailsName(task) }))
-      .toHaveAttribute("aria-expanded", String(open));
-    expect(screen.getByRole("button", { name: startedAgentName(task) })).toBeInTheDocument();
-  });
+      expect(screen.getByRole("button", { name: toggleAgentDetailsName(task) })).toHaveAttribute(
+        "aria-expanded",
+        String(open),
+      );
+      expect(screen.getByRole("button", { name: startedAgentName(task) })).toBeInTheDocument();
+    },
+  );
 
   it("hides linked Codex wait rows while the spawned-agent row stays visible", () => {
     renderConversation(
@@ -543,8 +573,8 @@ describe("SessionConversation — tools & chrome", () => {
           input: {
             prompt: "Explore repo quickly and report key files.",
             receiver_thread_ids: [],
-            sender_thread_id: "sender-thread"
-          }
+            sender_thread_id: "sender-thread",
+          },
         }),
         event("agent-end", "command.completed", "spawn_agent", "2026-05-12T15:00:02.000Z", {
           id: "item_2",
@@ -553,22 +583,25 @@ describe("SessionConversation — tools & chrome", () => {
           input: {
             prompt: "Explore repo quickly and report key files.",
             receiver_thread_ids: ["receiver-thread"],
-            sender_thread_id: "sender-thread"
-          }
+            sender_thread_id: "sender-thread",
+          },
         }),
         event("wait-start", "command.started", "wait", "2026-05-12T15:00:03.000Z", {
           id: "item_3",
           name: "wait",
           input: {
             receiver_thread_ids: ["receiver-thread"],
-            sender_thread_id: "sender-thread"
-          }
-        })
-      ]
+            sender_thread_id: "sender-thread",
+          },
+        }),
+      ],
     );
 
-    expect(screen.getByRole("button", { name: startedAgentName("Explore repo quickly and report key files.") }))
-      .toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: startedAgentName("Explore repo quickly and report key files."),
+      }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "wait" })).toBeNull();
   });
 
@@ -581,42 +614,42 @@ describe("SessionConversation — tools & chrome", () => {
         event("g1-read-start", "command.started", "Read", "2026-05-12T15:00:02.000Z", {
           id: "g1-read",
           name: "Read",
-          input: { file_path: "README.md" }
+          input: { file_path: "README.md" },
         }),
         event("g1-read-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
           tool_use_id: "g1-read",
-          content: "readme"
+          content: "readme",
         }),
         event("g1-bash-start", "command.started", "Bash", "2026-05-12T15:00:04.000Z", {
           id: "g1-bash",
           name: "Bash",
-          input: { command: "echo first" }
+          input: { command: "echo first" },
         }),
         event("g1-bash-end", "command.completed", "tool_result", "2026-05-12T15:00:05.000Z", {
           tool_use_id: "g1-bash",
-          content: "first"
+          content: "first",
         }),
         event("m2", "message.completed", "I'll keep going.", "2026-05-12T15:00:06.000Z"),
         event("g2-read-start", "command.started", "Read", "2026-05-12T15:00:07.000Z", {
           id: "g2-read",
           name: "Read",
-          input: { file_path: "package.json" }
+          input: { file_path: "package.json" },
         }),
         event("g2-read-end", "command.completed", "tool_result", "2026-05-12T15:00:08.000Z", {
           tool_use_id: "g2-read",
-          content: "package"
+          content: "package",
         }),
         event("g2-bash-start", "command.started", "Bash", "2026-05-12T15:00:09.000Z", {
           id: "g2-bash",
           name: "Bash",
-          input: { command: "echo second" }
+          input: { command: "echo second" },
         }),
         event("g2-bash-end", "command.completed", "tool_result", "2026-05-12T15:00:10.000Z", {
           tool_use_id: "g2-bash",
-          content: "second"
-        })
+          content: "second",
+        }),
       ],
-      { defaultToolCallGroupsExpanded: false }
+      { defaultToolCallGroupsExpanded: false },
     );
 
     const groups = screen.getAllByRole("button", { name: "Read a file, ran a command" });
@@ -645,56 +678,50 @@ describe("SessionConversation — tools & chrome", () => {
   it("renders Codex file_change edit rows between assistant updates", () => {
     const modelSelectorPath =
       "/Users/adamthuvesen/dev/menti/argmax/src/renderer/components/ModelSelector.tsx";
-    const cssPath =
-      "/Users/adamthuvesen/dev/menti/argmax/src/renderer/styles/chat-chrome.css";
+    const cssPath = "/Users/adamthuvesen/dev/menti/argmax/src/renderer/styles/chat-chrome.css";
     renderConversation(
       baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "running" }),
       [
-        event(
-          "m1",
-          "message.completed",
-          "Agreed, that’s a fair read.",
-          "2026-07-01T08:12:21.551Z"
-        ),
+        event("m1", "message.completed", "Agreed, that’s a fair read.", "2026-07-01T08:12:21.551Z"),
         event(
           "m2",
           "message.completed",
           "The screenshot makes it clear: the main picker row is fine.",
-          "2026-07-01T08:12:30.999Z"
+          "2026-07-01T08:12:30.999Z",
         ),
         event("fc1-start", "command.started", "file_change", "2026-07-01T08:12:34.010Z", {
           id: "item_4",
           name: "file_change",
-          input: { changes: [{ kind: "update", path: modelSelectorPath }] }
+          input: { changes: [{ kind: "update", path: modelSelectorPath }] },
         }),
         event("fc1-end", "command.completed", "file_change", "2026-07-01T08:12:34.010Z", {
           id: "item_4",
           name: "file_change",
-          input: { changes: [{ kind: "update", path: modelSelectorPath }] }
+          input: { changes: [{ kind: "update", path: modelSelectorPath }] },
         }),
         event(
           "m3",
           "message.completed",
           "The submenu rows are now plain.",
-          "2026-07-01T08:12:37.522Z"
+          "2026-07-01T08:12:37.522Z",
         ),
         event("fc2-start", "command.started", "file_change", "2026-07-01T08:12:39.515Z", {
           id: "item_6",
           name: "file_change",
-          input: { changes: [{ kind: "update", path: cssPath }] }
+          input: { changes: [{ kind: "update", path: cssPath }] },
         }),
         event("fc2-end", "command.completed", "file_change", "2026-07-01T08:12:39.516Z", {
           id: "item_6",
           name: "file_change",
-          input: { changes: [{ kind: "update", path: cssPath }] }
+          input: { changes: [{ kind: "update", path: cssPath }] },
         }),
         event(
           "m4",
           "message.completed",
           "Tests still expect the descriptive copy.",
-          "2026-07-01T08:12:41.851Z"
-        )
-      ]
+          "2026-07-01T08:12:41.851Z",
+        ),
+      ],
     );
 
     expect(screen.getByRole("button", { name: "Edited ModelSelector.tsx" })).toBeInTheDocument();
@@ -703,8 +730,15 @@ describe("SessionConversation — tools & chrome", () => {
 
   it("lists the latest turn's steps by name at Steps, outputs closed, older turns folded", () => {
     const command = (id: string, text: string, at: string) => [
-      event(`${id}-start`, "command.started", "Bash", at, { id, name: "Bash", input: { command: text } }),
-      event(`${id}-end`, "command.completed", "tool_result", at, { tool_use_id: id, content: `${text} output` })
+      event(`${id}-start`, "command.started", "Bash", at, {
+        id,
+        name: "Bash",
+        input: { command: text },
+      }),
+      event(`${id}-end`, "command.completed", "tool_result", at, {
+        tool_use_id: id,
+        content: `${text} output`,
+      }),
     ];
     renderConversation(
       baseSession({ provider: "claude", state: "complete" }),
@@ -716,9 +750,13 @@ describe("SessionConversation — tools & chrome", () => {
         event("u2", "user.message", "second", "2026-07-01T08:31:00.000Z"),
         ...command("new-1", "npm test", "2026-07-01T08:31:01.000Z"),
         ...command("new-2", "npm run lint", "2026-07-01T08:31:02.000Z"),
-        event("a2", "message.completed", "Clean.", "2026-07-01T08:31:03.000Z")
+        event("a2", "message.completed", "Clean.", "2026-07-01T08:31:03.000Z"),
       ],
-      { defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: true, thinkingDisplay: "preview" }
+      {
+        defaultToolCallsDisplay: "collapsed",
+        defaultToolCallGroupsExpanded: true,
+        thinkingDisplay: "preview",
+      },
     );
 
     const [older, latest] = screen.getAllByRole("button", { name: "Ran 2 commands" });
@@ -732,22 +770,17 @@ describe("SessionConversation — tools & chrome", () => {
   });
 
   it("keeps command bursts separated by assistant prose as separate groups", () => {
-    const commandEvents = (
-      id: string,
-      command: string,
-      startedAt: string,
-      completedAt: string
-    ) => [
+    const commandEvents = (id: string, command: string, startedAt: string, completedAt: string) => [
       event(`${id}-start`, "command.started", "command_execution", startedAt, {
         id,
         name: "command_execution",
-        input: { command }
+        input: { command },
       }),
       event(`${id}-end`, "command.completed", "command_execution", completedAt, {
         id,
         name: "command_execution",
-        input: { command }
-      })
+        input: { command },
+      }),
     ];
     renderConversation(
       baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "complete" }),
@@ -757,23 +790,23 @@ describe("SessionConversation — tools & chrome", () => {
           "cmd-1",
           "/bin/zsh -lc \"sed -n '1,80p' src/a.ts\"",
           "2026-07-01T08:32:01.000Z",
-          "2026-07-01T08:32:01.500Z"
+          "2026-07-01T08:32:01.500Z",
         ),
         ...commandEvents(
           "cmd-2",
           "/bin/zsh -lc \"sed -n '1,80p' src/b.ts\"",
           "2026-07-01T08:32:02.000Z",
-          "2026-07-01T08:32:02.500Z"
+          "2026-07-01T08:32:02.500Z",
         ),
         event("m2", "message.completed", "Pass 1B.", "2026-07-01T08:32:03.000Z"),
         ...commandEvents(
           "cmd-3",
           "/bin/zsh -lc \"sed -n '1,80p' src/c.ts\"",
           "2026-07-01T08:32:04.000Z",
-          "2026-07-01T08:32:04.500Z"
+          "2026-07-01T08:32:04.500Z",
         ),
-        event("m3", "message.completed", "Pass 2A.", "2026-07-01T08:32:05.000Z")
-      ]
+        event("m3", "message.completed", "Pass 2A.", "2026-07-01T08:32:05.000Z"),
+      ],
     );
 
     const commandGroups = screen.getAllByRole("button", { name: /^Ran \d+ commands$/ });
@@ -783,10 +816,18 @@ describe("SessionConversation — tools & chrome", () => {
     const secondUpdate = screen.getByText("Pass 1B.");
     const singletonCommand = screen.getByText("sed -n '1,80p' src/c.ts");
     const finalUpdate = screen.getByText("Pass 2A.");
-    expect(firstUpdate.compareDocumentPosition(groupedBurst) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(groupedBurst.compareDocumentPosition(secondUpdate) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(secondUpdate.compareDocumentPosition(singletonCommand) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(singletonCommand.compareDocumentPosition(finalUpdate) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(
+      firstUpdate.compareDocumentPosition(groupedBurst) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      groupedBurst.compareDocumentPosition(secondUpdate) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      secondUpdate.compareDocumentPosition(singletonCommand) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      singletonCommand.compareDocumentPosition(finalUpdate) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
   });
 
   it("leaves external markdown links as anchors (does not call onOpenFile)", () => {
@@ -798,10 +839,10 @@ describe("SessionConversation — tools & chrome", () => {
           "m1",
           "message.completed",
           "Docs at [example](https://example.com).",
-          "2026-05-12T15:00:00.000Z"
-        )
+          "2026-05-12T15:00:00.000Z",
+        ),
       ],
-      { onOpenFile }
+      { onOpenFile },
     );
 
     const link = screen.getByRole("link", { name: "example" });
@@ -814,7 +855,7 @@ describe("SessionConversation — tools & chrome", () => {
     render(
       <DeveloperToolsContext.Provider value={false}>
         {conversationElement(baseSession({ state: "complete" }), [], {})}
-      </DeveloperToolsContext.Provider>
+      </DeveloperToolsContext.Provider>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
@@ -840,7 +881,6 @@ describe("SessionConversation — tools & chrome", () => {
 
     expect(screen.queryByRole("menuitem", { name: "Browse Files" })).toBeNull();
   });
-
 });
 
 describe("SessionConversation — single-line activity mode", () => {
@@ -853,38 +893,40 @@ describe("SessionConversation — single-line activity mode", () => {
       baseSession({ state: "complete" }),
       [
         event("u1", "user.message", "explore then run", "2026-05-12T15:00:00.000Z"),
-        event("t1", "message.delta", "Weighing options.", "2026-05-12T15:00:01.000Z", { thinking: true }),
+        event("t1", "message.delta", "Weighing options.", "2026-05-12T15:00:01.000Z", {
+          thinking: true,
+        }),
         event("read-start", "command.started", "Read", "2026-05-12T15:00:02.000Z", {
           id: "read",
           name: "Read",
-          input: { file_path: "README.md" }
+          input: { file_path: "README.md" },
         }),
         event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
           tool_use_id: "read",
-          content: "readme"
+          content: "readme",
         }),
         event("glob-start", "command.started", "Glob", "2026-05-12T15:00:03.500Z", {
           id: "glob",
           name: "Glob",
-          input: { pattern: "src/**/*.ts" }
+          input: { pattern: "src/**/*.ts" },
         }),
         event("glob-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
           tool_use_id: "glob",
-          content: "[]"
+          content: "[]",
         }),
         event("m1", "message.completed", "First part done.", "2026-05-12T15:00:05.000Z"),
         event("bash-start", "command.started", "Bash", "2026-05-12T15:00:06.000Z", {
           id: "bash",
           name: "Bash",
-          input: { command: "git status --short" }
+          input: { command: "git status --short" },
         }),
         event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:07.000Z", {
           tool_use_id: "bash",
-          content: ""
+          content: "",
         }),
-        event("m2", "message.completed", "Second part done.", "2026-05-12T15:00:08.000Z")
+        event("m2", "message.completed", "Second part done.", "2026-05-12T15:00:08.000Z"),
       ],
-      { defaultToolCallsDisplay: "single-line" }
+      { defaultToolCallsDisplay: "single-line" },
     );
 
     // A finished Minimal turn hides the working rows and pre-tool narration.
@@ -929,20 +971,25 @@ describe("SessionConversation — single-line activity mode", () => {
           "plan",
           "message.completed",
           "## What gets built\n\n- One function, one command.\n- One file per forecast.",
-          "2026-05-12T15:00:01.000Z"
+          "2026-05-12T15:00:01.000Z",
         ),
         event("edit-start", "command.started", "Edit", "2026-05-12T15:00:02.000Z", {
           id: "edit",
           name: "Edit",
-          input: { file_path: "docs/plan.md" }
+          input: { file_path: "docs/plan.md" },
         }),
         event("edit-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
           tool_use_id: "edit",
-          content: "ok"
+          content: "ok",
         }),
-        event("signoff", "message.completed", "Plan saved to the Arc folder.", "2026-05-12T15:00:04.000Z")
+        event(
+          "signoff",
+          "message.completed",
+          "Plan saved to the Arc folder.",
+          "2026-05-12T15:00:04.000Z",
+        ),
       ],
-      { defaultToolCallsDisplay: "single-line" }
+      { defaultToolCallsDisplay: "single-line" },
     );
 
     expect(screen.getByText("What gets built")).toBeInTheDocument();
@@ -957,19 +1004,24 @@ describe("SessionConversation — single-line activity mode", () => {
       baseSession({ state: "complete" }),
       [
         event("u1", "user.message", "does foo exist", "2026-05-12T15:00:00.000Z"),
-        event("a1", "message.completed", "No, foo.ts does not exist anywhere in the repo.", "2026-05-12T15:00:01.000Z"),
+        event(
+          "a1",
+          "message.completed",
+          "No, foo.ts does not exist anywhere in the repo.",
+          "2026-05-12T15:00:01.000Z",
+        ),
         event("note-start", "command.started", "Bash", "2026-05-12T15:00:02.000Z", {
           id: "note",
           name: "Bash",
-          input: { command: "echo noted >> log" }
+          input: { command: "echo noted >> log" },
         }),
         event("note-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
           tool_use_id: "note",
-          content: ""
+          content: "",
         }),
-        event("a2", "message.completed", "Done.", "2026-05-12T15:00:04.000Z")
+        event("a2", "message.completed", "Done.", "2026-05-12T15:00:04.000Z"),
       ],
-      { defaultToolCallsDisplay: "single-line" }
+      { defaultToolCallsDisplay: "single-line" },
     );
 
     expect(screen.getByText("No, foo.ts does not exist anywhere in the repo.")).toBeInTheDocument();
@@ -984,11 +1036,17 @@ describe("SessionConversation — single-line activity mode", () => {
       baseSession({ state: "complete" }),
       [
         event("u1", "user.message", "think about it", "2026-05-12T15:00:00.000Z"),
-        event("t1", "message.delta", "Weighing the options carefully.", "2026-05-12T15:00:01.000Z", {
-          thinking: true
-        })
+        event(
+          "t1",
+          "message.delta",
+          "Weighing the options carefully.",
+          "2026-05-12T15:00:01.000Z",
+          {
+            thinking: true,
+          },
+        ),
       ],
-      { defaultToolCallsDisplay: "single-line" }
+      { defaultToolCallsDisplay: "single-line" },
     );
 
     expect(screen.queryByText("Weighing the options carefully.")).toBeNull();
@@ -1005,18 +1063,18 @@ describe("SessionConversation — single-line activity mode", () => {
       event("b-start", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
         id: "b1",
         name: "Bash",
-        input: { command: "git status --short" }
-      })
+        input: { command: "git status --short" },
+      }),
     ];
     renderConversation(baseSession({ state: "running" }), events, {
-      defaultToolCallsDisplay: "single-line"
+      defaultToolCallsDisplay: "single-line",
     });
     expect(screen.queryByText("git status --short")).toBeNull();
     expect(screen.getByRole("button", { name: "Ran a command" })).toBeInTheDocument();
 
     cleanup();
     renderConversation(baseSession({ state: "running" }), events, {
-      defaultToolCallsDisplay: "collapsed"
+      defaultToolCallsDisplay: "collapsed",
     });
     expect(screen.queryByText("git status --short")).toBeNull();
   });
@@ -1028,16 +1086,16 @@ describe("SessionConversation — single-line activity mode", () => {
       event("b-start", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
         id: "b1",
         name: "Bash",
-        input: { command: "git status --short" }
+        input: { command: "git status --short" },
       }),
       event("b-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
         tool_use_id: "b1",
-        content: ""
+        content: "",
       }),
-      event("a1", "message.completed", "All clean.", "2026-05-12T15:00:03.000Z")
+      event("a1", "message.completed", "All clean.", "2026-05-12T15:00:03.000Z"),
     ];
     const { rerender } = renderConversation(session, events, {
-      defaultToolCallsDisplay: "single-line"
+      defaultToolCallsDisplay: "single-line",
     });
 
     // Opening the chip at Minimal is a choice about Minimal. Carried into
@@ -1055,46 +1113,51 @@ describe("SessionConversation — single-line activity mode", () => {
     // from Steps by an empty Thought row.
     const events = [
       event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
-      event("t1", "message.delta", "Weighing options.", "2026-05-12T15:00:01.000Z", { thinking: true }),
+      event("t1", "message.delta", "Weighing options.", "2026-05-12T15:00:01.000Z", {
+        thinking: true,
+      }),
       event("n1", "message.completed", "Reading the repo now.", "2026-05-12T15:00:02.000Z"),
       event("read-start", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
         id: "read",
         name: "Read",
-        input: { file_path: "README.md" }
+        input: { file_path: "README.md" },
       }),
       event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
         tool_use_id: "read",
-        content: "readme"
+        content: "readme",
       }),
       event("glob-start", "command.started", "Glob", "2026-05-12T15:00:05.000Z", {
         id: "glob",
         name: "Glob",
-        input: { pattern: "src/**/*.ts" }
+        input: { pattern: "src/**/*.ts" },
       }),
       event("glob-end", "command.completed", "tool_result", "2026-05-12T15:00:06.000Z", {
         tool_use_id: "glob",
-        content: "[]"
+        content: "[]",
       }),
       event("n2", "message.completed", "Checking the tree.", "2026-05-12T15:00:07.000Z"),
       event("bash-start", "command.started", "Bash", "2026-05-12T15:00:08.000Z", {
         id: "bash",
         name: "Bash",
-        input: { command: "git status --short" }
+        input: { command: "git status --short" },
       }),
       event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:09.000Z", {
         tool_use_id: "bash",
-        content: ""
+        content: "",
       }),
-      event("a1", "message.completed", "The vault is markdown notes.", "2026-05-12T15:00:10.000Z")
+      event("a1", "message.completed", "The vault is markdown notes.", "2026-05-12T15:00:10.000Z"),
     ];
     const levels = [
       { label: "Minimal", options: { defaultToolCallsDisplay: "single-line" as const } },
       { label: "Compact", options: { defaultToolCallsDisplay: "collapsed" as const } },
       {
         label: "Steps",
-        options: { defaultToolCallsDisplay: "collapsed" as const, defaultToolCallGroupsExpanded: true }
+        options: {
+          defaultToolCallsDisplay: "collapsed" as const,
+          defaultToolCallGroupsExpanded: true,
+        },
       },
-      { label: "Detailed", options: { defaultToolCallsDisplay: "expanded" as const } }
+      { label: "Detailed", options: { defaultToolCallsDisplay: "expanded" as const } },
     ];
 
     // The turn body only: the chip's own label is deliberately not monotonic
@@ -1107,20 +1170,21 @@ describe("SessionConversation — single-line activity mode", () => {
       // it, and a headline is *meant* to change: Compact buckets a lone call
       // as "Ran a command" where Steps names it. What must never go missing is
       // the substance — prose, reasoning, and the calls themselves.
+      // oxlint-disable-next-line argmax/no-node-access -- the test is about DOM leaf structure: it walks every leaf under the turn body, which no role or text query can enumerate
+      const leaves = Array.from(document.querySelectorAll(".turn-block-body *")).filter(
+        // oxlint-disable-next-line argmax/no-node-access -- leaf means no child elements; closest() excludes group headlines
+        (node) => node.children.length === 0 && !node.closest(".tool-call-group-header"),
+      );
       return new Set(
-        Array.from(document.querySelectorAll(".turn-block-body *"))
-          .filter((node) => node.children.length === 0 && !node.closest(".tool-call-group-header"))
-          .map((node) => node.textContent?.trim() ?? "")
-          .filter((text) => text.length > 0)
+        leaves.map((node) => node.textContent?.trim() ?? "").filter((text) => text.length > 0),
       );
     });
 
     for (let index = 1; index < levels.length; index += 1) {
       const lost = [...seen[index - 1]].filter((text) => !seen[index].has(text));
-      expect(
-        lost,
-        `${levels[index].label} dropped what ${levels[index - 1].label} showed`
-      ).toEqual([]);
+      expect(lost, `${levels[index].label} dropped what ${levels[index - 1].label} showed`).toEqual(
+        [],
+      );
     }
   });
 
@@ -1130,27 +1194,27 @@ describe("SessionConversation — single-line activity mode", () => {
       event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
         id: "read",
         name: "Read",
-        input: { file_path: "README.md" }
+        input: { file_path: "README.md" },
       }),
       event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
         tool_use_id: "read",
-        content: "readme"
+        content: "readme",
       }),
       event("glob-start", "command.started", "Glob", "2026-05-12T15:00:02.500Z", {
         id: "glob",
         name: "Glob",
-        input: { pattern: "src/**/*.ts" }
-      })
+        input: { pattern: "src/**/*.ts" },
+      }),
     ];
     renderConversation(baseSession({ state: "running" }), runningTools, {
-      defaultToolCallsDisplay: "single-line"
+      defaultToolCallsDisplay: "single-line",
     });
 
     // Minimal reports that work is happening, not what is running: the
     // headline is the whole line, and the chevron waits for a hover. The
     // headline is still the control that opens it.
     const headline = screen.getByRole("button", { name: "Read a file, searched" });
-    expect(headline.closest(".tool-call-group")).toHaveAttribute("data-chevron", "hover");
+    expect(innermostToolCallGroup(headline)).toHaveAttribute("data-chevron", "hover");
     fireEvent.click(headline);
     expect(headline).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
@@ -1158,12 +1222,12 @@ describe("SessionConversation — single-line activity mode", () => {
     // Every level above it keeps the caption and the standing chevron.
     cleanup();
     renderConversation(baseSession({ state: "running" }), runningTools, {
-      defaultToolCallsDisplay: "collapsed"
+      defaultToolCallsDisplay: "collapsed",
     });
     const compact = screen.getByRole("button", {
-      name: "Read a file, searched: Searched for src/**/*.ts"
+      name: "Read a file, searched: Searched for src/**/*.ts",
     });
-    expect(compact.closest(".tool-call-group")).not.toHaveAttribute("data-chevron");
+    expect(innermostToolCallGroup(compact)).not.toHaveAttribute("data-chevron");
   });
 
   it("hides failed attempts with successful tools after a Minimal turn finishes", () => {
@@ -1174,66 +1238,80 @@ describe("SessionConversation — single-line activity mode", () => {
         event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
           id: "read",
           name: "Read",
-          input: { file_path: "README.md" }
+          input: { file_path: "README.md" },
         }),
         event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
           tool_use_id: "read",
-          content: "readme"
+          content: "readme",
         }),
         event("bash-start", "command.started", "Bash", "2026-05-12T15:00:03.000Z", {
           id: "bash",
           name: "Bash",
-          input: { command: "npm test" }
+          input: { command: "npm test" },
         }),
         event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
           tool_use_id: "bash",
           content: "exit 1",
-          status: "failed"
+          status: "failed",
         }),
-        event("answer", "message.completed", "The test failed.", "2026-05-12T15:00:05.000Z")
+        event("answer", "message.completed", "The test failed.", "2026-05-12T15:00:05.000Z"),
       ],
-      { defaultToolCallsDisplay: "single-line" }
+      { defaultToolCallsDisplay: "single-line" },
     );
 
     expect(screen.queryByRole("button", { name: "Read a file, ran a command" })).toBeNull();
     expect(screen.getByText("The test failed.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
-    expect(screen.getByRole("button", { name: "Read a file, ran a command" }))
-      .toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Read a file, ran a command" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 
   it.each([
     ["Minimal", "single-line"],
-    ["Compact", "collapsed"]
-  ] as const)("keeps a failed agent launch inspectable after a %s turn finishes", (_label, defaultToolCallsDisplay) => {
-    renderConversation(
-      baseSession({ state: "complete" }),
-      [
-        event("u1", "user.message", "delegate the audit", "2026-05-12T15:00:00.000Z"),
-        event("task-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
-          id: "task",
-          name: "Task",
-          input: { description: "Audit renderer tools", prompt: "Audit the tool UI." }
-        }),
-        event("task-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
-          tool_use_id: "task",
-          content: "The agent could not start.",
-          is_error: true
-        }),
-        event("answer", "message.completed", "The delegated audit failed.", "2026-05-12T15:00:03.000Z")
-      ],
-      { defaultToolCallsDisplay, defaultToolCallGroupsExpanded: false }
-    );
+    ["Compact", "collapsed"],
+  ] as const)(
+    "keeps a failed agent launch inspectable after a %s turn finishes",
+    (_label, defaultToolCallsDisplay) => {
+      renderConversation(
+        baseSession({ state: "complete" }),
+        [
+          event("u1", "user.message", "delegate the audit", "2026-05-12T15:00:00.000Z"),
+          event("task-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
+            id: "task",
+            name: "Task",
+            input: { description: "Audit renderer tools", prompt: "Audit the tool UI." },
+          }),
+          event("task-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+            tool_use_id: "task",
+            content: "The agent could not start.",
+            is_error: true,
+          }),
+          event(
+            "answer",
+            "message.completed",
+            "The delegated audit failed.",
+            "2026-05-12T15:00:03.000Z",
+          ),
+        ],
+        { defaultToolCallsDisplay, defaultToolCallGroupsExpanded: false },
+      );
 
-    if (defaultToolCallsDisplay === "single-line") {
-      expect(screen.queryByRole("button", { name: startedAgentName("Audit renderer tools") })).toBeNull();
-      fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
-    }
-    const agentRow = screen.getByRole("button", { name: startedAgentName("Audit renderer tools") });
-    expect(agentRow).toHaveTextContent("Failed");
-    expect(screen.getByText("The delegated audit failed.")).toBeInTheDocument();
-  });
+      if (defaultToolCallsDisplay === "single-line") {
+        expect(
+          screen.queryByRole("button", { name: startedAgentName("Audit renderer tools") }),
+        ).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+      }
+      const agentRow = screen.getByRole("button", {
+        name: startedAgentName("Audit renderer tools"),
+      });
+      expect(agentRow).toHaveTextContent("Failed");
+      expect(screen.getByText("The delegated audit failed.")).toBeInTheDocument();
+    },
+  );
 
   it.each(["collapsed", "single-line"] as const)(
     "keeps mixed tool groups on either side of commentary in %s mode",
@@ -1245,75 +1323,86 @@ describe("SessionConversation — single-line activity mode", () => {
           event("read-1-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
             id: "read-1",
             name: "Read",
-            input: { file_path: "README.md" }
+            input: { file_path: "README.md" },
           }),
           event("read-1-end", "command.completed", "tool_result", "2026-05-12T15:00:01.100Z", {
             tool_use_id: "read-1",
-            content: "readme"
+            content: "readme",
           }),
           event("edit-1-start", "command.started", "Edit", "2026-05-12T15:00:01.200Z", {
             id: "edit-1",
             name: "Edit",
-            input: { file_path: "src/a.ts" }
+            input: { file_path: "src/a.ts" },
           }),
           event("edit-1-end", "command.completed", "tool_result", "2026-05-12T15:00:01.300Z", {
             tool_use_id: "edit-1",
-            content: "updated"
+            content: "updated",
           }),
           event("bash-1-start", "command.started", "Bash", "2026-05-12T15:00:01.400Z", {
             id: "bash-1",
             name: "Bash",
-            input: { command: "npm test -- a" }
+            input: { command: "npm test -- a" },
           }),
           event("bash-1-end", "command.completed", "tool_result", "2026-05-12T15:00:01.500Z", {
             tool_use_id: "bash-1",
-            content: "passed"
+            content: "passed",
           }),
-          event("checkpoint", "message.completed", "First pass checked.", "2026-05-12T15:00:02.000Z"),
+          event(
+            "checkpoint",
+            "message.completed",
+            "First pass checked.",
+            "2026-05-12T15:00:02.000Z",
+          ),
           event("read-2-start", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
             id: "read-2",
             name: "Read",
-            input: { file_path: "package.json" }
+            input: { file_path: "package.json" },
           }),
           event("read-2-end", "command.completed", "tool_result", "2026-05-12T15:00:03.100Z", {
             tool_use_id: "read-2",
-            content: "package"
+            content: "package",
           }),
           event("edit-2-start", "command.started", "Edit", "2026-05-12T15:00:03.200Z", {
             id: "edit-2",
             name: "Edit",
-            input: { file_path: "src/b.ts" }
+            input: { file_path: "src/b.ts" },
           }),
           event("edit-2-end", "command.completed", "tool_result", "2026-05-12T15:00:03.300Z", {
             tool_use_id: "edit-2",
-            content: "updated"
+            content: "updated",
           }),
           event("bash-2-start", "command.started", "Bash", "2026-05-12T15:00:03.400Z", {
             id: "bash-2",
             name: "Bash",
-            input: { command: "npm test -- b" }
+            input: { command: "npm test -- b" },
           }),
           event("bash-2-end", "command.completed", "tool_result", "2026-05-12T15:00:03.500Z", {
             tool_use_id: "bash-2",
-            content: "passed"
+            content: "passed",
           }),
-          event("answer", "message.completed", "Both passes are done.", "2026-05-12T15:00:04.000Z")
+          event("answer", "message.completed", "Both passes are done.", "2026-05-12T15:00:04.000Z"),
         ],
-        { defaultToolCallsDisplay }
+        { defaultToolCallsDisplay },
       );
 
       fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
 
       const groups = screen.getAllByRole("button", {
-        name: "Edited a file, read a file, ran a command"
+        name: "Edited a file, read a file, ran a command",
       });
       expect(groups).toHaveLength(2);
       const checkpoint = screen.getByText("First pass checked.");
       const answer = screen.getByText("Both passes are done.");
-      expect(groups[0].compareDocumentPosition(checkpoint) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-      expect(checkpoint.compareDocumentPosition(groups[1]) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-      expect(groups[1].compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    }
+      expect(
+        groups[0].compareDocumentPosition(checkpoint) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).not.toBe(0);
+      expect(
+        checkpoint.compareDocumentPosition(groups[1]) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).not.toBe(0);
+      expect(groups[1].compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+        0,
+      );
+    },
   );
 
   it("keeps agent launches as their own line between the summary lines", () => {
@@ -1324,46 +1413,56 @@ describe("SessionConversation — single-line activity mode", () => {
         event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
           id: "read",
           name: "Read",
-          input: { file_path: "README.md" }
+          input: { file_path: "README.md" },
         }),
         event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
           tool_use_id: "read",
-          content: "readme"
+          content: "readme",
         }),
         event("task-start", "command.started", "Task", "2026-05-12T15:00:03.000Z", {
           id: "task",
           name: "Task",
-          input: { description: "Audit renderer tools", prompt: "Audit.", subagent_type: "reviewer" }
+          input: {
+            description: "Audit renderer tools",
+            prompt: "Audit.",
+            subagent_type: "reviewer",
+          },
         }),
         event("task-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
           tool_use_id: "task",
-          content: "done"
+          content: "done",
         }),
         event("bash-start", "command.started", "Bash", "2026-05-12T15:00:05.000Z", {
           id: "bash",
           name: "Bash",
-          input: { command: "git status --short" }
+          input: { command: "git status --short" },
         }),
         event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:06.000Z", {
           tool_use_id: "bash",
-          content: ""
-        })
+          content: "",
+        }),
       ],
-      { defaultToolCallsDisplay: "single-line" }
+      { defaultToolCallsDisplay: "single-line" },
     );
 
     expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
     expect(screen.queryByText("git status --short")).toBeNull();
-    expect(screen.queryByRole("button", { name: startedAgentName("Audit renderer tools") })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: startedAgentName("Audit renderer tools") }),
+    ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
 
     expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
     expect(screen.getByText("git status --short")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Ran git status --short" })).toBeNull();
-    expect(screen.getByRole("button", { name: startedAgentName("Audit renderer tools") })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: startedAgentName("Audit renderer tools") }),
+    ).toBeInTheDocument();
     // The Task launch is not folded in with the tools on either side of it.
-    expect(screen.queryByRole("button", { name: /Started an agent|Read a file, started/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Started an agent|Read a file, started/ }),
+    ).toBeNull();
   });
 
   it("renders a run of one tool as the row itself, with a readable MCP result", () => {
@@ -1379,8 +1478,8 @@ describe("SessionConversation — single-line activity mode", () => {
           {
             id: "fetch",
             name: "mcp__claude_ai_Notion__notion-fetch",
-            input: { id: "28df6da7-abe0-8050-aeba-cb3b394247a3" }
-          }
+            input: { id: "28df6da7-abe0-8050-aeba-cb3b394247a3" },
+          },
         ),
         event("fetch-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
           tool_use_id: "fetch",
@@ -1390,13 +1489,13 @@ describe("SessionConversation — single-line activity mode", () => {
                 metadata: { type: "page" },
                 title: "Todo",
                 url: "https://app.notion.com/p/28df6da7",
-                text: "Prio\n- [ ] mpa\n- [x] docs"
-              })
-            }
-          ]
-        })
+                text: "Prio\n- [ ] mpa\n- [x] docs",
+              }),
+            },
+          ],
+        }),
       ],
-      { defaultToolCallsDisplay: "single-line" }
+      { defaultToolCallsDisplay: "single-line" },
     );
 
     expect(screen.queryByRole("button", { name: /Fetched/ })).toBeNull();
@@ -1425,64 +1524,70 @@ describe("SessionConversation — single-line activity mode", () => {
           "narrate",
           "message.completed",
           "Launching a read-only explore subagent to summarize this repository.",
-          "2026-05-12T15:00:01.000Z"
+          "2026-05-12T15:00:01.000Z",
         ),
         event("spawn-start", "command.started", "spawn_subagent", "2026-05-12T15:00:02.000Z", {
           id: "spawn-1",
           name: "spawn_subagent",
-          input: { description: "Summarize this repo", prompt: "Summarize." }
+          input: { description: "Summarize this repo", prompt: "Summarize." },
         }),
         event("spawn-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
           tool_use_id: "spawn-1",
-          content: "done"
+          content: "done",
         }),
         event("frag-1", "message.completed", "I'll", "2026-05-12T15:00:04.000Z"),
-        event("wait-start", "command.started", "get_command_or_subagent_output", "2026-05-12T15:00:05.000Z", {
-          id: "wait-1",
-          name: "get_command_or_subagent_output"
-        }),
+        event(
+          "wait-start",
+          "command.started",
+          "get_command_or_subagent_output",
+          "2026-05-12T15:00:05.000Z",
+          {
+            id: "wait-1",
+            name: "get_command_or_subagent_output",
+          },
+        ),
         event("wait-end", "command.completed", "tool_result", "2026-05-12T15:00:06.000Z", {
           tool_use_id: "wait-1",
-          content: "ok"
+          content: "ok",
         }),
         event(
           "frag-2",
           "message.completed",
           " read the core docs and skim the layout so the summary matches how this vault actually works.",
-          "2026-05-12T15:00:07.000Z"
+          "2026-05-12T15:00:07.000Z",
         ),
         event("read-start", "command.started", "read_file", "2026-05-12T15:00:08.000Z", {
           id: "read-1",
           name: "read_file",
-          input: { target_file: "README.md" }
+          input: { target_file: "README.md" },
         }),
         event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:09.000Z", {
           tool_use_id: "read-1",
-          content: "readme"
+          content: "readme",
         }),
         event(
           "progress",
           "message.completed",
           "Chronicle isn't available in this session, so I'll fall back to the repository.",
-          "2026-05-12T15:00:10.000Z"
+          "2026-05-12T15:00:10.000Z",
         ),
         event("bash-start", "command.started", "Bash", "2026-05-12T15:00:11.000Z", {
           id: "bash-1",
           name: "Bash",
-          input: { command: "git status --short" }
+          input: { command: "git status --short" },
         }),
         event("bash-end", "command.completed", "tool_result", "2026-05-12T15:00:12.000Z", {
           tool_use_id: "bash-1",
-          content: ""
+          content: "",
         }),
         event(
           "answer",
           "message.completed",
           "The last two published runs both landed at 9/10.",
-          "2026-05-12T15:00:13.000Z"
-        )
+          "2026-05-12T15:00:13.000Z",
+        ),
       ],
-      { defaultToolCallsDisplay: "single-line" }
+      { defaultToolCallsDisplay: "single-line" },
     );
 
     expect(screen.queryByText(/Launching a read-only explore subagent/)).toBeNull();
@@ -1491,12 +1596,16 @@ describe("SessionConversation — single-line activity mode", () => {
     expect(screen.queryByText(/read the core docs/)).toBeNull();
     expect(screen.queryByText(/Chronicle isn't available/)).toBeNull();
     expect(screen.queryByText("git status --short")).toBeNull();
-    expect(screen.getByText("The last two published runs both landed at 9/10.")).toBeInTheDocument();
+    expect(
+      screen.getByText("The last two published runs both landed at 9/10."),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
 
     expect(
-      screen.getByText("I'll read the core docs and skim the layout so the summary matches how this vault actually works.")
+      screen.getByText(
+        "I'll read the core docs and skim the layout so the summary matches how this vault actually works.",
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Get command or subagent output/)).toBeNull();
     expect(screen.getByText(/Chronicle isn't available/)).toBeInTheDocument();
@@ -1505,11 +1614,9 @@ describe("SessionConversation — single-line activity mode", () => {
   it.each(sameEnvelopeProviderCases)(
     "hides $provider same-timestamp work text on a finished Minimal turn",
     ({ provider, modelLabel, events, hiddenWhenExpanded }) => {
-      renderConversation(
-        baseSession({ provider, modelLabel, state: "complete" }),
-        events,
-        { defaultToolCallsDisplay: "single-line" }
-      );
+      renderConversation(baseSession({ provider, modelLabel, state: "complete" }), events, {
+        defaultToolCallsDisplay: "single-line",
+      });
 
       expect(screen.queryByText(SAME_ENVELOPE_WORK)).toBeNull();
       expect(screen.queryByText(SAME_ENVELOPE_THINKING)).toBeNull();
@@ -1524,22 +1631,20 @@ describe("SessionConversation — single-line activity mode", () => {
       for (const hidden of hiddenWhenExpanded) {
         expect(screen.queryByText(hidden)).toBeNull();
       }
-    }
+    },
   );
 
   it.each(sameEnvelopeProviderCases)(
     "keeps $provider same-timestamp work text visible while the session is running",
     ({ provider, modelLabel, events }) => {
-      renderConversation(
-        baseSession({ provider, modelLabel, state: "running" }),
-        events,
-        { defaultToolCallsDisplay: "single-line" }
-      );
+      renderConversation(baseSession({ provider, modelLabel, state: "running" }), events, {
+        defaultToolCallsDisplay: "single-line",
+      });
 
       expect(screen.getByText(SAME_ENVELOPE_WORK)).toBeInTheDocument();
       expect(screen.getByText(SAME_ENVELOPE_ANSWER)).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Worked for/ })).toBeNull();
-    }
+    },
   );
 });
 
@@ -1553,21 +1658,21 @@ describe("SessionConversation — tool group default expansion", () => {
     event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
       id: "read",
       name: "Read",
-      input: { file_path: "README.md" }
+      input: { file_path: "README.md" },
     }),
     event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
       tool_use_id: "read",
-      content: "readme"
+      content: "readme",
     }),
     event("glob-start", "command.started", "Glob", "2026-05-12T15:00:02.500Z", {
       id: "glob",
       name: "Glob",
-      input: { pattern: "src/**/*.ts" }
+      input: { pattern: "src/**/*.ts" },
     }),
     event("glob-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
       tool_use_id: "glob",
-      content: "[]"
-    })
+      content: "[]",
+    }),
   ];
 
   it("opens the groups when 'Tool call groups' is on, even while tool calls are collapsed", () => {
@@ -1575,7 +1680,7 @@ describe("SessionConversation — tool group default expansion", () => {
     // still governs whether the latest turn's bubbles start open.
     renderConversation(baseSession({ state: "complete" }), exploringTurn, {
       defaultToolCallsDisplay: "collapsed",
-      defaultToolCallGroupsExpanded: true
+      defaultToolCallGroupsExpanded: true,
     });
 
     expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
@@ -1584,7 +1689,7 @@ describe("SessionConversation — tool group default expansion", () => {
   it("keeps the groups shut when 'Tool call groups' is off and tool calls are expanded", () => {
     renderConversation(baseSession({ state: "complete" }), exploringTurn, {
       defaultToolCallsDisplay: "expanded",
-      defaultToolCallGroupsExpanded: false
+      defaultToolCallGroupsExpanded: false,
     });
 
     expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();

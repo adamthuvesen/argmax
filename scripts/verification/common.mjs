@@ -16,7 +16,11 @@ export async function writeTripwires(directory, logPath, names) {
   await mkdir(directory, { recursive: true });
   const quotedLog = `'${logPath.replaceAll("'", "'\\''")}'`;
   for (const name of names) {
-    await writeFile(path.join(directory, name), `#!/bin/sh\nprintf '%s %s\\n' '${name}' "$1" >> ${quotedLog}\nexit 97\n`, { mode: 0o755 });
+    await writeFile(
+      path.join(directory, name),
+      `#!/bin/sh\nprintf '%s %s\\n' '${name}' "$1" >> ${quotedLog}\nexit 97\n`,
+      { mode: 0o755 },
+    );
   }
 }
 
@@ -38,8 +42,11 @@ export function withTimeout(promise, timeoutMs, label) {
   return Promise.race([
     promise,
     new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
-    })
+      timer = setTimeout(
+        () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+        timeoutMs,
+      );
+    }),
   ]).finally(() => clearTimeout(timer));
 }
 
@@ -50,7 +57,7 @@ export function runCommand(command, args, options = {}) {
       cwd,
       env,
       detached: process.platform !== "win32",
-      stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"]
+      stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
     });
     if (child.pid !== undefined) runningCommandGroups.add(child.pid);
     const stdout = [];
@@ -88,11 +95,17 @@ export function runCommand(command, args, options = {}) {
         signal,
         timedOut,
         stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8")
+        stderr: Buffer.concat(stderr).toString("utf8"),
       };
       try {
-        if (stdoutPath) await import("node:fs/promises").then(({ writeFile }) => writeFile(stdoutPath, result.stdout));
-        if (stderrPath) await import("node:fs/promises").then(({ writeFile }) => writeFile(stderrPath, result.stderr));
+        if (stdoutPath)
+          await import("node:fs/promises").then(({ writeFile }) =>
+            writeFile(stdoutPath, result.stdout),
+          );
+        if (stderrPath)
+          await import("node:fs/promises").then(({ writeFile }) =>
+            writeFile(stderrPath, result.stderr),
+          );
       } catch (error) {
         reject(error);
         return;
@@ -106,8 +119,11 @@ export function runCommand(command, args, options = {}) {
 export async function runChecked(command, args, options = {}) {
   const result = await runCommand(command, args, options);
   if (result.code !== 0) {
-    const detail = result.stderr.trim() || result.stdout.trim() || `signal ${result.signal ?? "unknown"}`;
-    const reason = result.timedOut ? ` timed out after ${options.timeoutMs ?? 60_000}ms:` : " failed:";
+    const detail =
+      result.stderr.trim() || result.stdout.trim() || `signal ${result.signal ?? "unknown"}`;
+    const reason = result.timedOut
+      ? ` timed out after ${options.timeoutMs ?? 60_000}ms:`
+      : " failed:";
     throw new Error(`${command} ${args.join(" ")}${reason} ${detail}`);
   }
   return result;
@@ -118,9 +134,12 @@ export async function checkoutFingerprint(repoRoot) {
     runChecked("git", ["rev-parse", "HEAD"], { cwd: repoRoot, timeoutMs: 10_000 }),
     runChecked("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
       cwd: repoRoot,
-      timeoutMs: 30_000
+      timeoutMs: 30_000,
     }),
-    runChecked("git", ["status", "--short", "--untracked-files=all"], { cwd: repoRoot, timeoutMs: 30_000 })
+    runChecked("git", ["status", "--short", "--untracked-files=all"], {
+      cwd: repoRoot,
+      timeoutMs: 30_000,
+    }),
   ]);
   const names = files.stdout.split("\0").filter(Boolean).sort();
   const hash = createHash("sha256");
@@ -146,12 +165,14 @@ export async function checkoutFingerprint(repoRoot) {
     dirty: status.stdout.trim().length > 0,
     status: status.stdout.trim().split("\n").filter(Boolean),
     fileCount: names.length,
-    sha256: hash.digest("hex")
+    sha256: hash.digest("hex"),
   };
 }
 
 export async function fileSha256(filePath) {
-  return createHash("sha256").update(await readFile(filePath)).digest("hex");
+  return createHash("sha256")
+    .update(await readFile(filePath))
+    .digest("hex");
 }
 
 export function uniqueRunId(now = new Date()) {

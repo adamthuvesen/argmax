@@ -1,11 +1,10 @@
+use super::model_catalogue::{catalogue_model, clamp_effort, ModelId, CATALOGUE_MODELS};
 use super::opencode_gateway::OpencodeGateway;
-#[cfg(test)]
-use super::AgentMode;
-use super::{
-    mcp_injection, ApprovalSupport, PermissionMode, ProviderId, ProviderLaunchInput,
-    ReasoningEffort,
-};
+use super::{mcp_injection, ApprovalSupport, ProviderLaunchInput};
 use crate::session_control::SessionLaunchProcessConfig;
+#[cfg(test)]
+use argmax_contracts::validation::AgentMode;
+use argmax_contracts::validation::{PermissionMode, ProviderId, ReasoningEffort};
 
 const CLAUDE_BYPASS_PERMISSION_ARGS: &[&str] = &["--permission-mode", "bypassPermissions"];
 const CODEX_BYPASS_PERMISSION_ARGS: &[&str] = &["--dangerously-bypass-approvals-and-sandbox"];
@@ -208,10 +207,7 @@ fn codex_common_args(
 ) -> Vec<String> {
     let mut args = codex_permission_args(input);
     args.push("--skip-git-repo-check".to_string());
-    args.extend([
-        "--model".to_string(),
-        successor_model_id(ProviderId::Codex, &input.model_id).to_string(),
-    ]);
+    args.extend(["--model".to_string(), input.model_id.to_string()]);
     args.extend([
         "-c".to_string(),
         r#"model_reasoning_summary="auto""#.to_string(),
@@ -252,101 +248,72 @@ fn cursor_structured_args(
 }
 
 // Cursor picks reasoning effort and fast serving through the model id (e.g.
-// gpt-5.6-sol-high, claude-opus-5-thinking-xhigh-fast). Effort: GPT-5.6
-// Luna/Terra/Sol, Opus 5 Thinking, Opus 5.5, and Sonnet 5.5 are parameterized up to Max; Grok 4.7
-// stops at Extra High; Grok 4.6/4.5 and Gemini 3.8 Flash stop at High.
-// Composer has no effort variant and passes through. Fast: append "-fast"
-// after the effort suffix for every model that has a fast variant — all but
-// Gemini 3.8 Flash, Sonnet 5.5, and the Auto routing modes. The renderer only enables the
-// Speed toggle for those, so this mirrors it. The adapter guard also protects
-// resumed sessions carrying a stale fast setting.
-//
+// gpt-5.6-sol-high, claude-opus-5-thinking-xhigh-fast). The effort suffix comes
+// from the model's catalogue ladder. Composer has no ladder and passes through.
+// Fast appends "-fast" after the effort suffix, on the catalogue rows that offer
+// it. The guard also protects resumed sessions carrying a stale fast setting.
+const CURSOR_ALWAYS_FAST_MODEL: &str = "composer-2.5";
+
+/// Process environment for every Claude turn, both the stream-json and the PTY
+/// launch. These must be real environment variables: Claude reads them before
+/// it applies `--settings` env, so the settings JSON would not take effect.
+///
+/// - Print mode otherwise kills active background agents after ten minutes,
+///   even while they are making progress. The user can still stop the turn.
+/// - Print mode otherwise holds the `result` event until an extra
+///   "post turn summary" model call returns (up to 60 s; measured 2-25 s),
+///   and Argmax marks a turn complete only on `result`. Nothing reads that
+///   summary. Undocumented; verified against 2.1.310 and 2.1.323.
+pub(crate) const CLAUDE_TURN_ENV: &[(&str, &str)] = &[
+    ("CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS", "0"),
+    ("CLAUDE_CODE_CLASSIFIER_SUMMARY", "0"),
+];
+
 /// Whether a Cursor chat runs Fast. Composer 2.5 always does, whatever the
 /// chat or the router asked for: on a 12-file turn it finished in 39.5 s
 /// against 62 s standard (2026-10-02), and the picker shows it no toggle.
 pub(crate) fn cursor_fast_mode(model_id: &str, fast_mode: bool) -> bool {
-    fast_mode || model_id == "composer-2.5"
+    fast_mode || model_id == CURSOR_ALWAYS_FAST_MODEL
 }
 
-// Match the picker's exact base ids (see PROVIDER_MODELS in providerModels.ts,
-// and the spellings from `cursor-agent --list-models`) rather than a prefix, so
-// a future non-parameterized `gpt-5.6-*`/`claude-opus-5-*` model passes
-// through untouched instead of being silently rewritten to a different model.
+// Only a catalogue id with an effort ladder takes an effort suffix, so a future
+// non-parameterized `gpt-5.6-*`/`claude-opus-5-*` model passes through untouched
+// instead of being silently rewritten to a different model.
 fn cursor_model_for(
     model_id: &str,
     reasoning_effort: Option<ReasoningEffort>,
     fast_mode: bool,
 ) -> String {
-    let with_effort = match (model_id, reasoning_effort) {
-        (
-            "gpt-5.6-luna-medium"
-            | "gpt-5.6-terra-medium"
-            | "gpt-5.6-sol-medium"
-            | "claude-opus-5-thinking-medium"
-            | "claude-opus-5-5-medium"
-            | "claude-sonnet-5-5-medium",
-            Some(effort),
-        ) => {
-            let family = model_id.trim_end_matches("-medium");
-            format!("{family}-{}", effort_suffix(effort))
-        }
-        ("grok-4.7-medium", Some(effort)) => {
-            let family = model_id.trim_end_matches("-medium");
-            format!("{family}-{}", effort_suffix_capped_at_xhigh(effort))
-        }
-        (
-            "cursor-grok-4.6-medium" | "cursor-grok-4.5-medium" | "gemini-3.8-flash-medium",
-            Some(effort),
-        ) => {
-            let family = model_id.trim_end_matches("-medium");
-            format!("{family}-{}", effort_suffix_capped_at_high(effort))
-        }
-        _ => model_id.to_string(),
+    let level = reasoning_effort.and_then(|effort| {
+        clamp_effort(
+            effort,
+            catalogue_model(ProviderId::Cursor, model_id)?.efforts,
+        )
+    });
+    let with_effort = match level {
+        Some(level) => format!(
+            "{}-{}",
+            model_id.trim_end_matches("-medium"),
+            level.as_str()
+        ),
+        None => model_id.to_string(),
     };
-    let fast_mode = cursor_fast_mode(model_id, fast_mode);
-    let supports_fast_mode = !model_id.starts_with("gemini-3.8-flash")
-        && !model_id.starts_with("claude-sonnet-5-5")
-        && !matches!(
-            model_id,
-            "auto-smart[optimize_for=cost]"
-                | "auto-smart[optimize_for=balanced]"
-                | "auto-smart[optimize_for=intelligence]"
-        );
-    if fast_mode && supports_fast_mode {
+    if cursor_fast_mode(model_id, fast_mode) && cursor_has_fast_variant(model_id) {
         format!("{with_effort}-fast")
     } else {
         with_effort
     }
 }
 
-fn effort_suffix(effort: ReasoningEffort) -> &'static str {
-    match effort {
-        ReasoningEffort::Low => "low",
-        ReasoningEffort::Medium => "medium",
-        ReasoningEffort::High => "high",
-        ReasoningEffort::Xhigh => "xhigh",
-        ReasoningEffort::Max | ReasoningEffort::Ultra => "max",
-    }
-}
-
-fn effort_suffix_capped_at_xhigh(effort: ReasoningEffort) -> &'static str {
-    match effort {
-        ReasoningEffort::Low => "low",
-        ReasoningEffort::Medium => "medium",
-        ReasoningEffort::High => "high",
-        ReasoningEffort::Xhigh | ReasoningEffort::Max | ReasoningEffort::Ultra => "xhigh",
-    }
-}
-
-fn effort_suffix_capped_at_high(effort: ReasoningEffort) -> &'static str {
-    match effort {
-        ReasoningEffort::Low => "low",
-        ReasoningEffort::Medium => "medium",
-        ReasoningEffort::High
-        | ReasoningEffort::Xhigh
-        | ReasoningEffort::Max
-        | ReasoningEffort::Ultra => "high",
-    }
+/// A stored or imported id can carry another effort suffix than the catalogue
+/// row's `-medium`, so the row matches on its family.
+fn cursor_has_fast_variant(model_id: &str) -> bool {
+    model_id == CURSOR_ALWAYS_FAST_MODEL
+        || !CATALOGUE_MODELS.iter().any(|model| {
+            model.provider == ProviderId::Cursor
+                && !model.supports_fast_mode
+                && model_id.starts_with(model.model_id.trim_end_matches("-medium"))
+        })
 }
 
 fn cursor_structured_resume_args(
@@ -432,7 +399,7 @@ fn opencode_structured_resume_args(
 }
 
 fn opencode_common_args(input: &ProviderLaunchInput) -> Vec<String> {
-    let model_id = successor_model_id(ProviderId::Opencode, &input.model_id);
+    let model_id = &input.model_id;
     let mut args = opencode_permission_args(input);
     args.extend(opencode_variant_args(
         &input.model_id,
@@ -447,13 +414,11 @@ fn opencode_common_args(input: &ProviderLaunchInput) -> Vec<String> {
     args
 }
 
-// Reasoning-effort `--variant` for the OpenCode models that take one: every
-// OpenRouter model in the picker. Mirrors the variant map
-// in reasoningEffortsForModel (providerModels.ts). Clamps
-// unsupported efforts DOWN to the highest supported ≤ incoming; falls back to
-// the lowest supported.
+// Reasoning-effort `--variant` for the OpenCode models that take one, on the
+// model's catalogue ladder. Clamps unsupported efforts DOWN to the highest
+// supported ≤ incoming; falls back to the lowest supported.
 pub(crate) fn opencode_variant_args(
-    model_id: &str,
+    model_id: &ModelId,
     effort: Option<ReasoningEffort>,
 ) -> Vec<String> {
     opencode_variant_args_on(model_id, effort, OpencodeGateway::Openrouter)
@@ -463,63 +428,30 @@ pub(crate) fn opencode_variant_args(
 /// Qwen models a different ladder (low, medium, xhigh in its `/v1/models`
 /// catalog, 2026-10-15); every other model keeps OpenRouter's.
 pub(crate) fn opencode_variant_args_on(
-    model_id: &str,
+    model_id: &ModelId,
     effort: Option<ReasoningEffort>,
     gateway: OpencodeGateway,
 ) -> Vec<String> {
-    let model_id = successor_model_id(ProviderId::Opencode, model_id);
-    let effort = match effort {
-        Some(e) => e,
-        None => return Vec::new(),
-    };
     const VERCEL_QWEN: &[ReasoningEffort] = &[
         ReasoningEffort::Low,
         ReasoningEffort::Medium,
         ReasoningEffort::Xhigh,
     ];
-    let supported = match model_id {
-        "openrouter/qwen/qwen3.8-max-0902" | "openrouter/qwen/qwen3.8-flash"
-            if gateway == OpencodeGateway::Vercel =>
-        {
-            VERCEL_QWEN
-        }
-        "openrouter/z-ai/glm-5.3-flash"
-        | "openrouter/z-ai/glm-5.3"
-        | "openrouter/deepseek/deepseek-v4.1-flash-1017"
-        | "openrouter/deepseek/deepseek-v4-pro-0813"
-        | "openrouter/moonshotai/kimi-k3" => &[
-            ReasoningEffort::Low,
-            ReasoningEffort::High,
-            ReasoningEffort::Max,
-        ][..],
-        // Qwen3.8 Max, Muse Spark, and Muse Wonder also have a `minimal` variant below Low,
-        // which has no rung on this ladder.
-        "openrouter/qwen/qwen3.8-max-0902" => &[
-            ReasoningEffort::Low,
-            ReasoningEffort::Medium,
-            ReasoningEffort::High,
-            ReasoningEffort::Xhigh,
-        ][..],
-        "openrouter/meta/muse-spark-1.3-contributor" | "openrouter/meta/muse-wonder" => &[
-            ReasoningEffort::Low,
-            ReasoningEffort::Medium,
-            ReasoningEffort::High,
-            ReasoningEffort::Xhigh,
-            ReasoningEffort::Max,
-        ][..],
-        "openrouter/qwen/qwen3.8-flash" => &[ReasoningEffort::High, ReasoningEffort::Max][..],
-        _ => return Vec::new(),
+    let Some(effort) = effort else {
+        return Vec::new();
     };
-    if supported.contains(&effort) {
-        return vec!["--variant".to_string(), effort.as_str().to_string()];
-    }
-    // Clamp down: highest supported whose rank ≤ incoming, else lowest.
-    let incoming_rank = effort as u8;
-    if let Some(&best) = supported.iter().rfind(|e| (**e as u8) <= incoming_rank) {
-        vec!["--variant".to_string(), best.as_str().to_string()]
+    let Some(model) = catalogue_model(ProviderId::Opencode, model_id) else {
+        return Vec::new();
+    };
+    let offered = if gateway == OpencodeGateway::Vercel && model_id.starts_with("openrouter/qwen/")
+    {
+        VERCEL_QWEN
     } else {
-        vec!["--variant".to_string(), supported[0].as_str().to_string()]
-    }
+        model.efforts
+    };
+    clamp_effort(effort, offered).map_or_else(Vec::new, |level| {
+        vec!["--variant".to_string(), level.as_str().to_string()]
+    })
 }
 
 // Grok Build's headless mode (`-p`) emits the same stream-json envelopes as
@@ -590,10 +522,10 @@ fn grok_common_args(input: &ProviderLaunchInput) -> Vec<String> {
 /// have no fast counterpart, so a stale Fast preference on those ids is a
 /// no-op. Shared with the ACP path so both transports pick the same id.
 pub(crate) fn grok_launch_model_id(model_id: &str, fast_mode: bool) -> &str {
-    match (model_id, fast_mode) {
-        ("grok-4.7", true) => "grok-4.7-build-fast",
-        _ => model_id,
-    }
+    catalogue_model(ProviderId::Grok, model_id)
+        .and_then(|model| model.fast_mode_model_id)
+        .filter(|_| fast_mode)
+        .unwrap_or(model_id)
 }
 
 // Grok's headless prompt is a FLAG VALUE (`-p/--single <PROMPT>`), not the
@@ -730,35 +662,13 @@ fn claude_settings_args(
 // falls back to the CLI's 200k default for an unrecognized model, and
 // auto-compact fires a fifth of the way into the window the picker advertises.
 // The `[1m]` spelling asks for the long-context beta by name, so the session
-// gets the catalog's window on any endpoint. Mirrors the 1M entries of
-// PROVIDER_MODELS.claude (providerModels.ts). Only the launch flag carries the
+// gets the catalog's window on any endpoint. Only the launch flag carries the
 // suffix — the CLI reports the bare id back on every message, so usage rows and
 // pricing keep matching MODEL_PRICING.
-const CLAUDE_LONG_CONTEXT_MODELS: [&str; 5] = [
-    "claude-fable-5-1",
-    "claude-opus-5-5",
-    "claude-opus-5",
-    "claude-sonnet-5-5",
-    "claude-haiku-5-5",
-];
-
-// A retired id launches as the model that replaced it, so a routine or chat
-// stored on it keeps running. Mirrors SUCCESSOR_MODEL_IDS (providerModels.ts).
-pub(super) fn successor_model_id(provider: ProviderId, model_id: &str) -> &str {
-    match (provider, model_id) {
-        (ProviderId::Claude, "claude-sonnet-5") => "claude-sonnet-5-5",
-        (ProviderId::Claude, "claude-haiku-4-5") => "claude-haiku-5-5",
-        (ProviderId::Codex, "gpt-6-sol") => "gpt-6.1-sol",
-        (ProviderId::Opencode, "openrouter/deepseek/deepseek-v4.1-flash") => {
-            "openrouter/deepseek/deepseek-v4.1-flash-1017"
-        }
-        _ => model_id,
-    }
-}
-
 fn claude_model_arg(model_id: &str) -> String {
-    let model_id = successor_model_id(ProviderId::Claude, model_id);
-    if CLAUDE_LONG_CONTEXT_MODELS.contains(&model_id) {
+    let context_window =
+        catalogue_model(ProviderId::Claude, model_id).and_then(|model| model.context_window);
+    if context_window == Some(1_000_000) {
         format!("{model_id}[1m]")
     } else {
         model_id.to_string()
@@ -787,23 +697,19 @@ fn codex_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
     ]
 }
 
-// Mirrors reasoningEffortsForModel (providerModels.ts). Astra/Sol/Terra accept
-// the full low→ultra list. Luna stops at max. Unknown/legacy models stop at xhigh.
-// Clamp is a backstop for provider-switch and resume paths that skip the picker.
-fn codex_effort_value(model_id: &str, effort: ReasoningEffort) -> &'static str {
-    match model_id {
-        "gpt-6-astra" | "gpt-6.1-sol" | "gpt-6-sol" | "gpt-5.6-sol" | "gpt-5.6-terra" => {
-            effort.as_str()
-        }
-        "gpt-6-luna" | "gpt-5.6-luna" => match effort {
-            ReasoningEffort::Ultra => "max",
-            other => other.as_str(),
-        },
-        _ => match effort {
-            ReasoningEffort::Max | ReasoningEffort::Ultra => "xhigh",
-            other => other.as_str(),
-        },
-    }
+/// The level a Codex turn runs at, on the model's catalogue ladder. An id the
+/// catalogue does not know stops at xhigh. The clamp is a backstop for
+/// provider-switch and resume paths that skip the picker.
+pub(super) fn codex_effort_value(model_id: &str, effort: ReasoningEffort) -> &'static str {
+    const UNKNOWN_MODEL_EFFORTS: &[ReasoningEffort] = &[
+        ReasoningEffort::Low,
+        ReasoningEffort::Medium,
+        ReasoningEffort::High,
+        ReasoningEffort::Xhigh,
+    ];
+    let offered = catalogue_model(ProviderId::Codex, model_id)
+        .map_or(UNKNOWN_MODEL_EFFORTS, |model| model.efforts);
+    clamp_effort(effort, offered).unwrap_or(effort).as_str()
 }
 
 fn owned(args: &[&str]) -> Vec<String> {
@@ -860,7 +766,7 @@ mod tests {
             ("claude-haiku-4-5", "claude-haiku-5-5[1m]"),
         ] {
             let input = ProviderLaunchInput {
-                model_id: model_id.to_string(),
+                model_id: ModelId::resolve(ProviderId::Claude, model_id),
                 ..launch_input(ProviderId::Claude)
             };
 
@@ -904,7 +810,7 @@ mod tests {
             ("claude-opus-5-5", ReasoningEffort::High),
         ] {
             let mut input = launch_input(ProviderId::Claude);
-            input.model_id = model.into();
+            input.model_id = ModelId::resolve(input.provider, model);
             input.reasoning_effort = Some(effort);
             let args = (definition.structured_resume_args)(&input, "native-conversation", None);
             assert!(args
@@ -1137,7 +1043,7 @@ mod tests {
                 (ReasoningEffort::Ultra, "model_reasoning_effort=\"ultra\""),
             ] {
                 let input = ProviderLaunchInput {
-                    model_id: model_id.to_string(),
+                    model_id: ModelId::resolve(ProviderId::Codex, model_id),
                     reasoning_effort: Some(effort),
                     ..launch_input(ProviderId::Codex)
                 };
@@ -1154,7 +1060,7 @@ mod tests {
     #[test]
     fn codex_luna_clamps_ultra_to_max() {
         let input = ProviderLaunchInput {
-            model_id: "gpt-5.6-luna".to_string(),
+            model_id: ModelId::resolve(ProviderId::Codex, "gpt-5.6-luna"),
             reasoning_effort: Some(ReasoningEffort::Ultra),
             ..launch_input(ProviderId::Codex)
         };
@@ -1166,7 +1072,7 @@ mod tests {
         );
 
         let max = ProviderLaunchInput {
-            model_id: "gpt-5.6-luna".to_string(),
+            model_id: ModelId::resolve(ProviderId::Codex, "gpt-5.6-luna"),
             reasoning_effort: Some(ReasoningEffort::Max),
             ..launch_input(ProviderId::Codex)
         };
@@ -1182,7 +1088,7 @@ mod tests {
     #[test]
     fn codex_retired_sol_launches_as_its_successor() {
         let input = ProviderLaunchInput {
-            model_id: "gpt-6-sol".to_string(),
+            model_id: ModelId::resolve(ProviderId::Codex, "gpt-6-sol"),
             ..launch_input(ProviderId::Codex)
         };
         for args in [
@@ -1203,7 +1109,7 @@ mod tests {
     fn codex_unknown_model_clamps_max_and_ultra_to_xhigh() {
         for effort in [ReasoningEffort::Max, ReasoningEffort::Ultra] {
             let input = ProviderLaunchInput {
-                model_id: "gpt-5.4".to_string(),
+                model_id: ModelId::resolve(ProviderId::Codex, "gpt-5.4"),
                 reasoning_effort: Some(effort),
                 ..launch_input(ProviderId::Codex)
             };
@@ -1340,7 +1246,7 @@ mod tests {
         ];
         for (model_id, effort, expected) in cases {
             let input = ProviderLaunchInput {
-                model_id: model_id.to_string(),
+                model_id: ModelId::resolve(ProviderId::Cursor, model_id),
                 reasoning_effort: effort,
                 fast_mode: true,
                 ..launch_input(ProviderId::Cursor)
@@ -1359,7 +1265,7 @@ mod tests {
         // The resume arg builder shares cursor_model_for, so effort/fast fold
         // into --model on resume exactly as on launch.
         let input = ProviderLaunchInput {
-            model_id: "claude-opus-5-thinking-medium".to_string(),
+            model_id: ModelId::resolve(ProviderId::Cursor, "claude-opus-5-thinking-medium"),
             reasoning_effort: Some(ReasoningEffort::Max),
             fast_mode: true,
             ..launch_input(ProviderId::Cursor)
@@ -1383,7 +1289,7 @@ mod tests {
             "auto-smart[optimize_for=intelligence]",
         ] {
             let input = ProviderLaunchInput {
-                model_id: model_id.to_string(),
+                model_id: ModelId::resolve(ProviderId::Cursor, model_id),
                 reasoning_effort: Some(ReasoningEffort::Ultra),
                 fast_mode: true,
                 ..launch_input(ProviderId::Cursor)
@@ -1404,19 +1310,29 @@ mod tests {
 
     #[test]
     fn cursor_gemini_has_no_fast_variant() {
-        // Gemini 3.8 Flash has no -fast model, so fast mode is a no-op for it.
-        let input = ProviderLaunchInput {
-            model_id: "gemini-3.8-flash-medium".to_string(),
-            reasoning_effort: Some(ReasoningEffort::High),
-            fast_mode: true,
-            ..launch_input(ProviderId::Cursor)
-        };
-        let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
-        let i = args
-            .iter()
-            .position(|a| a == "--model")
-            .expect("model flag");
-        assert_eq!(args[i + 1], "gemini-3.8-flash-high");
+        // Gemini 4 has no -fast model, so fast mode is a no-op for it. Hydrogen
+        // runs to Extra High; Carbon and Argon clamp to High. A stored Gemini
+        // 3.8 Flash chat runs on its successor, Hydrogen.
+        let cases = [
+            ("gemini-4-hydrogen-medium", "gemini-4-hydrogen-xhigh"),
+            ("gemini-4-carbon-medium", "gemini-4-carbon-high"),
+            ("gemini-4-argon-medium", "gemini-4-argon-high"),
+            ("gemini-3.8-flash-medium", "gemini-4-hydrogen-xhigh"),
+        ];
+        for (model_id, expected) in cases {
+            let input = ProviderLaunchInput {
+                model_id: ModelId::resolve(ProviderId::Cursor, model_id),
+                reasoning_effort: Some(ReasoningEffort::Xhigh),
+                fast_mode: true,
+                ..launch_input(ProviderId::Cursor)
+            };
+            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
+            let i = args
+                .iter()
+                .position(|a| a == "--model")
+                .expect("model flag");
+            assert_eq!(args[i + 1], expected, "{model_id}");
+        }
     }
 
     #[test]
@@ -1429,7 +1345,7 @@ mod tests {
         ];
         for (effort, fast_mode, expected) in cases {
             let input = ProviderLaunchInput {
-                model_id: "claude-sonnet-5-5-medium".to_string(),
+                model_id: ModelId::resolve(ProviderId::Cursor, "claude-sonnet-5-5-medium"),
                 reasoning_effort: Some(effort),
                 fast_mode,
                 ..launch_input(ProviderId::Cursor)
@@ -1455,7 +1371,7 @@ mod tests {
         ];
         for (effort, expected) in cases {
             let input = ProviderLaunchInput {
-                model_id: "grok-4.7-medium".to_string(),
+                model_id: ModelId::resolve(ProviderId::Cursor, "grok-4.7-medium"),
                 reasoning_effort: Some(effort),
                 ..launch_input(ProviderId::Cursor)
             };
@@ -1479,7 +1395,7 @@ mod tests {
         ];
         for (effort, expected) in cases {
             let input = ProviderLaunchInput {
-                model_id: "cursor-grok-4.6-medium".to_string(),
+                model_id: ModelId::resolve(ProviderId::Cursor, "cursor-grok-4.6-medium"),
                 reasoning_effort: Some(effort),
                 ..launch_input(ProviderId::Cursor)
             };
@@ -1495,7 +1411,7 @@ mod tests {
     #[test]
     fn cursor_grok_45_stored_id_still_folds_effort() {
         let input = ProviderLaunchInput {
-            model_id: "cursor-grok-4.5-medium".to_string(),
+            model_id: ModelId::resolve(ProviderId::Cursor, "cursor-grok-4.5-medium"),
             reasoning_effort: Some(ReasoningEffort::High),
             ..launch_input(ProviderId::Cursor)
         };
@@ -1519,7 +1435,7 @@ mod tests {
         ];
         for (effort, expected) in cases {
             let input = ProviderLaunchInput {
-                model_id: "gpt-5.6-sol-medium".to_string(),
+                model_id: ModelId::resolve(ProviderId::Cursor, "gpt-5.6-sol-medium"),
                 reasoning_effort: Some(effort),
                 ..launch_input(ProviderId::Cursor)
             };
@@ -1534,10 +1450,10 @@ mod tests {
 
     #[test]
     fn cursor_non_parameterized_models_ignore_effort() {
-        // Composer/Gemini have no effort variants, so effort leaves the id alone.
+        // Composer has no effort variant, so effort leaves the id alone.
         // Composer always runs Fast, which still appends its suffix.
         let input = ProviderLaunchInput {
-            model_id: "composer-2.5".to_string(),
+            model_id: ModelId::resolve(ProviderId::Cursor, "composer-2.5"),
             reasoning_effort: Some(ReasoningEffort::High),
             ..launch_input(ProviderId::Cursor)
         };
@@ -1552,7 +1468,10 @@ mod tests {
     #[test]
     fn opencode_retired_flash_launches_and_resumes_as_its_successor() {
         let input = ProviderLaunchInput {
-            model_id: "openrouter/deepseek/deepseek-v4.1-flash".to_string(),
+            model_id: ModelId::resolve(
+                ProviderId::Opencode,
+                "openrouter/deepseek/deepseek-v4.1-flash",
+            ),
             reasoning_effort: Some(ReasoningEffort::Medium),
             ..launch_input(ProviderId::Opencode)
         };
@@ -1626,7 +1545,7 @@ mod tests {
     #[test]
     fn opencode_qwen_max_takes_a_variant_capped_at_xhigh() {
         let input = ProviderLaunchInput {
-            model_id: "openrouter/qwen/qwen3.8-max-0902".to_string(),
+            model_id: ModelId::resolve(ProviderId::Opencode, "openrouter/qwen/qwen3.8-max-0902"),
             reasoning_effort: Some(ReasoningEffort::Ultra),
             ..launch_input(ProviderId::Opencode)
         };
@@ -1845,7 +1764,7 @@ mod tests {
     #[test]
     fn grok_47_fast_mode_selects_the_build_fast_sku() {
         let input = ProviderLaunchInput {
-            model_id: "grok-4.7".to_string(),
+            model_id: ModelId::resolve(ProviderId::Grok, "grok-4.7"),
             fast_mode: true,
             ..launch_input(ProviderId::Grok)
         };
@@ -1873,7 +1792,7 @@ mod tests {
             workspace_path: PathBuf::from("/repo/worktree"),
             prompt: "Implement the task".to_string(),
             model_label: model_label.to_string(),
-            model_id: model_id.to_string(),
+            model_id: ModelId::resolve(provider_id, model_id),
             reasoning_effort,
             fast_mode: false,
             resume_conversation_id: None,

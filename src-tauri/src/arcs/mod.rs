@@ -13,31 +13,32 @@
 
 pub mod preamble;
 
-pub use preamble::{coordinator_preamble, member_preamble, promoted_coordinator_preamble};
+use preamble::{coordinator_preamble, promoted_coordinator_preamble};
 
 use std::sync::Arc as StdArc;
 
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::arc_events::{record_arc_event, ArcEventKind, NewArcEvent};
-use crate::persistence::arcs::{self, ArcRecord, ArcState};
-use crate::persistence::sessions::{find_session_by_id, record_session_arc};
-use crate::persistence::workspaces::find_workspace_by_id;
-use crate::persistence::Database;
+use crate::application::session_launch::LaunchSpec;
 use crate::providers::session_service::ProviderSessionService;
-use crate::session_control::{launch_with_spec, LaunchSpec};
-use crate::sessions::state::SessionState;
+use crate::session_control::launch_with_spec;
 use crate::workspaces::orchestration::WorkspaceService;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::arc_events::{record_arc_event, ArcEventKind, NewArcEvent};
+use argmax_store::arcs::{self, ArcRecord, ArcState};
+use argmax_store::sessions::{find_session_by_id, record_session_arc};
+use argmax_store::workspaces::find_workspace_by_id;
+use argmax_store::Database;
 
 pub struct LaunchCoordinatorRequest {
     pub arc_id: String,
-    pub provider: crate::providers::ProviderId,
+    pub provider: argmax_contracts::validation::ProviderId,
     pub model_label: Option<String>,
     pub model_id: Option<String>,
-    pub reasoning_effort: Option<crate::providers::ReasoningEffort>,
+    pub reasoning_effort: Option<argmax_contracts::validation::ReasoningEffort>,
     /// Resolved by the caller the same way every other launch path resolves
     /// it — the user's default-agent permission choice for this provider —
     /// since this module has no app data dir of its own to read it from.
-    pub permission_mode: crate::providers::PermissionMode,
+    pub permission_mode: argmax_contracts::validation::PermissionMode,
 }
 
 /// Launch (or relaunch) this Arc's coordinator and point the Arc at it.
@@ -63,7 +64,7 @@ pub async fn launch_coordinator(
         ));
     }
 
-    let defaults = crate::provider_defaults(request.provider.as_str());
+    let defaults = crate::providers::model_catalogue::provider_defaults(request.provider);
     let model_label = request
         .model_label
         .clone()
@@ -92,7 +93,7 @@ pub async fn launch_coordinator(
             reasoning_effort,
             fast_mode: false,
             permission_mode: request.permission_mode,
-            agent_mode: crate::providers::AgentMode::Auto,
+            agent_mode: argmax_contracts::validation::AgentMode::Auto,
             task_label: Some(format!("{} · coordinator", arc.name)),
             // Checked and attached inside the launch's own write transaction
             // (see `ProviderSessionService::launch`): `ARC_DONE` still
@@ -102,7 +103,7 @@ pub async fn launch_coordinator(
             // delegating.
             arc_id: Some(arc.id.clone()),
             arc_is_coordinator_launch: true,
-            author: crate::persistence::authorship::PromptAuthor::unattested(),
+            author: argmax_store::authorship::PromptAuthor::unattested(),
         },
         Some(&arc.home_project_id),
         StdArc::clone(&database),
@@ -139,7 +140,9 @@ pub async fn launch_coordinator(
     Ok(updated)
 }
 
-fn parse_reasoning_effort(value: Option<&str>) -> Option<crate::providers::ReasoningEffort> {
+fn parse_reasoning_effort(
+    value: Option<&str>,
+) -> Option<argmax_contracts::validation::ReasoningEffort> {
     serde_json::from_value(serde_json::json!(value?)).ok()
 }
 
@@ -172,7 +175,7 @@ pub async fn promote_session(
         let mut connection = database.connection();
         let transaction = connection
             .transaction()
-            .map_err(crate::persistence::sqlite_error)?;
+            .map_err(argmax_store::sqlite_error)?;
         let session = find_session_by_id(&transaction, &request.session_id)?;
         if session.arc_id.is_some() {
             return Err(ArgmaxError::service(
@@ -240,9 +243,7 @@ pub async fn promote_session(
             event.status = Some("adopted".to_string());
             record_arc_event(&transaction, &event)?;
         }
-        transaction
-            .commit()
-            .map_err(crate::persistence::sqlite_error)?;
+        transaction.commit().map_err(argmax_store::sqlite_error)?;
         (arc, children.len())
     };
 
@@ -272,24 +273,5 @@ pub fn adoptable_children(
     connection: &rusqlite::Connection,
     session_id: &str,
 ) -> ArgmaxResult<Vec<(String, String, String)>> {
-    connection
-        .prepare_cached(
-            r#"
-            SELECT sessions.id, workspaces.project_id, workspaces.task_label
-            FROM sessions
-            JOIN workspaces ON workspaces.id = sessions.workspace_id
-            WHERE sessions.launched_by_session_id = ?1
-              AND sessions.arc_id IS NULL
-              AND workspaces.state NOT IN ('archiving', 'archive-failed', 'archived')
-            ORDER BY sessions.started_at DESC, sessions.id DESC
-            LIMIT ?2
-            "#,
-        )
-        .map_err(crate::persistence::sqlite_error)?
-        .query_map((session_id, MAX_ADOPTED_MEMBERS), |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })
-        .map_err(crate::persistence::sqlite_error)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(crate::persistence::sqlite_error)
+    argmax_store::arcs::adoptable_children(connection, session_id, MAX_ADOPTED_MEMBERS)
 }

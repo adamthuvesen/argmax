@@ -13,7 +13,7 @@ import {
   PlugZap,
   Plus,
   Target,
-  X
+  X,
 } from "lucide-react";
 import {
   Suspense,
@@ -24,9 +24,16 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type JSX
+  type JSX,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  browserActions,
+  projectActions,
+  providerActions,
+  workspaceActions,
+} from "../data/bridgeActions.js";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import {
   SCRATCH_PROJECT_ID,
   type AgentMode,
@@ -35,22 +42,19 @@ import {
   type ProjectCheckOutcome,
   type ProjectCheckout,
   type ProjectSummary,
-  type WorkspaceSummary
+  type WorkspaceSummary,
 } from "../../shared/types.js";
 import type { LaunchCheckout } from "../lib/launchCheckout.js";
 import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
 import {
   cloudProviderName,
   isHostedCloudProvider,
-  type HostedCloudProvider
+  type HostedCloudProvider,
 } from "../../shared/cloudProviders.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { errorMessage } from "../../shared/error.js";
 import { showErrorToast, showToast } from "../state/toast.js";
-import {
-  appendReferencesToPrompt,
-  imageAttachmentReference
-} from "../lib/composerAttachments.js";
+import { appendReferencesToPrompt, imageAttachmentReference } from "../lib/composerAttachments.js";
 import { useBackgroundSendShortcut } from "../hooks/useBackgroundSendShortcut.js";
 import { useWindowSnapshotAttach } from "../hooks/useWindowSnapshotAttach.js";
 import { windowSnapshotLabel } from "../lib/windowSnapshotInbox.js";
@@ -59,7 +63,7 @@ import {
   launcherDraftKey,
   readDraft,
   restoreDraft,
-  subscribeDraftRestore
+  subscribeDraftRestore,
 } from "../lib/composerDrafts.js";
 import { restoreDraftAttachments, restoreDraftText } from "../lib/draftRestore.js";
 import { formatChord, matchesChord } from "../lib/shortcutChord.js";
@@ -73,11 +77,12 @@ import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscap
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { NO_PROJECT_CHECK, useProjectCheck } from "../hooks/useProjectCheck.js";
 import { useProjectCheckoutTerminal } from "../hooks/useProjectCheckoutTerminal.js";
+import { projectFileSource, type ProjectTarget } from "../lib/projectTarget.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import {
   PICKER_MENU_EDGE_PADDING_PX,
   PICKER_MENU_MAX_HEIGHT_PX,
-  useAnchoredPopover
+  useAnchoredPopover,
 } from "../hooks/useAnchoredPopover.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
@@ -85,21 +90,21 @@ import { LAUNCHER_TITLE, SIDE_CHAT_PLACEHOLDER, SIDE_CHAT_TITLE } from "../lib/l
 import type { FontSize } from "../lib/fonts.js";
 import {
   persistLaunchProjectId,
-  sortProjectsByLaunchRecency
+  sortProjectsByLaunchRecency,
 } from "../lib/launchProjectPreference.js";
 import { preferredLaunchModel, type ModelPickerSelection } from "../lib/models.js";
 import {
   LAUNCHER_MODE_LABELS,
   cycleLauncherMode,
   launcherModeTitle,
-  type LauncherMode
+  type LauncherMode,
 } from "../lib/agentMode.js";
 import { isMcpCommand, type ComposerCommand } from "../lib/composerCommands.js";
 import {
   readStoredWorkspaceMode,
   toggleWorkspaceMode,
   writeWorkspaceMode,
-  type WorkspaceMode
+  type WorkspaceMode,
 } from "../lib/workspaceMode.js";
 import { LaunchFolderPicker } from "./LaunchFolderPicker.js";
 import { useLaunchFolder } from "../hooks/useLaunchFolder.js";
@@ -121,21 +126,18 @@ import { openChat, useChatDirectory } from "../state/chatDirectory.js";
 // the right-side review pane is open. Lazy-mounted (ralph B4) so the
 // launcher's first paint doesn't ship the highlighter.
 const ReviewPanel = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./ReviewPanel.js")).ReviewPanel
-  }))
+  importChunk(async () => ({ default: (await import("./ReviewPanel.js")).ReviewPanel }), "review"),
 );
 import { FilePopover } from "./FilePopover.js";
 import { ImageLightbox } from "./ImageLightbox.js";
 import { SkeletonPane } from "./SkeletonPane.js";
 import { SlashCommandMenu } from "./SlashCommandMenu.js";
+import { useInteractionShown, useOpenInteraction } from "../lib/interactionTimings.js";
 // WelcomePane only renders on a fresh install (no projects) — lazy-mounted
 // (ralph B2) so its provider-discovery code path doesn't ship in the main
 // launcher bundle for the common case.
 const WelcomePane = lazy(() =>
-  importChunk(async () => ({
-    default: (await import("./WelcomePane.js")).WelcomePane
-  }))
+  importChunk(async () => ({ default: (await import("./WelcomePane.js")).WelcomePane }), "welcome"),
 );
 
 // The fox dozes off after a long untouched stretch and wakes on the first
@@ -197,7 +199,7 @@ export function LaunchSurface({
   sideChatMode = false,
   workspaces = [],
   onCheckoutWorkspaceCreated,
-  onLaunchFolderChange
+  onLaunchFolderChange,
 }: {
   /** Offer the Auto rows in the model picker (a routing key is saved). */
   autoRouting?: boolean;
@@ -223,14 +225,14 @@ export function LaunchSurface({
     model: ModelPickerSelection,
     agentMode: AgentMode,
     workspaceMode: WorkspaceMode,
-    attachments?: ComposerAttachment[],
-    goalCondition?: string,
-    projectId?: string,
+    attachments: ComposerAttachment[] | undefined,
+    goalCondition: string | undefined,
+    projectId: string | undefined,
     /** Start the chat without moving to it. */
-    background?: boolean,
+    background: boolean | undefined,
     /** The branch picked in the launcher. Nothing is checked out until this launch runs. */
-    checkout?: LaunchCheckout,
-    projectFolderId?: string
+    checkout: LaunchCheckout | undefined,
+    projectFolderId: string | undefined,
   ) => Promise<LaunchedChat | void>;
   onLaunchSideChat?: (
     prompt: string,
@@ -238,7 +240,7 @@ export function LaunchSurface({
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
     goalCondition?: string,
-    background?: boolean
+    background?: boolean,
   ) => Promise<LaunchedChat | void>;
   onModelChange: (model: ModelPickerSelection) => void;
   onSelectProject: (id: string) => void;
@@ -247,9 +249,7 @@ export function LaunchSurface({
   projects: ProjectSummary[];
   resetSignal?: number;
   rightPanelToggleSignal?: number;
-  registerPaletteFileContext?: (
-    context: PaletteSurfaceContext | null
-  ) => void;
+  registerPaletteFileContext?: (context: PaletteSurfaceContext | null) => void;
   sideChatMode?: boolean;
   /** Workspaces from the dashboard snapshot — used to resolve the checkout
    *  row that backs the launcher's Terminal tab. */
@@ -257,7 +257,7 @@ export function LaunchSurface({
   onCheckoutWorkspaceCreated?: (workspace: WorkspaceSummary) => void;
   /** The focused launcher's hand-picked secondary folder, or null, so the
    *  app-wide terminal toggle opens that folder's checkout. */
-  onLaunchFolderChange?: (folder: { project: ProjectSummary; projectFolderId: string } | null) => void;
+  onLaunchFolderChange?: (folder: ProjectTarget | null) => void;
 }): JSX.Element {
   const isFocusedRef = useRef(isFocused);
   isFocusedRef.current = isFocused;
@@ -269,14 +269,16 @@ export function LaunchSurface({
   const chatMode = sideChatMode && onLaunchSideChat !== undefined;
   const [cloudSelected, setCloudSelected] = useState(false);
   // An Auto pick's provider is only the router's fallback, not a cloud target.
-  const cloudProvider = !model.autoTier && isHostedCloudProvider(model.provider) ? model.provider : null;
+  const cloudProvider =
+    !model.autoTier && isHostedCloudProvider(model.provider) ? model.provider : null;
   const cloudMode = cloudSelected && !chatMode && cloudProvider !== null;
   useEffect(() => {
-    if (chatMode || model.autoTier || !isHostedCloudProvider(model.provider)) setCloudSelected(false);
+    if (chatMode || model.autoTier || !isHostedCloudProvider(model.provider))
+      setCloudSelected(false);
   }, [chatMode, model.autoTier, model.provider]);
   const [cloudDraft, setCloudDraft] = useState<{
     projectId: string;
-    projectFolderId?: string;
+    projectFolderId: string | undefined;
     provider: HostedCloudProvider;
     brief: string;
   } | null>(null);
@@ -286,13 +288,18 @@ export function LaunchSurface({
   const selectedFolderIsPrimary = launchFolder.folder?.isPrimary;
   const updateLaunchProject = launchFolder.updateProject;
   const canUseGit = launchFolder.isGit;
-  const showFolderPicker = launchFolder.folders.length > 1 || (!launchFolder.folder && launchFolder.folders.length > 0);
+  const showFolderPicker =
+    launchFolder.folders.length > 1 || (!launchFolder.folder && launchFolder.folders.length > 0);
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   // The branch picked for the next launch. Picking checks nothing out: this is
   // held here and sent with the launch. It belongs to the project it was picked
   // in, so another project shows its own current branch again.
   const [pickedCheckout, setPickedCheckout] = useState<LaunchCheckout | null>(null);
-  const checkout = pickedCheckout?.projectId === activeProject?.id && pickedCheckout?.projectFolderId === selectedFolderId ? pickedCheckout : null;
+  const checkout =
+    pickedCheckout?.projectId === activeProject?.id &&
+    pickedCheckout?.projectFolderId === selectedFolderId
+      ? pickedCheckout
+      : null;
 
   // The unsent prompt and its screenshots belong to the project they will be
   // launched in, not to the mounted launcher: a grid cell that retargets its
@@ -311,7 +318,7 @@ export function LaunchSurface({
   // to Chat uses the same carry so the draft survives the retarget.
   const [prompt, setPrompt, promptCarriedOnRetarget] = useComposerDraft(draftKey, {
     carryTextOnRetarget: true,
-    persist: !isSubmitting
+    persist: !isSubmitting,
   });
   const {
     pendingAttachments,
@@ -329,7 +336,7 @@ export function LaunchSurface({
     clearAttachments,
     restoreAttachments,
     attachSavedAttachment,
-    attachmentLabels
+    attachmentLabels,
   } = useComposerAttachments({
     draftKey,
     // Where dropped files become relative references: the checkout the chat
@@ -338,7 +345,7 @@ export function LaunchSurface({
     setInput: setPrompt,
     fieldRef: promptInputRef,
     carriedOnRetarget: promptCarriedOnRetarget,
-    persist: !isSubmitting
+    persist: !isSubmitting,
   });
   // A window capture goes to the draft the user is composing: this launcher is
   // the focused surface and has a draft to attach to. Cloud tasks take text only.
@@ -347,7 +354,7 @@ export function LaunchSurface({
     (snapshot) => {
       attachSavedAttachment(snapshot.attachment, windowSnapshotLabel(snapshot));
       promptInputRef.current?.focus();
-    }
+    },
   );
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
@@ -359,12 +366,13 @@ export function LaunchSurface({
     check: ProjectCheck;
     launch: PendingLaunch;
   } | null>(null);
-  const projectCheckEnabled = autoRouting && !chatMode && !cloudMode && project !== null && projects.length >= 2;
+  const projectCheckEnabled =
+    autoRouting && !chatMode && !cloudMode && project !== null && projects.length >= 2;
   const checkProjectBeforeLaunch = useProjectCheck({
     enabled: projectCheckEnabled,
     projectId: project?.id ?? null,
     prompt,
-    pickedByHand: projectPickedByHand
+    pickedByHand: projectPickedByHand,
   });
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
@@ -380,7 +388,8 @@ export function LaunchSurface({
   // (cached in Rust, so the cold-launch path pays nothing extra) and the picker
   // stays optimistic — every model enabled — until it resolves. Used to disable
   // uninstalled providers and annotate ones that need login.
-  const { availability: providerAvailability, discovered: discoveredProviders } = useProviderAvailability();
+  const { availability: providerAvailability, discovered: discoveredProviders } =
+    useProviderAvailability();
 
   // If the pre-filled selection points at a provider that isn't usable — CLI
   // not installed, or installed but not logged in — steer to the highest-
@@ -392,7 +401,12 @@ export function LaunchSurface({
   const providerSteeringDone = useRef(false);
   const surfaceReady = chatMode || project !== null;
   useEffect(() => {
-    if (!surfaceReady || !discoveredProviders || discoveredProviders.length === 0 || providerSteeringDone.current) {
+    if (
+      !surfaceReady ||
+      !discoveredProviders ||
+      discoveredProviders.length === 0 ||
+      providerSteeringDone.current
+    ) {
       return;
     }
     providerSteeringDone.current = true;
@@ -405,38 +419,51 @@ export function LaunchSurface({
     const preferred = preferredLaunchModel(discoveredProviders);
     if (preferred.provider === model.provider && preferred.modelId === model.modelId) return;
     onModelChange(preferred);
-  }, [surfaceReady, discoveredProviders, model.autoTier, model.provider, model.modelId, onModelChange]);
+  }, [
+    surfaceReady,
+    discoveredProviders,
+    model.autoTier,
+    model.provider,
+    model.modelId,
+    onModelChange,
+  ]);
 
   // Changes + Files panel against the selected project's main checkout. Lets
   // the user inspect and edit files before starting a session. Cmd/Ctrl+B
   // toggles it (same shortcut as inside a session); no menu icon today, just
   // the keyboard shortcut.
+  const launchTarget = useMemo<ProjectTarget | null>(
+    () =>
+      activeProject ? { project: activeProject, projectFolderId: selectedFolderId ?? null } : null,
+    [activeProject, selectedFolderId],
+  );
   const reviewSource = useMemo<ReviewSource | null>(
-    () => (activeProject ? { kind: "project", project: activeProject, projectFolderId: selectedFolderId } : null),
-    [activeProject, selectedFolderId]
+    () => (launchTarget ? { kind: "project", ...launchTarget } : null),
+    [launchTarget],
   );
   const onWorkspaceCreated = useCallback(
     (workspace: WorkspaceSummary): void => {
       onCheckoutWorkspaceCreated?.(workspace);
     },
-    [onCheckoutWorkspaceCreated]
+    [onCheckoutWorkspaceCreated],
   );
   useEffect(() => {
     if (!isFocused || !onLaunchFolderChange) return undefined;
-    onLaunchFolderChange(activeProject && selectedFolderId && selectedFolderIsPrimary === false
-      ? { project: activeProject, projectFolderId: selectedFolderId }
-      : null);
+    onLaunchFolderChange(
+      activeProject && selectedFolderId && selectedFolderIsPrimary === false
+        ? { project: activeProject, projectFolderId: selectedFolderId }
+        : null,
+    );
     return () => onLaunchFolderChange(null);
   }, [activeProject, isFocused, onLaunchFolderChange, selectedFolderId, selectedFolderIsPrimary]);
   const { terminalWorkspaceId, ensureCheckoutWorkspace } = useProjectCheckoutTerminal(
-    activeProject,
+    launchTarget,
     workspaces,
     onWorkspaceCreated,
-    selectedFolderId
   );
   const reviewState = useReviewState(reviewSource, {
     claimsBrowserRequests,
-    terminalWorkspaceId
+    terminalWorkspaceId,
   });
   const reviewOpenPanelInFilesMode = reviewState.openPanelInFilesMode;
   const reviewOpenInFilesView = reviewState.openInFilesView;
@@ -468,20 +495,27 @@ export function LaunchSurface({
 
   // What the palette reads about this launcher when it opens, rebuilt each
   // render so the read is current without re-registering.
-  const paletteLiveRef = useRef<() => PaletteSurfaceLive>(() => ({ filesVisible: false, changedPaths: [], actions: [] }));
+  const paletteLiveRef = useRef<() => PaletteSurfaceLive>(() => ({
+    filesVisible: false,
+    changedPaths: [],
+    actions: [],
+  }));
   paletteLiveRef.current = (): PaletteSurfaceLive => ({
-    filesVisible: reviewIsPanelOpen && (reviewModes.includes("files") || reviewModes.includes("changes")),
+    filesVisible:
+      reviewIsPanelOpen && (reviewModes.includes("files") || reviewModes.includes("changes")),
     changedPaths: reviewState.files.map((file) => file.path),
-    actions: [{
-      id: "pane:toggle-files",
-      label: "Toggle files",
-      subtitle: "Browse this checkout",
-      group: "Actions",
-      icon: FolderTree,
-      shortcut: "⌘G",
-      keywords: ["file tree", "explorer"],
-      run: toggleFilesPane
-    }]
+    actions: [
+      {
+        id: "pane:toggle-files",
+        label: "Toggle files",
+        subtitle: "Browse this checkout",
+        group: "Actions",
+        icon: FolderTree,
+        shortcut: "⌘G",
+        keywords: ["file tree", "explorer"],
+        run: toggleFilesPane,
+      },
+    ],
   });
   const readPaletteLive = useCallback((): PaletteSurfaceLive => paletteLiveRef.current(), []);
 
@@ -495,12 +529,21 @@ export function LaunchSurface({
       return () => registerPaletteFileContext(null);
     }
     registerPaletteFileContext({
-      source: selectedFolderId ? { kind: "projectFolder", id: selectedFolderId } : { kind: "project", id: activeProject.id },
+      source: projectFileSource({
+        project: activeProject,
+        projectFolderId: selectedFolderId ?? null,
+      }),
       onPick: reviewOpenInFilesView,
-      readLive: readPaletteLive
+      readLive: readPaletteLive,
     });
     return () => registerPaletteFileContext(null);
-  }, [activeProject, selectedFolderId, registerPaletteFileContext, reviewOpenInFilesView, readPaletteLive]);
+  }, [
+    activeProject,
+    selectedFolderId,
+    registerPaletteFileContext,
+    reviewOpenInFilesView,
+    readPaletteLive,
+  ]);
   const toggleReviewPanel = useCallback((): void => {
     if (reviewIsPanelOpen) {
       reviewClosePanel();
@@ -564,13 +607,13 @@ export function LaunchSurface({
         // Narrow, the folder chip folds behind the "…" and its list only
         // shows inside the open compact panel, so unfold first.
         const compactTrigger = compactContextRef.current?.querySelector<HTMLElement>(
-          ".composer-compact-context-trigger"
+          ".composer-compact-context-trigger",
         );
         if (compactTrigger?.offsetParent) setCompactContextOpen(true);
         setProjectPickerOpen((open) => !open);
         return;
       }
-      if (key === "i" && window.argmax?.browser) {
+      if (key === "i" && browserActions()) {
         event.preventDefault();
         if (reviewIsPanelOpen && reviewModes.includes("browser")) {
           reviewClosePane(reviewModes[0] === "browser" ? 0 : 1);
@@ -581,7 +624,16 @@ export function LaunchSurface({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [chatMode, cloudMode, isFocused, reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenBrowser, supportsEffort]);
+  }, [
+    chatMode,
+    cloudMode,
+    isFocused,
+    reviewClosePane,
+    reviewIsPanelOpen,
+    reviewModes,
+    reviewOpenBrowser,
+    supportsEffort,
+  ]);
 
   useEffect(() => {
     if (resetSignal === lastResetSignal.current) return;
@@ -611,7 +663,8 @@ export function LaunchSurface({
         event.ctrlKey ||
         event.altKey ||
         event.shiftKey
-      ) return;
+      )
+        return;
       event.preventDefault();
       reviewClosePanel();
     };
@@ -632,7 +685,7 @@ export function LaunchSurface({
     strategy: "absolute",
     capHeight: true,
     edgePadding: PICKER_MENU_EDGE_PADDING_PX,
-    maxHeight: PICKER_MENU_MAX_HEIGHT_PX
+    maxHeight: PICKER_MENU_MAX_HEIGHT_PX,
   });
   const branchPopover = useAnchoredPopover({
     open: branchPickerOpen,
@@ -641,24 +694,31 @@ export function LaunchSurface({
     strategy: "absolute",
     capHeight: true,
     edgePadding: PICKER_MENU_EDGE_PADDING_PX,
-    maxHeight: PICKER_MENU_MAX_HEIGHT_PX
+    maxHeight: PICKER_MENU_MAX_HEIGHT_PX,
   });
   const {
     setAnchor: setProjectAnchor,
     setPopover: setProjectPopover,
     anchorRef: projectAnchorRef,
-    floatingStyles: projectFloatingStyles
+    floatingStyles: projectFloatingStyles,
   } = projectPopover;
   const {
     setAnchor: setBranchAnchor,
     setPopover: setBranchPopover,
     anchorRef: branchAnchorRef,
-    floatingStyles: branchFloatingStyles
+    floatingStyles: branchFloatingStyles,
   } = branchPopover;
-  useDismissOnOutsideOrEscape(projectAnchorRef, projectPickerOpen, () => setProjectPickerOpen(false));
+  useDismissOnOutsideOrEscape(projectAnchorRef, projectPickerOpen, () =>
+    setProjectPickerOpen(false),
+  );
   useDismissOnOutsideOrEscape(branchAnchorRef, branchPickerOpen, () => setBranchPickerOpen(false));
-  useDismissOnOutsideOrEscape(compactContextRef, compactContextOpen, () => setCompactContextOpen(false));
-  const anyContextPickerOpen = projectPickerOpen || folderPickerOpen || branchPickerOpen || modelPickerOpen;
+  useOpenInteraction("picker.project", projectPickerOpen);
+  useOpenInteraction("picker.branch", branchPickerOpen);
+  useDismissOnOutsideOrEscape(compactContextRef, compactContextOpen, () =>
+    setCompactContextOpen(false),
+  );
+  const anyContextPickerOpen =
+    projectPickerOpen || folderPickerOpen || branchPickerOpen || modelPickerOpen;
 
   const closeContextPickers = useCallback((): void => {
     setFolderPickerOpen(false);
@@ -704,54 +764,70 @@ export function LaunchSurface({
   const shownBranch = checkout?.branch ?? knownBranch;
   // A checkout other than the project's own: the chat runs there, not in the
   // project root the Files, Changes and Terminal panels show.
-  const runsInLinkedCheckout = workspaceMode !== "worktree" && checkout?.path != null && !checkout.isMain;
-  useEffect(() => {
-    if (!window.argmax || !projectId || !canUseGit) return undefined;
-    let cancelled = false;
-    void window.argmax.projects
-      .refreshBranch(projectId, selectedFolderId)
-      .then(async (updated) => {
-        if (cancelled) return;
-        // A secondary folder's refresh answers with the primary's summary, so
-        // its branch is only known from the folder context.
-        if (selectedFolderIsPrimary === false) {
-          const context = await window.argmax!.projects.getFolderContext({ projectId, projectFolderId: selectedFolderId });
-          if (!cancelled && context.project.currentBranch !== knownBranch) updateLaunchProject(context.project);
-        } else if (updated.currentBranch !== knownBranch) onBranchSwitch(updated);
-      })
-      .catch(() => {
-        // Best-effort refresh; a transient git failure leaves the persisted
-        // branch in place rather than surfacing an error on the launcher.
+  const runsInLinkedCheckout =
+    workspaceMode !== "worktree" && checkout?.path != null && !checkout.isMain;
+  // Best-effort refresh; a transient git failure leaves the persisted branch in
+  // place rather than surfacing an error on the launcher.
+  useBridgeQuery({
+    key: [
+      "projects.refreshBranch",
+      projectId,
+      selectedFolderId,
+      knownBranch,
+      selectedFolderIsPrimary,
+    ],
+    enabled: Boolean(projectId) && canUseGit,
+    read: async (api) => {
+      const id = projectId ?? "";
+      const updated = await api.projects.refreshBranch(id, selectedFolderId);
+      // A secondary folder's refresh answers with the primary's summary, so its
+      // branch is only known from the folder context.
+      if (selectedFolderIsPrimary !== false) return { project: updated, secondary: false };
+      const context = await api.projects.getFolderContext({
+        projectId: id,
+        projectFolderId: selectedFolderId,
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, knownBranch, onBranchSwitch, selectedFolderId, canUseGit, updateLaunchProject, selectedFolderIsPrimary]);
+      return { project: context.project, secondary: true };
+    },
+    onData: ({ project, secondary }) => {
+      if (project.currentBranch === knownBranch) return;
+      if (secondary) updateLaunchProject(project);
+      else onBranchSwitch(project);
+    },
+  });
 
-  const branchRequestKey = `${projectId ?? ""}:${selectedFolderId ?? ""}`;
-  const branchRequestKeyRef = useRef(branchRequestKey);
-  branchRequestKeyRef.current = branchRequestKey;
-  const openBranchPicker = useCallback(async (): Promise<void> => {
-    if (!window.argmax || !activeProject || !canUseGit) return;
-    const requestKey = branchRequestKey;
-    setFolderPickerOpen(false);
-    setProjectPickerOpen(false);
-    setStatus(null);
-    try {
-      const [list, checkoutList] = await Promise.all([
-        (selectedFolderId ? window.argmax.projects.listBranches(activeProject.id, selectedFolderId) : window.argmax.projects.listBranches(activeProject.id)),
-        (selectedFolderId ? window.argmax.projects.listCheckouts(activeProject.id, selectedFolderId) : window.argmax.projects.listCheckouts(activeProject.id))
+  const branchPickerOptions = useBridgeQuery({
+    key: ["projects.listBranches", projectId, selectedFolderId],
+    enabled: false,
+    read: (api) => {
+      if (!activeProject) return undefined;
+      return Promise.all([
+        selectedFolderId
+          ? api.projects.listBranches(activeProject.id, selectedFolderId)
+          : api.projects.listBranches(activeProject.id),
+        selectedFolderId
+          ? api.projects.listCheckouts(activeProject.id, selectedFolderId)
+          : api.projects.listCheckouts(activeProject.id),
       ]);
-      if (branchRequestKeyRef.current !== requestKey) return;
+    },
+    onData: ([list, checkoutList]) => {
       setBranches(list);
       setCheckouts(checkoutList);
       setBranchPickerOpen(true);
-    } catch (error) {
-      if (branchRequestKeyRef.current !== requestKey) return;
+    },
+    onError: (error) => {
       setBranchPickerOpen(false);
       showErrorToast(errorMessage(error) || "Could not load branches.");
-    }
-  }, [activeProject, canUseGit, selectedFolderId, branchRequestKey]);
+    },
+  });
+  const { refetch: refetchBranchPickerOptions } = branchPickerOptions;
+  const openBranchPicker = useCallback(async (): Promise<void> => {
+    if (!activeProject || !canUseGit) return;
+    setFolderPickerOpen(false);
+    setProjectPickerOpen(false);
+    setStatus(null);
+    await refetchBranchPickerOptions();
+  }, [activeProject, canUseGit, refetchBranchPickerOptions]);
 
   // Picking a branch changes nothing on disk. It is held in the launcher and
   // sent with the launch, which decides what to do with it: run in the checkout
@@ -770,10 +846,10 @@ export function LaunchSurface({
         projectFolderId: selectedFolderId,
         branch,
         path: holder?.path ?? null,
-        isMain: !!holder?.isMain
+        isMain: !!holder?.isMain,
       });
     },
-    [activeProject, checkouts, selectedFolderId]
+    [activeProject, checkouts, selectedFolderId],
   );
   // Typing into an open picker filters it through useTypeToFilter. The lists take
   // focus while open, so characters land here instead of in the prompt behind.
@@ -781,14 +857,20 @@ export function LaunchSurface({
   const branchListRef = useRef<HTMLUListElement | null>(null);
   // One node is both the positioned menu and the list useTypeToFilter focuses.
   // A fresh inline ref would detach and reattach every render.
-  const setProjectListNode = useCallback((node: HTMLUListElement | null): void => {
-    projectListRef.current = node;
-    setProjectPopover(node);
-  }, [setProjectPopover]);
-  const setBranchListNode = useCallback((node: HTMLUListElement | null): void => {
-    branchListRef.current = node;
-    setBranchPopover(node);
-  }, [setBranchPopover]);
+  const setProjectListNode = useCallback(
+    (node: HTMLUListElement | null): void => {
+      projectListRef.current = node;
+      setProjectPopover(node);
+    },
+    [setProjectPopover],
+  );
+  const setBranchListNode = useCallback(
+    (node: HTMLUListElement | null): void => {
+      branchListRef.current = node;
+      setBranchPopover(node);
+    },
+    [setBranchPopover],
+  );
   const pickProject = useCallback(
     (candidate: ProjectSummary): void => {
       persistLaunchProjectId(candidate.id);
@@ -799,17 +881,19 @@ export function LaunchSurface({
       setProjectPickerOpen(false);
       setCompactContextOpen(false);
     },
-    [onSelectProject, onSideChatModeChange]
+    [onSelectProject, onSideChatModeChange],
   );
   const orderedProjects = sortProjectsByLaunchRecency(projects);
-  const selectedProjectIndex = orderedProjects.findIndex((candidate) => candidate.id === project?.id);
+  const selectedProjectIndex = orderedProjects.findIndex(
+    (candidate) => candidate.id === project?.id,
+  );
   const projectFilter = useTypeToFilter({
     open: projectPickerOpen,
     items: orderedProjects,
     toLabel: (candidate: ProjectSummary) => candidate.name,
     listRef: projectListRef,
     initialIndex: selectedProjectIndex >= 0 ? selectedProjectIndex : 0,
-    onPick: pickProject
+    onPick: pickProject,
   });
   const selectedBranchIndex = shownBranch ? branches.findIndex((b) => b === shownBranch) : -1;
   const branchFilter = useTypeToFilter({
@@ -818,7 +902,7 @@ export function LaunchSurface({
     toLabel: (branch: string) => branch,
     listRef: branchListRef,
     initialIndex: selectedBranchIndex >= 0 ? selectedBranchIndex : 0,
-    onPick: pickBranch
+    onPick: pickBranch,
   });
 
   const placeholderText = chatMode
@@ -843,7 +927,12 @@ export function LaunchSurface({
     // (a dashboard delta re-identifying the project) must not yank that away.
     if (contextPickerOpenRef.current) return;
     const active = document.activeElement;
-    if (becameFocused && active !== promptInputRef.current && promptInputRef.current?.closest('[role="region"]')?.contains(active)) return;
+    if (
+      becameFocused &&
+      active !== promptInputRef.current &&
+      promptInputRef.current?.closest('[role="region"]')?.contains(active)
+    )
+      return;
     promptInputRef.current?.focus();
     // Metadata refreshes replace the project object even in background cells.
     // Only the active launcher may refocus after its project changes.
@@ -913,8 +1002,8 @@ export function LaunchSurface({
         label: LAUNCHER_MODE_LABELS.auto,
         hint: "Work and approve each step",
         icon: Bot,
-        run: setMode("auto")
-      }
+        run: setMode("auto"),
+      },
     ];
     if (chatAvailable) {
       modes.push({
@@ -922,7 +1011,7 @@ export function LaunchSurface({
         label: LAUNCHER_MODE_LABELS.chat,
         hint: "Don't attach a repository",
         icon: MessageCircle,
-        run: setMode("chat")
+        run: setMode("chat"),
       });
     }
     const commands = modes.filter((mode) => mode.name !== launcherMode);
@@ -933,7 +1022,7 @@ export function LaunchSurface({
         hint: "Keep working until a condition holds",
         icon: Target,
         writesDraft: true,
-        run: () => setPrompt("/goal ")
+        run: () => setPrompt("/goal "),
       });
     }
     commands.push({
@@ -941,14 +1030,14 @@ export function LaunchSurface({
       label: "Connections",
       hint: "Show MCP servers, plugins, and connectors",
       icon: PlugZap,
-      run: () => setConnectionsOpen(true)
+      run: () => setConnectionsOpen(true),
     });
     commands.push({
       name: "attach",
       label: "Attach file",
       hint: "Add an image or file to the prompt",
       icon: Paperclip,
-      run: openFilePicker
+      run: openFilePicker,
     });
     if (!chatMode) {
       commands.push(
@@ -960,28 +1049,32 @@ export function LaunchSurface({
           run: () => {
             setCompactContextOpen(true);
             setProjectPickerOpen(true);
-          }
+          },
         },
-        ...(canUseGit ? [{
-          name: "branch",
-          label: "Branch",
-          hint: `Start from a branch other than ${shownBranch ?? "the current one"}`,
-          icon: GitBranch,
-          run: () => {
-            setCompactContextOpen(true);
-            void openBranchPicker();
-          }
-        },
-        {
-          name: "worktree",
-          label: workspaceMode === "worktree" ? "Worktree off" : "Worktree on",
-          hint:
-            workspaceMode === "worktree"
-              ? "Run in your current checkout instead"
-              : "Run in an isolated git worktree on a new branch",
-          icon: FolderGit2,
-          run: toggleWorkspace
-        }] : [])
+        ...(canUseGit
+          ? [
+              {
+                name: "branch",
+                label: "Branch",
+                hint: `Start from a branch other than ${shownBranch ?? "the current one"}`,
+                icon: GitBranch,
+                run: () => {
+                  setCompactContextOpen(true);
+                  void openBranchPicker();
+                },
+              },
+              {
+                name: "worktree",
+                label: workspaceMode === "worktree" ? "Worktree off" : "Worktree on",
+                hint:
+                  workspaceMode === "worktree"
+                    ? "Run in your current checkout instead"
+                    : "Run in an isolated git worktree on a new branch",
+                icon: FolderGit2,
+                run: toggleWorkspace,
+              },
+            ]
+          : []),
       );
     }
     return commands;
@@ -998,7 +1091,7 @@ export function LaunchSurface({
     setPrompt,
     shownBranch,
     toggleWorkspace,
-    workspaceMode
+    workspaceMode,
   ]);
 
   const slashAutocomplete = useSlashAutocomplete({
@@ -1007,7 +1100,7 @@ export function LaunchSurface({
     provider: model.provider,
     workspaceId: null,
     commands: launcherCommands,
-    inputRef: promptInputRef
+    inputRef: promptInputRef,
   });
 
   const chatDirectory = useChatDirectory();
@@ -1015,21 +1108,16 @@ export function LaunchSurface({
     input: cloudMode ? "" : prompt,
     setInput: setPrompt,
     inputRef: promptInputRef,
-    source: activeProject && !cloudMode ? (selectedFolderId ? { kind: "projectFolder", id: selectedFolderId } : { kind: "project", id: activeProject.id }) : null,
-    chats: cloudMode ? undefined : chatDirectory
+    source: launchTarget && !cloudMode ? projectFileSource(launchTarget) : null,
+    chats: cloudMode ? undefined : chatDirectory,
   });
-  const chatChips = useMemo(
-    () => chatChipEnvironmentFor(chatDirectory, openChat),
-    [chatDirectory]
-  );
+  const chatChips = useMemo(() => chatChipEnvironmentFor(chatDirectory, openChat), [chatDirectory]);
 
   // Same accent tint for `/skill` tokens as the session composer.
   const isSkillToken = useCallback(
     (name: string): boolean =>
-      name === "mcp" ||
-      (goalEnabled && name === "goal") ||
-      slashAutocomplete.skillNames.has(name),
-    [goalEnabled, slashAutocomplete.skillNames]
+      name === "mcp" || (goalEnabled && name === "goal") || slashAutocomplete.skillNames.has(name),
+    [goalEnabled, slashAutocomplete.skillNames],
   );
 
   const onPromptKeyDown = (event: KeyboardEvent): void => {
@@ -1064,7 +1152,7 @@ export function LaunchSurface({
   // The `/goal` slash command turns the draft into a condition the chat works
   // toward; the launcher has no goal to clear and no empty one to set.
   const resolveOpeningPrompt = (
-    trimmedPrompt: string
+    trimmedPrompt: string,
   ): { goalCondition: string | undefined; openingPrompt: string } | { error: string } => {
     const goalCommand = goalEnabled ? parseGoalCommand(trimmedPrompt) : null;
     if (goalEnabled && (/^\/goal\s*$/i.test(trimmedPrompt) || goalCommand?.kind === "clear")) {
@@ -1072,7 +1160,7 @@ export function LaunchSurface({
         error:
           goalCommand?.kind === "clear"
             ? "There is no goal to clear in a new chat."
-            : "Write a completion condition after /goal."
+            : "Write a completion condition after /goal.",
       };
     }
     const goalCondition = goalCommand?.kind === "set" ? goalCommand.condition : undefined;
@@ -1095,7 +1183,11 @@ export function LaunchSurface({
   const submitPrompt = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const trimmedPrompt = livePrompt().trim();
-    if ((!chatMode && !launchFolder.ready) || (trimmedPrompt.length === 0 && pendingAttachments.length === 0) || isSubmitting) {
+    if (
+      (!chatMode && !launchFolder.ready) ||
+      (trimmedPrompt.length === 0 && pendingAttachments.length === 0) ||
+      isSubmitting
+    ) {
       return;
     }
     if (!cloudMode && isMcpCommand(trimmedPrompt)) {
@@ -1116,7 +1208,12 @@ export function LaunchSurface({
         return;
       }
       setStatus(null);
-      setCloudDraft({ projectId: project.id, projectFolderId: selectedFolderId, provider: cloudProvider, brief: trimmedPrompt });
+      setCloudDraft({
+        projectId: project.id,
+        projectFolderId: selectedFolderId,
+        provider: cloudProvider,
+        brief: trimmedPrompt,
+      });
       return;
     }
 
@@ -1127,7 +1224,8 @@ export function LaunchSurface({
     }
     const { goalCondition, openingPrompt } = resolved;
     const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
-    const finalPrompt = refs.length > 0 ? appendReferencesToPrompt(openingPrompt, refs) : openingPrompt;
+    const finalPrompt =
+      refs.length > 0 ? appendReferencesToPrompt(openingPrompt, refs) : openingPrompt;
     const attachments = pendingAttachments.length > 0 ? pendingAttachments : undefined;
 
     if (chatMode && onLaunchSideChat) {
@@ -1158,14 +1256,16 @@ export function LaunchSurface({
       attachments,
       goalCondition,
       checkout: checkout ?? undefined,
-      projectFolderId: selectedFolderId
+      projectFolderId: selectedFolderId,
     };
     setIsSubmitting(true);
     setStatus(null);
     // The check reads the prompt as typed: attachment references say nothing
     // about which project it belongs to.
     // Only a live check is awaited: with it off the launch starts in this tick.
-    const check = projectCheckEnabled ? await checkProjectBeforeLaunch(openingPrompt) : NO_PROJECT_CHECK;
+    const check = projectCheckEnabled
+      ? await checkProjectBeforeLaunch(openingPrompt)
+      : NO_PROJECT_CHECK;
     if (check.decision === "suggest" && project) {
       setIsSubmitting(false);
       setProjectCheckDraft({ check, launch });
@@ -1180,7 +1280,7 @@ export function LaunchSurface({
 
   const launchIn = async (
     launch: PendingLaunch,
-    projectId: string | undefined
+    projectId: string | undefined,
   ): Promise<LaunchedChat | undefined> => {
     setIsSubmitting(true);
     // See the side-chat path above: the draft goes before the first await.
@@ -1197,7 +1297,7 @@ export function LaunchSurface({
         projectId,
         undefined,
         launch.checkout,
-        movesProject ? undefined : launch.projectFolderId
+        movesProject ? undefined : launch.projectFolderId,
       );
       setPrompt("");
       clearAttachments();
@@ -1221,7 +1321,12 @@ export function LaunchSurface({
   const startInBackground = async (): Promise<void> => {
     const sentPrompt = livePrompt();
     const trimmedPrompt = sentPrompt.trim();
-    if ((!chatMode && !launchFolder.ready) || isSubmitting || (trimmedPrompt.length === 0 && pendingAttachments.length === 0)) return;
+    if (
+      (!chatMode && !launchFolder.ready) ||
+      isSubmitting ||
+      (trimmedPrompt.length === 0 && pendingAttachments.length === 0)
+    )
+      return;
     if (cloudMode) {
       setStatus("Cloud tasks open a review first. Press Enter to review it.");
       return;
@@ -1235,7 +1340,8 @@ export function LaunchSurface({
     const { goalCondition, openingPrompt } = resolved;
     const sentAttachments = pendingAttachments;
     const refs = sentAttachments.map((a) => imageAttachmentReference(a.filePath));
-    const finalPrompt = refs.length > 0 ? appendReferencesToPrompt(openingPrompt, refs) : openingPrompt;
+    const finalPrompt =
+      refs.length > 0 ? appendReferencesToPrompt(openingPrompt, refs) : openingPrompt;
     const attachments = sentAttachments.length > 0 ? sentAttachments : undefined;
     // The draft this send emptied belongs to this key. By the time a start
     // fails the person may have moved on, even left the launcher, so the way
@@ -1261,13 +1367,15 @@ export function LaunchSurface({
               true,
               // Read now, at send: the person may pick again before this resolves.
               checkout ?? undefined,
-              selectedFolderId
+              selectedFolderId,
             );
       showToast({
         kind: "info",
         message: `Started “${titleFromPrompt(openingPrompt)}” in the background.`,
         durationMs: 6_000,
-        ...(launched ? { action: { label: "Open", run: () => void openChat(launched.sessionId) } } : {})
+        ...(launched
+          ? { action: { label: "Open", run: () => void openChat(launched.sessionId) } }
+          : {}),
       });
     } catch (error) {
       // A launcher showing this draft takes it back above what was typed since,
@@ -1281,7 +1389,7 @@ export function LaunchSurface({
           stillHere
             ? "Your draft is back in the composer."
             : "Your draft was put back in its New chat."
-        }`
+        }`,
       );
     }
   };
@@ -1289,11 +1397,11 @@ export function LaunchSurface({
   const resolveProjectCheck = (
     check: ProjectCheck,
     outcome: ProjectCheckOutcome,
-    sessionId: string | null
+    sessionId: string | null,
   ): void => {
     if (!check.checkId) return;
-    void window.argmax?.projects
-      .resolveCheck({ checkId: check.checkId, outcome, sessionId })
+    void projectActions()
+      ?.resolveCheck({ checkId: check.checkId, outcome, sessionId })
       .catch(() => undefined);
   };
 
@@ -1304,7 +1412,7 @@ export function LaunchSurface({
   const switchAndLaunch = async (
     check: ProjectCheck,
     launch: PendingLaunch,
-    fromProject: ProjectSummary
+    fromProject: ProjectSummary,
   ): Promise<void> => {
     const target = projects.find((candidate) => candidate.id === check.suggestedProjectId);
     if (!target) {
@@ -1335,13 +1443,15 @@ export function LaunchSurface({
               fromProject.id,
               undefined,
               launch.checkout,
-              launch.projectFolderId
-            )
+              launch.projectFolderId,
+            ),
           );
-        }
-      }
+        },
+      },
     });
   };
+
+  useInteractionShown("launcher.open", Boolean(project) || chatMode);
 
   if (!project && !chatMode) {
     // Fresh-install surface: setup checklist + provider discovery + the
@@ -1358,7 +1468,8 @@ export function LaunchSurface({
   // Browser mode reads nothing from the project, so it opens even before one
   // is picked; Changes and Files have no source without it.
   const isReviewOpen =
-    reviewState.isPanelOpen && (activeProject !== null || reviewState.layout.modes.includes("browser"));
+    reviewState.isPanelOpen &&
+    (activeProject !== null || reviewState.layout.modes.includes("browser"));
   const contextSummary = project
     ? showFolderPicker
       ? `Project and folder: ${[project.name, launchFolder.folder?.name, canUseGit ? shownBranch : null].filter(Boolean).join(", ")}`
@@ -1368,484 +1479,535 @@ export function LaunchSurface({
 
   return (
     <div
-      className={isReviewOpen && isReviewExpanded ? "launcher-shell review-expanded" : "launcher-shell"}
+      className={
+        isReviewOpen && isReviewExpanded ? "launcher-shell review-expanded" : "launcher-shell"
+      }
       data-review-open={isReviewOpen ? "true" : undefined}
     >
       <div className="launcher-surface" ref={surfaceRef}>
-      {anyContextPickerOpen && createPortal(
-        <div
-          className="picker-dismiss-layer"
-          aria-hidden="true"
-          onMouseDown={closeContextPickers}
-        />,
-        document.body
-      )}
-      <header className="launcher-hero">
-        <Mascot
-          mood={mascotMood}
-          shades={wearsShades}
-          size={104}
-          className="launcher-hero-mascot"
-          buttonClassName="launcher-hero-mascot-button"
-          onClick={petMascot}
-          title="Pet the fox"
-        />
-        <h1 className="launcher-hero-title">{chatMode ? SIDE_CHAT_TITLE : LAUNCHER_TITLE}</h1>
-      </header>
-      <form
-        className="composer"
-        data-drag-active={isDraggingFiles ? "true" : undefined}
-        data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
-        data-type-scale={chatFontSize === undefined ? "composer" : undefined}
-        ref={formRef}
-        onSubmit={(event) => void submitPrompt(event)}
-        onDragEnter={cloudMode ? undefined : onComposerDragEnter}
-        onDragOver={onComposerDragOver}
-        onDragLeave={onComposerDragLeave}
-        onDrop={(event) => {
-          if (!cloudMode) return onComposerDrop(event);
-          event.preventDefault();
-          setStatus("Cloud tasks support text only. Switch to Local to attach files.");
-        }}
-      >
-        <div className="composer-drop-overlay" aria-hidden="true">
-          <Paperclip size={20} />
-          <span>Drop to attach</span>
-          <small>Images and files</small>
-        </div>
-        <input
-          ref={attachmentInputRef}
-          type="file"
-          multiple
-          hidden
-          aria-hidden="true"
-          tabIndex={-1}
-          onChange={onAttachmentInputChange}
-        />
-        {pendingAttachments.length > 0 ? (
-          <div className="composer-attachments" aria-label="Attached images">
-            {pendingAttachments.map((attachment) => {
-              const src =
-                pendingAttachmentPreviews[attachment.filePath] ?? attachmentProtocolUrl(attachment.filePath);
-              return (
-                <div key={attachment.filePath} className="composer-attachment-chip">
-                  <button
-                    type="button"
-                    className="attachment-open-button"
-                    aria-label={
-                      attachmentLabels[attachment.filePath]
-                        ? `View window capture: ${attachmentLabels[attachment.filePath]}`
-                        : "View attachment"
-                    }
-                    title={attachmentLabels[attachment.filePath] ?? "View attachment"}
-                    onClick={() => setLightboxSrc(src)}
-                  >
-                    <img src={src} alt="" />
-                  </button>
-                  <button
-                    type="button"
-                    className="composer-attachment-remove"
-                    aria-label="Remove attachment"
-                    title="Remove attachment"
-                    onClick={() => removePendingAttachment(attachment.filePath)}
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-        <div className="composer-input">
-          <ComposerEditor
-            ariaLabel="Task prompt"
-            documentKey={draftKey}
-            expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
-            controls={
-              slashAutocomplete.popoverOpen
-                ? "slash-menu"
-                : fileAutocomplete.popoverOpen
-                  ? "file-popover"
-                  : undefined
-            }
-            disabled={isSubmitting}
-            onChange={setPrompt}
-            onCaretChange={fileAutocomplete.onSelectionChange}
-            onKeyDown={onPromptKeyDown}
-            onPaste={(event) => {
-              if (!cloudMode) return onComposerPaste(event);
-              if ((event.clipboardData?.files.length ?? 0) > 0) {
-                event.preventDefault();
-                setStatus("Cloud tasks support text only. Switch to Local to attach files.");
-              }
-            }}
-            placeholder={placeholderText}
-            fieldRef={promptInputRef}
-            value={prompt}
-            isSkill={isSkillToken}
-            chats={chatChips}
-          />
-          <SlashCommandMenu state={slashAutocomplete} />
-          <FilePopover state={fileAutocomplete} inputRef={promptInputRef} />
-          <button
-            className="send-button"
-            type="submit"
-            disabled={isSubmitting || !hasSendableContent || (!chatMode && !launchFolder.ready)}
-            title={cloudMode ? "Review cloud task" : "Start agent"}
-            aria-label={cloudMode ? "Review cloud task" : "Start agent"}
-            aria-description={
-              cloudMode
-                ? undefined
-                : `${formatChord(backgroundShortcut)} starts the agent in the background`
-            }
-          >
-            {cloudMode ? <ArrowRight size={15} aria-hidden="true" /> : <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />}
-          </button>
-        </div>
-        <div className="composer-context">
-          <button
-            className="composer-tool"
-            type="button"
-            title={cloudMode ? "Cloud tasks take text only. Switch to Local to attach files." : "Attach file"}
-            aria-label="Attach file"
-            disabled={cloudMode}
-            onClick={openFilePicker}
-          >
-            <Plus size={14} />
-          </button>
-          <div className="composer-context-group composer-context-group--model">
-            {cloudMode ? (
-              <span
-                className="composer-context-chip composer-cloud-provider"
-                title={`${cloudProviderName(cloudProvider)} picks the model`}
-              >
-                <Cloud size={14} aria-hidden="true" />
-                <span className="model-picker-label">{cloudProviderName(cloudProvider)}</span>
-              </span>
-            ) : <LaunchModelSelector
-              ariaLabel="Switch model"
-              autoRouting={autoRouting}
-              availability={providerAvailability}
-              fastModeEnabled={fastModeEnabled}
-              open={modelPickerOpen}
-              onOpenChange={setModelPickerOpen}
-              openBelow
-              withEffortSlider
-              effortOpen={effortPickerOpen}
-              onEffortOpenChange={setEffortPickerOpen}
-              value={model}
-              onChange={onModelChange}
-              onFastModeEnabledChange={onFastModeEnabledChange}
-            />}
-            {cloudMode || model.autoTier ? null : <ComposerUsageSlot provider={model.provider} />}
-          </div>
-          {chatMode ? null : (
-          <div
-            className="composer-context-group composer-context-group--workspace"
-            data-compact-open={compactContextOpen ? "true" : undefined}
-            ref={compactContextRef}
-          >
-            <button
-              type="button"
-              className="composer-compact-context-trigger"
-              title={contextSummary}
-              aria-label={contextSummary}
-              aria-haspopup="dialog"
-              aria-expanded={compactContextOpen}
-              onClick={() => {
-                if (!compactContextOpen) {
-                  setProjectPickerOpen(false);
-                  setBranchPickerOpen(false);
-                  setModelPickerOpen(false);
-                }
-                setCompactContextOpen((open) => !open);
-              }}
-            >
-              <MoreHorizontal size={14} aria-hidden="true" />
-            </button>
+        {anyContextPickerOpen &&
+          createPortal(
             <div
-              className="launch-workspace-pickers"
-              role={compactContextOpen ? "dialog" : undefined}
-              aria-label={compactContextOpen ? "Project and branch" : undefined}
-            >
-            <LaunchFolderPicker folders={launchFolder.folders} selected={launchFolder.folder} open={folderPickerOpen}
-              onOpenChange={setFolderPickerOpen}
-              onPick={(folder) => {
-                launchFolder.pickFolder(folder);
-                if (folder.id === selectedFolderId) return;
-                setPickedCheckout(null);
-                setProjectPickedByHand(true);
-              }}>
-            <div className="project-picker-anchor" ref={setProjectAnchor}>
-            <button
-              className="composer-context-chip"
-              type="button"
-              aria-label="Switch project"
-              aria-haspopup="listbox"
-              aria-expanded={projectPickerOpen || folderPickerOpen}
-              title={launchFolder.folder
-                ? `${contextChipLabel} · Work in ${repoNameFromPath(launchFolder.folder.rootPath) ?? launchFolder.folder.name}
-${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a folder" : ""}`
-                : contextChipLabel}
-              onContextMenu={(event) => {
-                if (!showFolderPicker) return;
-                event.preventDefault();
-                event.currentTarget.focus();
-                setProjectPickerOpen(false);
-                setBranchPickerOpen(false);
-                setFolderPickerOpen(true);
-              }}
-              onKeyDown={(event) => {
-                if (!showFolderPicker || !(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
-                event.preventDefault();
-                event.currentTarget.focus();
-                setProjectPickerOpen(false);
-                setBranchPickerOpen(false);
-                setFolderPickerOpen(true);
-              }}
-              onClick={() => { setFolderPickerOpen(false); setBranchPickerOpen(false); setProjectPickerOpen((o) => !o); }}
-            >
-              <Folder size={14} aria-hidden="true" />
-              <span className="composer-context-chip-label">{contextChipLabel}</span>
-
-            </button>
-            {projectPickerOpen && (
-              <ul
-                className="project-picker-popover"
-                // Menus read at app-chrome size even though the composer around
-                // them sits one step up. See tokens.css.
-                data-type-scale="chrome"
-                role="listbox"
-                aria-label="Select project"
-                ref={setProjectListNode}
-                style={projectFloatingStyles}
-                tabIndex={-1}
-                onKeyDown={projectFilter.onKeyDown}
-                onClick={(event) => {
-                  if (!isOptionButtonTarget(event.target)) {
-                    setProjectPickerOpen(false);
-                  }
-                }}
-              >
-                <PickerFilterRow
-                  query={projectFilter.query}
-                  matchCount={projectFilter.matches.length}
-                  totalCount={orderedProjects.length}
-                />
-                {projectFilter.matches.map((p, index) => (
-                  <li
-                    key={p.id}
-                    role="option"
-                    aria-selected={p.id === project?.id}
-                    data-active={index === projectFilter.activeIndex ? "true" : undefined}
-                  >
+              className="picker-dismiss-layer"
+              data-testid="picker-dismiss-layer"
+              aria-hidden="true"
+              onMouseDown={closeContextPickers}
+            />,
+            document.body,
+          )}
+        <header className="launcher-hero">
+          <Mascot
+            mood={mascotMood}
+            shades={wearsShades}
+            size={104}
+            className="launcher-hero-mascot"
+            buttonClassName="launcher-hero-mascot-button"
+            onClick={petMascot}
+            title="Pet the fox"
+          />
+          <h1 className="launcher-hero-title">{chatMode ? SIDE_CHAT_TITLE : LAUNCHER_TITLE}</h1>
+        </header>
+        <form
+          className="composer"
+          data-testid="launch-composer"
+          data-drag-active={isDraggingFiles ? "true" : undefined}
+          data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
+          data-type-scale={chatFontSize === undefined ? "composer" : undefined}
+          ref={formRef}
+          onSubmit={(event) => void submitPrompt(event)}
+          onDragEnter={cloudMode ? undefined : onComposerDragEnter}
+          onDragOver={onComposerDragOver}
+          onDragLeave={onComposerDragLeave}
+          onDrop={(event) => {
+            if (!cloudMode) return onComposerDrop(event);
+            event.preventDefault();
+            setStatus("Cloud tasks support text only. Switch to Local to attach files.");
+          }}
+        >
+          <div className="composer-drop-overlay" aria-hidden="true">
+            <Paperclip size={20} />
+            <span>Drop to attach</span>
+            <small>Images and files</small>
+          </div>
+          <input
+            ref={attachmentInputRef}
+            type="file"
+            multiple
+            hidden
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={onAttachmentInputChange}
+          />
+          {pendingAttachments.length > 0 ? (
+            <div className="composer-attachments" aria-label="Attached images">
+              {pendingAttachments.map((attachment) => {
+                const src =
+                  pendingAttachmentPreviews[attachment.filePath] ??
+                  attachmentProtocolUrl(attachment.filePath);
+                return (
+                  <div key={attachment.filePath} className="composer-attachment-chip">
                     <button
                       type="button"
-                      className="project-picker-item"
-                      aria-pressed={p.id === project?.id}
-                      onClick={() => pickProject(p)}
+                      className="attachment-open-button"
+                      aria-label={
+                        attachmentLabels[attachment.filePath]
+                          ? `View window capture: ${attachmentLabels[attachment.filePath]}`
+                          : "View attachment"
+                      }
+                      title={attachmentLabels[attachment.filePath] ?? "View attachment"}
+                      onClick={() => setLightboxSrc(src)}
                     >
-                      <PickerLead selected={p.id === project?.id}>
-                        <Folder size={13} />
-                      </PickerLead>
-                      <span className="picker-label">{p.name}</span>
-                      <span className="picker-meta" aria-hidden="true">
-                        {collapseHome(p.repoPath)}
-                      </span>
+                      <img src={src} alt="" />
                     </button>
-                  </li>
-                ))}
-                {projectFilter.matches.length === 0 ? (
-                  <li className="project-picker-empty" role="presentation">
-                    No projects match
-                  </li>
-                ) : null}
-                <li className="project-picker-divider" role="separator" />
-                <li role="option" aria-selected={false}>
-                  <button
-                    type="button"
-                    className="project-picker-item"
-                    onClick={() => {
-                      onAddProject();
+                    <button
+                      type="button"
+                      className="composer-attachment-remove"
+                      aria-label="Remove attachment"
+                      title="Remove attachment"
+                      onClick={() => removePendingAttachment(attachment.filePath)}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          <div className="composer-input">
+            <ComposerEditor
+              ariaLabel="Task prompt"
+              documentKey={draftKey}
+              expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
+              controls={
+                slashAutocomplete.popoverOpen
+                  ? "slash-menu"
+                  : fileAutocomplete.popoverOpen
+                    ? "file-popover"
+                    : undefined
+              }
+              disabled={isSubmitting}
+              onChange={setPrompt}
+              onCaretChange={fileAutocomplete.onSelectionChange}
+              onKeyDown={onPromptKeyDown}
+              onPaste={(event) => {
+                if (!cloudMode) return onComposerPaste(event);
+                if ((event.clipboardData?.files.length ?? 0) > 0) {
+                  event.preventDefault();
+                  setStatus("Cloud tasks support text only. Switch to Local to attach files.");
+                }
+              }}
+              placeholder={placeholderText}
+              fieldRef={promptInputRef}
+              value={prompt}
+              isSkill={isSkillToken}
+              chats={chatChips}
+            />
+            <SlashCommandMenu state={slashAutocomplete} />
+            <FilePopover state={fileAutocomplete} inputRef={promptInputRef} />
+            <button
+              className="send-button"
+              type="submit"
+              disabled={isSubmitting || !hasSendableContent || (!chatMode && !launchFolder.ready)}
+              title={cloudMode ? "Review cloud task" : "Start agent"}
+              aria-label={cloudMode ? "Review cloud task" : "Start agent"}
+              aria-description={
+                cloudMode
+                  ? undefined
+                  : `${formatChord(backgroundShortcut)} starts the agent in the background`
+              }
+            >
+              {cloudMode ? (
+                <ArrowRight size={15} aria-hidden="true" />
+              ) : (
+                <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+              )}
+            </button>
+          </div>
+          <div className="composer-context">
+            <button
+              className="composer-tool"
+              type="button"
+              title={
+                cloudMode
+                  ? "Cloud tasks take text only. Switch to Local to attach files."
+                  : "Attach file"
+              }
+              aria-label="Attach file"
+              disabled={cloudMode}
+              onClick={openFilePicker}
+            >
+              <Plus size={14} />
+            </button>
+            <div className="composer-context-group composer-context-group--model">
+              {cloudMode ? (
+                <span
+                  className="composer-context-chip composer-cloud-provider"
+                  title={`${cloudProviderName(cloudProvider)} picks the model`}
+                >
+                  <Cloud size={14} aria-hidden="true" />
+                  <span className="model-picker-label">{cloudProviderName(cloudProvider)}</span>
+                </span>
+              ) : (
+                <LaunchModelSelector
+                  ariaLabel="Switch model"
+                  autoRouting={autoRouting}
+                  availability={providerAvailability}
+                  fastModeEnabled={fastModeEnabled}
+                  open={modelPickerOpen}
+                  onOpenChange={setModelPickerOpen}
+                  openBelow
+                  withEffortSlider
+                  effortOpen={effortPickerOpen}
+                  onEffortOpenChange={setEffortPickerOpen}
+                  value={model}
+                  onChange={onModelChange}
+                  onFastModeEnabledChange={onFastModeEnabledChange}
+                />
+              )}
+              {cloudMode || model.autoTier ? null : <ComposerUsageSlot provider={model.provider} />}
+            </div>
+            {chatMode ? null : (
+              <div
+                className="composer-context-group composer-context-group--workspace"
+                data-compact-open={compactContextOpen ? "true" : undefined}
+                ref={compactContextRef}
+              >
+                <button
+                  type="button"
+                  className="composer-compact-context-trigger"
+                  title={contextSummary}
+                  aria-label={contextSummary}
+                  aria-haspopup="dialog"
+                  aria-expanded={compactContextOpen}
+                  onClick={() => {
+                    if (!compactContextOpen) {
                       setProjectPickerOpen(false);
-                      setCompactContextOpen(false);
+                      setBranchPickerOpen(false);
+                      setModelPickerOpen(false);
+                    }
+                    setCompactContextOpen((open) => !open);
+                  }}
+                >
+                  <MoreHorizontal size={14} aria-hidden="true" />
+                </button>
+                <div
+                  className="launch-workspace-pickers"
+                  role={compactContextOpen ? "dialog" : undefined}
+                  aria-label={compactContextOpen ? "Project and branch" : undefined}
+                >
+                  <LaunchFolderPicker
+                    folders={launchFolder.folders}
+                    selected={launchFolder.folder}
+                    open={folderPickerOpen}
+                    onOpenChange={setFolderPickerOpen}
+                    onPick={(folder) => {
+                      launchFolder.pickFolder(folder);
+                      if (folder.id === selectedFolderId) return;
+                      setPickedCheckout(null);
+                      setProjectPickedByHand(true);
                     }}
                   >
-                    <PickerLead>
-                      <Plus size={13} />
-                    </PickerLead>
-                    New project
-                  </button>
-                </li>
-              </ul>
-            )}
-            </div>
-            </LaunchFolderPicker>
-            {activeProject && canUseGit ? (
-            <div className="project-picker-anchor" ref={setBranchAnchor}>
-            <button
-              className="composer-context-chip branch-chip"
-              type="button"
-              aria-label="Switch branch"
-              aria-haspopup="listbox"
-              aria-expanded={branchPickerOpen}
-              title={
-                runsInLinkedCheckout
-                  ? `Runs in ${collapseHome(checkout?.path ?? "")}. Files, Changes and Terminal show the project checkout.`
-                  : shownBranch ?? undefined
-              }
-              onClick={() => void openBranchPicker()}
-            >
-              <GitBranch size={14} aria-hidden="true" />
-              <span
-                className="composer-context-chip-label"
-                data-in={runsInLinkedCheckout ? checkout?.path?.split("/").pop() : undefined}
-              >
-                {shownBranch}
-              </span>
-            </button>
-            {branchPickerOpen && (
-              <ul
-                className="project-picker-popover"
-                data-type-scale="chrome"
-                role="listbox"
-                aria-label="Select branch"
-                ref={setBranchListNode}
-                style={branchFloatingStyles}
-                tabIndex={-1}
-                onKeyDown={branchFilter.onKeyDown}
-                onClick={(event) => {
-                  if (!isOptionButtonTarget(event.target)) {
-                    setBranchPickerOpen(false);
-                  }
-                }}
-              >
-                <PickerFilterRow
-                  query={branchFilter.query}
-                  matchCount={branchFilter.matches.length}
-                  totalCount={branches.length}
-                />
-                {branchFilter.matches.length > 0 ? (
-                  branchFilter.matches.map((b, index) => {
-                    const holder = checkouts.find((candidate) => candidate.branch === b);
-                    return (
-                      <li
-                        key={b}
-                        role="option"
-                        aria-selected={b === shownBranch}
-                        data-active={index === branchFilter.activeIndex ? "true" : undefined}
+                    <div className="project-picker-anchor" ref={setProjectAnchor}>
+                      <button
+                        className="composer-context-chip"
+                        type="button"
+                        aria-label="Switch project"
+                        aria-haspopup="listbox"
+                        aria-expanded={projectPickerOpen || folderPickerOpen}
+                        title={
+                          launchFolder.folder
+                            ? `${contextChipLabel} · Work in ${repoNameFromPath(launchFolder.folder.rootPath) ?? launchFolder.folder.name}
+${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a folder" : ""}`
+                            : contextChipLabel
+                        }
+                        onContextMenu={(event) => {
+                          if (!showFolderPicker) return;
+                          event.preventDefault();
+                          event.currentTarget.focus();
+                          setProjectPickerOpen(false);
+                          setBranchPickerOpen(false);
+                          setFolderPickerOpen(true);
+                        }}
+                        onKeyDown={(event) => {
+                          if (
+                            !showFolderPicker ||
+                            !(
+                              event.key === "ContextMenu" ||
+                              (event.shiftKey && event.key === "F10")
+                            )
+                          )
+                            return;
+                          event.preventDefault();
+                          event.currentTarget.focus();
+                          setProjectPickerOpen(false);
+                          setBranchPickerOpen(false);
+                          setFolderPickerOpen(true);
+                        }}
+                        onClick={() => {
+                          setFolderPickerOpen(false);
+                          setBranchPickerOpen(false);
+                          setProjectPickerOpen((o) => !o);
+                        }}
                       >
-                        <button
-                          type="button"
-                          className="project-picker-item"
-                          // Another checkout has it; the project's own is where a launch runs anyway.
-                          data-in={holder?.isMain === false ? holder.path.split("/").pop() : undefined}
-                          aria-pressed={b === shownBranch}
-                          onClick={() => pickBranch(b)}
+                        <Folder size={14} aria-hidden="true" />
+                        <span className="composer-context-chip-label">{contextChipLabel}</span>
+                      </button>
+                      {projectPickerOpen && (
+                        <ul
+                          className="project-picker-popover"
+                          // Menus read at app-chrome size even though the composer around
+                          // them sits one step up. See tokens.css.
+                          data-type-scale="chrome"
+                          role="listbox"
+                          aria-label="Select project"
+                          ref={setProjectListNode}
+                          style={projectFloatingStyles}
+                          tabIndex={-1}
+                          onKeyDown={projectFilter.onKeyDown}
+                          onClick={(event) => {
+                            if (!isOptionButtonTarget(event.target)) {
+                              setProjectPickerOpen(false);
+                            }
+                          }}
                         >
-                          <PickerLead selected={b === shownBranch}>
-                            <GitBranch size={13} />
-                          </PickerLead>
-                          <span className="picker-label">{b}</span>
-                        </button>
-                      </li>
-                    );
-                  })
-                ) : (
-                  <li role="option" aria-selected={false} aria-disabled="true">
-                    <button type="button" className="project-picker-item" disabled>
-                      {branchFilter.query ? "No branches match" : "No branches"}
-                    </button>
-                  </li>
-                )}
-              </ul>
+                          <PickerFilterRow
+                            query={projectFilter.query}
+                            matchCount={projectFilter.matches.length}
+                            totalCount={orderedProjects.length}
+                          />
+                          {projectFilter.matches.map((p, index) => (
+                            <li
+                              key={p.id}
+                              role="option"
+                              aria-selected={p.id === project?.id}
+                              data-active={index === projectFilter.activeIndex ? "true" : undefined}
+                            >
+                              <button
+                                type="button"
+                                className="project-picker-item"
+                                aria-pressed={p.id === project?.id}
+                                onClick={() => pickProject(p)}
+                              >
+                                <PickerLead selected={p.id === project?.id}>
+                                  <Folder size={13} />
+                                </PickerLead>
+                                <span className="picker-label">{p.name}</span>
+                                <span className="picker-meta" aria-hidden="true">
+                                  {collapseHome(p.repoPath)}
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                          {projectFilter.matches.length === 0 ? (
+                            <li className="project-picker-empty" role="presentation">
+                              No projects match
+                            </li>
+                          ) : null}
+                          <li className="project-picker-divider" role="separator" />
+                          <li role="option" aria-selected={false}>
+                            <button
+                              type="button"
+                              className="project-picker-item"
+                              onClick={() => {
+                                onAddProject();
+                                setProjectPickerOpen(false);
+                                setCompactContextOpen(false);
+                              }}
+                            >
+                              <PickerLead>
+                                <Plus size={13} />
+                              </PickerLead>
+                              New project
+                            </button>
+                          </li>
+                        </ul>
+                      )}
+                    </div>
+                  </LaunchFolderPicker>
+                  {activeProject && canUseGit ? (
+                    <div className="project-picker-anchor" ref={setBranchAnchor}>
+                      <button
+                        className="composer-context-chip branch-chip"
+                        type="button"
+                        aria-label="Switch branch"
+                        aria-haspopup="listbox"
+                        aria-expanded={branchPickerOpen}
+                        title={
+                          runsInLinkedCheckout
+                            ? `Runs in ${collapseHome(checkout?.path ?? "")}. Files, Changes and Terminal show the project checkout.`
+                            : (shownBranch ?? undefined)
+                        }
+                        onClick={() => void openBranchPicker()}
+                      >
+                        <GitBranch size={14} aria-hidden="true" />
+                        <span
+                          className="composer-context-chip-label"
+                          data-testid="branch-chip-label"
+                          data-in={
+                            runsInLinkedCheckout ? checkout?.path?.split("/").pop() : undefined
+                          }
+                        >
+                          {shownBranch}
+                        </span>
+                      </button>
+                      {branchPickerOpen && (
+                        <ul
+                          className="project-picker-popover"
+                          data-type-scale="chrome"
+                          role="listbox"
+                          aria-label="Select branch"
+                          ref={setBranchListNode}
+                          style={branchFloatingStyles}
+                          tabIndex={-1}
+                          onKeyDown={branchFilter.onKeyDown}
+                          onClick={(event) => {
+                            if (!isOptionButtonTarget(event.target)) {
+                              setBranchPickerOpen(false);
+                            }
+                          }}
+                        >
+                          <PickerFilterRow
+                            query={branchFilter.query}
+                            matchCount={branchFilter.matches.length}
+                            totalCount={branches.length}
+                          />
+                          {branchFilter.matches.length > 0 ? (
+                            branchFilter.matches.map((b, index) => {
+                              const holder = checkouts.find((candidate) => candidate.branch === b);
+                              return (
+                                <li
+                                  key={b}
+                                  role="option"
+                                  aria-selected={b === shownBranch}
+                                  data-active={
+                                    index === branchFilter.activeIndex ? "true" : undefined
+                                  }
+                                >
+                                  <button
+                                    type="button"
+                                    className="project-picker-item"
+                                    // Another checkout has it; the project's own is where a launch runs anyway.
+                                    data-in={
+                                      holder?.isMain === false
+                                        ? holder.path.split("/").pop()
+                                        : undefined
+                                    }
+                                    aria-pressed={b === shownBranch}
+                                    onClick={() => pickBranch(b)}
+                                  >
+                                    <PickerLead selected={b === shownBranch}>
+                                      <GitBranch size={13} />
+                                    </PickerLead>
+                                    <span className="picker-label">{b}</span>
+                                  </button>
+                                </li>
+                              );
+                            })
+                          ) : (
+                            <li role="option" aria-selected={false} aria-disabled="true">
+                              <button type="button" className="project-picker-item" disabled>
+                                {branchFilter.query ? "No branches match" : "No branches"}
+                              </button>
+                            </li>
+                          )}
+                        </ul>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             )}
-            </div>
-            ) : null}
+            <div className="composer-context-group composer-context-group--behavior">
+              {!chatMode ? (
+                <button
+                  type="button"
+                  className="composer-context-chip composer-run-location"
+                  aria-label={`Run location: ${cloudMode ? "Cloud" : "Local"}`}
+                  aria-pressed={cloudMode}
+                  disabled={isSubmitting}
+                  title={
+                    cloudMode
+                      ? "Switch to Local"
+                      : cloudProvider
+                        ? `Switch to Cloud · ${cloudProviderName(cloudProvider)}`
+                        : `${model.autoTier ? "The router" : PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks`
+                  }
+                  onClick={() => {
+                    if (!cloudMode && !cloudProvider) {
+                      setStatus(
+                        `${model.autoTier ? "The router" : PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks. Pick a Claude, Codex, or Cursor model to use Cloud.`,
+                      );
+                      return;
+                    }
+                    closeContextPickers();
+                    setCloudSelected((selected) => !selected);
+                    setStatus(
+                      !cloudMode && pendingAttachments.length > 0
+                        ? "Cloud tasks support text only. Remove attachments or switch to Local."
+                        : null,
+                    );
+                  }}
+                >
+                  {cloudMode ? "Cloud" : "Local"}
+                </button>
+              ) : null}
+              {/* Auto is the resting mode and carries no flags, so it stays unlabelled.
+                The chip appears only for a scratch Chat. */}
+              {launcherMode === "auto" ? null : (
+                <button
+                  type="button"
+                  className="composer-context-chip chat-mode-toggle"
+                  aria-label="Chat mode"
+                  aria-pressed
+                  title={launcherModeTitle(launcherMode, chatAvailable)}
+                  onClick={toggleMode}
+                >
+                  {LAUNCHER_MODE_LABELS[launcherMode]}
+                </button>
+              )}
+              {chatMode || cloudMode || !canUseGit ? null : (
+                <button
+                  type="button"
+                  className="composer-context-chip workspace-mode-toggle"
+                  aria-label="Worktree"
+                  aria-pressed={workspaceMode === "worktree"}
+                  title={
+                    workspaceMode === "worktree"
+                      ? "On — agent runs in an isolated git worktree on a new branch"
+                      : "Off — agent runs in your current checkout. Enable to isolate in a worktree."
+                  }
+                  onClick={toggleWorkspace}
+                >
+                  Worktree
+                </button>
+              )}
             </div>
           </div>
-          )}
-          <div className="composer-context-group composer-context-group--behavior">
-            {!chatMode ? (
+          {launchFolder.error && !chatMode ? (
+            <div className="launcher-error" role="alert">
+              <span>{launchFolder.error}</span>
+              <button type="button" onClick={launchFolder.retry}>
+                Retry
+              </button>
+            </div>
+          ) : null}
+          {status ? (
+            <div className="launcher-error" role="alert">
+              <span>{status}</span>
               <button
                 type="button"
-                className="composer-context-chip composer-run-location"
-                aria-label={`Run location: ${cloudMode ? "Cloud" : "Local"}`}
-                aria-pressed={cloudMode}
-                disabled={isSubmitting}
-                title={cloudMode
-                  ? "Switch to Local"
-                  : cloudProvider
-                    ? `Switch to Cloud · ${cloudProviderName(cloudProvider)}`
-                    : `${model.autoTier ? "The router" : PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks`}
+                className="icon-button"
+                aria-label="Dismiss error"
                 onClick={() => {
-                  if (!cloudMode && !cloudProvider) {
-                    setStatus(`${model.autoTier ? "The router" : PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks. Pick a Claude, Codex, or Cursor model to use Cloud.`);
-                    return;
-                  }
-                  closeContextPickers();
-                  setCloudSelected((selected) => !selected);
-                  setStatus(!cloudMode && pendingAttachments.length > 0
-                    ? "Cloud tasks support text only. Remove attachments or switch to Local."
-                    : null);
+                  setStatus(null);
+                  if (isFocusedRef.current) promptInputRef.current?.focus();
                 }}
               >
-                {cloudMode ? "Cloud" : "Local"}
+                <X size={14} />
               </button>
-            ) : null}
-            {/* Auto is the resting mode and carries no flags, so it stays unlabelled.
-                The chip appears only for a scratch Chat. */}
-            {launcherMode === "auto" ? null : (
-              <button
-                type="button"
-                className="composer-context-chip chat-mode-toggle"
-                aria-label="Chat mode"
-                aria-pressed
-                title={launcherModeTitle(launcherMode, chatAvailable)}
-                onClick={toggleMode}
-              >
-                {LAUNCHER_MODE_LABELS[launcherMode]}
-              </button>
-            )}
-            {chatMode || cloudMode || !canUseGit ? null : (
-              <button
-                type="button"
-                className="composer-context-chip workspace-mode-toggle"
-                aria-label="Worktree"
-                aria-pressed={workspaceMode === "worktree"}
-                title={
-                  workspaceMode === "worktree"
-                    ? "On — agent runs in an isolated git worktree on a new branch"
-                    : "Off — agent runs in your current checkout. Enable to isolate in a worktree."
-                }
-                onClick={toggleWorkspace}
-              >
-                Worktree
-              </button>
-            )}
-          </div>
-        </div>
-        {launchFolder.error && !chatMode ? <div className="launcher-error" role="alert">
-          <span>{launchFolder.error}</span>
-          <button type="button" onClick={launchFolder.retry}>Retry</button>
-        </div> : null}
-        {status ? (
-          <div className="launcher-error" role="alert">
-            <span>{status}</span>
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Dismiss error"
-              onClick={() => {
-                setStatus(null);
-                if (isFocusedRef.current) promptInputRef.current?.focus();
-              }}
-            >
-              <X size={14} />
-            </button>
-          </div>
-        ) : null}
-      </form>
+            </div>
+          ) : null}
+        </form>
       </div>
       {projectCheckDraft && project ? (
         <ProjectCheckDialog
@@ -1855,11 +2017,17 @@ ${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a f
           onStart={(projectId) => {
             const { check, launch } = projectCheckDraft;
             setProjectCheckDraft(null);
-            void launchIn(launch, projectId === project.id ? undefined : projectId).then((launched) => {
-              if (launched) {
-                resolveProjectCheck(check, projectId === project.id ? "stayed" : "accepted", launched.sessionId);
-              }
-            });
+            void launchIn(launch, projectId === project.id ? undefined : projectId).then(
+              (launched) => {
+                if (launched) {
+                  resolveProjectCheck(
+                    check,
+                    projectId === project.id ? "stayed" : "accepted",
+                    launched.sessionId,
+                  );
+                }
+              },
+            );
           }}
           onCancel={() => {
             resolveProjectCheck(projectCheckDraft.check, "cancelled", null);
@@ -1911,12 +2079,13 @@ ${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a f
 }
 
 async function undoSwitch(launched: LaunchedChat, relaunch: () => Promise<unknown>): Promise<void> {
-  const api = window.argmax;
-  if (!api) return;
+  const providers = providerActions();
+  const workspaces = workspaceActions();
+  if (!providers || !workspaces) return;
   try {
     // A chat that already finished has nothing to stop.
-    await api.providers.terminate(launched.sessionId).catch(() => undefined);
-    await api.workspaces.archive({ workspaceId: launched.workspaceId, force: true });
+    await providers.terminate(launched.sessionId).catch(() => undefined);
+    await workspaces.archive({ workspaceId: launched.workspaceId, force: true });
     await relaunch();
   } catch (error) {
     showErrorToast(errorMessage(error) || "Could not move the chat back.");

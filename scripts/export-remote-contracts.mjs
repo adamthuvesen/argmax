@@ -3,7 +3,9 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 // Transport exposure is declared alongside the typed command registration.
 const catalogue = readFileSync("src-tauri/src/ipc/catalogue.rs", "utf8");
-const reads = [...catalogue.matchAll(/"([^"]+)"\s*=>\s*\w+::\w+,\s*read,/g)].map(match => match[1]);
+const reads = [...catalogue.matchAll(/"([^"]+)"\s*=>\s*\w+::\w+,\s*read,/g)].map(
+  (match) => match[1],
+);
 if (!reads.length) throw new Error("No read contracts found in IPC catalogue");
 // This delta cursor belongs to the WebSocket connection, not to desktop IPC.
 reads.push("dashboard:changes");

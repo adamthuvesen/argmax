@@ -10,7 +10,7 @@ import { THEME_STORAGE_KEY } from "./theme.js";
 const indexHtml = readFileSync(new URL("../../../index.html", import.meta.url), "utf8");
 const appearanceHook = readFileSync(
   new URL("../hooks/useLauncherAppearance.ts", import.meta.url),
-  "utf8"
+  "utf8",
 );
 
 // Keys the inline script in index.html restores before React mounts.
@@ -18,7 +18,7 @@ const PRE_PAINTED: Record<string, string> = {
   THEME_STORAGE_KEY,
   BACKGROUND_INTENSITY_STORAGE_KEY,
   CONTRAST_STORAGE_KEY,
-  SIDEBAR_INTENSITY_STORAGE_KEY
+  SIDEBAR_INTENSITY_STORAGE_KEY,
 };
 
 // Keys the hook persists that only React applies today.
@@ -27,7 +27,7 @@ const REACT_ONLY = new Set([
   "FONT_SIZE_STORAGE_KEY",
   "CHAT_FONT_SIZE_STORAGE_KEY",
   "FONT_HEAVINESS_STORAGE_KEY",
-  "INK_STRENGTH_STORAGE_KEY"
+  "INK_STRENGTH_STORAGE_KEY",
 ]);
 
 function runPrePaint(saved: Record<string, string> = {}, systemDark = false) {
@@ -40,10 +40,16 @@ function runPrePaint(saved: Record<string, string> = {}, systemDark = false) {
     window: { matchMedia: () => ({ matches: systemDark }) },
     document: {
       documentElement: {
-        setAttribute: (name: string, value: string) => { attributes[name] = value; },
-        style: { setProperty: (name: string, value: string) => { properties[name] = value; } }
-      }
-    }
+        setAttribute: (name: string, value: string) => {
+          attributes[name] = value;
+        },
+        style: {
+          setProperty: (name: string, value: string) => {
+            properties[name] = value;
+          },
+        },
+      },
+    },
   });
   return { attributes, properties };
 }
@@ -63,7 +69,7 @@ describe("index.html pre-paint script", () => {
       [THEME_STORAGE_KEY]: "dark",
       [BACKGROUND_INTENSITY_STORAGE_KEY]: "70",
       [SIDEBAR_INTENSITY_STORAGE_KEY]: "85",
-      [CONTRAST_STORAGE_KEY]: "80"
+      [CONTRAST_STORAGE_KEY]: "80",
     });
     expect(attributes["data-theme"]).toBe("dark");
     expect(properties["--background-intensity"]).toBe("70");
@@ -73,7 +79,9 @@ describe("index.html pre-paint script", () => {
 
   it("classifies every storage key useLauncherAppearance persists", () => {
     const hookKeys = new Set(appearanceHook.match(/\b[A-Z_]+_STORAGE_KEY\b/g) ?? []);
-    const unclassified = [...hookKeys].filter((name) => !(name in PRE_PAINTED) && !REACT_ONLY.has(name));
+    const unclassified = [...hookKeys].filter(
+      (name) => !(name in PRE_PAINTED) && !REACT_ONLY.has(name),
+    );
     // A new appearance key must be restored in index.html (PRE_PAINTED) or
     // knowingly left to React (REACT_ONLY). Forgetting both is how a saved
     // setting paints the default and then snaps on mount.

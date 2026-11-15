@@ -5,12 +5,12 @@ Argmax manages Claude Code, Codex, Cursor Agent, OpenCode, and Grok Build throug
 ## Architecture
 
 - [adapters.rs](../src-tauri/src/providers/adapters.rs): Constructs CLI arguments for structured JSON modes. Centralizes auto-approve bypass flags.
-- [environment.rs](../src-tauri/src/providers/environment.rs): Hydrates user login shell environment and PATH for spawned processes.
+- [environment.rs](../src-tauri/crates/argmax-process/src/environment.rs): Hydrates user login shell environment and PATH for spawned processes.
 - [discovery.rs](../src-tauri/src/providers/discovery.rs): Detects installed provider binaries and versions.
 - [cloud.rs](../src-tauri/src/providers/cloud.rs): Validates pushed GitHub branches, clones isolated launch checkouts, and builds bounded chat context.
 - [claude_cloud.rs](../src-tauri/src/providers/claude_cloud.rs), [codex_cloud.rs](../src-tauri/src/providers/codex_cloud.rs), and [cursor_cloud.rs](../src-tauri/src/providers/cursor_cloud.rs): Discover provider environments and launch separate hosted tasks.
 - [runtime.rs](../src-tauri/src/providers/runtime.rs): Selects native bidirectional transports for chats. Claude uses SDK control, Codex uses app-server, Cursor and Grok use ACP, and OpenCode uses HTTP/SSE. See [approval settings](approvals-checks.md). Legacy structured argument builders remain available for fixtures and restricted helper flows.
-- [session_service.rs](../src-tauri/src/providers/session_service.rs): Orchestrates launch, resume, user input, resize, cancellation, and orphan recovery.
+- [session_service.rs](../src-tauri/src/providers/session_service.rs): The provider session service, its dependencies, and orphan recovery. Its methods are split by concern under [session_service/](../src-tauri/src/providers/session_service): `launch`, `input` (sends, steering, resize), `queue`, `termination`, `events`, `flush`, `post_turn`, and `turn_observations`.
 - [continuity.rs](../src-tauri/src/providers/continuity.rs) and [fork_merge.rs](../src-tauri/src/providers/fork_merge.rs): What a follow-up launch resumes or retells, fork first turns, the one fresh retry, and fork merge-back. See [Native continuity and forks](#native-continuity-and-forks).
 - [follow_up.rs](../src-tauri/src/providers/follow_up.rs): Composes the prompt a follow-up turn launches with. A session holding a native resume id sends the user's message alone because the CLI replays its own rollout, plus only the visible messages a returning provider missed. Without one, such as after a provider switch, the prompt carries a capped visible transcript: 12 messages, 12k chars, with child-agent rows excluded. When older messages fall outside it, the earliest user request since the last clear takes one of the 12 slots (and stays when the char cap drops older lines), and a line names the number of messages left out and tells the agent to read them with `session_read` on this session. The new user message stays separate and whole. A pending project handoff note rides along either way. Claude, Codex, OpenCode, and eligible Cursor native subagent references are resolved against the current parent conversation at delivery time.
 - [orphan_cleanup.rs](../src-tauri/src/providers/orphan_cleanup.rs): Terminates lingering provider processes during startup recovery.
@@ -110,7 +110,7 @@ session may already exist.
 
 ## Verification profiles
 
-`npm run verify` starts a disposable profile with a scripted Claude executable.
+`npm run verify:native` starts a disposable profile with a scripted Claude executable.
 The fixture follows the production discovery, adapter, PTY, normalizer, and
 persistence paths. It validates the resume argument and exposes file barriers
 so the runner can inspect streaming text and a running tool before allowing
@@ -128,10 +128,7 @@ It does not establish compatibility with a newly released provider CLI.
 
 ## Permissions and Approvals
 
-Native permission gates are reported in `ProviderCapabilityReport.approvalSupport`.
-- Claude, Codex, and Grok: Observable-only in structured PTY mode. Gate events become `permission.blocked` notifications.
-- Cursor and OpenCode: Native gate detection is unsupported.
-- Approval rows store provider correlation fields as opaque payload data without mocking user approval responses.
+Provider permission modes and native approval transports are described in [approvals and checks](approvals-checks.md).
 
 ## Linked repositories in a launch
 
@@ -190,9 +187,71 @@ automatically inject memories into every chat. Use project-scoped recall and
 verify changeable claims against current code or sources. Argmax's built-in
 project learnings remain separate (see [memory.md](memory.md)).
 
+### Claude: MCP at turn start
+
+Every MCP server Claude starts adds to the wait before a turn begins. Settings → Agents → Claude → MCP at turn start chooses which servers a Claude turn starts. The choice is stored in `ui_state` (`launch.claude_mcp`) and resolved on every Claude launch in `SessionLaunchRegistry::issue`, so it also applies to chats an agent starts. A change applies from each chat's next turn.
+
+| Preset | What the launch adds | What starts |
+|---|---|---|
+| Everything (default) | nothing | Claude's own choice, plus `argmax` |
+| Without claude.ai connectors | `ENABLE_CLAUDEAI_MCP_SERVERS=false` in the process environment | your servers, plugin servers, `argmax` |
+| Your servers only | `--strict-mcp-config` | `argmax` and your own servers |
+| Argmax tools only | `--strict-mcp-config` | `argmax` |
+| Custom | `--strict-mcp-config` | `argmax` and the servers you pick |
+
+"Your own servers" are the definitions in the files Argmax can read: `mcpServers` in `~/.claude.json` (user scope), `projects.<checkout>.mcpServers` there (local scope), and the checkout's `.mcp.json` (project scope). `connections::claude_own_servers` reads them, and the Connections list uses the same reader. Local beats project, and project beats user, on a shared name. A project server on the checkout's `disabledMcpjsonServers` list is off. `claude -p` also starts a project server that is not approved yet, so `enabledMcpjsonServers` removes nothing. Argmax copies each definition into the inline `--mcp-config` unchanged and never writes a provider file.
+
+Plugin servers and claude.ai connectors are not in those files, so the strict presets leave them off. A Custom name the config no longer has is dropped at launch and flagged in Settings. The definitions can carry credentials in `env` or `headers`. They ride on argv, as the `argmax` token already does: argv is never logged, and the launch config's `Debug` output names the servers only. Settings counts the connectors and plugin servers with `claude mcp list` (`settings:claude-mcp-probe`). While connectors load, Claude skips a plugin server at a URL a connector already serves, so the Everything count subtracts those.
+
+The resolved preset stays on the launch config (`ClaudeMcpLaunch::preset`), so a per-turn latency measurement can say which preset a turn ran with.
+
+### Claude: the turn environment
+
+Both Claude launches, stream-json and PTY, set `adapters::CLAUDE_TURN_ENV` in the process environment:
+
+- `CLAUDE_CODE_CLASSIFIER_SUMMARY=0` stops print mode from holding the `result` event until a "post turn summary" model call returns. Argmax marks a turn complete only on `result`, so that call added 2–25 s at the end of every turn, and nothing reads the summary.
+- `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` stops print mode from killing a background agent after ten minutes while it still makes progress.
+
+Both must be real environment variables. Claude reads them before it applies `--settings` env, so the settings JSON has no effect. Neither is documented; they were verified against Claude Code 2.1.310 and 2.1.323. After a Claude Code upgrade, check the end of a turn: the gap from the last text to `result` stays under 0.1 s when the summary call is off.
+
 ## Session Lifecycle and Follow-ups
 
 An idle follow-up persists the user message and returns, then spawns the provider in the background. The PTY/CLI spawn does not block the send IPC.
+
+### The pre-turn checkpoint gate
+
+Every turn in a git workspace captures a "Before turn" checkpoint, so a revert can restore the worktree as it was before the agent touched it. The capture runs beside the provider's startup, not before it. `spawn_provider_in_background` starts the capture as a task and launches through `ProviderProcessLauncher::launch_gated` with a [`PromptGate`](../src-tauri/src/providers/prompt_gate.rs). The provider may spawn and finish its handshake while the gate is shut. The user's prompt, the first thing that lets the model act, waits for the gate.
+
+| Provider path | Runs while the capture runs | Waits for the gate |
+|---|---|---|
+| Claude stream-json | Spawn, `initialize`, its acknowledgement | The first user message |
+| Codex app-server | Spawn, `initialize`, `thread/start` / `resume` / `fork` | `turn/start` (or `thread/compact/start`) |
+| OpenCode serve | Server boot, health check, event stream, session create or fork | `prompt_async` |
+| Cursor and Grok ACP | Warm process, `session/new` / `load`, model and mode | `session/prompt` |
+| PTY (Cursor and Grok fallbacks) | Nothing | Everything: the prompt is in argv, and the MCP config is written into the worktree |
+
+A launcher without an override waits for the gate before it launches, which keeps test launchers sequential.
+
+The gate keeps the old outcomes:
+
+- A checkpoint that fails to capture still opens the gate. The turn runs and its `user.message` carries `checkpointUnavailable`, as before.
+- A capture that cannot run at all (the session or workspace row is unreadable) refuses the gate. The launch kills the process it started and returns the capture's error, and the turn fails as it did when the capture ran first. Cursor and Grok ACP are the exception: they keep their warm per-workspace process, and the `session/new` they created stays in it with no prompt.
+- A Stop before the gate opens refuses it at once with `PROVIDER_LAUNCH_CANCELLED`, through the stop handle the spawn task leaves on the Pending entry. A capture still waiting for the checkout lock (a running check holds it for its whole command) gives up and writes nothing. The CLI is killed before the launch returns, and the turn stays cancelled.
+- A definite resume rejection that arrives before the gate opens waits for it. A stopped or uncapturable turn records no rejection and starts no fresh retry.
+- Until the gate opens, every provider event is held. An open gate replays them in order; a refused gate drops them, so an aborted launch shows nothing in the chat.
+- A launch that fails for its own reason waits for the capture before the failure is recorded, so no capture is still writing refs after the turn settles.
+
+The capture reads the checkout with as few git processes as it can ([capture.rs](../src-tauri/src/checkpoints/capture.rs)):
+
+- One `git status --porcelain=v2 --branch --no-renames --untracked-files=all` gives HEAD, the branch, unmerged entries, the untracked files, and the paths whose worktree side differs from the index. The index tree is written beside it.
+- Only those paths are staged into a copy of the checkout's index (`add --all --pathspec-from-file`). Every other path is clean, so the copy already holds it. With nothing to stage, the worktree tree is the index tree. If the narrowed `add` fails, the capture stages the whole worktree instead. This happens when a named file was deleted after status ran, or a tracked directory is now behind a symlink.
+- The force-staged-ignored rule reads ignore rules only when the index has entries `HEAD` lacks (`A` in status). Only those entries can be dropped.
+- Both refs land in one `update-ref --stdin` transaction.
+- **Reuse.** When status and the stat of every path it names match the last capture of the same checkout, that capture's trees are reused. Only the new refs and row are written. A capture whose paths were written less than a second before their stat is never reused. Neither is a capture whose status reported an untracked directory (`? nested/`, an embedded repository): a commit inside it moves neither the record nor the directory's stat. When the index file's stat is unchanged, the index tree and the submodule check are reused too. The records live in memory for one app run, keyed by checkout path, and the 64 most recently used are kept.
+
+The workspace watcher does not decide reuse. Its events arrive asynchronously, and nothing proves that a write made just before the capture was delivered.
+
+The capture still holds the checkout write lock, so a rewind, review write, or `session_move` cannot interleave with it. Provider startup is not the agent: a Claude `SessionStart` hook or an MCP server that writes into the worktree at boot can now race the capture.
 
 While a turn is running, ordinary input stays queued. A queued follow-up has
 **Steer** for Codex, Claude and OpenCode and **Stop and send** for explicit interruption.
@@ -274,14 +333,14 @@ account and a temporary project.
 - **Returning to a provider:** see [Native continuity and forks](#native-continuity-and-forks). A provider switch parks the old conversation instead of forgetting it.
 - **Forking:** `session:fork` forks a chat at a finished turn, or the whole chat. See [Native continuity and forks](#native-continuity-and-forks).
 - **Session moves:** An agent-requested move waits for the current turn to settle and copies the transcript into a fresh session at the destination. A cross-project move always clears `provider_conversation_id`. A move to another checkout of the same project carries it where the provider allows — see below. The first destination turn receives the handoff note, plus the capped transcript when the conversation did not travel.
-- **Default agent:** one model and one reasoning effort for the whole app (Settings → Agents), not a per-project setting. A model that doesn't offer the chosen effort runs at Medium instead, and failing that at the nearest level it does offer — see `effortForModel` in [providerModels.ts](../src/shared/providerModels.ts). A fresh install starts on Opus 5 at Medium. The renderer owns the preference and mirrors it through `system:set-default-agent` so the sessions Argmax starts on its own (the PR check-failure fix chat) use it too.
-- **Fast mode:** The model catalog explicitly marks eligible models. The picker offers the Fast mode row and shows the Fast indicator only for those entries, and launch and follow-up requests gate the saved preference by that eligibility. Eligible today: Codex Astra, Sol, Terra, and Luna (`serviceTier: "priority"` per turn), Grok 4.7 (`grok-4.7-build-fast` on ACP and the CLI), Claude Opus 5.5 (`"fastMode": true` in `--settings`, twice the price), and every Cursor model whose ACP config has a `fast` option (Grok 4.7, GPT-5.6 Sol/Terra/Luna, Opus 5.5; not Gemini 3.8 Flash or Auto). Composer 2.5 always runs Fast (`cursor_fast_mode` in `adapters.rs`), so it shows no toggle: on a 12-file turn it finished in 39.5 s against 62 s standard (2026-10-02), at 6x the per-token price. Availability depends on the provider account. OpenCode has none. [Claude's documentation](https://code.claude.com/docs/en/fast-mode) limits Fast to Opus 5.5, 5 and 4.8 and says enabling it on another model switches to Opus, so the rest of the Claude catalog stays ineligible. Unknown models default to ineligible. The picker's control is the **Fast mode** row at the foot of the list (Off / On); it is not called Speed because that names a Router tier. [Codex's speed documentation](https://learn.chatgpt.com/docs/agent-configuration/speed) covers Astra and the GPT-5.6 family.
+- **Default agent:** one model and one reasoning effort for the whole app (Settings → Agents), not a per-project setting. A model that doesn't offer the chosen effort runs at Medium instead, and failing that at the nearest level it does offer — see `effortForModel` in [providerModels.ts](../src/shared/providerModels.ts). The fresh-install default comes from the provider catalogue. The renderer owns the preference and mirrors it through `system:set-default-agent` so the sessions Argmax starts on its own (the PR check-failure fix chat) use it too.
+- **Fast mode:** The model catalog explicitly marks eligible models. The picker offers the Fast mode row and shows the Fast indicator only for those entries, and launch and follow-up requests gate the saved preference by that eligibility. Eligible today: Codex Astra, Sol, Terra, and Luna (`serviceTier: "priority"` per turn), Grok 4.7 (`grok-4.7-build-fast` on ACP and the CLI), Claude Opus 5.5 (`"fastMode": true` in `--settings`, twice the price), and every Cursor model whose ACP config has a `fast` option (Grok 4.7, GPT-5.6 Sol/Terra/Luna, Opus 5.5; not Gemini 4 Hydrogen, Carbon, or Argon, or Auto). Composer 2.5 always runs Fast (`cursor_fast_mode` in `adapters.rs`), so it shows no toggle: on a 12-file turn it finished in 39.5 s against 62 s standard (2026-10-02), at 6x the per-token price. Availability depends on the provider account. OpenCode has none. [Claude's documentation](https://code.claude.com/docs/en/fast-mode) limits Fast to Opus 5.5, 5 and 4.8 and says enabling it on another model switches to Opus, so the rest of the Claude catalog stays ineligible. Unknown models default to ineligible. The picker's control is the **Fast mode** row at the foot of the list (Off / On); it is not called Speed because that names a Router tier. [Codex's speed documentation](https://learn.chatgpt.com/docs/agent-configuration/speed) covers Astra and the GPT-5.6 family.
 - **Reasoning effort:** Claude gets the CLI's `--effort` flag (low → max; Ultra clamps to max, the flag's ceiling). The appended system prompt never varies with effort, while cache reuse still depends on the model and endpoint below. Codex app-server receives the effort per turn (Astra/Sol/Terra through ultra, Luna through max). Cursor ACP sets it as the model's `thought_level` config option, described below. Legacy CLI builders retain Codex's `service_tier` and `model_reasoning_effort` overrides and Cursor's effort and `-fast` model suffixes for helper flows. Grok's CLI accepts only low/medium/high/xhigh, so Max and Ultra clamp to xhigh.
 - **Context window:** Claude's 1M models launch on the `[1m]` spelling of their id (`claude-opus-5-5[1m]`, `claude-opus-5[1m]`, `claude-fable-5-1[1m]`), since the CLI only resolves a bare id's window through a first-party lookup — behind a custom `ANTHROPIC_BASE_URL` it assumes 200k and auto-compacts there, a fifth of the way into the advertised window. The suffix rides on the launch flag alone; the CLI reports the bare id back, so usage and pricing are unchanged. The catalog's `contextWindow` decides which ids get it (`CLAUDE_LONG_CONTEXT_MODELS` in [adapters.rs](../src-tauri/src/providers/adapters.rs)).
 
 ### Native continuity and forks
 
-Code: [continuity.rs](../src-tauri/src/providers/continuity.rs) (launch decisions), [persistence/continuity.rs](../src-tauri/src/persistence/continuity.rs) (rows, v65), [fork.rs](../src-tauri/src/workspaces/orchestration/fork.rs) (fork orchestration), [fork_merge.rs](../src-tauri/src/providers/fork_merge.rs) (bringing findings back).
+Code: [continuity.rs](../src-tauri/src/providers/continuity.rs) (launch decisions), [persistence/continuity.rs](../src-tauri/crates/argmax-store/src/continuity.rs) (rows, v65), [fork.rs](../src-tauri/src/workspaces/orchestration/fork.rs) (fork orchestration), [fork_merge.rs](../src-tauri/src/providers/fork_merge.rs) (bringing findings back).
 
 **Bindings.** `sessions.provider_conversation_id` stays the pointer to the live conversation. `provider_bindings` keeps one row per native conversation a session holds with a provider, with its working directory, a hash of the provider config it was created under (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, gateway URL, `HOME`), and its state: `active`, `parked` or `invalid`. Every write of the pointer goes through `update_session_provider_conversation_id`, which binds, so a launch, a Cursor inference, a fork or a move cannot skip the ledger. Rows for chats that already held an id are backfilled by the migration with an empty (accept-any) config.
 
@@ -451,7 +510,7 @@ or a URL flow such as connector reauthentication. Argmax returns the protocol's
 result remains visible with its actionable failure, while the redundant
 app-server diagnostic is suppressed in current and historical transcripts.
 
-**Grok ACP has no `assistant` envelope of its own, so the bridge writes one per answer burst.** Its answers arrive as `agent_message_chunk` updates, which [grok_acp.rs](../src-tauri/src/providers/grok_acp.rs) forwards as `text_delta`. When a thought, a tool call, or the end of the turn closes a burst, `close_answer` sends the burst's text verbatim as the whole-message `assistant` envelope Claude sends after each text block, and that becomes the burst's `message.completed`. The completion is required. The cursorless session backfill keeps every durable row but only the newest page of deltas ([events.rs](../src-tauri/src/persistence/events.rs)), so an answer stored only as deltas disappeared from every turn except the last few when the chat was reopened, and the turn showed only its steps. Chats recorded before this change still hold delta-only answers. An answer delta, never a `thinking_delta`, also arms the same turn-answer guard Claude's `message.completed` arms ([normalizer/mod.rs](../src-tauri/src/providers/normalizer/mod.rs)). The trailing `result` speaks only when no answer streamed. Otherwise it stays silent instead of repeating every burst as one concatenated bubble at the end of the turn.
+**Grok ACP has no `assistant` envelope of its own, so the bridge writes one per answer burst.** Its answers arrive as `agent_message_chunk` updates, which [grok_acp.rs](../src-tauri/src/providers/grok_acp.rs) forwards as `text_delta`. When a thought, a tool call, or the end of the turn closes a burst, `close_answer` sends the burst's text verbatim as the whole-message `assistant` envelope Claude sends after each text block, and that becomes the burst's `message.completed`. The completion is required. The cursorless session backfill keeps every durable row but only the newest page of deltas ([events.rs](../src-tauri/crates/argmax-store/src/events.rs)), so an answer stored only as deltas disappeared from every turn except the last few when the chat was reopened, and the turn showed only its steps. Chats recorded before this change still hold delta-only answers. An answer delta, never a `thinking_delta`, also arms the same turn-answer guard Claude's `message.completed` arms ([normalizer/mod.rs](../src-tauri/src/providers/normalizer/mod.rs)). The trailing `result` speaks only when no answer streamed. Otherwise it stays silent instead of repeating every burst as one concatenated bubble at the end of the turn.
 
 **Grok's `ask_user_question` is not exposed over ACP.** The binary carries the
 tool and documents it, and `features.ask_user_question` defaults to true, but
@@ -709,36 +768,46 @@ Historical events without `providerInvocationId` use chronological unmatched-pai
 Sessions can launch, list, message, and move other sessions, and drive Argmax's
 own browser. Every provider gets those as tools on the `argmax` MCP server, and
 host policy rides in that server's `instructions` — not on the user prompt.
-The `argmax session …` CLI still speaks the same socket from a terminal. See
+See
 [agent-tools.md](agent-tools.md) and
 [ADR 0005](adr/0005-agent-tools-are-one-mcp-server.md).
 
 ## Adding or retiring a model
 
-A model id lives in more than one place. Work through this list, then run
-`npm run check:provider-models` and `npm run precheck`.
+[providerModels.ts](../src/shared/providerModels.ts) is the source. Edit it, then
+run `npm run export:provider-models` and `npm run push-gate`. The export writes
+`ios/Argmax/Resources/providerModels.json` and
+`src-tauri/src/providers/model_catalogue.generated.rs`, and every other copy of an
+id, ladder, default, or Vercel slug reads those files.
 
-- [providerModels.ts](../src/shared/providerModels.ts): the catalogue row
-  (`label`, `modelId`, `contextWindow`, `supportsReasoningEffort`,
-  `supportsFastMode`). For a retired id, add it to `SUCCESSOR_MODEL_IDS`:
-  `successorModelId`, `modelLabelFor`, and `contextWindowForModel` follow it.
-- [adapters.rs](../src-tauri/src/providers/adapters.rs): `claude_model_arg` and
-  the Cursor and Codex model arguments. [pricing.rs](../src-tauri/src/providers/pricing.rs)
-  prices the id.
-- [models.ts](../src/renderer/lib/models.ts): launch defaults, the Auto tier
-  blurbs `AUTO_TIER_DESCRIPTIONS`, and the routing grid copy (see
-  [routing.md](routing.md)); `src-tauri/src/routing/table.rs` is the source.
-- `ScheduledTasksPanel.tsx` (`draftFromRoutine`) maps a stored routine's model
-  through the successor.
-- The phone reads a generated copy: `npm run export:provider-models` rewrites
-  `ios/Argmax/Resources/providerModels.json`. `ProviderCatalogTests.swift`
-  names ids too. CI cannot run the iOS suite, so `check:provider-models` fails
-  on a stale file or a test id the catalogue no longer lists.
-- An OpenCode model also runs on Vercel AI Gateway: check its slug in Vercel's
-  catalogue and add it to `VERCEL_SLUGS` in
-  [opencode_gateway.rs](../src-tauri/src/providers/opencode_gateway.rs) when it
-  differs from OpenRouter's, with a case in its mapping test.
-- Tests that name the old id: `grep -rn "<old-id>" src src-tauri ios`.
+- **Add:** add the row to `PROVIDER_MODELS` and its effort ladder to
+  `reasoningEffortsForModel`. For an OpenCode model, check its slug in Vercel's
+  catalogue and set `vercelSlug` when it differs from OpenRouter's. Add its rate to
+  `MODEL_PRICING` in `providerModels.ts` and `pricing.rs`.
+- **Retire:** remove the row and add `old id: successor` to
+  `SUCCESSOR_MODEL_IDS`. For an id that keeps launching as itself, add a
+  `STORED_ONLY_MODELS` row instead.
+- **Follow the failures.** Each one names the file to edit:
+  - `check:provider-models`: a stale output, a default or title model that left the
+    catalogue, a priced id with no successor, or production code that names a
+    retired id.
+  - `cargo test --manifest-path src-tauri/Cargo.toml catalogue`: a missing price (`pricing.rs`), or a model with no
+    routing answer (`routing/table.rs`). The Router grid and its copy in
+    `AUTO_TIER_DESCRIPTIONS` and [routing.md](routing.md) are policy, so the catalogue
+    does not generate them.
+
+A stored id reaches a launch or a routing decision only as a resolved id:
+`ModelId::resolve` in Rust and `resolveModelId` in the renderer. The stored row
+keeps its id. `ProviderLaunchInput.model_id` and `FollowUpState.model_id` have the
+type `ModelId`, and the `argmax/no-raw-model-id` lint rule rejects a raw `session.modelId` or `routine.modelId`.
+
+## Adding a provider
+
+Add the variant to `ProviderId` in
+[validation.rs](../src-tauri/crates/argmax-contracts/src/validation.rs). The compiler then
+lists every provider dispatch, and `Record<ProviderId, ...>` lists every TypeScript
+table. Add the provider to `PROVIDER_MODELS` and run `npm run export:provider-models`.
+Parse stored strings with `ProviderId::parse` and match without a wildcard.
 
 ### DeepSeek Flash 1017
 
@@ -758,21 +827,17 @@ Vercel usage continues to use OpenCode's reported cost.
 ### Where a session's model label comes from
 
 The picker writes `modelLabel` on launch. Agent-tool launches and imported
-sessions use `fallback_model_label` ([lib.rs](../src-tauri/src/lib.rs)).
+sessions use `fallback_model_label` ([model_catalogue.rs](../src-tauri/src/providers/model_catalogue.rs)).
 It formats Claude ids, such as `claude-opus-5` as "Opus 5", and preserves other ids.
 Clients prefer catalog labels and resolve retired ids through their successors.
 The iPhone resolves labels through `ProviderCatalog.swift`.
 
 ### Where Fast mode is decided
 
-The catalogue flag `supportsFastMode` drives the renderer. The Rust side has no
-shared table: [adapters.rs](../src-tauri/src/providers/adapters.rs) decides per
-CLI (`cursor_fast_mode` forces Composer 2.5 on Fast and excludes
-`gemini-3.8-flash`; `codex_fast_mode_args` handles Codex). Internal launches
-(multitask, goals, session control, follow-up flush, ACP/OpenCode servers) pass
-`fast_mode: false`; list them with `grep -rn "fast_mode: false" src-tauri/src`.
-The parametrised test in `useSessionCommands.test.tsx` reads the catalogue, so a
-catalogue change moves it with the code.
+The catalogue flag `supportsFastMode` drives the renderer and is projected into
+Rust. [adapters.rs](../src-tauri/src/providers/adapters.rs) applies the
+provider-specific launch options. The parametrised test in
+`useSessionCommands.test.tsx` reads the catalogue.
 
 ## Default Model Selection
 

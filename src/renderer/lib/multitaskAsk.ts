@@ -13,7 +13,7 @@ import { isAskUserQuestionToolName } from "./turnInteractiveCards.js";
  */
 export function multitaskPendingQuestion(events: readonly TimelineEvent[]): string | null {
   const asks = buildSessionToolCalls(events).filter(
-    (tool) => isAskUserQuestionToolName(tool.name) && tool.status === "running"
+    (tool) => isAskUserQuestionToolName(tool.name) && tool.status === "running",
   );
   for (let index = asks.length - 1; index >= 0; index -= 1) {
     const questions = parseQuestionsFromToolInput(asks[index]);

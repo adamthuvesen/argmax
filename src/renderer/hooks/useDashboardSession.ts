@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
 import type {
   ApprovalRequest,
   DashboardSnapshot,
@@ -6,20 +15,15 @@ import type {
   ProjectSummary,
   SessionSummary,
   TimelineEvent,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../../shared/types.js";
 import { SCRATCH_PROJECT_ID } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
-import {
-  emptySnapshot,
-  mergeDashboardDelta,
-  mergeProjectSummary
-} from "../lib/snapshot.js";
+import { emptySnapshot, mergeDashboardDelta, mergeProjectSummary } from "../lib/snapshot.js";
 import { SessionTimelines } from "../lib/sessionTimelines.js";
 import { sessionMoveDestination, type SessionMoveDestination } from "../lib/projectMove.js";
-import { subscribeRemoteConnection } from "../lib/wsTransport.js";
 import { chatSessionFor } from "../lib/workspaceChat.js";
 
 function isTerminalTimelineEvent(event: TimelineEvent): boolean {
@@ -35,7 +39,7 @@ function isTerminalTimelineEvent(event: TimelineEvent): boolean {
 function withoutOutdated<T extends { id: string }>(
   current: T[],
   fetched: T[],
-  changedAt: (item: T) => string
+  changedAt: (item: T) => string,
 ): T[] {
   const byId = new Map(current.map((item) => [item.id, item]));
   const kept = fetched.filter((item) => {
@@ -52,14 +56,19 @@ function withoutOutdated<T extends { id: string }>(
  * that read is simply not in it, and dropping it would lose the prompt for
  * good.
  */
-function withCarriedPending(current: ApprovalRequest[], fetched: ApprovalRequest[]): ApprovalRequest[] {
+function withCarriedPending(
+  current: ApprovalRequest[],
+  fetched: ApprovalRequest[],
+): ApprovalRequest[] {
   const fetchedIds = new Set(fetched.map((approval) => approval.id));
   const carried = current.filter(
-    (approval) => approval.status === "pending" && !fetchedIds.has(approval.id)
+    (approval) => approval.status === "pending" && !fetchedIds.has(approval.id),
   );
   if (carried.length === 0) return fetched;
   // Newest first, the order mergeSlice keeps approvals in.
-  return [...fetched, ...carried].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  return [...fetched, ...carried].sort((left, right) =>
+    right.createdAt.localeCompare(left.createdAt),
+  );
 }
 
 interface UseDashboardSessionOptions {
@@ -83,7 +92,7 @@ interface UseDashboardSessionResult {
   selectedProjectId: string | null;
   // Setters are wrapped in useCallback so exhaustive-deps in consumers sees a
   // stable identity across the hook boundary (the raw useState dispatcher is
-  // stable too, but ESLint only recognizes that when used in the same body).
+  // stable too, but the hooks lint rule only recognizes that when used in the same body).
   setSelectedSessionId: (value: string | null) => void;
   setSelectedWorkspaceId: (value: string | null) => void;
   setSelectedProjectId: (value: string | null) => void;
@@ -93,7 +102,11 @@ interface UseDashboardSessionResult {
   refresh: () => Promise<void>;
   loadDashboard: () => Promise<void>;
   loadSessionEvents: (sessionId: string) => Promise<void>;
-  loadAgentEvents: (sessionId: string, parentToolUseId: string, identity?: NativeAgentIdentity) => Promise<{ hasMore: boolean }>;
+  loadAgentEvents: (
+    sessionId: string,
+    parentToolUseId: string,
+    identity?: NativeAgentIdentity,
+  ) => Promise<{ hasMore: boolean }>;
   openWorkspaceChat: (workspaceId: string) => void;
   openProjectLauncher: (projectId: string) => void;
   resolveApproval: (approvalId: string, status: "approved" | "rejected") => Promise<void>;
@@ -111,7 +124,7 @@ interface UseDashboardSessionResult {
  */
 export function useDashboardSession(
   loadSnapshot: () => Promise<DashboardSnapshot>,
-  options: UseDashboardSessionOptions = {}
+  options: UseDashboardSessionOptions = {},
 ): UseDashboardSessionResult {
   const { onErrorToast, followWorkspaceProject = true } = options;
   const onErrorToastRef = useRef(onErrorToast);
@@ -121,14 +134,20 @@ export function useDashboardSession(
 
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(emptySnapshot);
   const [timelines] = useState(() => new SessionTimelines());
-  const [sessionMoves, setSessionMoves] = useState<ReadonlyMap<string, SessionMoveDestination>>(() => new Map());
+  const [sessionMoves, setSessionMoves] = useState<ReadonlyMap<string, SessionMoveDestination>>(
+    () => new Map(),
+  );
   const rememberSessionMoves = useCallback((events: TimelineEvent[], overwrite = true): void => {
     const moves = events
       .filter((event) => {
         const decoded = decodeTimelineEvent(event);
         return decoded.kind === "lifecycle" && decoded.name === "moved";
       })
-      .sort((left, right) => (left.rowCursor ?? 0) - (right.rowCursor ?? 0) || left.createdAt.localeCompare(right.createdAt))
+      .sort(
+        (left, right) =>
+          (left.rowCursor ?? 0) - (right.rowCursor ?? 0) ||
+          left.createdAt.localeCompare(right.createdAt),
+      )
       .map(sessionMoveDestination)
       .filter((move) => move !== null);
     if (moves.length === 0) return;
@@ -136,10 +155,13 @@ export function useDashboardSession(
       const next = new Map(current);
       for (const move of moves) {
         const previous = next.get(move.sourceSessionId);
-        if (previous && (!overwrite || previous.destinationSessionId === move.destinationSessionId)) continue;
+        if (previous && (!overwrite || previous.destinationSessionId === move.destinationSessionId))
+          continue;
         next.set(move.sourceSessionId, move);
       }
-      return next.size === current.size && [...next].every(([id, move]) => current.get(id) === move) ? current : next;
+      return next.size === current.size && [...next].every(([id, move]) => current.get(id) === move)
+        ? current
+        : next;
     });
   }, []);
   // Mirror snapshot into a ref so callbacks that need a "current value at
@@ -155,9 +177,18 @@ export function useDashboardSession(
   const [selectedSessionId, setSelectedSessionIdState] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectIdState] = useState<string | null>(null);
   const [selectedWorkspaceId, setSelectedWorkspaceIdState] = useState<string | null>(null);
-  const setSelectedSessionId = useCallback((value: string | null) => setSelectedSessionIdState(value), []);
-  const setSelectedProjectId = useCallback((value: string | null) => setSelectedProjectIdState(value), []);
-  const setSelectedWorkspaceId = useCallback((value: string | null) => setSelectedWorkspaceIdState(value), []);
+  const setSelectedSessionId = useCallback(
+    (value: string | null) => setSelectedSessionIdState(value),
+    [],
+  );
+  const setSelectedProjectId = useCallback(
+    (value: string | null) => setSelectedProjectIdState(value),
+    [],
+  );
+  const setSelectedWorkspaceId = useCallback(
+    (value: string | null) => setSelectedWorkspaceIdState(value),
+    [],
+  );
 
   // Independent tokens for full snapshot loads (loadDashboard) and incremental
   // refreshes (refresh). Sharing a token caused `refresh` to cancel a
@@ -170,136 +201,180 @@ export function useDashboardSession(
   // is a point-in-time DB read, so a prune that lands after that read but before
   // its response reaches us is invisible to it — and the delta merge below is
   // union-by-upsert, which cannot express removal. Null when no load is running.
-  const removedDuringLoad = useRef<{ sessions: Set<string>; workspaces: Set<string>; metadata: DashboardSnapshot } | null>(
-    null
-  );
+  const removedDuringLoad = useRef<{
+    sessions: Set<string>;
+    workspaces: Set<string>;
+    metadata: DashboardSnapshot;
+  } | null>(null);
   const resolveApprovalTokens = useRef(new Map<string, number>());
   const pendingSelectionRef = useRef<{ sessionId: string; workspaceId: string } | null>(null);
 
-  const registerLaunchedSession = useCallback((workspace: WorkspaceSummary, session: SessionSummary): void => {
-    pendingSelectionRef.current = { sessionId: session.id, workspaceId: workspace.id };
-    const delta = { workspaces: [workspace], sessions: [session] };
-    // A dashboard read started before launch can finish after this response.
-    // Replay these confirmed rows with concurrent pushes so that older list
-    // cannot erase the new chat and cause grid reconciliation to close it.
-    const collecting = removedDuringLoad.current;
-    if (collecting) collecting.metadata = mergeDashboardDelta(collecting.metadata, delta);
-    setSnapshot((current) => mergeDashboardDelta(current, delta));
-  }, []);
+  const registerLaunchedSession = useCallback(
+    (workspace: WorkspaceSummary, session: SessionSummary): void => {
+      pendingSelectionRef.current = { sessionId: session.id, workspaceId: workspace.id };
+      const delta = { workspaces: [workspace], sessions: [session] };
+      // A dashboard read started before launch can finish after this response.
+      // Replay these confirmed rows with concurrent pushes so that older list
+      // cannot erase the new chat and cause grid reconciliation to close it.
+      const collecting = removedDuringLoad.current;
+      if (collecting) collecting.metadata = mergeDashboardDelta(collecting.metadata, delta);
+      setSnapshot((current) => mergeDashboardDelta(current, delta));
+    },
+    [],
+  );
 
-  const loadSessionEvents = useCallback(async (sessionId: string): Promise<void> => {
-    if (!window.argmax) {
-      return;
-    }
+  const loadSessionEvents = useCallback(
+    async (sessionId: string): Promise<void> => {
+      if (!window.argmax) {
+        return;
+      }
 
-    let hasMore = true;
-    while (hasMore) {
+      let hasMore = true;
+      while (hasMore) {
+        const ticket = timelines.beginRead(sessionId);
+        try {
+          const data = await window.argmax.session.eventsSince({
+            sessionId,
+            eventCursor: ticket.eventCursor,
+            rawOutputCursor: ticket.rawOutputCursor,
+            changeCursor: ticket.changeCursor,
+          });
+          if (!timelines.finishRead(sessionId, ticket, data)) return;
+          rememberSessionMoves(data.events);
+          hasMore = data.hasMore === true;
+        } finally {
+          timelines.cancelRead(sessionId, ticket);
+        }
+      }
+    },
+    [timelines, rememberSessionMoves],
+  );
+
+  const loadAgentEvents = useCallback(
+    async (
+      sessionId: string,
+      parentToolUseId: string,
+      identity?: NativeAgentIdentity,
+    ): Promise<{ hasMore: boolean }> => {
+      if (!window.argmax) {
+        return { hasMore: false };
+      }
       const ticket = timelines.beginRead(sessionId);
       try {
-        const data = await window.argmax.session.eventsSince({
+        const data = await window.argmax.session.agentEvents({
           sessionId,
-          eventCursor: ticket.eventCursor,
-          rawOutputCursor: ticket.rawOutputCursor,
-          changeCursor: ticket.changeCursor
+          parentToolUseId,
+          ...identity,
         });
-        if (!timelines.finishRead(sessionId, ticket, data)) return;
-        rememberSessionMoves(data.events);
-        hasMore = data.hasMore === true;
+        timelines.mergeAgentTail(sessionId, data, ticket);
+        return { hasMore: data.hasMore === true };
       } finally {
         timelines.cancelRead(sessionId, ticket);
       }
-    }
-  }, [timelines, rememberSessionMoves]);
+    },
+    [timelines],
+  );
 
-  const loadAgentEvents = useCallback(async (
-    sessionId: string,
-    parentToolUseId: string,
-    identity?: NativeAgentIdentity
-  ): Promise<{ hasMore: boolean }> => {
-    if (!window.argmax) {
-      return { hasMore: false };
-    }
-    const ticket = timelines.beginRead(sessionId);
-    try {
-      const data = await window.argmax.session.agentEvents({ sessionId, parentToolUseId, ...identity });
-      timelines.mergeAgentTail(sessionId, data, ticket);
-      return { hasMore: data.hasMore === true };
-    } finally {
-      timelines.cancelRead(sessionId, ticket);
-    }
-  }, [timelines]);
-
-  const loadDashboard = useCallback(async (propagateError = false): Promise<void> => {
-    // A newer authoritative read supersedes an earlier status refresh.
-    dashboardRefreshToken.current += 1;
-    const token = ++dashboardLoadToken.current;
-    const pruned = { sessions: new Set<string>(), workspaces: new Set<string>(), metadata: emptySnapshot };
-    removedDuringLoad.current = pruned;
-    // A row the sweep deleted mid-load is hard-deleted in SQLite, and nothing
-    // removes it later: `loadDashboard` runs once per app run and the merge
-    // never deletes. Replay the removals against whatever we settle on.
-    const withoutPruned = (settled: DashboardSnapshot): DashboardSnapshot =>
-      pruned.sessions.size === 0 && pruned.workspaces.size === 0
-        ? settled
-        : mergeDashboardDelta(settled, {
-            removedSessionIds: [...pruned.sessions],
-            removedWorkspaceIds: [...pruned.workspaces]
-          });
-    try {
-      const data = await loadSnapshot();
-      if (token !== dashboardLoadToken.current) {
-        return;
-      }
-      rememberSessionMoves(data.events, false);
-      // Browser fixtures can include history. Keep newer live rows if a push
-      // arrived during the load, and keep transcript data out of React's
-      // dashboard state so a token only notifies its own session subscribers.
-      const existingEventIds = new Map<string, Set<string>>();
-      const existingOutputIds = new Map<string, Set<string>>();
-      for (const session of data.sessions) {
-        const timeline = timelines.getSnapshot(session.id);
-        existingEventIds.set(session.id, new Set(timeline.events.map((event) => event.id)));
-        existingOutputIds.set(session.id, new Set(timeline.rawOutputs.map((output) => output.id)));
-      }
-      timelines.merge(
-        data.events.filter((event) => !pruned.sessions.has(event.sessionId) && !existingEventIds.get(event.sessionId)?.has(event.id)),
-        data.rawOutputs.filter((output) => !pruned.sessions.has(output.sessionId) && !existingOutputIds.get(output.sessionId)?.has(output.id))
-      );
-      const metadata = { ...data, events: emptySnapshot.events, rawOutputs: emptySnapshot.rawOutputs };
-      setSnapshot((current) => {
-        // Pushes and successful launches while loadSnapshot() was in flight
-        // are newer than this list. Upsert their confirmed entity rows without
-        // resurrecting pruned event tails from the pre-load `current` snapshot.
-        const existingProjects = new Map(current.projects.map((project) => [project.id, project]));
-        const projects = metadata.projects.map((project) => mergeProjectSummary(existingProjects.get(project.id), project));
-        const merged = mergeDashboardDelta({ ...metadata, projects }, {
-          sessions: pruned.metadata.sessions,
-          workspaces: pruned.metadata.workspaces,
-          checks: pruned.metadata.checks,
-          projects: pruned.metadata.projects,
-          approvals: pruned.metadata.approvals,
-          pendingMessages: pruned.metadata.pendingMessages
+  const loadDashboard = useCallback(
+    async (propagateError = false): Promise<void> => {
+      // A newer authoritative read supersedes an earlier status refresh.
+      dashboardRefreshToken.current += 1;
+      const token = ++dashboardLoadToken.current;
+      const pruned = {
+        sessions: new Set<string>(),
+        workspaces: new Set<string>(),
+        metadata: emptySnapshot,
+      };
+      removedDuringLoad.current = pruned;
+      // A row the sweep deleted mid-load is hard-deleted in SQLite, and nothing
+      // removes it later: `loadDashboard` runs once per app run and the merge
+      // never deletes. Replay the removals against whatever we settle on.
+      const withoutPruned = (settled: DashboardSnapshot): DashboardSnapshot =>
+        pruned.sessions.size === 0 && pruned.workspaces.size === 0
+          ? settled
+          : mergeDashboardDelta(settled, {
+              removedSessionIds: [...pruned.sessions],
+              removedWorkspaceIds: [...pruned.workspaces],
+            });
+      try {
+        const data = await loadSnapshot();
+        if (token !== dashboardLoadToken.current) {
+          return;
+        }
+        rememberSessionMoves(data.events, false);
+        // Browser fixtures can include history. Keep newer live rows if a push
+        // arrived during the load, and keep transcript data out of React's
+        // dashboard state so a token only notifies its own session subscribers.
+        const existingEventIds = new Map<string, Set<string>>();
+        const existingOutputIds = new Map<string, Set<string>>();
+        for (const session of data.sessions) {
+          const timeline = timelines.getSnapshot(session.id);
+          existingEventIds.set(session.id, new Set(timeline.events.map((event) => event.id)));
+          existingOutputIds.set(
+            session.id,
+            new Set(timeline.rawOutputs.map((output) => output.id)),
+          );
+        }
+        timelines.merge(
+          data.events.filter(
+            (event) =>
+              !pruned.sessions.has(event.sessionId) &&
+              !existingEventIds.get(event.sessionId)?.has(event.id),
+          ),
+          data.rawOutputs.filter(
+            (output) =>
+              !pruned.sessions.has(output.sessionId) &&
+              !existingOutputIds.get(output.sessionId)?.has(output.id),
+          ),
+        );
+        const metadata = {
+          ...data,
+          events: emptySnapshot.events,
+          rawOutputs: emptySnapshot.rawOutputs,
+        };
+        setSnapshot((current) => {
+          // Pushes and successful launches while loadSnapshot() was in flight
+          // are newer than this list. Upsert their confirmed entity rows without
+          // resurrecting pruned event tails from the pre-load `current` snapshot.
+          const existingProjects = new Map(
+            current.projects.map((project) => [project.id, project]),
+          );
+          const projects = metadata.projects.map((project) =>
+            mergeProjectSummary(existingProjects.get(project.id), project),
+          );
+          const merged = mergeDashboardDelta(
+            { ...metadata, projects },
+            {
+              sessions: pruned.metadata.sessions,
+              workspaces: pruned.metadata.workspaces,
+              checks: pruned.metadata.checks,
+              projects: pruned.metadata.projects,
+              approvals: pruned.metadata.approvals,
+              pendingMessages: pruned.metadata.pendingMessages,
+            },
+          );
+          return withoutPruned(merged);
         });
-        return withoutPruned(merged);
-      });
-      setLoadState("ready");
-      setLoadError(null);
-    } catch (error) {
-      if (token !== dashboardLoadToken.current) {
-        return;
+        setLoadState("ready");
+        setLoadError(null);
+      } catch (error) {
+        if (token !== dashboardLoadToken.current) {
+          return;
+        }
+        if (!propagateError || snapshotRef.current.projects.length === 0) {
+          setLoadState("error");
+          setLoadError(errorMessage(error) || "Could not load your chats.");
+        }
+        if (propagateError) throw error;
+      } finally {
+        // A newer load may already have claimed the slot; only clear our own.
+        if (removedDuringLoad.current === pruned) {
+          removedDuringLoad.current = null;
+        }
       }
-      if (!propagateError || snapshotRef.current.projects.length === 0) {
-        setLoadState("error");
-        setLoadError(errorMessage(error) || "Could not load your chats.");
-      }
-      if (propagateError) throw error;
-    } finally {
-      // A newer load may already have claimed the slot; only clear our own.
-      if (removedDuringLoad.current === pruned) {
-        removedDuringLoad.current = null;
-      }
-    }
-  }, [loadSnapshot, timelines, rememberSessionMoves]);
+    },
+    [loadSnapshot, timelines, rememberSessionMoves],
+  );
 
   const metadataHintsEnabled = useRef(false);
   const metadataRead = useRef<{ dirty: boolean; promise: Promise<void> } | null>(null);
@@ -328,26 +403,29 @@ export function useDashboardSession(
   }, [loadDashboard]);
 
   const hintedReads = useRef(new Map<string, { dirty: boolean; promise: Promise<void> }>());
-  const loadHintedSession = useCallback((sessionId: string): Promise<void> => {
-    const existing = hintedReads.current.get(sessionId);
-    if (existing) {
-      existing.dirty = true;
-      return existing.promise;
-    }
-    const pending = { dirty: false, promise: Promise.resolve() };
-    hintedReads.current.set(sessionId, pending);
-    pending.promise = (async () => {
-      try {
-        do {
-          pending.dirty = false;
-          await loadSessionEvents(sessionId);
-        } while (pending.dirty && timelines.subscribedSessionIds().includes(sessionId));
-      } finally {
-        hintedReads.current.delete(sessionId);
+  const loadHintedSession = useCallback(
+    (sessionId: string): Promise<void> => {
+      const existing = hintedReads.current.get(sessionId);
+      if (existing) {
+        existing.dirty = true;
+        return existing.promise;
       }
-    })();
-    return pending.promise;
-  }, [loadSessionEvents, timelines]);
+      const pending = { dirty: false, promise: Promise.resolve() };
+      hintedReads.current.set(sessionId, pending);
+      pending.promise = (async () => {
+        try {
+          do {
+            pending.dirty = false;
+            await loadSessionEvents(sessionId);
+          } while (pending.dirty && timelines.subscribedSessionIds().includes(sessionId));
+        } finally {
+          hintedReads.current.delete(sessionId);
+        }
+      })();
+      return pending.promise;
+    },
+    [loadSessionEvents, timelines],
+  );
 
   const recovery = useRef({ requested: false, running: false, disposed: false });
   const recoveryRetry = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -368,9 +446,13 @@ export function useDashboardSession(
         await Promise.all(timelines.subscribedSessionIds().map(loadHintedSession));
       } while (state.requested && !state.disposed);
     } catch (error) {
-      logger.warn("renderer.dashboard", "recovery failed; retrying", { error: errorMessage(error) });
+      logger.warn("renderer.dashboard", "recovery failed; retrying", {
+        error: errorMessage(error),
+      });
       if (!state.disposed) {
-        recoveryRetry.current = setTimeout(() => { void recoverDashboard(); }, 1000);
+        recoveryRetry.current = setTimeout(() => {
+          void recoverDashboard();
+        }, 1000);
       }
     } finally {
       state.running = false;
@@ -385,10 +467,6 @@ export function useDashboardSession(
       if (recoveryRetry.current !== null) clearTimeout(recoveryRetry.current);
     };
   }, []);
-
-  useEffect(() => subscribeRemoteConnection((connection) => {
-    if (connection.status === "connected" && connection.resync) void recoverDashboard();
-  }), [recoverDashboard]);
 
   const refresh = useCallback(async (): Promise<void> => {
     if (metadataHintsEnabled.current) {
@@ -407,7 +485,7 @@ export function useDashboardSession(
 
       const [status, approvals] = await Promise.all([
         window.argmax.workspaces.status(),
-        window.argmax.approvals.pending()
+        window.argmax.approvals.pending(),
       ]);
       if (token !== dashboardRefreshToken.current) {
         return;
@@ -435,17 +513,31 @@ export function useDashboardSession(
         const raced = deltaRevision !== dashboardDeltaRevision.current;
         const merged = mergeDashboardDelta(current, {
           workspaces: raced
-            ? withoutOutdated(current.workspaces, status.workspaces, (workspace) => workspace.lastActivityAt)
+            ? withoutOutdated(
+                current.workspaces,
+                status.workspaces,
+                (workspace) => workspace.lastActivityAt,
+              )
             : status.workspaces,
           sessions: raced
-            ? withoutOutdated(current.sessions, status.sessions, (session) => session.lastActivityAt)
+            ? withoutOutdated(
+                current.sessions,
+                status.sessions,
+                (session) => session.lastActivityAt,
+              )
             : status.sessions,
           checks: raced
-            ? withoutOutdated(current.checks, status.checks, (check) => check.completedAt ?? check.startedAt)
-            : status.checks
+            ? withoutOutdated(
+                current.checks,
+                status.checks,
+                (check) => check.completedAt ?? check.startedAt,
+              )
+            : status.checks,
         });
         const authoritative = raced ? withCarriedPending(current.approvals, approvals) : approvals;
-        return merged.approvals === authoritative ? merged : { ...merged, approvals: authoritative };
+        return merged.approvals === authoritative
+          ? merged
+          : { ...merged, approvals: authoritative };
       });
       setLoadState("ready");
       setLoadError(null);
@@ -466,7 +558,7 @@ export function useDashboardSession(
       const message = errorMessage(error) || "Could not refresh your chats.";
       if (hasSnapshot) {
         logger.warn("renderer.dashboard", "refresh failed; keeping last-good snapshot", {
-          error: errorMessage(error)
+          error: errorMessage(error),
         });
         onErrorToastRef.current?.(message);
         return;
@@ -493,9 +585,18 @@ export function useDashboardSession(
         for (const id of delta.removedSessionIds ?? []) collecting.sessions.add(id);
         for (const id of delta.removedWorkspaceIds ?? []) collecting.workspaces.add(id);
       }
-      const { events = [], rawOutputs = [], changedSessionIds, dashboardChanged, resyncRequired, ...metadata } = delta;
+      const {
+        events = [],
+        rawOutputs = [],
+        changedSessionIds,
+        dashboardChanged,
+        resyncRequired,
+        ...metadata
+      } = delta;
       if (dashboardChanged && !resyncRequired) {
-        void loadMetadata().catch(() => { void recoverDashboard(); });
+        void loadMetadata().catch(() => {
+          void recoverDashboard();
+        });
       }
       if (collecting) collecting.metadata = mergeDashboardDelta(collecting.metadata, metadata);
       rememberSessionMoves(events);
@@ -506,7 +607,10 @@ export function useDashboardSession(
       for (const sessionId of changedSessionIds ?? []) {
         if (!subscribed.has(sessionId)) continue;
         void loadHintedSession(sessionId).catch((error: unknown) => {
-          logger.warn("renderer.dashboard", "transcript catch-up failed", { sessionId, error: errorMessage(error) });
+          logger.warn("renderer.dashboard", "transcript catch-up failed", {
+            sessionId,
+            error: errorMessage(error),
+          });
           void recoverDashboard();
         });
       }
@@ -516,7 +620,11 @@ export function useDashboardSession(
         if (removedWorkspaces.has(session.workspaceId)) removed.add(session.id);
       }
       timelines.remove(removed);
-      if (Object.values(metadata).some((value) => Array.isArray(value) ? value.length > 0 : value !== undefined)) {
+      if (
+        Object.values(metadata).some((value) =>
+          Array.isArray(value) ? value.length > 0 : value !== undefined,
+        )
+      ) {
         setSnapshot((current) => mergeDashboardDelta(current, metadata));
         setLoadState("ready");
         setLoadError(null);
@@ -586,26 +694,34 @@ export function useDashboardSession(
 
   const selectedSession = useMemo(
     () =>
-      (selectedSessionId ? snapshot.sessions.find((session) => session.id === selectedSessionId) : null) ??
+      (selectedSessionId
+        ? snapshot.sessions.find((session) => session.id === selectedSessionId)
+        : null) ??
       (selectedWorkspaceId ? chatSessionFor(snapshot.sessions, selectedWorkspaceId) : null) ??
       null,
-    [snapshot.sessions, selectedSessionId, selectedWorkspaceId]
+    [snapshot.sessions, selectedSessionId, selectedWorkspaceId],
   );
   const selectedWorkspace = useMemo(
     () =>
-      (selectedSession ? snapshot.workspaces.find((workspace) => workspace.id === selectedSession.workspaceId) : null) ??
-      (selectedWorkspaceId ? snapshot.workspaces.find((workspace) => workspace.id === selectedWorkspaceId) : null) ??
+      (selectedSession
+        ? snapshot.workspaces.find((workspace) => workspace.id === selectedSession.workspaceId)
+        : null) ??
+      (selectedWorkspaceId
+        ? snapshot.workspaces.find((workspace) => workspace.id === selectedWorkspaceId)
+        : null) ??
       null,
-    [snapshot.workspaces, selectedWorkspaceId, selectedSession]
+    [snapshot.workspaces, selectedWorkspaceId, selectedSession],
   );
   const selectedProject = useMemo(
     () =>
-      (selectedProjectId ? snapshot.projects.find((project) => project.id === selectedProjectId) : null) ??
+      (selectedProjectId
+        ? snapshot.projects.find((project) => project.id === selectedProjectId)
+        : null) ??
       // Never fall back to the hidden "Side chats" scratch project: it is not
       // a repository, so it must not become the launcher's implicit target.
       snapshot.projects.find((project) => project.id !== SCRATCH_PROJECT_ID) ??
       null,
-    [snapshot.projects, selectedProjectId]
+    [snapshot.projects, selectedProjectId],
   );
 
   useEffect(() => {
@@ -617,12 +733,15 @@ export function useDashboardSession(
       return;
     }
 
-    if (selectedProjectId && snapshot.projects.some((project) => project.id === selectedProjectId)) {
+    if (
+      selectedProjectId &&
+      snapshot.projects.some((project) => project.id === selectedProjectId)
+    ) {
       return;
     }
 
     setSelectedProjectIdState(
-      snapshot.projects.find((project) => project.id !== SCRATCH_PROJECT_ID)?.id ?? null
+      snapshot.projects.find((project) => project.id !== SCRATCH_PROJECT_ID)?.id ?? null,
     );
   }, [followWorkspaceProject, snapshot.projects, selectedProjectId, selectedWorkspace]);
 
@@ -666,21 +785,22 @@ export function useDashboardSession(
     // on this reconcile). Snapshot the terminal-event ids that already exist so
     // only a NEW one — produced by the current turn — counts.
     const priorTerminalEventIds = new Set(
-      timelines.getSnapshot(runningSessionId).events
-        .filter(
-          (event) =>
-            event.sessionId === runningSessionId &&
-            isTerminalTimelineEvent(event)
+      timelines
+        .getSnapshot(runningSessionId)
+        .events.filter(
+          (event) => event.sessionId === runningSessionId && isTerminalTimelineEvent(event),
         )
-        .map((event) => event.id)
+        .map((event) => event.id),
     );
     const turnHasTerminalEvent = (): boolean =>
-      timelines.getSnapshot(runningSessionId).events.some(
-        (event) =>
-          event.sessionId === runningSessionId &&
-          isTerminalTimelineEvent(event) &&
-          !priorTerminalEventIds.has(event.id)
-      );
+      timelines
+        .getSnapshot(runningSessionId)
+        .events.some(
+          (event) =>
+            event.sessionId === runningSessionId &&
+            isTerminalTimelineEvent(event) &&
+            !priorTerminalEventIds.has(event.id),
+        );
     // Throttle for the mid-turn status pull. Edits land on the workspace as the
     // agent works, but `changedFiles` is only refreshed by a `workspace:status`
     // pull — so without this the changed-files card and dirty markers freeze
@@ -730,14 +850,26 @@ export function useDashboardSession(
           const raced = deltaRevision !== dashboardDeltaRevision.current;
           return mergeDashboardDelta(current, {
             workspaces: raced
-              ? withoutOutdated(current.workspaces, status.workspaces, (workspace) => workspace.lastActivityAt)
+              ? withoutOutdated(
+                  current.workspaces,
+                  status.workspaces,
+                  (workspace) => workspace.lastActivityAt,
+                )
               : status.workspaces,
             sessions: raced
-              ? withoutOutdated(current.sessions, status.sessions, (session) => session.lastActivityAt)
+              ? withoutOutdated(
+                  current.sessions,
+                  status.sessions,
+                  (session) => session.lastActivityAt,
+                )
               : status.sessions,
             checks: raced
-              ? withoutOutdated(current.checks, status.checks, (check) => check.completedAt ?? check.startedAt)
-              : status.checks
+              ? withoutOutdated(
+                  current.checks,
+                  status.checks,
+                  (check) => check.completedAt ?? check.startedAt,
+                )
+              : status.checks,
           });
         });
       } finally {
@@ -751,7 +883,13 @@ export function useDashboardSession(
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [selectedSession?.state, selectedSessionId, selectedWorkspaceId, loadSessionEvents, timelines]);
+  }, [
+    selectedSession?.state,
+    selectedSessionId,
+    selectedWorkspaceId,
+    loadSessionEvents,
+    timelines,
+  ]);
 
   // A blocked session is not idle: it is a turn parked on a question or an
   // approval, and that is when the push fallback matters most. The poll above
@@ -767,7 +905,7 @@ export function useDashboardSession(
     void loadSessionEvents(selectedSessionId).catch((error: unknown) => {
       logger.warn("renderer.dashboard", "blocked-session catch-up failed", {
         sessionId: selectedSessionId,
-        error: errorMessage(error)
+        error: errorMessage(error),
       });
     });
   }, [selectedSession?.state, selectedSessionId, loadSessionEvents]);
@@ -784,7 +922,7 @@ export function useDashboardSession(
       setSelectedWorkspaceIdState(workspaceId);
       setSelectedSessionIdState(session?.id ?? null);
     },
-    [snapshot.sessions, snapshot.workspaces]
+    [snapshot.sessions, snapshot.workspaces],
   );
 
   const openProjectLauncher = useCallback((projectId: string): void => {
@@ -815,8 +953,8 @@ export function useDashboardSession(
         setSnapshot((current) => ({
           ...current,
           approvals: current.approvals.map((approval) =>
-            approval.id === approvalId ? resolved : approval
-          )
+            approval.id === approvalId ? resolved : approval,
+          ),
         }));
         await refresh();
       } catch (error) {
@@ -828,7 +966,7 @@ export function useDashboardSession(
         throw error;
       }
     },
-    [refresh]
+    [refresh],
   );
 
   return {
@@ -855,6 +993,6 @@ export function useDashboardSession(
     openProjectLauncher,
     resolveApproval,
     registerLaunchedSession,
-    pendingSelectionRef
+    pendingSelectionRef,
   };
 }

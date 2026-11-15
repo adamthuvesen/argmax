@@ -44,7 +44,7 @@ const EXTENSION_FAMILIES: Record<string, FileFamily> = {
   cpp: "script",
   md: "doc",
   mdx: "doc",
-  txt: "doc"
+  txt: "doc",
 };
 
 /** True for a file whose name marks it as a test or spec, whatever its

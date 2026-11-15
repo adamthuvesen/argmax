@@ -2,11 +2,7 @@ import { ChevronRight } from "lucide-react";
 import { useRef, useState, type JSX } from "react";
 import { codenameForTool, fallbackCodename } from "../lib/agentNames.js";
 import { emblemForCodename, type Emblem } from "../lib/agentEmblems.js";
-import {
-  agentLaunchAriaLabel,
-  agentLaunchLabel,
-  agentStatusLabel
-} from "../lib/agentLaunch.js";
+import { agentLaunchAriaLabel, agentLaunchLabel, agentStatusLabel } from "../lib/agentLaunch.js";
 import { useSettleHold } from "../hooks/useSettleHold.js";
 import { usePacedHeadline } from "../lib/pacedHeadline.js";
 import { useReadingWave } from "../lib/readingWave.js";
@@ -46,7 +42,7 @@ function AgentLaunchMark({
   status,
   emblem,
   phaseKey,
-  nest
+  nest,
 }: {
   status: ToolCall["status"];
   emblem: Emblem;
@@ -71,6 +67,7 @@ function AgentLaunchMark({
   return (
     <span
       className="agent-launch-mark agent-launch-emblem"
+      data-testid="agent-launch-emblem"
       aria-hidden="true"
       data-launch-mark={status}
     >
@@ -95,7 +92,7 @@ function AgentLaunchRow({
   defaultExpanded,
   workspaceCwd,
   onOpenFile,
-  onOpenAgent
+  onOpenAgent,
 }: {
   tool: ToolCall;
   agentCodename?: string;
@@ -148,12 +145,14 @@ function AgentLaunchRow({
           re-worded part remounts and its fade actually plays. */}
       <span
         className="agent-launch-headline"
+        data-testid="agent-launch-headline"
         ref={headlineRef}
         data-reading-wave={liveWork ? "true" : undefined}
       >
         <span
           key={shownTitle}
           className="agent-launch-title reading-wave-text"
+          data-testid="agent-launch-title"
           data-arriving={arriving(0, shownTitle)}
         >
           {shownTitle}
@@ -162,6 +161,7 @@ function AgentLaunchRow({
           <span
             key={shownIdentity}
             className="agent-launch-identity reading-wave-text"
+            data-testid="agent-launch-identity"
             data-arriving={arriving(1, shownIdentity)}
           >
             {shownIdentity}
@@ -171,6 +171,7 @@ function AgentLaunchRow({
       <span
         key={shownStatus}
         className="agent-launch-status"
+        data-testid="agent-launch-status"
         data-arriving={arriving(2, shownStatus)}
       >
         {shownStatus}
@@ -183,6 +184,7 @@ function AgentLaunchRow({
     // agent's colour, the one its emblem takes when the run lands.
     <div
       className="agent-launch-row agent-emblem-tint"
+      data-testid="agent-launch-row"
       data-status={tool.status}
       data-hue={emblem.hue}
     >
@@ -219,11 +221,7 @@ function AgentLaunchRow({
         ) : null}
       </div>
       {expanded ? (
-        <ToolCallDetail
-          tool={tool}
-          workspaceCwd={workspaceCwd ?? null}
-          onOpenFile={onOpenFile}
-        />
+        <ToolCallDetail tool={tool} workspaceCwd={workspaceCwd ?? null} onOpenFile={onOpenFile} />
       ) : null}
     </div>
   );
@@ -235,7 +233,7 @@ export function AgentLaunchList({
   workspaceCwd,
   agentCodenames,
   onOpenFile,
-  onOpenAgent
+  onOpenAgent,
 }: {
   tools: ToolCall[];
   defaultExpanded?: boolean;

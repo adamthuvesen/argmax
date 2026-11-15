@@ -11,7 +11,7 @@ import {
   secondProject,
   sessionRow,
   workspaceRow,
-  workspaceStatusSnapshot
+  workspaceStatusSnapshot,
 } from "./fixtures/dashboardSnapshot.js";
 import { usageRemainingFixture } from "./fixtures/usageRemaining.js";
 import { usageSummaryFixture, usageSummaryFor } from "./fixtures/usageSummary.js";
@@ -46,7 +46,7 @@ await Promise.all([
   import("../renderer/components/scheduled/ScheduledTasksPanel.js"),
   import("../renderer/components/usage/UsagePanel.js"),
   import("../renderer/components/CommandPalette.js"),
-  import("../renderer/components/ReviewPanel.js")
+  import("../renderer/components/ReviewPanel.js"),
 ]);
 
 export const snapshot = defaultDashboardSnapshot;
@@ -63,7 +63,7 @@ export {
   secondProject,
   sessionRow,
   workspaceRow,
-  workspaceStatusSnapshot
+  workspaceStatusSnapshot,
 };
 
 export type { ArgmaxApi, DashboardDelta, DashboardSnapshot };
@@ -116,7 +116,9 @@ export let terminateProvider: AppTestMockFn<ArgmaxApi["providers"]["terminate"]>
 export let providersDiscover: AppTestMockFn<ArgmaxApi["providers"]["discover"]>;
 export let diagnosticsStub: AppTestMockFn<ArgmaxApi["system"]["diagnostics"]>;
 let vacuumDatabaseStub: AppTestMockFn<ArgmaxApi["system"]["vacuumDatabase"]>;
-export let setNotificationsEnabledStub: AppTestMockFn<ArgmaxApi["system"]["setNotificationsEnabled"]>;
+export let setNotificationsEnabledStub: AppTestMockFn<
+  ArgmaxApi["system"]["setNotificationsEnabled"]
+>;
 export let agentToolsStub: AppTestMockFn<ArgmaxApi["settings"]["agentTools"]>;
 export let setBrowserToolsStub: AppTestMockFn<ArgmaxApi["settings"]["setBrowserTools"]>;
 let setKeepAwakeStub: AppTestMockFn<ArgmaxApi["system"]["setKeepAwake"]>;
@@ -165,22 +167,31 @@ function routineStub(overrides: Partial<Routine> & { id: string }): Routine {
     createdBy: "user",
     createdAt: now,
     updatedAt: now,
-    ...overrides
+    ...overrides,
   };
 }
 
 function syncStatusStub(): Awaited<ReturnType<ArgmaxApi["sync"]["getStatus"]>> {
   return {
-    config: { claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 },
+    config: {
+      claude: false,
+      codex: false,
+      cursor: false,
+      opencode: false,
+      grok: false,
+      windowHours: 24,
+    },
     supportedProviders: ["claude"],
     lastRunAt: null,
     importedCount: 0,
-    lastError: null
+    lastError: null,
   };
 }
 
 /** One whole page of a session's transcript: no cursor to follow, nothing deleted. */
-function eventPageStub(data: DashboardSnapshot): Awaited<ReturnType<ArgmaxApi["session"]["eventsSince"]>> {
+function eventPageStub(
+  data: DashboardSnapshot,
+): Awaited<ReturnType<ArgmaxApi["session"]["eventsSince"]>> {
   return {
     events: data.events,
     rawOutputs: data.rawOutputs,
@@ -190,7 +201,7 @@ function eventPageStub(data: DashboardSnapshot): Awaited<ReturnType<ArgmaxApi["s
     deletedEventIds: [],
     deletedRawOutputIds: [],
     resetRequired: false,
-    hasMore: false
+    hasMore: false,
   };
 }
 
@@ -219,83 +230,131 @@ export function setupAppTestMocks(): void {
   // would break the single-match role queries App tests rely on. Priority
   // behavior is covered directly in Sidebar.test.tsx.
   window.localStorage.setItem("argmax.sidebar.priority.visible", "false");
-  createCurrentWorkspace = vi.fn<ArgmaxApi["workspaces"]["createCurrent"]>().mockResolvedValue(
-    snapshot.workspaces[0] ?? missingWorkspace()
-  );
-  createAlongsideWorkspace = vi.fn<ArgmaxApi["workspaces"]["createAlongside"]>().mockResolvedValue(
-    snapshot.workspaces[0] ?? missingWorkspace()
-  );
-  createIsolatedWorkspace = vi.fn<ArgmaxApi["workspaces"]["createIsolated"]>().mockResolvedValue(
-    snapshot.workspaces[0] ?? missingWorkspace()
-  );
-  createScratchWorkspace = vi.fn<ArgmaxApi["workspaces"]["createScratch"]>().mockResolvedValue(
-    snapshot.workspaces[0] ?? missingWorkspace()
-  );
-  autotitleWorkspace = vi.fn<ArgmaxApi["workspaces"]["autoTitle"]>().mockResolvedValue({ ok: true });
-  archiveWorkspace = vi.fn<ArgmaxApi["workspaces"]["archive"]>().mockImplementation(({ workspaceId }) =>
-    Promise.resolve({
-      workspace: {
-        ...(snapshot.workspaces.find((w) => w.id === workspaceId) ?? snapshot.workspaces[0] ?? missingWorkspace()),
-        state: "archived"
-      },
-      recoveryPath: "/tmp/workspace-archive/workspace-1"
-    })
-  );
-  dashboardList = vi.fn<ArgmaxApi["dashboard"]["list"]>().mockResolvedValue(dashboardListSnapshot(snapshot));
+  createCurrentWorkspace = vi
+    .fn<ArgmaxApi["workspaces"]["createCurrent"]>()
+    .mockResolvedValue(snapshot.workspaces[0] ?? missingWorkspace());
+  createAlongsideWorkspace = vi
+    .fn<ArgmaxApi["workspaces"]["createAlongside"]>()
+    .mockResolvedValue(snapshot.workspaces[0] ?? missingWorkspace());
+  createIsolatedWorkspace = vi
+    .fn<ArgmaxApi["workspaces"]["createIsolated"]>()
+    .mockResolvedValue(snapshot.workspaces[0] ?? missingWorkspace());
+  createScratchWorkspace = vi
+    .fn<ArgmaxApi["workspaces"]["createScratch"]>()
+    .mockResolvedValue(snapshot.workspaces[0] ?? missingWorkspace());
+  autotitleWorkspace = vi
+    .fn<ArgmaxApi["workspaces"]["autoTitle"]>()
+    .mockResolvedValue({ ok: true });
+  archiveWorkspace = vi
+    .fn<ArgmaxApi["workspaces"]["archive"]>()
+    .mockImplementation(({ workspaceId }) =>
+      Promise.resolve({
+        workspace: {
+          ...(snapshot.workspaces.find((w) => w.id === workspaceId) ??
+            snapshot.workspaces[0] ??
+            missingWorkspace()),
+          state: "archived",
+        },
+        recoveryPath: "/tmp/workspace-archive/workspace-1",
+      }),
+    );
+  dashboardList = vi
+    .fn<ArgmaxApi["dashboard"]["list"]>()
+    .mockResolvedValue(dashboardListSnapshot(snapshot));
   dashboardDeltaListener = null;
   dashboardDeltaUnsubscribe = vi.fn<() => void>();
-  launchProvider = vi.fn<ArgmaxApi["providers"]["launch"]>().mockResolvedValue(snapshot.sessions[0] ?? missingSession());
-  openSessionWindow = vi.fn<ArgmaxApi["windows"]["openSession"]>().mockResolvedValue({ label: "chat-1" });
-  approvalsPending = vi.fn<ArgmaxApi["approvals"]["pending"]>().mockResolvedValue(snapshot.approvals);
-  approvalsResolve = vi.fn<ArgmaxApi["approvals"]["resolve"]>().mockImplementation(({ approvalId, status }) =>
-    Promise.resolve({
-      id: approvalId,
-      sessionId: "session-1",
-      command: "rm -rf /tmp/x",
-      cwd: "/tmp",
-      provider: "codex",
-      providerInvocationId: null,
-      providerRequestId: null,
-      riskLevel: "high",
-      status,
-      createdAt: "2026-05-14T10:00:00.000Z",
-      resolvedAt: new Date().toISOString()
-    })
-  );
-  questionsResolve = vi.fn<ArgmaxApi["questions"]["resolve"]>().mockImplementation(({ sessionId, requestId, dismissed }) =>
-    Promise.resolve({ sessionId, requestId, status: dismissed ? "dismissed" : "answered" })
-  );
-  createProject = vi.fn<ArgmaxApi["projects"]["create"]>().mockImplementation(({ name, primaryPath }) =>
-    Promise.resolve({ ...primaryProject(), name, repoPath: primaryPath })
-  );
-  configureProject = vi.fn<ArgmaxApi["projects"]["configure"]>().mockImplementation(({ projectId, name, primaryPath }) =>
-    Promise.resolve({ ...(snapshot.projects.find((project) => project.id === projectId) ?? primaryProject()), name, repoPath: primaryPath })
-  );
-  getProjectFolders = vi.fn<ArgmaxApi["projects"]["getFolders"]>().mockImplementation(({ projectId }) => {
-    const project = snapshot.projects.find((candidate) => candidate.id === projectId) ?? primaryProject();
-    return Promise.resolve([{ id: `${projectId}:primary`, projectId, name: project.name, rootPath: project.repoPath,
-      isPrimary: true, enabled: true, summary: null }]);
-  });
-  pickProjectDirectory = vi.fn<ArgmaxApi["projects"]["pickDirectory"]>().mockResolvedValue({ cancelled: false, path: primaryProject().repoPath });
+  launchProvider = vi
+    .fn<ArgmaxApi["providers"]["launch"]>()
+    .mockResolvedValue(snapshot.sessions[0] ?? missingSession());
+  openSessionWindow = vi
+    .fn<ArgmaxApi["windows"]["openSession"]>()
+    .mockResolvedValue({ label: "chat-1" });
+  approvalsPending = vi
+    .fn<ArgmaxApi["approvals"]["pending"]>()
+    .mockResolvedValue(snapshot.approvals);
+  approvalsResolve = vi
+    .fn<ArgmaxApi["approvals"]["resolve"]>()
+    .mockImplementation(({ approvalId, status }) =>
+      Promise.resolve({
+        id: approvalId,
+        sessionId: "session-1",
+        command: "rm -rf /tmp/x",
+        cwd: "/tmp",
+        provider: "codex",
+        providerInvocationId: null,
+        providerRequestId: null,
+        riskLevel: "high",
+        status,
+        createdAt: "2026-05-14T10:00:00.000Z",
+        resolvedAt: new Date().toISOString(),
+      }),
+    );
+  questionsResolve = vi
+    .fn<ArgmaxApi["questions"]["resolve"]>()
+    .mockImplementation(({ sessionId, requestId, dismissed }) =>
+      Promise.resolve({ sessionId, requestId, status: dismissed ? "dismissed" : "answered" }),
+    );
+  createProject = vi
+    .fn<ArgmaxApi["projects"]["create"]>()
+    .mockImplementation(({ name, primaryPath }) =>
+      Promise.resolve({ ...primaryProject(), name, repoPath: primaryPath }),
+    );
+  configureProject = vi
+    .fn<ArgmaxApi["projects"]["configure"]>()
+    .mockImplementation(({ projectId, name, primaryPath }) =>
+      Promise.resolve({
+        ...(snapshot.projects.find((project) => project.id === projectId) ?? primaryProject()),
+        name,
+        repoPath: primaryPath,
+      }),
+    );
+  getProjectFolders = vi
+    .fn<ArgmaxApi["projects"]["getFolders"]>()
+    .mockImplementation(({ projectId }) => {
+      const project =
+        snapshot.projects.find((candidate) => candidate.id === projectId) ?? primaryProject();
+      return Promise.resolve([
+        {
+          id: `${projectId}:primary`,
+          projectId,
+          name: project.name,
+          rootPath: project.repoPath,
+          isPrimary: true,
+          enabled: true,
+          summary: null,
+        },
+      ]);
+    });
+  pickProjectDirectory = vi
+    .fn<ArgmaxApi["projects"]["pickDirectory"]>()
+    .mockResolvedValue({ cancelled: false, path: primaryProject().repoPath });
   pickProjectFolder = vi.fn<ArgmaxApi["projects"]["pickFolder"]>().mockResolvedValue({
     cancelled: false,
-    project: primaryProject()
+    project: primaryProject(),
   });
   listBranches = vi.fn<ArgmaxApi["projects"]["listBranches"]>().mockResolvedValue(["main"]);
   listCheckouts = vi.fn<ArgmaxApi["projects"]["listCheckouts"]>().mockResolvedValue([]);
-  switchBranch = vi.fn<ArgmaxApi["projects"]["switchBranch"]>().mockImplementation(() =>
-    Promise.resolve(primaryProject())
-  );
-  sessionEventsSince = vi.fn<ArgmaxApi["session"]["eventsSince"]>().mockResolvedValue(eventPageStub(snapshot));
-  sessionAgentEvents = vi.fn<ArgmaxApi["session"]["agentEvents"]>().mockResolvedValue(eventPageStub(snapshot));
+  switchBranch = vi
+    .fn<ArgmaxApi["projects"]["switchBranch"]>()
+    .mockImplementation(() => Promise.resolve(primaryProject()));
+  sessionEventsSince = vi
+    .fn<ArgmaxApi["session"]["eventsSince"]>()
+    .mockResolvedValue(eventPageStub(snapshot));
+  sessionAgentEvents = vi
+    .fn<ArgmaxApi["session"]["agentEvents"]>()
+    .mockResolvedValue(eventPageStub(snapshot));
   sessionCostSummary = vi.fn<ArgmaxApi["session"]["costSummary"]>().mockResolvedValue({
     sessionId: "session-1",
     modelId: "gpt-5.5",
     tokens: { input: 1200, output: 340, cacheRead: 100, cacheWrite: 0 },
-    costUsd: 0.012
+    costUsd: 0.012,
   });
-  sendProviderInput = vi.fn<ArgmaxApi["providers"]["sendInput"]>().mockResolvedValue({ ok: true, queued: false });
-  steerProviderInput = vi.fn<ArgmaxApi["providers"]["steerInput"]>().mockResolvedValue({ ok: true, queued: false });
+  sendProviderInput = vi
+    .fn<ArgmaxApi["providers"]["sendInput"]>()
+    .mockResolvedValue({ ok: true, queued: false });
+  steerProviderInput = vi
+    .fn<ArgmaxApi["providers"]["steerInput"]>()
+    .mockResolvedValue({ ok: true, queued: false });
   terminateProvider = vi.fn<ArgmaxApi["providers"]["terminate"]>().mockResolvedValue({ ok: true });
   providersDiscover = vi.fn<ArgmaxApi["providers"]["discover"]>().mockResolvedValue([]);
   diagnosticsStub = vi.fn<ArgmaxApi["system"]["diagnostics"]>().mockResolvedValue({
@@ -312,7 +371,7 @@ export function setupAppTestMocks(): void {
       { phase: "services.construct", elapsedMs: 140, deltaMs: 60 },
       { phase: "ipc.register", elapsedMs: 180, deltaMs: 40 },
       { phase: "window.create", elapsedMs: 400, deltaMs: 220 },
-      { phase: "window.ready-to-show", elapsedMs: 1100, deltaMs: 700 }
+      { phase: "window.ready-to-show", elapsedMs: 1100, deltaMs: 700 },
     ],
     databaseStats: {
       rowCounts: {
@@ -324,7 +383,7 @@ export function setupAppTestMocks(): void {
         approvals: 0,
         checks: 3,
         learnings: 5,
-        usageEvents: 18
+        usageEvents: 18,
       },
       walBytes: 1024 * 128,
       walAutocheckpoint: 1000,
@@ -337,25 +396,21 @@ export function setupAppTestMocks(): void {
         openFailures: 0,
         waitCount: 1,
         totalWaitMs: 4.25,
-        longestWaitMs: 4.25
-      }
+        longestWaitMs: 4.25,
+      },
     },
     sqlitePragmas: {
       journalMode: "wal",
       foreignKeys: 1,
       synchronous: 1,
       busyTimeout: 5000,
-      walAutocheckpoint: 1000
+      walAutocheckpoint: 1000,
     },
     runtime: {
       rssBytes: 0,
       openFileDescriptors: 0,
-      tokioTrackedTasks: 0
+      tokioTrackedTasks: 0,
     },
-    ipcStats: [
-      { channel: "dashboard:list", count: 12, totalRecorded: 12, p50: 1.2, p99: 4.8 },
-      { channel: "providers:launch", count: 3, totalRecorded: 3, p50: 18.5, p99: 32.1 }
-    ],
     recentLogs: [
       {
         seq: 1,
@@ -363,7 +418,7 @@ export function setupAppTestMocks(): void {
         level: "info",
         scope: "providers.session",
         message: "session launched",
-        fields: { sessionId: "session-1" }
+        fields: { sessionId: "session-1" },
       },
       {
         seq: 2,
@@ -371,11 +426,13 @@ export function setupAppTestMocks(): void {
         level: "warn",
         scope: "gh.poller",
         message: "ghService.refresh failed",
-        fields: {}
-      }
-    ]
+        fields: {},
+      },
+    ],
   });
-  vacuumDatabaseStub = vi.fn<ArgmaxApi["system"]["vacuumDatabase"]>().mockResolvedValue({ ok: true });
+  vacuumDatabaseStub = vi
+    .fn<ArgmaxApi["system"]["vacuumDatabase"]>()
+    .mockResolvedValue({ ok: true });
   setNotificationsEnabledStub = vi
     .fn<ArgmaxApi["system"]["setNotificationsEnabled"]>()
     .mockResolvedValue({ ok: true });
@@ -386,38 +443,42 @@ export function setupAppTestMocks(): void {
     .fn<ArgmaxApi["settings"]["setBrowserTools"]>()
     .mockImplementation(({ enabled }) => Promise.resolve({ browserTools: enabled }));
   setKeepAwakeStub = vi.fn<ArgmaxApi["system"]["setKeepAwake"]>().mockResolvedValue({ ok: true });
-  testNotificationStub = vi.fn<ArgmaxApi["system"]["testNotification"]>().mockResolvedValue({ ok: true });
+  testNotificationStub = vi
+    .fn<ArgmaxApi["system"]["testNotification"]>()
+    .mockResolvedValue({ ok: true });
   multitaskStub = vi.fn<ArgmaxApi["session"]["multitask"]>().mockResolvedValue({
     sessionId: "multitask-session",
     workspaceId: "multitask-workspace",
-    taskLabel: "Side fix"
+    taskLabel: "Side fix",
   });
   menuCommandListener = null;
   focusSessionListener = null;
-  workspaceStatus = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
+  workspaceStatus = vi
+    .fn<ArgmaxApi["workspaces"]["status"]>()
+    .mockResolvedValue(workspaceStatusSnapshot(snapshot));
   listChangedFiles = vi.fn<ArgmaxApi["review"]["listChangedFiles"]>().mockResolvedValue([]);
   loadDiff = vi.fn<ArgmaxApi["review"]["loadDiff"]>().mockResolvedValue({
     workspaceId: "workspace-1",
     filePath: null,
     content: "",
-    revision: "test-revision"
+    revision: "test-revision",
   });
   listWorkspaceFiles = vi.fn<ArgmaxApi["workspace"]["listFiles"]>().mockResolvedValue([]);
   readWorkspaceFile = vi.fn<ArgmaxApi["workspace"]["readFile"]>().mockResolvedValue({
     kind: "text",
     content: "",
     size: 0,
-    mtimeMs: 0
+    mtimeMs: 0,
   });
   listProjectFiles = vi.fn<ArgmaxApi["workspace"]["listFiles"]>().mockResolvedValue([]);
   readProjectFile = vi.fn<ArgmaxApi["workspace"]["readFile"]>().mockResolvedValue({
     kind: "skipped",
-    reason: "not-a-file"
+    reason: "not-a-file",
   } as const);
   writeProjectFile = vi.fn<ArgmaxApi["workspace"]["writeFile"]>().mockResolvedValue({
     ok: "true",
     mtimeMs: 0,
-    size: 0
+    size: 0,
   });
   skillsList = vi.fn<ArgmaxApi["skills"]["list"]>().mockResolvedValue([]);
   connectionsList = vi.fn<ArgmaxApi["connections"]["list"]>().mockResolvedValue([]);
@@ -433,9 +494,19 @@ export function setupAppTestMocks(): void {
     .mockImplementation((input) => Promise.resolve(demoActivitySummary(input)));
   openInIde = vi.fn<ArgmaxApi["workspaces"]["openInIde"]>().mockResolvedValue({ ok: true });
   listDetectedIdes = vi.fn<ArgmaxApi["system"]["listDetectedIdes"]>().mockResolvedValue([
-    { id: "vscode", label: "VS Code", appPath: "/Applications/Visual Studio Code.app", hasCli: true },
+    {
+      id: "vscode",
+      label: "VS Code",
+      appPath: "/Applications/Visual Studio Code.app",
+      hasCli: true,
+    },
     { id: "cursor", label: "Cursor", appPath: "/Applications/Cursor.app", hasCli: true },
-    { id: "terminal", label: "Terminal", appPath: "/System/Applications/Utilities/Terminal.app", hasCli: false }
+    {
+      id: "terminal",
+      label: "Terminal",
+      appPath: "/System/Applications/Utilities/Terminal.app",
+      hasCli: false,
+    },
   ]);
   setWorkspaceIcon = vi
     .fn<ArgmaxApi["workspaces"]["setIcon"]>()
@@ -444,8 +515,8 @@ export function setupAppTestMocks(): void {
         ...(snapshot.workspaces[0] ?? missingWorkspace()),
         id: workspaceId,
         icon,
-        iconColor
-      })
+        iconColor,
+      }),
     );
   setPriorityDismissed = vi
     .fn<ArgmaxApi["workspaces"]["setPriorityDismissed"]>()
@@ -456,8 +527,8 @@ export function setupAppTestMocks(): void {
           missingWorkspace()),
         id: workspaceId,
         priorityDismissedAt: dismissed ? new Date().toISOString() : null,
-        priorityAddedAt: null
-      })
+        priorityAddedAt: null,
+      }),
     );
 
   const deltaListeners = new Set<(delta: DashboardDelta) => void>();
@@ -466,17 +537,22 @@ export function setupAppTestMocks(): void {
       list: dashboardList,
       onDelta: (listener) => {
         deltaListeners.add(listener);
-        dashboardDeltaListener = (delta) => { for (const subscriber of [...deltaListeners]) subscriber(delta); };
-        return () => { deltaListeners.delete(listener); dashboardDeltaUnsubscribe(); };
-      }
+        dashboardDeltaListener = (delta) => {
+          for (const subscriber of [...deltaListeners]) subscriber(delta);
+        };
+        return () => {
+          deltaListeners.delete(listener);
+          dashboardDeltaUnsubscribe();
+        };
+      },
     },
     usage: {
       summary: usageSummary,
       remaining: usageRemaining,
-      routerCost: usageRouterCost
+      routerCost: usageRouterCost,
     },
     activity: {
-      summary: activitySummary
+      summary: activitySummary,
     },
     routines: {
       list: () => Promise.resolve([]),
@@ -485,14 +561,14 @@ export function setupAppTestMocks(): void {
           routineStub({
             ...input,
             runTarget: input.runTarget ?? (input.worktree ? "worktree" : "new_session"),
-            enabled: input.enabled ?? true
-          })
+            enabled: input.enabled ?? true,
+          }),
         ),
       delete: () => Promise.resolve(null),
       setEnabled: (id, enabled) => Promise.resolve(routineStub({ id, enabled })),
       runNow: (id) => Promise.resolve(routineStub({ id, enabled: false })),
       resetSession: (id) =>
-        Promise.resolve(routineStub({ id, worktree: false, runTarget: "same_session" }))
+        Promise.resolve(routineStub({ id, worktree: false, runTarget: "same_session" })),
     },
     projects: {
       list: () => Promise.resolve(snapshot.projects),
@@ -503,10 +579,17 @@ export function setupAppTestMocks(): void {
       applyOverviewDraft: () => Promise.resolve(primaryProject()),
       discardOverviewDraft: () => Promise.resolve(primaryProject()),
       getFolders: getProjectFolders,
-      getFolderContext: vi.fn().mockImplementation(({ projectId, projectFolderId }: { projectId: string; projectFolderId?: string }) => Promise.resolve({
-        project: snapshot.projects.find((project) => project.id === projectId) ?? primaryProject(),
-        isGit: true, folderId: projectFolderId ?? `${projectId}:primary`
-      })),
+      getFolderContext: vi
+        .fn()
+        .mockImplementation(
+          ({ projectId, projectFolderId }: { projectId: string; projectFolderId?: string }) =>
+            Promise.resolve({
+              project:
+                snapshot.projects.find((project) => project.id === projectId) ?? primaryProject(),
+              isGit: true,
+              folderId: projectFolderId ?? `${projectId}:primary`,
+            }),
+        ),
       pickDirectory: pickProjectDirectory,
       pickFolder: pickProjectFolder,
       register: () => Promise.resolve(primaryProject()),
@@ -518,16 +601,17 @@ export function setupAppTestMocks(): void {
       switchBranch,
       setBranchTemplate: ({ template }) =>
         Promise.resolve({ ...primaryProject(), branchTemplate: template }),
-      checkPrompt: () => Promise.resolve({
-        decision: "none",
-        checkId: null,
-        suggestedProjectId: null,
-        runnerUpProjectId: null,
-        suggestedProbability: 0,
-        currentProbability: 0,
-        reasons: []
-      }),
-      resolveCheck: () => Promise.resolve()
+      checkPrompt: () =>
+        Promise.resolve({
+          decision: "none",
+          checkId: null,
+          suggestedProjectId: null,
+          runnerUpProjectId: null,
+          suggestedProbability: 0,
+          currentProbability: 0,
+          reasons: [],
+        }),
+      resolveCheck: () => Promise.resolve(),
     },
     workspaces: {
       createIsolated: createIsolatedWorkspace,
@@ -544,7 +628,7 @@ export function setupAppTestMocks(): void {
         Promise.resolve({
           ...(snapshot.workspaces[0] ?? missingWorkspace()),
           id: workspaceId,
-          pinned
+          pinned,
         }),
       setPriorityDismissed,
       setPriorityAdded: ({ workspaceId, added }) =>
@@ -552,21 +636,21 @@ export function setupAppTestMocks(): void {
           ...(snapshot.workspaces[0] ?? missingWorkspace()),
           id: workspaceId,
           priorityAddedAt: added ? new Date().toISOString() : null,
-          priorityDismissedAt: null
+          priorityDismissedAt: null,
         }),
       setSnoozedUntil: ({ workspaceId, until }) =>
         Promise.resolve({
           ...(snapshot.workspaces[0] ?? missingWorkspace()),
           id: workspaceId,
-          snoozedUntil: until
+          snoozedUntil: until,
         }),
       setLabel: ({ workspaceId, taskLabel }) =>
         Promise.resolve({
           ...(snapshot.workspaces[0] ?? missingWorkspace()),
           id: workspaceId,
-          taskLabel
+          taskLabel,
         }),
-      setIcon: setWorkspaceIcon
+      setIcon: setWorkspaceIcon,
     },
     providers: {
       discover: providersDiscover,
@@ -576,21 +660,21 @@ export function setupAppTestMocks(): void {
       resize: () => Promise.resolve({ ok: true }),
       terminate: terminateProvider,
       cancelQueuedMessage: () => Promise.resolve({ ok: true }),
-      sendQueuedMessageNow: () => Promise.resolve({ ok: true, queued: false })
+      sendQueuedMessageNow: () => Promise.resolve({ ok: true, queued: false }),
     },
     cloud: {
       prepare: () => Promise.reject(new Error("Cloud handoff not stubbed")),
-      launch: () => Promise.reject(new Error("Cloud launch not stubbed"))
+      launch: () => Promise.reject(new Error("Cloud launch not stubbed")),
     },
     attachments: {
-      saveImage: () => Promise.resolve({ filePath: "/tmp/fake.png", sizeBytes: 0 })
+      saveImage: () => Promise.resolve({ filePath: "/tmp/fake.png", sizeBytes: 0 }),
     },
     approvals: {
       pending: approvalsPending,
-      resolve: approvalsResolve
+      resolve: approvalsResolve,
     },
     questions: {
-      resolve: questionsResolve
+      resolve: questionsResolve,
     },
     session: {
       eventsSince: sessionEventsSince,
@@ -603,7 +687,9 @@ export function setupAppTestMocks(): void {
       clear: () => Promise.reject(new Error("session clear not stubbed")),
       suggestFollowUp: () => Promise.resolve({ suggestion: null }),
       costSummary: sessionCostSummary,
-      search: () => Promise.resolve([])
+      turnPainted: () => Promise.resolve(),
+      turnWaterfalls: () => Promise.resolve([]),
+      search: () => Promise.resolve([]),
     },
     visualization: {
       import: () => Promise.reject(new Error("Visualization not stubbed")),
@@ -612,7 +698,7 @@ export function setupAppTestMocks(): void {
       setControls: () => Promise.reject(new Error("Visualization not stubbed")),
       preview: () => Promise.reject(new Error("Visualization not stubbed")),
       publish: () => Promise.reject(new Error("Visualization not stubbed")),
-      export: () => Promise.reject(new Error("Visualization not stubbed"))
+      export: () => Promise.reject(new Error("Visualization not stubbed")),
     },
     goals: {
       list: () => Promise.resolve([]),
@@ -648,27 +734,32 @@ export function setupAppTestMocks(): void {
       revertHunk: () => Promise.resolve(),
     },
     workspace: {
-      listFiles: (target) => target.kind !== "workspace" ? listProjectFiles(target) : listWorkspaceFiles(target),
-      readFile: (target, path) => target.kind !== "workspace" ? readProjectFile(target, path) : readWorkspaceFile(target, path),
-      writeFile: (target, path, content, mtime) => target.kind !== "workspace"
-        ? writeProjectFile(target, path, content, mtime)
-        : Promise.resolve({ ok: "true", mtimeMs: 0, size: 0 } as const),
+      listFiles: (target) =>
+        target.kind !== "workspace" ? listProjectFiles(target) : listWorkspaceFiles(target),
+      readFile: (target, path) =>
+        target.kind !== "workspace"
+          ? readProjectFile(target, path)
+          : readWorkspaceFile(target, path),
+      writeFile: (target, path, content, mtime) =>
+        target.kind !== "workspace"
+          ? writeProjectFile(target, path, content, mtime)
+          : Promise.resolve({ ok: "true", mtimeMs: 0, size: 0 } as const),
       statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
       readExternalFile: () => Promise.reject(new Error("not available in the harness")),
       statExternalFile: () => Promise.reject(new Error("not available in the harness")),
-      grepContent: () => Promise.resolve({ files: [], truncated: false })
+      grepContent: () => Promise.resolve({ files: [], truncated: false }),
     },
     checks: {
-      run: () => Promise.resolve(missingCheck())
+      run: () => Promise.resolve(missingCheck()),
     },
     health: {
-      ping: () => Promise.resolve({ ok: true, timestamp: "2026-05-08T15:54:00.000Z" })
+      ping: () => Promise.resolve({ ok: true, timestamp: "2026-05-08T15:54:00.000Z" }),
     },
     skills: {
-      list: skillsList
+      list: skillsList,
     },
     connections: {
-      list: connectionsList
+      list: connectionsList,
     },
     settings: {
       agentTools: agentToolsStub,
@@ -680,12 +771,17 @@ export function setupAppTestMocks(): void {
       setOpencodeGateway: ({ gateway }) => Promise.resolve({ gateway }),
       setOpencodeGatewayKey: () => Promise.reject(new Error("Gateway key not stubbed")),
       clearOpencodeGatewayKey: () => Promise.resolve({ gateway: "openrouter" }),
-      branchTemplate: () => Promise.resolve({ template: null, defaultTemplate: "argmax/{word}-{id}" }),
+      branchTemplate: () =>
+        Promise.resolve({ template: null, defaultTemplate: "argmax/{word}-{id}" }),
       setBranchTemplate: ({ template }) =>
         Promise.resolve({ template, defaultTemplate: "argmax/{word}-{id}" }),
       setBrowserTools: setBrowserToolsStub,
+      claudeMcp: () => Promise.resolve({ preset: "everything", customServers: [], ownServers: [] }),
+      setClaudeMcp: ({ preset, customServers }) =>
+        Promise.resolve({ preset, customServers, ownServers: [] }),
+      claudeMcpProbe: () => Promise.resolve(null),
       previewChatCleanup: () => Promise.reject(new Error("Chat cleanup not stubbed")),
-      deleteOldChats: () => Promise.reject(new Error("Chat cleanup not stubbed"))
+      deleteOldChats: () => Promise.reject(new Error("Chat cleanup not stubbed")),
     },
     system: {
       confirm: (message) => Promise.resolve(window.confirm(message)),
@@ -694,13 +790,24 @@ export function setupAppTestMocks(): void {
       openFileIn: () => Promise.resolve({ ok: true }),
       listDetectedIdes: listDetectedIdes,
       diagnostics: diagnosticsStub,
-      debugSnapshot: () =>
-        Promise.resolve({ generatedAt: "2026-05-14T11:00:05.000Z", ipcStats: [], logs: [] }),
+      debugSnapshot: () => Promise.resolve({ generatedAt: "2026-05-14T11:00:05.000Z", logs: [] }),
       performanceStart: () =>
-        Promise.resolve({ recording: true, startedAt: "2026-05-14T11:00:05.000Z", sampleCount: 0, droppedSamples: 0, latest: null }),
+        Promise.resolve({
+          recording: true,
+          startedAt: "2026-05-14T11:00:05.000Z",
+          sampleCount: 0,
+          droppedSamples: 0,
+          latest: null,
+        }),
       performanceStop: () => Promise.reject(new Error("performance capture not stubbed")),
       performanceStatus: () =>
-        Promise.resolve({ recording: false, startedAt: null, sampleCount: 0, droppedSamples: 0, latest: null }),
+        Promise.resolve({
+          recording: false,
+          startedAt: null,
+          sampleCount: 0,
+          droppedSamples: 0,
+          latest: null,
+        }),
       performanceCapture: () => Promise.reject(new Error("performance capture not stubbed")),
       reportRendererStall: () => Promise.resolve({ ok: true }),
       vacuumDatabase: vacuumDatabaseStub,
@@ -708,7 +815,7 @@ export function setupAppTestMocks(): void {
       setDefaultAgent: vi.fn(() => Promise.resolve({ ok: true }) as Promise<{ ok: true }>),
       setNotificationsEnabled: setNotificationsEnabledStub,
       setKeepAwake: setKeepAwakeStub,
-      testNotification: testNotificationStub
+      testNotification: testNotificationStub,
     },
     remote: {
       getStatus: () => Promise.reject(new Error("remote status unavailable in tests")),
@@ -718,7 +825,7 @@ export function setupAppTestMocks(): void {
       registerPushDevice: () => Promise.resolve([]),
       unregisterPushDevice: () => Promise.resolve([]),
       pushTest: () => Promise.resolve([]),
-      pushCapability: () => Promise.resolve({ configured: false })
+      pushCapability: () => Promise.resolve({ configured: false }),
     },
     menu: {
       onCommand: (listener) => {
@@ -726,7 +833,7 @@ export function setupAppTestMocks(): void {
         return () => {
           menuCommandListener = null;
         };
-      }
+      },
     },
     windowSnapshot: {
       status: () =>
@@ -737,34 +844,39 @@ export function setupAppTestMocks(): void {
           chord: "CommandOrControl+Alt+Shift+S",
           defaultChord: "CommandOrControl+Alt+Shift+S",
           registered: false,
-          registrationError: null
+          registrationError: null,
         }),
       configure: () => Promise.reject(new Error("window snapshot is not configured in this test")),
-      requestPermission: () => Promise.reject(new Error("window snapshot is not configured in this test")),
+      requestPermission: () =>
+        Promise.reject(new Error("window snapshot is not configured in this test")),
       onAttach: () => () => undefined,
-      onFailed: () => () => undefined
+      onFailed: () => () => undefined,
     },
     windows: {
       onFocusSession: (listener) => {
         focusSessionListener = listener;
-        return () => { focusSessionListener = null; };
+        return () => {
+          focusSessionListener = null;
+        };
       },
       openSession: openSessionWindow,
-      setSession: () => Promise.resolve({ label: "main" })
+      setSession: () => Promise.resolve({ label: "main" }),
     },
     linkedRepos: {
       list: () => Promise.resolve([]),
       add: () => Promise.reject(new Error("linked repository writes not configured in this test")),
       pickFolder: () => Promise.resolve(null),
-      summarize: () => Promise.reject(new Error("linked repository summaries not configured in this test")),
-      setEnabled: () => Promise.reject(new Error("linked repository writes not configured in this test")),
-      remove: () => Promise.resolve()
+      summarize: () =>
+        Promise.reject(new Error("linked repository summaries not configured in this test")),
+      setEnabled: () =>
+        Promise.reject(new Error("linked repository writes not configured in this test")),
+      remove: () => Promise.resolve(),
     },
     sources: {
       list: () => Promise.resolve([]),
       add: () => Promise.reject(new Error("source writes not configured in this test")),
       update: () => Promise.reject(new Error("source writes not configured in this test")),
-      delete: () => Promise.resolve()
+      delete: () => Promise.resolve(),
     },
     learnings: {
       list: () => Promise.resolve([]),
@@ -779,16 +891,16 @@ export function setupAppTestMocks(): void {
           verified: input.verified ?? false,
           hits: 0,
           createdAt: "2026-05-12T00:00:00.000Z",
-          lastSeenAt: "2026-05-12T00:00:00.000Z"
+          lastSeenAt: "2026-05-12T00:00:00.000Z",
         }),
-      delete: () => Promise.resolve(null)
+      delete: () => Promise.resolve(null),
     },
     prs: {
       listForSession: () => Promise.resolve([]),
       refresh: () => Promise.resolve([]),
       setPrimary: () => Promise.resolve([]),
       dismiss: () => Promise.resolve([]),
-      cleanup: () => Promise.reject(new Error("prs.cleanup is not stubbed"))
+      cleanup: () => Promise.reject(new Error("prs.cleanup is not stubbed")),
     },
     terminal: {
       spawn: () => Promise.resolve({ terminalId: "test-terminal" }),
@@ -797,12 +909,12 @@ export function setupAppTestMocks(): void {
       terminate: () => Promise.resolve({ ok: true }),
       onData: () => () => undefined,
       onExit: () => () => undefined,
-      onAgentOpen: () => () => undefined
+      onAgentOpen: () => () => undefined,
     },
     sync: {
       getStatus: vi.fn(() => Promise.resolve(syncStatusStub())),
       setConfig: vi.fn(() => Promise.resolve(syncStatusStub())),
-      runNow: vi.fn(() => Promise.resolve(syncStatusStub()))
+      runNow: vi.fn(() => Promise.resolve(syncStatusStub())),
     },
     browser: {
       chromeProfiles: () => Promise.resolve([]),
@@ -832,7 +944,7 @@ export function setupAppTestMocks(): void {
           title: "",
           state: "ready",
           tree: "",
-          truncated: false
+          truncated: false,
         }),
       find: () => Promise.resolve({ tabId: "agent-1", matches: [] }),
       getText: () =>
@@ -842,15 +954,15 @@ export function setupAppTestMocks(): void {
           title: "",
           state: "ready",
           text: "",
-          truncated: false
+          truncated: false,
         }),
       act: () => Promise.resolve({ tabId: "agent-1", url: "", detail: null }),
       onState: () => () => undefined,
       onNewTab: () => () => undefined,
       onPageCommand: () => () => undefined,
       onTabs: () => () => undefined,
-      onAgentOpen: () => () => undefined
-    }
+      onAgentOpen: () => () => undefined,
+    },
   };
 }
 
@@ -884,7 +996,9 @@ export async function openSettings(group: SettingsGroup = "General"): Promise<vo
   fireEvent.click(within(settingsGroups).getByRole("button", { name: new RegExp(`^${group}$`) }));
   await screen.findByRole("heading", { name: group });
   if (group === "Advanced") {
-    await screen.findByText("No learnings captured yet. Complete a session to start filling this list.");
+    await screen.findByText(
+      "No learnings captured yet. Complete a session to start filling this list.",
+    );
   }
   await settle();
 }

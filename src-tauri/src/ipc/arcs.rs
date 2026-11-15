@@ -2,17 +2,17 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::State;
 
-use super::{live_database, publish_dashboard_changed, read_off_main, validation::NonEmptyString};
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::{
-        arc_events::{list_arc_timeline, ArcTimelineCursor, ArcTimelinePage},
-        arcs::{self, ArcCreateInput, ArcDetail, ArcRecord, ArcState, ArcUpdateInput},
-        events::goal_transcript_tail,
-        sessions::find_session_by_id,
-    },
-    providers::{ProviderId, ReasoningEffort},
-    state::AppState,
+use super::publish_dashboard_changed;
+use crate::state::AppState;
+use crate::state::{live_database, read_off_main};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::NonEmptyString;
+use argmax_contracts::validation::{ProviderId, ReasoningEffort};
+use argmax_store::{
+    arc_events::{list_arc_timeline, ArcTimelineCursor, ArcTimelinePage},
+    arcs::{self, ArcCreateInput, ArcDetail, ArcRecord, ArcState, ArcUpdateInput},
+    events::goal_transcript_tail,
+    sessions::find_session_by_id,
 };
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
@@ -309,7 +309,7 @@ pub(crate) async fn arc_draft_from_session_impl(
         Ok((session.provider, tail.text))
     })
     .await?;
-    let Ok(provider) = crate::providers::runtime::parse_provider(&provider) else {
+    let Ok(provider) = argmax_contracts::validation::parse_provider(&provider) else {
         return Ok(ArcDraft {
             name: None,
             brief: None,
@@ -323,7 +323,7 @@ pub(crate) async fn arc_draft_from_session_impl(
     }
     let draft = crate::providers::one_shot::draft_arc(
         provider,
-        crate::providers::one_shot::helper_model(provider),
+        crate::providers::model_catalogue::helper_model(provider),
         &transcript,
     )
     .await;

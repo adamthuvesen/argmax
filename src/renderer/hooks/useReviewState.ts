@@ -1,11 +1,19 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { ProjectTarget } from "../lib/projectTarget.js";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type {
   ChangedFileSummary,
-  ProjectSummary,
   WorkspaceDiff,
   WorkspaceFileEntry,
   WorkspaceFilePreview,
-  WorkspaceSummary
+  WorkspaceSummary,
 } from "../../shared/types.js";
 import {
   claimBrowserSurface,
@@ -31,7 +39,7 @@ import {
   getActiveBrowserTabId,
   removeBrowserTab,
   DEFAULT_BROWSER_URL,
-  type BrowserOpenRequest
+  type BrowserOpenRequest,
 } from "../lib/browserPanel.js";
 import {
   consumeTerminalRequest,
@@ -43,15 +51,31 @@ import {
   subscribeTerminalTabs,
   addTerminalTab,
   closeTerminalTab,
-  setActiveTerminalTab
+  setActiveTerminalTab,
 } from "../lib/terminalTabs.js";
 import { reviewIpcDispatch } from "../lib/reviewIpc.js";
 import type { ReviewLayout, ReviewPanelMode, ReviewSplitPosition } from "../lib/reviewLayout.js";
-import { isReviewPanelMode, parseReviewLayout, normalizeReviewLayout } from "../lib/reviewLayout.js";
 import {
-  addReviewTab, createReviewTabs, migrateReviewTabs, moveReviewTab, projectReviewLayout,
-  removeReviewTab, openReviewTab, reviewTabMode, reviewToolTab, selectReviewTab, setReviewTabsRatio, splitReviewTab,
-  type ReviewTab, type ReviewTabsController, type ReviewTabsState
+  isReviewPanelMode,
+  parseReviewLayout,
+  normalizeReviewLayout,
+} from "../lib/reviewLayout.js";
+import {
+  addReviewTab,
+  createReviewTabs,
+  migrateReviewTabs,
+  moveReviewTab,
+  projectReviewLayout,
+  removeReviewTab,
+  openReviewTab,
+  reviewTabMode,
+  reviewToolTab,
+  selectReviewTab,
+  setReviewTabsRatio,
+  splitReviewTab,
+  type ReviewTab,
+  type ReviewTabsController,
+  type ReviewTabsState,
 } from "../lib/reviewTabs.js";
 import { uuidV4 } from "../lib/uuid.js";
 import { showErrorToast } from "../state/toast.js";
@@ -62,11 +86,14 @@ import { hostsBrowserSurface } from "../lib/tauriBridge.js";
 import { isSecondaryWindow } from "../lib/windowRole.js";
 import { useAgentTabs, type AgentTabsState } from "./useAgentTabs.js";
 import { useReviewDiff } from "./useReviewDiff.js";
-import { useProjectFolderChanges, type ProjectFolderChangesState } from "./useProjectFolderChanges.js";
+import {
+  useProjectFolderChanges,
+  type ProjectFolderChangesState,
+} from "./useProjectFolderChanges.js";
 import { useWorkspaceFileList } from "./useWorkspaceFileList.js";
 
 export type AsyncState = "idle" | "loading" | "ready" | "error";
-export type { ReviewLayout, ReviewPanelMode, ReviewSplitPosition } from "../lib/reviewLayout.js";
+export type { ReviewPanelMode } from "../lib/reviewLayout.js";
 
 export type WorkspaceFileSaveState = "idle" | "saving" | "error";
 
@@ -77,7 +104,7 @@ export type WorkspaceFileSaveState = "idle" | "saving" | "error";
  */
 export type ReviewSource =
   | { kind: "workspace"; workspace: WorkspaceSummary }
-  | { kind: "project"; project: ProjectSummary; projectFolderId?: string };
+  | ({ kind: "project" } & ProjectTarget);
 
 export interface WorkspaceFileTab {
   path: string;
@@ -242,27 +269,32 @@ export function useReviewState(
      *  are still scoped to a workspace row; project sources have none of their
      *  own. */
     terminalWorkspaceId?: string | null;
-  }
+  },
 ): ReviewState {
-  const sourceKind = source?.kind === "project" && source.projectFolderId ? "projectFolder" : source?.kind ?? null;
+  const sourceKind =
+    source?.kind === "project" && source.projectFolderId ? "projectFolder" : (source?.kind ?? null);
   const sourceId: string | null = source
     ? source.kind === "workspace"
       ? source.workspace.id
-      : source.projectFolderId ?? source.project.id
+      : (source.projectFolderId ?? source.project.id)
     : null;
   const changedFilesKey: string | null =
-    source?.kind === "workspace" ? `${source.workspace.changedFiles}:${source.workspace.state}` : null;
+    source?.kind === "workspace"
+      ? `${source.workspace.changedFiles}:${source.workspace.state}`
+      : null;
+  // A turn's end advances `lastActivityAt`, so a turn that edited files whose
+  // count did not change still misses the kept list.
+  const changedFilesRetainFreshness: string | null =
+    source?.kind === "workspace" ? `${changedFilesKey}:${source.workspace.lastActivityAt}` : null;
   const canEdit = sourceKind !== null && (options?.editable ?? true);
 
   const dispatch = useMemo(
     () => (sourceKind && sourceId ? reviewIpcDispatch({ kind: sourceKind, id: sourceId }) : null),
-    [sourceKind, sourceId]
+    [sourceKind, sourceId],
   );
 
   const terminalWorkspaceId =
-    source?.kind === "workspace"
-      ? source.workspace.id
-      : options?.terminalWorkspaceId ?? null;
+    source?.kind === "workspace" ? source.workspace.id : (options?.terminalWorkspaceId ?? null);
   const browserScopeId = options?.sessionId ?? LAUNCHER_BROWSER_SCOPE_ID;
   const sourceKey = `${sourceKind ?? "none"}:${sourceId ?? "none"}`;
   const tabOwnerKey = `${sourceKey}\u0000${browserScopeId}`;
@@ -275,19 +307,22 @@ export function useReviewState(
     if (terminalWorkspaceId) modes.push("terminal");
     return modes;
   }, [options?.sessionId, terminalWorkspaceId]);
-  const panelOpenKey = options?.sessionId && options.initiallyOpen === undefined
-    ? `argmax.reviewPanel.open.${options.sessionId}`
-    : null;
+  const panelOpenKey =
+    options?.sessionId && options.initiallyOpen === undefined
+      ? `argmax.reviewPanel.open.${options.sessionId}`
+      : null;
   const legacyPanelModeKey = panelOpenKey ? `argmax.reviewPanel.mode.${options?.sessionId}` : null;
-  const panelLayoutKey = options?.initiallyOpen === undefined
-    ? options?.sessionId
-      ? `argmax.reviewPanel.layout.${options.sessionId}`
-      : source?.kind === "project"
-        ? "argmax.reviewPanel.layout.launcher"
-        : null
-    : null;
+  const panelLayoutKey =
+    options?.initiallyOpen === undefined
+      ? options?.sessionId
+        ? `argmax.reviewPanel.layout.${options.sessionId}`
+        : source?.kind === "project"
+          ? "argmax.reviewPanel.layout.launcher"
+          : null
+      : null;
   // A new launcher must not inherit visibility from a chat in its checkout.
-  const restoreTerminalShowing = sourceKind === "workspace" && getWorkspaceTerminalState(terminalWorkspaceId).showing;
+  const restoreTerminalShowing =
+    sourceKind === "workspace" && getWorkspaceTerminalState(terminalWorkspaceId).showing;
   // Session panes remount on navigation. Restore both visibility and mode,
   // falling back to the workspace terminal state for sessions without a preference.
   const [isPanelOpen, setIsPanelOpen] = useState(() => {
@@ -310,41 +345,95 @@ export function useReviewState(
     }
   }, [panelOpenKey, isPanelOpen]);
   const tabStateRef = useRef<ReviewTabsState>(createReviewTabs());
-  const resolveModeTab = useCallback((nextMode: ReviewPanelMode): ReviewTab | null => {
-    if (!availablePanelModes.includes(nextMode)) return null;
-    if (nextMode === "side-chat") {
-      return tabStateRef.current.tabs.find((tab) => tab.kind === "tool" && tab.mode === "side-chat") ?? {
-        id: `tool:side-chat:${uuidV4()}`, kind: "tool", mode: "side-chat"
-      };
-    }
-    if (nextMode === "browser") {
-      const browserTabId = getActiveBrowserTabId(browserScopeId) ?? createBrowserTab(browserScopeId, lastBrowsedUrl(browserScopeId)).id;
-      return { id: `browser:${browserTabId}`, kind: "browser", browserTabId };
-    }
-    if (nextMode === "terminal") {
-      if (!terminalWorkspaceId) return null;
-      const terminalTabId = getWorkspaceTerminalState(terminalWorkspaceId).activeTabId ?? addReviewTerminal(terminalWorkspaceId);
-      return { id: `terminal:${terminalWorkspaceId}:${terminalTabId}`, kind: "terminal", terminalTabId, workspaceId: terminalWorkspaceId };
-    }
-    return reviewToolTab(nextMode);
-  }, [availablePanelModes, browserScopeId, terminalWorkspaceId]);
+  const resolveModeTab = useCallback(
+    (nextMode: ReviewPanelMode): ReviewTab | null => {
+      if (!availablePanelModes.includes(nextMode)) return null;
+      if (nextMode === "side-chat") {
+        return (
+          tabStateRef.current.tabs.find(
+            (tab) => tab.kind === "tool" && tab.mode === "side-chat",
+          ) ?? {
+            id: `tool:side-chat:${uuidV4()}`,
+            kind: "tool",
+            mode: "side-chat",
+          }
+        );
+      }
+      if (nextMode === "browser") {
+        const browserTabId =
+          getActiveBrowserTabId(browserScopeId) ??
+          createBrowserTab(browserScopeId, lastBrowsedUrl(browserScopeId)).id;
+        return { id: `browser:${browserTabId}`, kind: "browser", browserTabId };
+      }
+      if (nextMode === "terminal") {
+        if (!terminalWorkspaceId) return null;
+        const terminalTabId =
+          getWorkspaceTerminalState(terminalWorkspaceId).activeTabId ??
+          addReviewTerminal(terminalWorkspaceId);
+        return {
+          id: `terminal:${terminalWorkspaceId}:${terminalTabId}`,
+          kind: "terminal",
+          terminalTabId,
+          workspaceId: terminalWorkspaceId,
+        };
+      }
+      return reviewToolTab(nextMode);
+    },
+    [availablePanelModes, browserScopeId, terminalWorkspaceId],
+  );
   const [tabState, setTabState] = useState<ReviewTabsState>(() => {
     if (panelLayoutKey) {
       try {
         const raw = window.localStorage.getItem(panelLayoutKey);
         const legacy = parseReviewLayout(raw);
-        const stored = migrateReviewTabs(legacy ? JSON.stringify(normalizeReviewLayout(legacy, availablePanelModes)) : raw, resolveModeTab);
+        const stored = migrateReviewTabs(
+          legacy ? JSON.stringify(normalizeReviewLayout(legacy, availablePanelModes)) : raw,
+          resolveModeTab,
+        );
         if (stored) {
           let next = stored;
-          const restoredTerminalIds = new Set(stored.tabs.filter((tab) => tab.kind === "terminal" && getWorkspaceTerminalState(tab.workspaceId).tabs.some((item) => item.id === tab.terminalTabId)).map((tab) => tab.kind === "terminal" ? tab.terminalTabId : ""));
+          const restoredTerminalIds = new Set(
+            stored.tabs
+              .filter(
+                (tab) =>
+                  tab.kind === "terminal" &&
+                  getWorkspaceTerminalState(tab.workspaceId).tabs.some(
+                    (item) => item.id === tab.terminalTabId,
+                  ),
+              )
+              .map((tab) => (tab.kind === "terminal" ? tab.terminalTabId : "")),
+          );
           for (const tab of stored.tabs) {
-            if (!availablePanelModes.includes(reviewTabMode(tab)) || (tab.kind === "file" && tab.sourceKey !== sourceKey)) next = removeReviewTab(next, tab.id);
-            else if (tab.kind === "terminal" && !getWorkspaceTerminalState(tab.workspaceId).tabs.some((item) => item.id === tab.terminalTabId)) {
-              const freshId = getWorkspaceTerminalState(tab.workspaceId).tabs.find((item) => !restoredTerminalIds.has(item.id))?.id ?? addReviewTerminal(tab.workspaceId);
+            if (
+              !availablePanelModes.includes(reviewTabMode(tab)) ||
+              (tab.kind === "file" && tab.sourceKey !== sourceKey)
+            )
+              next = removeReviewTab(next, tab.id);
+            else if (
+              tab.kind === "terminal" &&
+              !getWorkspaceTerminalState(tab.workspaceId).tabs.some(
+                (item) => item.id === tab.terminalTabId,
+              )
+            ) {
+              const freshId =
+                getWorkspaceTerminalState(tab.workspaceId).tabs.find(
+                  (item) => !restoredTerminalIds.has(item.id),
+                )?.id ?? addReviewTerminal(tab.workspaceId);
               restoredTerminalIds.add(freshId);
-              const replacement: ReviewTab = { id: `terminal:${tab.workspaceId}:${freshId}`, kind: "terminal", terminalTabId: freshId, workspaceId: tab.workspaceId };
+              const replacement: ReviewTab = {
+                id: `terminal:${tab.workspaceId}:${freshId}`,
+                kind: "terminal",
+                terminalTabId: freshId,
+                workspaceId: tab.workspaceId,
+              };
               if (replacement) {
-                next = { ...next, tabs: next.tabs.map((item) => item.id === tab.id ? replacement : item), paneTabIds: next.paneTabIds.map((id) => id === tab.id ? replacement.id : id) as ReviewTabsState["paneTabIds"] };
+                next = {
+                  ...next,
+                  tabs: next.tabs.map((item) => (item.id === tab.id ? replacement : item)),
+                  paneTabIds: next.paneTabIds.map((id) =>
+                    id === tab.id ? replacement.id : id,
+                  ) as ReviewTabsState["paneTabIds"],
+                };
               }
             }
           }
@@ -363,14 +452,21 @@ export function useReviewState(
         }
       }
     }
-    const initial = options?.initiallyOpen === undefined && restoreTerminalShowing ? resolveModeTab("terminal") : null;
-    return initial ? selectReviewTab(addReviewTab(createReviewTabs(), initial), initial.id) : createReviewTabs();
+    const initial =
+      options?.initiallyOpen === undefined && restoreTerminalShowing
+        ? resolveModeTab("terminal")
+        : null;
+    return initial
+      ? selectReviewTab(addReviewTab(createReviewTabs(), initial), initial.id)
+      : createReviewTabs();
   });
   tabStateRef.current = tabState;
   const layout = useMemo(() => projectReviewLayout(tabState), [tabState]);
   useEffect(() => {
     if (!panelLayoutKey || isSecondaryWindow()) return;
-    try { window.localStorage.setItem(panelLayoutKey, JSON.stringify(tabState)); } catch {
+    try {
+      window.localStorage.setItem(panelLayoutKey, JSON.stringify(tabState));
+    } catch {
       // Layout persistence is optional when storage is unavailable.
     }
   }, [tabState, panelLayoutKey]);
@@ -381,9 +477,18 @@ export function useReviewState(
         if (tab.kind === "file" && tab.sourceKey !== sourceKey) {
           const replacement = reviewToolTab("files");
           next = addReviewTab(next, replacement);
-          next = { ...next, paneTabIds: next.paneTabIds.map((id) => id === tab.id ? replacement.id : id) as ReviewTabsState["paneTabIds"] };
+          next = {
+            ...next,
+            paneTabIds: next.paneTabIds.map((id) =>
+              id === tab.id ? replacement.id : id,
+            ) as ReviewTabsState["paneTabIds"],
+          };
           next = removeReviewTab(next, tab.id);
-        } else if (!availablePanelModes.includes(reviewTabMode(tab)) || (tab.kind === "terminal" && tab.workspaceId !== terminalWorkspaceId)) next = removeReviewTab(next, tab.id);
+        } else if (
+          !availablePanelModes.includes(reviewTabMode(tab)) ||
+          (tab.kind === "terminal" && tab.workspaceId !== terminalWorkspaceId)
+        )
+          next = removeReviewTab(next, tab.id);
       }
       return next;
     });
@@ -391,36 +496,62 @@ export function useReviewState(
   const mode = layout.modes[layout.activeIndex] ?? layout.modes[0];
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
-  const setMode = useCallback((nextMode: ReviewPanelMode): void => {
-    const tab = resolveModeTab(nextMode);
-    if (!tab) return;
-    setTabState((current) => openReviewTab(current, tab));
-  }, [resolveModeTab]);
-  const setPaneMode = useCallback((index: 0 | 1, nextMode: ReviewPanelMode): void => {
-    const tab = resolveModeTab(nextMode);
-    if (!tab) return;
-    setTabState((current) => {
-      const next = addReviewTab(current, tab);
-      const existing = next.paneTabIds.indexOf(tab.id);
-      if (existing >= 0 && existing !== index && next.paneTabIds.length === 2) return { ...next, paneTabIds: [next.paneTabIds[1], next.paneTabIds[0]], activeIndex: index };
-      return openReviewTab(next, tab, index);
-    });
-  }, [resolveModeTab]);
+  const setMode = useCallback(
+    (nextMode: ReviewPanelMode): void => {
+      const tab = resolveModeTab(nextMode);
+      if (!tab) return;
+      setTabState((current) => openReviewTab(current, tab));
+    },
+    [resolveModeTab],
+  );
+  const setPaneMode = useCallback(
+    (index: 0 | 1, nextMode: ReviewPanelMode): void => {
+      const tab = resolveModeTab(nextMode);
+      if (!tab) return;
+      setTabState((current) => {
+        const next = addReviewTab(current, tab);
+        const existing = next.paneTabIds.indexOf(tab.id);
+        if (existing >= 0 && existing !== index && next.paneTabIds.length === 2)
+          return {
+            ...next,
+            paneTabIds: [next.paneTabIds[1], next.paneTabIds[0]],
+            activeIndex: index,
+          };
+        return openReviewTab(next, tab, index);
+      });
+    },
+    [resolveModeTab],
+  );
   const focusPane = useCallback((index: 0 | 1): void => {
-    setTabState((current) => index < current.paneTabIds.length && current.activeIndex !== index ? { ...current, activeIndex: index } : current);
+    setTabState((current) =>
+      index < current.paneTabIds.length && current.activeIndex !== index
+        ? { ...current, activeIndex: index }
+        : current,
+    );
   }, []);
-  const splitMode = useCallback((nextMode: ReviewPanelMode, position: ReviewSplitPosition): void => {
-    let tab = resolveModeTab(nextMode);
-    if (!tab) return;
-    const current = tabStateRef.current;
-    if (current.paneTabIds.length === 1 && current.paneTabIds[0] === tab.id) tab = reviewToolTab(nextMode === "changes" ? "files" : "changes");
-    const inserted = tab;
-    setTabState((state) => splitReviewTab(addReviewTab(state, inserted), inserted.id, position));
-    setIsPanelOpen(true);
-  }, [resolveModeTab]);
+  const splitMode = useCallback(
+    (nextMode: ReviewPanelMode, position: ReviewSplitPosition): void => {
+      let tab = resolveModeTab(nextMode);
+      if (!tab) return;
+      const current = tabStateRef.current;
+      if (current.paneTabIds.length === 1 && current.paneTabIds[0] === tab.id)
+        tab = reviewToolTab(nextMode === "changes" ? "files" : "changes");
+      const inserted = tab;
+      setTabState((state) => splitReviewTab(addReviewTab(state, inserted), inserted.id, position));
+      setIsPanelOpen(true);
+    },
+    [resolveModeTab],
+  );
   const closePane = useCallback((index: 0 | 1): void => {
-    if (layoutRef.current.modes.length === 1) { setIsPanelOpen(false); return; }
-    setTabState((current) => ({ ...current, paneTabIds: [current.paneTabIds[index === 0 ? 1 : 0]!], activeIndex: 0 }));
+    if (layoutRef.current.modes.length === 1) {
+      setIsPanelOpen(false);
+      return;
+    }
+    setTabState((current) => ({
+      ...current,
+      paneTabIds: [current.paneTabIds[index === 0 ? 1 : 0]!],
+      activeIndex: 0,
+    }));
   }, []);
   const setSplitRatio = useCallback((value: number): void => {
     setTabState((current) => setReviewTabsRatio(current, value));
@@ -433,14 +564,14 @@ export function useReviewState(
   // same scope from positioning the same native webview.
   const panelId = useId();
   const [browserRequest, setBrowserRequest] = useState<BrowserOpenRequest | null>(() =>
-    layout.modes.includes("browser") ? { url: lastBrowsedUrl(browserScopeId), seq: 0 } : null
+    layout.modes.includes("browser") ? { url: lastBrowsedUrl(browserScopeId), seq: 0 } : null,
   );
-  const browserOwner = useSyncExternalStore(subscribeBrowserOwner, () => getBrowserOwnerId(browserScopeId)) === panelId;
+  const browserOwner =
+    useSyncExternalStore(subscribeBrowserOwner, () => getBrowserOwnerId(browserScopeId)) ===
+    panelId;
 
   const handleBrowserRequest = useCallback((seq: number): void => {
-    setBrowserRequest((current) =>
-      current?.seq === seq ? { url: "", seq } : current
-    );
+    setBrowserRequest((current) => (current?.seq === seq ? { url: "", seq } : current));
   }, []);
 
   const openBrowserAt = useCallback(
@@ -449,16 +580,27 @@ export function useReviewState(
       // in Browser mode with the panel open, so neither of the effect's deps
       // changes and "Show here" would be a no-op.
       claimBrowserSurface(panelId, browserScopeId);
-      const existing = tabId ? getBrowserTabs(browserScopeId).find((tab) => tab.id === tabId) : undefined;
-      const browserTabId = tabId ?? (newTab ? null : getActiveBrowserTabId(browserScopeId)) ?? createBrowserTab(browserScopeId, url || DEFAULT_BROWSER_URL).id;
+      const existing = tabId
+        ? getBrowserTabs(browserScopeId).find((tab) => tab.id === tabId)
+        : undefined;
+      const browserTabId =
+        tabId ??
+        (newTab ? null : getActiveBrowserTabId(browserScopeId)) ??
+        createBrowserTab(browserScopeId, url || DEFAULT_BROWSER_URL).id;
       const tab: ReviewTab = { id: `browser:${browserTabId}`, kind: "browser", browserTabId };
-      if (existing || getBrowserTabs(browserScopeId).some((item) => item.id === browserTabId)) activateBrowserTab(browserTabId);
-      setBrowserRequest((current) => ({ url, tabId: browserTabId, newTab, seq: (current?.seq ?? 0) + 1 }));
+      if (existing || getBrowserTabs(browserScopeId).some((item) => item.id === browserTabId))
+        activateBrowserTab(browserTabId);
+      setBrowserRequest((current) => ({
+        url,
+        tabId: browserTabId,
+        newTab,
+        seq: (current?.seq ?? 0) + 1,
+      }));
       setTabState((current) => openReviewTab(current, tab));
       setIsPanelOpen(true);
       return browserTabId;
     },
-    [browserScopeId, panelId]
+    [browserScopeId, panelId],
   );
 
   const openBrowser = useCallback(
@@ -470,10 +612,10 @@ export function useReviewState(
       }
       openBrowserAt(
         browserRequest?.tabId ? browserRequest.url : lastBrowsedUrl(browserScopeId),
-        browserRequest?.tabId
+        browserRequest?.tabId,
       );
     },
-    [browserRequest, browserScopeId, openBrowserAt]
+    [browserRequest, browserScopeId, openBrowserAt],
   );
 
   const showsBrowser = isPanelOpen && layout.modes.includes("browser");
@@ -495,37 +637,50 @@ export function useReviewState(
   useEffect(() => ensureBrowserTabSync(), []);
   useEffect(() => ensureAgentTerminalSync(), []);
 
-  useEffect(() => subscribeBrowserTabOpened((event) => {
-    if (event.scopeId !== browserScopeId) return;
-    const state = tabStateRef.current;
-    const sourceIndex = state.paneTabIds.indexOf(`browser:${event.sourceTabId}`);
-    if (!panelRef.current.isPanelOpen || sourceIndex < 0) return;
-    const tab: ReviewTab = { id: `browser:${event.tabId}`, kind: "browser", browserTabId: event.tabId };
-    const browserTab = getBrowserTabs(browserScopeId).find((item) => item.id === event.tabId);
-    activateBrowserTab(event.tabId);
-    setBrowserRequest((current) => ({ url: browserTab?.url ?? "", tabId: event.tabId, newTab: sourceIndex === state.activeIndex, seq: (current?.seq ?? 0) + 1 }));
-    setTabState((current) => {
-      const next = addReviewTab(current, tab);
-      const panes: ReviewTabsState["paneTabIds"] = [...next.paneTabIds];
-      const index = panes.indexOf(`browser:${event.sourceTabId}`);
-      if (index < 0) return next;
-      panes[index as 0 | 1] = tab.id;
-      return { ...next, paneTabIds: panes };
-    });
-  }), [browserScopeId]);
+  useEffect(
+    () =>
+      subscribeBrowserTabOpened((event) => {
+        if (event.scopeId !== browserScopeId) return;
+        const state = tabStateRef.current;
+        const sourceIndex = state.paneTabIds.indexOf(`browser:${event.sourceTabId}`);
+        if (!panelRef.current.isPanelOpen || sourceIndex < 0) return;
+        const tab: ReviewTab = {
+          id: `browser:${event.tabId}`,
+          kind: "browser",
+          browserTabId: event.tabId,
+        };
+        const browserTab = getBrowserTabs(browserScopeId).find((item) => item.id === event.tabId);
+        activateBrowserTab(event.tabId);
+        setBrowserRequest((current) => ({
+          url: browserTab?.url ?? "",
+          tabId: event.tabId,
+          newTab: sourceIndex === state.activeIndex,
+          seq: (current?.seq ?? 0) + 1,
+        }));
+        setTabState((current) => {
+          const next = addReviewTab(current, tab);
+          const panes: ReviewTabsState["paneTabIds"] = [...next.paneTabIds];
+          const index = panes.indexOf(`browser:${event.sourceTabId}`);
+          if (index < 0) return next;
+          panes[index as 0 | 1] = tab.id;
+          return { ...next, paneTabIds: panes };
+        });
+      }),
+    [browserScopeId],
+  );
 
   const claimsBrowserRequests = useRef(options?.claimsBrowserRequests ?? false);
   claimsBrowserRequests.current = options?.claimsBrowserRequests ?? false;
-  useEffect(() => subscribeBrowserRequest(() => {
-    const request = getBrowserRequest();
-    if (!request || !claimsBrowserRequests.current) return;
-    openBrowserAt(
-      request.url || lastBrowsedUrl(browserScopeId),
-      request.tabId,
-      request.newTab
-    );
-    consumeBrowserRequest(request.seq);
-  }), [browserScopeId, openBrowserAt]);
+  useEffect(
+    () =>
+      subscribeBrowserRequest(() => {
+        const request = getBrowserRequest();
+        if (!request || !claimsBrowserRequests.current) return;
+        openBrowserAt(request.url || lastBrowsedUrl(browserScopeId), request.tabId, request.newTab);
+        consumeBrowserRequest(request.seq);
+      }),
+    [browserScopeId, openBrowserAt],
+  );
 
   // Reveal the first agent tab once per session. Later requests update the
   // browser without disturbing the user's panel layout or visibility.
@@ -556,7 +711,7 @@ export function useReviewState(
       setBrowserRequest((current) => ({
         url: agentBrowserOpen.url,
         tabId: agentBrowserOpen.tabId,
-        seq: (current?.seq ?? 0) + 1
+        seq: (current?.seq ?? 0) + 1,
       }));
     }
   }, [agentBrowserOpen, openBrowserAt, paneSessionId]);
@@ -564,7 +719,7 @@ export function useReviewState(
   const comparisonBaseLabel: string | null = source
     ? source.kind === "workspace"
       ? source.workspace.baseRef
-      : source.project.defaultBranch ?? source.project.currentBranch
+      : (source.project.defaultBranch ?? source.project.currentBranch)
     : null;
 
   const openChangesMode = useCallback((): void => {
@@ -572,24 +727,34 @@ export function useReviewState(
     setIsPanelOpen(true);
   }, [setMode]);
 
-  const projectChanges = source ? {
-    projectId: source.kind === "workspace" ? source.workspace.projectId : source.project.id,
-    workingFolderId: source.kind === "workspace" ? source.workspace.projectFolderId ?? null : source.projectFolderId ?? null,
-    workingRootPath: source.kind === "workspace" ? source.workspace.path : source.project.repoPath,
-    refreshKey: changedFilesKey
-  } : undefined;
-  const projectFolderChanges = useProjectFolderChanges(projectChanges, isPanelOpen || (options?.preloadChanges ?? true));
+  const projectChanges = source
+    ? {
+        projectId: source.kind === "workspace" ? source.workspace.projectId : source.project.id,
+        workingFolderId:
+          source.kind === "workspace"
+            ? (source.workspace.projectFolderId ?? null)
+            : (source.projectFolderId ?? null),
+        workingRootPath:
+          source.kind === "workspace" ? source.workspace.path : source.project.repoPath,
+        refreshKey: changedFilesKey,
+      }
+    : undefined;
+  const projectFolderChanges = useProjectFolderChanges(
+    projectChanges,
+    isPanelOpen || (options?.preloadChanges ?? true),
+  );
 
   const reviewDiff = useReviewDiff({
     sourceId,
     sourceKind,
     changedFilesKey,
+    retainFreshness: changedFilesRetainFreshness,
     comparison: "branch",
     dispatch,
     enabled: isPanelOpen || (options?.preloadChanges ?? true),
     preloadFirstFile: options?.preloadChanges === true,
     autoSelectFirstFile: isPanelOpen && layout.modes.includes("changes"),
-    onOpenChanges: openChangesMode
+    onOpenChanges: openChangesMode,
   });
 
   const fileListState = useWorkspaceFileList({
@@ -598,7 +763,7 @@ export function useReviewState(
     changedFilesKey,
     dispatch,
     mode: layout.modes.includes("files") ? "files" : mode,
-    isPanelOpen
+    isPanelOpen,
   });
 
   const sourceRootPath: string | null = source
@@ -615,11 +780,16 @@ export function useReviewState(
     mode: layout.modes.includes("files") ? "files" : mode,
     isPanelOpen,
     rootPath: sourceRootPath,
-    storageKey: panelLayoutKey && options?.sessionId ? `argmax.reviewPanel.files.${options.sessionId}` : null
+    storageKey:
+      panelLayoutKey && options?.sessionId ? `argmax.reviewPanel.files.${options.sessionId}` : null,
   });
 
   const { resetForSourceChange: resetDiff, ...diffState } = reviewDiff;
-  const { resetForSourceChange: resetFilePreview, openFile: openWorkspaceFile, ...previewState } = filePreview;
+  const {
+    resetForSourceChange: resetFilePreview,
+    openFile: openWorkspaceFile,
+    ...previewState
+  } = filePreview;
 
   const {
     openTab: openAgentTab,
@@ -644,7 +814,10 @@ export function useReviewState(
     // selection going away; every other mode has nothing left to show.
     if (
       !window.argmax ||
-      ((!sourceId || !sourceKind) && !panelRef.current.layout.modes.includes("browser") && !panelRef.current.layout.modes.includes("new") && !panelRef.current.layout.modes.includes("side-chat"))
+      ((!sourceId || !sourceKind) &&
+        !panelRef.current.layout.modes.includes("browser") &&
+        !panelRef.current.layout.modes.includes("new") &&
+        !panelRef.current.layout.modes.includes("side-chat"))
     ) {
       setIsPanelOpen(false);
     }
@@ -652,12 +825,17 @@ export function useReviewState(
 
   const openInFilesView = useCallback(
     (filePath: string): void => {
-      const tab: ReviewTab = { id: `file:${sourceKey}:${encodeURIComponent(filePath)}`, kind: "file", path: filePath, sourceKey };
+      const tab: ReviewTab = {
+        id: `file:${sourceKey}:${encodeURIComponent(filePath)}`,
+        kind: "file",
+        path: filePath,
+        sourceKey,
+      };
       setTabState((current) => openReviewTab(current, tab));
       setIsPanelOpen(true);
       openWorkspaceFile(filePath);
     },
-    [openWorkspaceFile, sourceKey]
+    [openWorkspaceFile, sourceKey],
   );
 
   const openAgent = useCallback(
@@ -666,7 +844,7 @@ export function useReviewState(
       setIsPanelOpen(true);
       openAgentTab(parentToolUseId);
     },
-    [openAgentTab, setMode]
+    [openAgentTab, setMode],
   );
 
   const openAgents = useCallback((): void => {
@@ -680,7 +858,7 @@ export function useReviewState(
       setIsPanelOpen(true);
       openAgentTab(multitaskTabId(sessionId));
     },
-    [openAgentTab, setMode]
+    [openAgentTab, setMode],
   );
 
   const openPanelInFilesMode = useCallback((): void => {
@@ -697,7 +875,7 @@ export function useReviewState(
     isPanelOpen,
     files: diffState.files,
     mode,
-    layout
+    layout,
   };
 
   const togglePanel = useCallback((): void => {
@@ -706,7 +884,7 @@ export function useReviewState(
       setTabState((current) => ({
         ...addReviewTab(current, tab),
         paneTabIds: [tab.id],
-        activeIndex: 0
+        activeIndex: 0,
       }));
     }
     setIsPanelOpen((open) => !open);
@@ -775,10 +953,23 @@ export function useReviewState(
     setTerminalShowing(terminalWorkspaceId, showsTerminal);
   }, [showsTerminal, terminalWorkspaceId]);
 
-  const browserTabs = useSyncExternalStore(subscribeBrowserTabs, () => getBrowserTabs(browserScopeId));
-  const terminalTabs = useSyncExternalStore(subscribeTerminalTabs, () => getWorkspaceTerminalState(terminalWorkspaceId));
-  const browserRegistryReady = useSyncExternalStore(subscribeBrowserTabs, isBrowserTabRegistryReady);
-  const restoredBrowserIds = useRef(new Set(tabState.tabs.filter((tab) => tab.kind === "browser").map((tab) => tab.kind === "browser" ? tab.browserTabId : "")));
+  const browserTabs = useSyncExternalStore(subscribeBrowserTabs, () =>
+    getBrowserTabs(browserScopeId),
+  );
+  const terminalTabs = useSyncExternalStore(subscribeTerminalTabs, () =>
+    getWorkspaceTerminalState(terminalWorkspaceId),
+  );
+  const browserRegistryReady = useSyncExternalStore(
+    subscribeBrowserTabs,
+    isBrowserTabRegistryReady,
+  );
+  const restoredBrowserIds = useRef(
+    new Set(
+      tabState.tabs
+        .filter((tab) => tab.kind === "browser")
+        .map((tab) => (tab.kind === "browser" ? tab.browserTabId : "")),
+    ),
+  );
   const knownBrowserIds = useRef(new Set(browserTabs.map((tab) => tab.id)));
   const [closedTabs, setClosedTabs] = useState<Array<{ tab: ReviewTab; url?: string }>>([]);
   const pendingFileClose = useRef<ReviewTab | null>(null);
@@ -787,15 +978,30 @@ export function useReviewState(
     setClosedTabs([]);
     pendingFileClose.current = null;
   }, [sourceKey]);
-  const knownFilePaths = useRef({ sourceKey, paths: new Set(previewState.tabs.map((tab) => tab.path)) });
+  const knownFilePaths = useRef({
+    sourceKey,
+    paths: new Set(previewState.tabs.map((tab) => tab.path)),
+  });
   useEffect(() => {
     const live = new Set(browserTabs.map((tab) => tab.id));
     setTabState((current) => {
       let next = current;
       for (const tab of current.tabs) {
-        if (tab.kind === "browser" && !closingBrowserIds.current.has(tab.id) && (knownBrowserIds.current.has(tab.browserTabId) || (browserRegistryReady && restoredBrowserIds.current.has(tab.browserTabId))) && !live.has(tab.browserTabId)) next = removeReviewTab(next, tab.id);
+        if (
+          tab.kind === "browser" &&
+          !closingBrowserIds.current.has(tab.id) &&
+          (knownBrowserIds.current.has(tab.browserTabId) ||
+            (browserRegistryReady && restoredBrowserIds.current.has(tab.browserTabId))) &&
+          !live.has(tab.browserTabId)
+        )
+          next = removeReviewTab(next, tab.id);
       }
-      for (const tab of browserTabs) next = addReviewTab(next, { id: `browser:${tab.id}`, kind: "browser", browserTabId: tab.id });
+      for (const tab of browserTabs)
+        next = addReviewTab(next, {
+          id: `browser:${tab.id}`,
+          kind: "browser",
+          browserTabId: tab.id,
+        });
       return next;
     });
     for (const id of live) knownBrowserIds.current.add(id);
@@ -807,18 +1013,31 @@ export function useReviewState(
       const live = getWorkspaceTerminalState(terminalWorkspaceId).tabs;
       let next = current;
       for (const tab of current.tabs) {
-        if (tab.kind === "terminal" && tab.workspaceId === terminalWorkspaceId && !live.some((item) => item.id === tab.terminalTabId)) next = removeReviewTab(next, tab.id);
+        if (
+          tab.kind === "terminal" &&
+          tab.workspaceId === terminalWorkspaceId &&
+          !live.some((item) => item.id === tab.terminalTabId)
+        )
+          next = removeReviewTab(next, tab.id);
       }
-      if (terminalWorkspaceId) for (const tab of live) next = addReviewTab(next, { id: `terminal:${terminalWorkspaceId}:${tab.id}`, kind: "terminal", terminalTabId: tab.id, workspaceId: terminalWorkspaceId });
+      if (terminalWorkspaceId)
+        for (const tab of live)
+          next = addReviewTab(next, {
+            id: `terminal:${terminalWorkspaceId}:${tab.id}`,
+            kind: "terminal",
+            terminalTabId: tab.id,
+            workspaceId: terminalWorkspaceId,
+          });
       return next;
     });
   }, [terminalTabs.tabs, terminalWorkspaceId]);
   useEffect(() => {
     if (sourceChanged) return;
     const live = new Set(previewState.tabs.map((tab) => tab.path));
-    const removed = knownFilePaths.current.sourceKey === sourceKey
-      ? new Set([...knownFilePaths.current.paths].filter((path) => !live.has(path)))
-      : new Set<string>();
+    const removed =
+      knownFilePaths.current.sourceKey === sourceKey
+        ? new Set([...knownFilePaths.current.paths].filter((path) => !live.has(path)))
+        : new Set<string>();
     knownFilePaths.current = { sourceKey, paths: live };
     const closing = pendingFileClose.current;
     if (closing?.kind === "file" && closing.sourceKey === sourceKey && !live.has(closing.path)) {
@@ -828,70 +1047,115 @@ export function useReviewState(
     setTabState((current) => {
       let next = current;
       for (const tab of current.tabs) {
-        if (tab.kind === "file" && tab.sourceKey === sourceKey && removed.has(tab.path)) next = removeReviewTab(next, tab.id);
+        if (tab.kind === "file" && tab.sourceKey === sourceKey && removed.has(tab.path))
+          next = removeReviewTab(next, tab.id);
       }
-      for (const tab of previewState.tabs) next = addReviewTab(next, { id: `file:${sourceKey}:${encodeURIComponent(tab.path)}`, kind: "file", path: tab.path, sourceKey });
+      for (const tab of previewState.tabs)
+        next = addReviewTab(next, {
+          id: `file:${sourceKey}:${encodeURIComponent(tab.path)}`,
+          kind: "file",
+          path: tab.path,
+          sourceKey,
+        });
       return next;
     });
   }, [previewState.tabs, previewState.dirtyClosePrompt, sourceChanged, sourceKey]);
 
   useEffect(() => {
-    const visibleFile = tabState.paneTabIds.map((id) => tabState.tabs.find((tab) => tab.id === id)).find((tab) => tab?.kind === "file");
-    if (!previewState.dirtyClosePrompt && visibleFile?.kind === "file" && visibleFile.sourceKey === sourceKey && previewState.tabs.some((tab) => tab.path === visibleFile.path) && previewState.activeTabPath !== visibleFile.path) previewState.selectTab(visibleFile.path);
+    const visibleFile = tabState.paneTabIds
+      .map((id) => tabState.tabs.find((tab) => tab.id === id))
+      .find((tab) => tab?.kind === "file");
+    if (
+      !previewState.dirtyClosePrompt &&
+      visibleFile?.kind === "file" &&
+      visibleFile.sourceKey === sourceKey &&
+      previewState.tabs.some((tab) => tab.path === visibleFile.path) &&
+      previewState.activeTabPath !== visibleFile.path
+    )
+      previewState.selectTab(visibleFile.path);
   }, [tabState.paneTabIds, tabState.tabs, sourceKey, previewState]);
 
-  const activateTabResource = useCallback((tab: ReviewTab): void => {
-    if (tab.kind === "browser") activateBrowserTab(tab.browserTabId);
-    else if (tab.kind === "terminal") setActiveTerminalTab(tab.workspaceId, tab.terminalTabId);
-    else if (tab.kind === "file" && tab.sourceKey === sourceKey) previewState.selectTab(tab.path);
-  }, [previewState, sourceKey]);
-  const selectReviewItem = useCallback((id: string, index?: 0 | 1): void => {
-    const tab = tabStateRef.current.tabs.find((item) => item.id === id);
-    if (!tab) return;
-    activateTabResource(tab);
-    if (tab.kind === "browser") requestBrowserTabFocus(tab.browserTabId);
-    setTabState((current) => selectReviewTab(current, id, index));
-    setIsPanelOpen(true);
-  }, [activateTabResource]);
-  const closeReviewItem = useCallback((id: string): void => {
-    const current = tabStateRef.current;
-    const tab = current.tabs.find((item) => item.id === id);
-    if (!tab) return;
-    if (tab.kind === "file") {
-      if (previewState.tabs.some((item) => item.path === tab.path && item.isDirty)) setTabState((state) => selectReviewTab(state, tab.id));
-      pendingFileClose.current = tab;
-      previewState.closeTab(tab.path);
-      return;
-    }
-    const closeOwnerKey = tabOwnerKeyRef.current;
-    const url = tab.kind === "browser" ? getBrowserTabs(browserScopeId).find((item) => item.id === tab.browserTabId)?.url : undefined;
-    const finishClose = (): void => {
-      const state = tabStateRef.current;
-      const isCurrentSource = tabOwnerKeyRef.current === closeOwnerKey;
-      const wasActive = isCurrentSource && state.paneTabIds[state.activeIndex] === id;
-      if (tab.kind === "browser") removeBrowserTab(tab.browserTabId);
-      else if (tab.kind === "terminal") closeTerminalTab(tab.workspaceId, tab.terminalTabId);
-      if (!isCurrentSource) return;
-      setClosedTabs((items) => [...items.slice(-19), { tab, url }]);
-      const next = removeReviewTab(state, id);
-      const active = next.tabs.find((item) => item.id === next.paneTabIds[next.activeIndex]);
-      if (active) {
-        activateTabResource(active);
-        if (wasActive && tab.kind === "browser" && active.kind === "browser") requestBrowserTabFocus(active.browserTabId);
+  const activateTabResource = useCallback(
+    (tab: ReviewTab): void => {
+      if (tab.kind === "browser") activateBrowserTab(tab.browserTabId);
+      else if (tab.kind === "terminal") setActiveTerminalTab(tab.workspaceId, tab.terminalTabId);
+      else if (tab.kind === "file" && tab.sourceKey === sourceKey) previewState.selectTab(tab.path);
+    },
+    [previewState, sourceKey],
+  );
+  const selectReviewItem = useCallback(
+    (id: string, index?: 0 | 1): void => {
+      const tab = tabStateRef.current.tabs.find((item) => item.id === id);
+      if (!tab) return;
+      activateTabResource(tab);
+      if (tab.kind === "browser") requestBrowserTabFocus(tab.browserTabId);
+      setTabState((current) => selectReviewTab(current, id, index));
+      setIsPanelOpen(true);
+    },
+    [activateTabResource],
+  );
+  const closeReviewItem = useCallback(
+    (id: string): void => {
+      const current = tabStateRef.current;
+      const tab = current.tabs.find((item) => item.id === id);
+      if (!tab) return;
+      if (tab.kind === "file") {
+        if (previewState.tabs.some((item) => item.path === tab.path && item.isDirty))
+          setTabState((state) => selectReviewTab(state, tab.id));
+        pendingFileClose.current = tab;
+        previewState.closeTab(tab.path);
+        return;
       }
-      setTabState((latest) => removeReviewTab(latest, id));
-      if (state.tabs.length === 1) setIsPanelOpen(false);
-    };
-    if (tab.kind === "browser" && isBrowserTabMaterialized(tab.browserTabId) && window.argmax?.browser?.close) {
-      if (closingBrowserIds.current.has(id)) return;
-      closingBrowserIds.current.add(id);
-      void window.argmax.browser.close(tab.browserTabId).then(finishClose).catch((error: unknown) => showErrorToast(`Could not close browser tab: ${errorMessage(error)}`)).finally(() => closingBrowserIds.current.delete(id));
-    } else finishClose();
-  }, [activateTabResource, browserScopeId, previewState]);
+      const closeOwnerKey = tabOwnerKeyRef.current;
+      const url =
+        tab.kind === "browser"
+          ? getBrowserTabs(browserScopeId).find((item) => item.id === tab.browserTabId)?.url
+          : undefined;
+      const finishClose = (): void => {
+        const state = tabStateRef.current;
+        const isCurrentSource = tabOwnerKeyRef.current === closeOwnerKey;
+        const wasActive = isCurrentSource && state.paneTabIds[state.activeIndex] === id;
+        if (tab.kind === "browser") removeBrowserTab(tab.browserTabId);
+        else if (tab.kind === "terminal") closeTerminalTab(tab.workspaceId, tab.terminalTabId);
+        if (!isCurrentSource) return;
+        setClosedTabs((items) => [...items.slice(-19), { tab, url }]);
+        const next = removeReviewTab(state, id);
+        const active = next.tabs.find((item) => item.id === next.paneTabIds[next.activeIndex]);
+        if (active) {
+          activateTabResource(active);
+          if (wasActive && tab.kind === "browser" && active.kind === "browser")
+            requestBrowserTabFocus(active.browserTabId);
+        }
+        setTabState((latest) => removeReviewTab(latest, id));
+        if (state.tabs.length === 1) setIsPanelOpen(false);
+      };
+      if (
+        tab.kind === "browser" &&
+        isBrowserTabMaterialized(tab.browserTabId) &&
+        window.argmax?.browser?.close
+      ) {
+        if (closingBrowserIds.current.has(id)) return;
+        closingBrowserIds.current.add(id);
+        void window.argmax.browser
+          .close(tab.browserTabId)
+          .then(finishClose)
+          .catch((error: unknown) =>
+            showErrorToast(`Could not close browser tab: ${errorMessage(error)}`),
+          )
+          .finally(() => closingBrowserIds.current.delete(id));
+      } else finishClose();
+    },
+    [activateTabResource, browserScopeId, previewState],
+  );
   const openNewTerminal = useCallback((): void => {
     if (!terminalWorkspaceId) return;
     const terminalTabId = addReviewTerminal(terminalWorkspaceId);
-    const tab: ReviewTab = { id: `terminal:${terminalWorkspaceId}:${terminalTabId}`, kind: "terminal", terminalTabId, workspaceId: terminalWorkspaceId };
+    const tab: ReviewTab = {
+      id: `terminal:${terminalWorkspaceId}:${terminalTabId}`,
+      kind: "terminal",
+      terminalTabId,
+      workspaceId: terminalWorkspaceId,
+    };
     setTabState((current) => openReviewTab(current, tab));
     setIsPanelOpen(true);
   }, [terminalWorkspaceId]);
@@ -901,13 +1165,21 @@ export function useReviewState(
     setTabState((current) => openReviewTab(current, tab));
     setIsPanelOpen(true);
   }, []);
-  const selectTerminalTab = useCallback((terminalTabId: string): void => {
-    if (!terminalWorkspaceId) return;
-    const tab: ReviewTab = { id: `terminal:${terminalWorkspaceId}:${terminalTabId}`, kind: "terminal", terminalTabId, workspaceId: terminalWorkspaceId };
-    setActiveTerminalTab(terminalWorkspaceId, terminalTabId);
-    setTabState((current) => openReviewTab(current, tab));
-    setIsPanelOpen(true);
-  }, [terminalWorkspaceId]);
+  const selectTerminalTab = useCallback(
+    (terminalTabId: string): void => {
+      if (!terminalWorkspaceId) return;
+      const tab: ReviewTab = {
+        id: `terminal:${terminalWorkspaceId}:${terminalTabId}`,
+        kind: "terminal",
+        terminalTabId,
+        workspaceId: terminalWorkspaceId,
+      };
+      setActiveTerminalTab(terminalWorkspaceId, terminalTabId);
+      setTabState((current) => openReviewTab(current, tab));
+      setIsPanelOpen(true);
+    },
+    [terminalWorkspaceId],
+  );
   const tabs: ReviewTabsController = {
     items: tabState.tabs,
     paneTabIds: tabState.paneTabIds,
@@ -928,7 +1200,8 @@ export function useReviewState(
       const closed = closedTabs[closedTabs.length - 1];
       if (!closed) return;
       setClosedTabs((items) => items.slice(0, -1));
-      if (closed.tab.kind === "browser") openBrowserAt(closed.url ?? DEFAULT_BROWSER_URL, undefined, true);
+      if (closed.tab.kind === "browser")
+        openBrowserAt(closed.url ?? DEFAULT_BROWSER_URL, undefined, true);
       else if (closed.tab.kind === "terminal") openNewTerminal();
       else if (closed.tab.kind === "side-chat") {
         const tab = closed.tab;
@@ -942,31 +1215,45 @@ export function useReviewState(
       }
     },
     canReopen: closedTabs.length > 0,
-    openTool: (nextMode) => { setMode(nextMode); setIsPanelOpen(true); },
+    openTool: (nextMode) => {
+      setMode(nextMode);
+      setIsPanelOpen(true);
+    },
     openBrowser: (url) => {
-      const existing = url ? getBrowserTabs(browserScopeId).find((tab) => tab.url === url) : undefined;
+      const existing = url
+        ? getBrowserTabs(browserScopeId).find((tab) => tab.url === url)
+        : undefined;
       const tabId = openBrowserAt(url ?? "", existing?.id, !existing);
       if (url) requestBrowserTabFocus(tabId);
     },
     openTerminal: openNewTerminal,
     openSideChat: (sessionId, workspaceId, sourceTabId) => {
       if (!options?.sessionId) return;
-      const tab: ReviewTab = { id: `side-chat:${sessionId}`, kind: "side-chat", sessionId, workspaceId };
+      const tab: ReviewTab = {
+        id: `side-chat:${sessionId}`,
+        kind: "side-chat",
+        sessionId,
+        workspaceId,
+      };
       setTabState((current) => {
         if (!sourceTabId) return openReviewTab(current, tab);
         const form = current.tabs.find((item) => item.id === sourceTabId);
-        if (!form || form.kind !== "tool" || (form.mode !== "new" && form.mode !== "side-chat")) return addReviewTab(current, tab);
-        if (current.tabs.some((item) => item.id === tab.id)) return removeReviewTab(current, form.id);
+        if (!form || form.kind !== "tool" || (form.mode !== "new" && form.mode !== "side-chat"))
+          return addReviewTab(current, tab);
+        if (current.tabs.some((item) => item.id === tab.id))
+          return removeReviewTab(current, form.id);
         return {
           ...current,
-          tabs: current.tabs.map((item) => item.id === form.id ? tab : item),
-          paneTabIds: current.paneTabIds.map((id) => id === form.id ? tab.id : id) as ReviewTabsState["paneTabIds"]
+          tabs: current.tabs.map((item) => (item.id === form.id ? tab : item)),
+          paneTabIds: current.paneTabIds.map((id) =>
+            id === form.id ? tab.id : id,
+          ) as ReviewTabsState["paneTabIds"],
         };
       });
       if (!sourceTabId) setIsPanelOpen(true);
     },
     selectBrowserTab,
-    selectTerminalTab
+    selectTerminalTab,
   };
 
   const workspaceFiles: WorkspaceFilesState = {
@@ -983,7 +1270,9 @@ export function useReviewState(
     previewError: previewState.previewError,
     openFile: openInFilesView,
     selectTab: (path) => {
-      const tab = tabStateRef.current.tabs.find((item) => item.kind === "file" && item.path === path && item.sourceKey === sourceKey);
+      const tab = tabStateRef.current.tabs.find(
+        (item) => item.kind === "file" && item.path === path && item.sourceKey === sourceKey,
+      );
       if (tab) selectReviewItem(tab.id);
       else previewState.selectTab(path);
     },
@@ -1002,7 +1291,7 @@ export function useReviewState(
     editFile: previewState.editFile,
     saveFile: previewState.saveFile,
     reloadFile: previewState.reloadFile,
-    dismissExternalChange: previewState.dismissExternalChange
+    dismissExternalChange: previewState.dismissExternalChange,
   };
 
   return {
@@ -1047,6 +1336,6 @@ export function useReviewState(
     openChangesPanel,
     closePanel,
     togglePanel,
-    toggleChangesPanel
+    toggleChangesPanel,
   };
 }

@@ -88,6 +88,7 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
 
 static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_map! {
     "openrouter/deepseek/deepseek-v4.1-flash" => ModelPricing { input: 0.15, output: 0.6, cache_read: 0.003, cache_write: 0.15 },
+    "claude-fable-5-2" => ModelPricing { input: 8.0, output: 40.0, cache_read: 0.2, cache_write: 10.0 },
     "claude-fable-5" => ModelPricing { input: 10.0, output: 50.0, cache_read: 1.0, cache_write: 12.5 },
     "claude-sonnet-5" => ModelPricing { input: 2.0, output: 10.0, cache_read: 0.2, cache_write: 2.5 },
     "claude-opus-4-8" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
@@ -121,6 +122,7 @@ static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_
     "gpt-5.4-pro" => ModelPricing { input: 30.0, output: 180.0, cache_read: 0.0, cache_write: 0.0 },
     "gpt-5.5" => ModelPricing { input: 5.0, output: 30.0, cache_read: 0.5, cache_write: 0.0 },
     "gpt-5.5-pro" => ModelPricing { input: 30.0, output: 180.0, cache_read: 0.0, cache_write: 0.0 },
+    "gpt-6.1-terra" => ModelPricing { input: 1.0, output: 5.0, cache_read: 0.05, cache_write: 1.25 },
     "o4-mini" => ModelPricing { input: 1.1, output: 4.4, cache_read: 0.275, cache_write: 0.0 },
     "claude-opus-4-8-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "claude-opus-4-7-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },

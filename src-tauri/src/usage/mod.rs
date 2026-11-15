@@ -22,7 +22,7 @@ pub mod summary;
 
 /// Date of the list prices in `providers::pricing`. Shown next to every dollar
 /// figure so a stale table reads as stale.
-pub const PRICING_AS_OF: &str = "2026-09-04";
+pub const PRICING_AS_OF: &str = "2026-11-15";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub enum UsageWindow {

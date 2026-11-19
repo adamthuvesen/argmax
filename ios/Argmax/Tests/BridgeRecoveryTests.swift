@@ -3,6 +3,12 @@ import WebKit
 import XCTest
 @testable import Argmax
 
+/// WKWebView renders in its own WebContent process. Launching a cold one on a
+/// shared CI simulator can take longer than the 5 s these waits used to allow,
+/// which failed the visualization tests at random. A passing run returns as
+/// soon as its condition holds, so only a real hang reaches this ceiling.
+private let webContentLoadCeiling: TimeInterval = 30
+
 final class BridgeRecoveryTests: XCTestCase {
     @MainActor
     func testTranscriptClearsDisconnectedFailureAfterARecoveredPage() async throws {
@@ -211,16 +217,25 @@ final class BridgeRecoveryTests: XCTestCase {
                 onFollowUp: { _ in }, onLink: { _ in }, onControls: { groups = $0 },
                 onPersistenceFailure: { if let error = $0 { XCTFail(error) } }, onFailure: { XCTFail($0) }).id(identity))
         }
+        // A loop that ran out used to fall through silently and fail later on
+        // an unrelated assertion; this names the viewer it was waiting for.
+        @MainActor func waitForViewer(_ phase: String, line: UInt = #line) async throws {
+            let deadline = Date().addingTimeInterval(webContentLoadCeiling)
+            while groups.isEmpty || coordinator?.webView?.isLoading != false {
+                guard Date() < deadline else {
+                    XCTFail("Timed out waiting for the \(phase) viewer. Controls: \(groups.count), loading: \(String(describing: coordinator?.webView?.isLoading))", line: line)
+                    throw BridgeError.disconnected
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
         let controller = UIHostingController(rootView: view(value: nil, identity: "first"))
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 400))
         window.rootViewController = controller
         controller.view.frame = window.bounds
         window.makeKeyAndVisible()
         defer { window.isHidden = true; window.rootViewController = nil }
-        for _ in 0..<500 {
-            if !groups.isEmpty, coordinator?.webView?.isLoading == false { break }
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        try await waitForViewer("first")
         let first = try XCTUnwrap(coordinator)
         XCTAssertFalse(groups.isEmpty)
         XCTAssertTrue(socket.requests.isEmpty, "Initial control restoration does not write")
@@ -235,10 +250,7 @@ final class BridgeRecoveryTests: XCTestCase {
         await first.flushState()
         groups = []
         controller.rootView = view(value: 22, identity: "restored")
-        for _ in 0..<500 {
-            if !groups.isEmpty, coordinator?.webView?.isLoading == false { break }
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        try await waitForViewer("restored")
         let restored = try XCTUnwrap(coordinator?.webView)
         let value = try await restored.evaluateJavaScript("window.settings.gap") as? Int
         XCTAssertEqual(value, 22)
@@ -254,10 +266,7 @@ final class BridgeRecoveryTests: XCTestCase {
         await restoredCoordinator.flushState()
         groups = []
         controller.rootView = view(value: nil, identity: "reset")
-        for _ in 0..<500 {
-            if !groups.isEmpty, coordinator?.webView?.isLoading == false { break }
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        try await waitForViewer("reset")
         let resetView = try XCTUnwrap(coordinator?.webView)
         let resetValue = try await resetView.evaluateJavaScript("window.settings.gap") as? Int
         XCTAssertEqual(resetValue, 14, "Reset restores immutable source defaults after immediate eviction")
@@ -294,7 +303,7 @@ final class BridgeRecoveryTests: XCTestCase {
         window.rootViewController = controller
         controller.view.frame = window.bounds
         @MainActor func waitUI(_ phase: String, _ condition: @MainActor () -> Bool, line: UInt = #line) async throws {
-            let deadline = Date().addingTimeInterval(5)
+            let deadline = Date().addingTimeInterval(webContentLoadCeiling)
             while !condition() {
                 controller.view.setNeedsLayout()
                 controller.view.layoutIfNeeded()

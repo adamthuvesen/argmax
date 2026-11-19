@@ -123,8 +123,15 @@ the Xcode project, builds the `ArgmaxTests` target, and runs it on a simulator
 named "Argmax Test Lane", which it creates when it is missing. The pre-push gate runs it
 when the diff touches the paths in the table above. CI runs the same command in
 a path-filtered macOS job, and on every push to `main`. The log goes to
-`node_modules/.cache/ios-tests/last-run.log`. `--only ParityTableTests` narrows a
-run to one class, or to `Class/testMethod`.
+`node_modules/.cache/ios-tests/last-run.log`, and a failed run also prints each
+XCTest assertion line, so a CI log says what failed and not only which test.
+`--only ParityTableTests` narrows a run to one class, or to `Class/testMethod`.
+
+A test that waits on a `WKWebView` waits for its condition, not for a guessed
+duration, and fails with the phase it was in. Each web view starts a WebContent
+process, and a cold one on a shared CI simulator can take more than 5 s, so
+those waits use the 30 s ceiling in
+[BridgeRecoveryTests.swift](../ios/Argmax/Tests/BridgeRecoveryTests.swift).
 
 On 4 November 2026 the suite ran 494 tests on an already booted simulator in
 81 s from empty DerivedData (59 s build, 22 s tests) and 21 s with nothing to

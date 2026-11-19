@@ -201,7 +201,12 @@ function summarize() {
   const failures = [...log.matchAll(/^Test Case '-\[\S+ (\S+)\]' failed/gm)].map(
     (match) => match[1],
   );
-  return { tests: executed?.[1] ?? "?", failed: executed?.[2] ?? "?", failures };
+  // XCTest's own "File.swift:12: error: -[Class test] : message" lines. Without
+  // them a CI log named the failing test but not what it was waiting for.
+  const assertions = [
+    ...new Set([...log.matchAll(/^.*\.swift:\d+: error: .*$/gm)].map((match) => match[0])),
+  ];
+  return { tests: executed?.[1] ?? "?", failed: executed?.[2] ?? "?", failures, assertions };
 }
 
 const started = Date.now();
@@ -236,11 +241,12 @@ const builtAt = Date.now();
 const status = coreSimulatorIsCurrent()
   ? runThroughXcodebuild(device.udid)
   : runThroughInjection(device);
-const { tests, failed, failures } = summarize();
+const { tests, failed, failures, assertions } = summarize();
 const seconds = (milliseconds) => (milliseconds / 1000).toFixed(0);
 const timing = `build ${seconds(builtAt - started)}s, tests ${seconds(Date.now() - builtAt)}s`;
 if (status !== 0) {
   for (const name of failures) console.error(`failed: ${name}`);
+  for (const line of assertions) console.error(line);
   reportFailure(
     `${failures.length} of ${tests} iOS tests failed, ${failed} assertions (${timing})`,
   );

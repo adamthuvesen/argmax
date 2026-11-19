@@ -1310,10 +1310,11 @@ mod tests {
 
     #[test]
     fn cursor_gemini_has_no_fast_variant() {
-        // Gemini 4 has no -fast model, so fast mode is a no-op for it. Hydrogen
-        // runs to Extra High; Carbon and Argon clamp to High. A stored Gemini
+        // Gemini 4 has no -fast model, so fast mode is a no-op for it. Neon and
+        // Hydrogen run to Extra High; Carbon and Argon clamp to High. A stored Gemini
         // 3.8 Flash chat runs on its successor, Hydrogen.
         let cases = [
+            ("gemini-4-neon-medium", "gemini-4-neon-xhigh"),
             ("gemini-4-hydrogen-medium", "gemini-4-hydrogen-xhigh"),
             ("gemini-4-carbon-medium", "gemini-4-carbon-high"),
             ("gemini-4-argon-medium", "gemini-4-argon-high"),

@@ -112,7 +112,7 @@ describe("reasoningEffortsForModel", () => {
     ]);
   });
 
-  it("caps Cursor Grok 4.6/4.5 and Gemini 4 Carbon/Argon at High, Hydrogen at Extra High", () => {
+  it("caps Cursor Grok 4.6/4.5 and Gemini 4 Carbon/Argon at High, Neon and Hydrogen at Extra High", () => {
     expect(reasoningEffortsForModel("cursor", "cursor-grok-4.6-medium")).toEqual([
       "low",
       "medium",
@@ -132,6 +132,12 @@ describe("reasoningEffortsForModel", () => {
       "low",
       "medium",
       "high",
+    ]);
+    expect(reasoningEffortsForModel("cursor", "gemini-4-neon-medium")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
     ]);
     expect(reasoningEffortsForModel("cursor", "gemini-4-hydrogen-medium")).toEqual([
       "low",

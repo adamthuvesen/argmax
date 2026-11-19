@@ -302,6 +302,7 @@ pub fn cursor_rates(model_id: &str, created_at: &str) -> Option<CursorRates> {
         "composer-2.5" => rates(0.50, 0.20, 2.50),
         "grok-4.7" | "grok-4.6" | "grok-4.5" => rates(2.0, 0.50, 6.0),
         "claude-opus-5-5" => rates(4.0, 0.20, 20.0),
+        "gemini-4-neon" => rates(3.0, 0.15, 15.0),
         "gemini-4-hydrogen" => rates(1.50, 0.075, 7.50),
         "gemini-4-carbon" if created_at >= GEMINI_4_CARBON_LIST_RATE_SINCE => {
             rates(4.0, 0.20, 20.0)
@@ -335,6 +336,10 @@ mod tests {
         assert_eq!(
             cursor_rates("claude-opus-5-5-medium", at).map(|rate| rate.output),
             Some(20.0)
+        );
+        assert_eq!(
+            cursor_rates("gemini-4-neon-xhigh", at).map(|rate| (rate.input, rate.output)),
+            Some((3.0, 15.0))
         );
         assert_eq!(cursor_rates("auto-smart[optimize_for=cost]", at), None);
         assert_eq!(cursor_rates("composer-2", at), None);

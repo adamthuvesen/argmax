@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimelineEvent } from "../../shared/types.js";
 import {
   baseSession,
@@ -7,6 +7,22 @@ import {
   renderConversation,
   rerenderConversation,
 } from "../../test/sessionConversationTestHarness.js";
+
+/** A frame plus the quiet window the fill waits out after scroll input. */
+const FILL_STEP_MS = 200;
+/** More steps than the largest window needs: 120 items at 8 per frame is 15. */
+const FILL_STEPS = 30;
+
+/**
+ * Run the window fill to the end on fake frames. Each step is a frame, the
+ * timeout queued from it, and the render that commit schedules, so the test
+ * proves the order of mounts without depending on how fast a runner paints.
+ */
+async function finishWindowFill(): Promise<void> {
+  for (let step = 0; step < FILL_STEPS; step += 1) {
+    await act(() => vi.advanceTimersByTimeAsync(FILL_STEP_MS));
+  }
+}
 
 /** One user turn plus one assistant reply, so each pair is a rendered item. */
 function longTranscript(turns: number): TimelineEvent[] {
@@ -44,7 +60,17 @@ function giantTurn(steps: number): TimelineEvent[] {
 }
 
 describe("SessionConversation — render window", () => {
-  afterEach(cleanup);
+  // The fill grows one step per animation frame. Real frames made these tests
+  // as slow as the runner's paint rate and flaky on loaded CI shards.
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ["requestAnimationFrame", "cancelAnimationFrame", "setTimeout", "clearTimeout"],
+    });
+  });
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
 
   it("mounts only the tail of a long transcript and offers the rest", () => {
     renderConversation(baseSession(), longTranscript(400));
@@ -59,7 +85,8 @@ describe("SessionConversation — render window", () => {
   it("keeps a short transcript whole and shows no reveal control", async () => {
     renderConversation(baseSession(), longTranscript(10));
 
-    expect(await screen.findByText("answer 0")).toBeTruthy();
+    await finishWindowFill();
+    expect(screen.getByText("answer 0")).toBeTruthy();
     expect(screen.getByText("answer 9")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Show earlier messages/ })).toBeNull();
   });
@@ -73,8 +100,8 @@ describe("SessionConversation — render window", () => {
     expect(screen.getByText("question 59")).toBeTruthy();
     expect(screen.queryByText("answer 0")).toBeNull();
 
-    // One step per frame; a loaded test machine draws frames slowly.
-    expect(await screen.findByText("answer 0", undefined, { timeout: 5000 })).toBeTruthy();
+    await finishWindowFill();
+    expect(screen.getByText("answer 0")).toBeTruthy();
     expect(screen.getAllByText(/^answer \d+$/)).toHaveLength(60);
     expect(screen.queryByRole("button", { name: /Show earlier messages/ })).toBeNull();
   });
@@ -101,7 +128,8 @@ describe("SessionConversation — render window", () => {
 
   it("starts the fill again when the pane changes session in place", async () => {
     const { rerender } = renderConversation(baseSession(), longTranscript(60));
-    expect(await screen.findByText("answer 0", undefined, { timeout: 5000 })).toBeTruthy();
+    await finishWindowFill();
+    expect(screen.getByText("answer 0")).toBeTruthy();
 
     // Watch every commit: the first one for the new session must hold only its tail.
     let oldestEverMounted = false;
@@ -131,7 +159,8 @@ describe("SessionConversation — render window", () => {
   it("completes the fill when the history load fails, so later rows do not evict the oldest", async () => {
     const options = { eventsBackfilled: false, historyLoadFailed: true };
     const { rerender } = renderConversation(baseSession(), longTranscript(25), options);
-    expect(await screen.findByText("answer 0", undefined, { timeout: 5000 })).toBeTruthy();
+    await finishWindowFill();
+    expect(screen.getByText("answer 0")).toBeTruthy();
 
     rerenderConversation(rerender, baseSession(), longTranscript(29), options);
 
@@ -141,7 +170,8 @@ describe("SessionConversation — render window", () => {
 
   it("reveals earlier turns when asked", async () => {
     renderConversation(baseSession(), longTranscript(400));
-    await screen.findByText("answer 340", undefined, { timeout: 5000 });
+    await finishWindowFill();
+    expect(screen.getByText("answer 340")).toBeTruthy();
     const earliestVisible = (): number => {
       const shown = screen
         .getAllByText(/^answer \d+$/)

@@ -232,6 +232,18 @@
           "defaultEffort": "medium"
         },
         {
+          "label": "Gemini 4 Neon (Cursor)",
+          "modelId": "gemini-4-neon-medium",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
           "label": "Gemini 4 Hydrogen (Cursor)",
           "modelId": "gemini-4-hydrogen-medium",
           "contextWindow": 1000000,

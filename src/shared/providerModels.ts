@@ -74,7 +74,7 @@ export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultr
  * models run the full low→ultra list. Codex Astra/Sol/Terra match that (their CLI
  * catalog lists max and ultra). Codex Luna stops at Max. Cursor's GPT-5.6
  * Luna/Terra/Sol, Opus 5 Thinking, Opus 5.5, and Sonnet 5.5 go to Max (no Ultra suffix).
- * Cursor Grok 4.7 and Gemini 4 Hydrogen go to Extra High; Cursor Grok 4.6/4.5
+ * Cursor Grok 4.7 and Gemini 4 Neon and Hydrogen go to Extra High; Cursor Grok 4.6/4.5
  * and Gemini 4 Carbon/Argon stop at High. OpenCode's OpenRouter models ship
  * non-prefix variant lists because their CLI exposes only certain discrete
  * levels (e.g. low/high/max).
@@ -113,7 +113,9 @@ export function reasoningEffortsForModel(
   }
   if (
     provider === "cursor" &&
-    (modelId.startsWith("grok-4.7") || modelId.startsWith("gemini-4-hydrogen"))
+    (modelId.startsWith("grok-4.7") ||
+      modelId.startsWith("gemini-4-neon") ||
+      modelId.startsWith("gemini-4-hydrogen"))
   ) {
     return REASONING_EFFORTS.slice(0, 4); // low → xhigh
   }
@@ -281,7 +283,13 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       supportsFastMode: true,
       contextWindow: 1_000_000,
     },
-    // cursor-agent 2026.11.11 lists no `-fast` ids for Gemini 4.
+    // cursor-agent 2026.11.17 lists no `-fast` ids for Gemini 4; Neon runs low through xhigh.
+    {
+      label: "Gemini 4 Neon (Cursor)",
+      modelId: "gemini-4-neon-medium",
+      supportsReasoningEffort: true,
+      contextWindow: 1_000_000,
+    },
     {
       label: "Gemini 4 Hydrogen (Cursor)",
       modelId: "gemini-4-hydrogen-medium",
@@ -568,6 +576,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "composer-2.5": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "grok-4.7-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "cursor-grok-4.6-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gemini-4-neon-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gemini-4-hydrogen-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gemini-4-carbon-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gemini-4-argon-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

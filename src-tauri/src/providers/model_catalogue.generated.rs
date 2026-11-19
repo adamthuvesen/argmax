@@ -148,6 +148,15 @@ pub static CATALOGUE_MODELS: &[CatalogueModel] = &[
     },
     CatalogueModel {
         provider: ProviderId::Cursor,
+        model_id: "gemini-4-neon-medium",
+        label: Some("Gemini 4 Neon (Cursor)"),
+        efforts: &[ReasoningEffort::Low, ReasoningEffort::Medium, ReasoningEffort::High, ReasoningEffort::Xhigh],
+        supports_fast_mode: false,
+        fast_mode_model_id: None,
+        context_window: Some(1000000),
+    },
+    CatalogueModel {
+        provider: ProviderId::Cursor,
         model_id: "gemini-4-hydrogen-medium",
         label: Some("Gemini 4 Hydrogen (Cursor)"),
         efforts: &[ReasoningEffort::Low, ReasoningEffort::Medium, ReasoningEffort::High, ReasoningEffort::Xhigh],

@@ -489,6 +489,7 @@ mod tests {
         "auto-smart[optimize_for=balanced]",
         "auto-smart[optimize_for=intelligence]",
         "grok-4.7-medium",
+        "gemini-4-neon-medium",
         "gemini-4-hydrogen-medium",
         "gemini-4-carbon-medium",
         "gemini-4-argon-medium",

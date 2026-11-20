@@ -78,23 +78,32 @@ describe("ForkBar", () => {
   });
 
   it("follows a rename of the source chat", async () => {
-    let onDelta: ((delta: { workspaces: { id: string; taskLabel: string }[] }) => void) | null =
-      null;
+    type Delta = { workspaces: { id: string; taskLabel: string }[] };
+    // Every subscriber hears the delta, as on the real bridge. Keeping only the
+    // last one let the retained-reads listener stand in for the bar's.
+    const listeners = new Set<(delta: Delta) => void>();
     stubSession({ forkLineage: vi.fn().mockResolvedValue(lineage) });
     window.argmax = {
       ...window.argmax,
       dashboard: {
         ...window.argmax?.dashboard,
-        onDelta: vi.fn((listener: typeof onDelta) => {
-          onDelta = listener;
-          return () => undefined;
+        onDelta: vi.fn((listener: (delta: Delta) => void) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
         }),
       },
     } as unknown as typeof window.argmax;
     render(<ForkBar sessionId="child-1" onOpenSession={vi.fn()} />);
     await screen.findByRole("button", { name: "Parser rewrite" });
+    // findByRole can resolve on the commit, before the bar's passive effect
+    // subscribes to renames. Flush it so the delta below has a listener.
+    await act(async () => {});
 
-    act(() => onDelta!({ workspaces: [{ id: "workspace-1", taskLabel: "Parser rewrite v2" }] }));
+    act(() => {
+      for (const listener of listeners) {
+        listener({ workspaces: [{ id: "workspace-1", taskLabel: "Parser rewrite v2" }] });
+      }
+    });
     expect(screen.getByRole("button", { name: "Parser rewrite v2" })).toBeVisible();
   });
 

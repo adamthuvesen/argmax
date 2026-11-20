@@ -113,7 +113,7 @@ it lands.
 - **DOM Queries:** Query by role, accessible name, label, or title rather than CSS classes.
 - **Mocks:** Browser preview and shell tests mock `window.argmax` using [src/test/appTestHarness.ts](../src/test/appTestHarness.ts).
 - **The prompt editor:** jsdom has no layout, so the suite renders the composers' lazy `ComposerEditor` as the textarea it shows while the CodeMirror chunk loads (`ComposerFallbackField`, wired in [composerEditorMock.tsx](../src/test/composerEditorMock.tsx)), the way it already swaps the file editor. That mock proves the composers' own behavior and nothing about CodeMirror. The editor is covered against a real `EditorView` in [composerEditor/extensions.test.tsx](../src/renderer/components/composerEditor/extensions.test.tsx) and [ComposerEditorView.test.tsx](../src/renderer/components/ComposerEditorView.test.tsx) (chips, atomic Backspace, clipboard, IME guard, undo) and [ComposerEditor.test.tsx](../src/renderer/components/ComposerEditor.test.tsx) (the hand-over from the textarea), and in a real browser by `node scripts/verification/composer-editor.mjs`. A test that needs the real wrapper calls `vi.unmock("./ComposerEditor.js")`; one that needs the editor inside a composer remaps the module to the view (`vi.mock("./ComposerEditor.js", ...)` returning `ComposerEditorView`), as [SessionComposer.editor.test.tsx](../src/renderer/components/SessionComposer.editor.test.tsx) and [LaunchSurface.editor.test.tsx](../src/renderer/components/LaunchSurface.editor.test.tsx) do for undo, cut, submit and the draft switch. [jsdomCodeMirror.ts](../src/test/jsdomCodeMirror.ts) gives jsdom the zeroed layout CodeMirror measures.
-- **Timers:** A test that waits on a `setInterval` or `setTimeout` in the component must fake it (`vi.useFakeTimers`, or `toFake: ["setInterval", "clearInterval"]` when `waitFor` still needs real `setTimeout`) and advance it with `vi.advanceTimersByTimeAsync`. Sleeping through a real interval is the suite's largest cost and its main flake source on shared CI runners.
+- **Timers:** A test that waits on a `setInterval` or `setTimeout` in the component must fake it (`vi.useFakeTimers`, or `toFake: ["setInterval", "clearInterval"]` when `waitFor` still needs real `setTimeout`) and advance it with `vi.advanceTimersByTimeAsync`. Sleeping through a real interval is the suite's largest cost and its main flake source on shared CI runners. The same goes for work paced by `requestAnimationFrame`, such as the transcript's render-window fill: fake `requestAnimationFrame` with the timers and step it inside `act`, as [SessionConversation.window.test.tsx](../src/renderer/components/SessionConversation.window.test.tsx) does, rather than waiting on real frames with a long `findBy` timeout.
 - **Performance Benchmarks:** Run through [vitest.perf.config.ts](../vitest.perf.config.ts) and [src/test/perf.test.ts](../src/test/perf.test.ts).
 
 ## iPhone Tests
@@ -123,8 +123,15 @@ the Xcode project, builds the `ArgmaxTests` target, and runs it on a simulator
 named "Argmax Test Lane", which it creates when it is missing. The pre-push gate runs it
 when the diff touches the paths in the table above. CI runs the same command in
 a path-filtered macOS job, and on every push to `main`. The log goes to
-`node_modules/.cache/ios-tests/last-run.log`. `--only ParityTableTests` narrows a
-run to one class, or to `Class/testMethod`.
+`node_modules/.cache/ios-tests/last-run.log`, and a failed run also prints each
+XCTest assertion line, so a CI log says what failed and not only which test.
+`--only ParityTableTests` narrows a run to one class, or to `Class/testMethod`.
+
+A test that waits on a `WKWebView` waits for its condition, not for a guessed
+duration, and fails with the phase it was in. Each web view starts a WebContent
+process, and a cold one on a shared CI simulator can take more than 5 s, so
+those waits use the 30 s ceiling in
+[BridgeRecoveryTests.swift](../ios/Argmax/Tests/BridgeRecoveryTests.swift).
 
 On 4 November 2026 the suite ran 494 tests on an already booted simulator in
 81 s from empty DerivedData (59 s build, 22 s tests) and 21 s with nothing to
